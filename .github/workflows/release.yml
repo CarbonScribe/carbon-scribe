@@ -43,7 +43,7 @@ jobs:
           tag: ${{ steps.version.outputs.VERSION }}
       
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: CarbonScribe ${{ steps.version.outputs.VERSION }}
           body_path: CHANGELOG.md
