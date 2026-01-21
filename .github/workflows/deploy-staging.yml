@@ -71,7 +71,7 @@ jobs:
             type=raw,value=${{ env.ENVIRONMENT }},enable=${{ github.event_name == 'workflow_dispatch' }}
       
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.layer.path }}
           file: ${{ matrix.layer.path }}/${{ matrix.layer.dockerfile }}

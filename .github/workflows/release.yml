@@ -55,7 +55,7 @@ jobs:
             stellar-core/target/wasm32-unknown-unknown/release/*.wasm
       
       - name: Build and Push Production Images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
