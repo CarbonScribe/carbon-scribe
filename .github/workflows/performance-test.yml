@@ -20,7 +20,7 @@ jobs:
     environment: staging
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup k6
         uses: grafana/k6-action@v0.3.1
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Calculate Carbon Footprint
         uses: resurfaceio/carbon-calculator-action@v1

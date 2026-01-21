@@ -12,7 +12,7 @@ jobs:
     environment: verification
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -72,7 +72,7 @@ jobs:
     environment: verification
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Go
         uses: actions/setup-go@v4
@@ -99,7 +99,7 @@ jobs:
     environment: verification
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -121,7 +121,7 @@ jobs:
     environment: verification
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       
       - name: Run Data Fusion
         run: |
