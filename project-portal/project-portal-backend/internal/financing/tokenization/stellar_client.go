@@ -118,9 +118,6 @@ func (s *StellarClient) MintTokens(ctx context.Context, req *MintRequest) (*Mint
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Generate unique transaction ID
-	transactionID := s.generateTransactionID()
-
 	// Create Soroban contract call
 	contractCall, err := s.createMintContractCall(req)
 	if err != nil {
