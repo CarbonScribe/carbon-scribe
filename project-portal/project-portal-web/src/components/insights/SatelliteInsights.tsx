@@ -1,20 +1,44 @@
-'use client';
+"use client";
 
-import { Satellite, TrendingUp, CloudRain, Sun } from 'lucide-react';
+import { Satellite, TrendingUp, CloudRain, Sun } from "lucide-react";
 
 const SatelliteInsights = () => {
   const insights = [
-    { metric: 'NDVI Score', value: '0.78', change: '+0.12', trend: 'up', icon: '🌿' },
-    { metric: 'Biomass Growth', value: '+24%', change: 'vs last month', trend: 'up', icon: '📈' },
-    { metric: 'Canopy Cover', value: '68%', change: '+8%', trend: 'up', icon: '🌳' },
-    { metric: 'Drought Risk', value: 'Low', change: '-15%', trend: 'down', icon: '🏜️' },
+    {
+      metric: "NDVI Score",
+      value: "0.78",
+      change: "+0.12",
+      trend: "up",
+      icon: "🌿",
+    },
+    {
+      metric: "Biomass Growth",
+      value: "+24%",
+      change: "vs last month",
+      trend: "up",
+      icon: "📈",
+    },
+    {
+      metric: "Canopy Cover",
+      value: "68%",
+      change: "+8%",
+      trend: "up",
+      icon: "🌳",
+    },
+    {
+      metric: "Drought Risk",
+      value: "Low",
+      change: "-15%",
+      trend: "down",
+      icon: "🏜️",
+    },
   ];
 
   const weather = [
-    { day: 'Today', icon: Sun, temp: '28°C', rain: '10%' },
-    { day: 'Tomorrow', icon: CloudRain, temp: '26°C', rain: '60%' },
-    { day: 'Wed', icon: Sun, temp: '29°C', rain: '20%' },
-    { day: 'Thu', icon: CloudRain, temp: '25°C', rain: '80%' },
+    { day: "Today", icon: Sun, temp: "28°C", rain: "10%" },
+    { day: "Tomorrow", icon: CloudRain, temp: "26°C", rain: "60%" },
+    { day: "Wed", icon: Sun, temp: "29°C", rain: "20%" },
+    { day: "Thu", icon: CloudRain, temp: "25°C", rain: "80%" },
   ];
 
   return (
@@ -29,16 +53,23 @@ const SatelliteInsights = () => {
             <p className="text-cyan-100 text-sm">Live Earth observation data</p>
           </div>
         </div>
-        <div className="px-3 py-1 bg-white/20 rounded-full text-sm">Updated 15 min ago</div>
+        <div className="px-3 py-1 bg-white/20 rounded-full text-sm">
+          Updated 15 min ago
+        </div>
       </div>
 
       {/* Insights Grid */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         {insights.map((insight) => (
-          <div key={insight.metric} className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
+          <div
+            key={insight.metric}
+            className="bg-white/10 backdrop-blur-sm rounded-xl p-4"
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="text-2xl">{insight.icon}</div>
-              <div className={`text-sm font-medium ${insight.trend === 'up' ? 'text-emerald-300' : 'text-amber-300'}`}>
+              <div
+                className={`text-sm font-medium ${insight.trend === "up" ? "text-emerald-300" : "text-amber-300"}`}
+              >
                 {insight.change}
               </div>
             </div>

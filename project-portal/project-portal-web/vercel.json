@@ -1,5 +1,5 @@
 {
-    "build": {
-      "use": "@vercel/next"
-    }
+  "build": {
+    "use": "@vercel/next"
+  }
 }

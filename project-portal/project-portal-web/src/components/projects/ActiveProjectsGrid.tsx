@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { MapPin, Calendar, Target, Users, ArrowUpRight } from 'lucide-react';
-import { useFarmer } from '@/contexts/FarmerContext';
+import { MapPin, Calendar, Target, Users, ArrowUpRight } from "lucide-react";
+import { useFarmer } from "@/contexts/FarmerContext";
 
 const ActiveProjectsGrid = () => {
   const { projects } = useFarmer();
@@ -18,15 +18,24 @@ const ActiveProjectsGrid = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map((project) => (
-          <div key={project.id} className="group border-2 border-gray-200 hover:border-emerald-300 rounded-xl p-5 transition-all duration-300 hover:shadow-xl hover:scale-105 cursor-pointer">
+          <div
+            key={project.id}
+            className="group border-2 border-gray-200 hover:border-emerald-300 rounded-xl p-5 transition-all duration-300 hover:shadow-xl hover:scale-105 cursor-pointer"
+          >
             {/* Project Header */}
             <div className="flex items-start justify-between mb-4">
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-3 h-3 rounded-full ${project.status === 'active' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                  <span className="text-sm font-medium text-gray-700">{project.type}</span>
+                  <div
+                    className={`w-3 h-3 rounded-full ${project.status === "active" ? "bg-emerald-500" : "bg-amber-500"}`}
+                  ></div>
+                  <span className="text-sm font-medium text-gray-700">
+                    {project.type}
+                  </span>
                 </div>
-                <h3 className="font-bold text-gray-900 text-lg">{project.name}</h3>
+                <h3 className="font-bold text-gray-900 text-lg">
+                  {project.name}
+                </h3>
               </div>
               <div className="text-2xl">{project.icon}</div>
             </div>
@@ -55,10 +64,15 @@ const ActiveProjectsGrid = () => {
             <div className="mb-4">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-gray-600">Carbon Generated</span>
-                <span className="font-bold text-gray-900">{project.carbonCredits} tCO₂</span>
+                <span className="font-bold text-gray-900">
+                  {project.carbonCredits} tCO₂
+                </span>
               </div>
               <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-linear-to-r from-emerald-400 to-green-500 rounded-full" style={{ width: `${project.progress}%` }}></div>
+                <div
+                  className="h-full bg-linear-to-r from-emerald-400 to-green-500 rounded-full"
+                  style={{ width: `${project.progress}%` }}
+                ></div>
               </div>
             </div>
 

@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Menu, Bell, Search, Globe, User, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { Menu, Bell, Search, Globe, User, Sparkles } from "lucide-react";
+import { useState } from "react";
 
 const PortalNavbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -71,7 +71,9 @@ const PortalNavbar = () => {
         </div>
 
         {/* Mobile Search Bar */}
-        <div className={`mt-3 md:hidden transition-all duration-300 ${mobileMenuOpen ? 'block' : 'hidden'}`}>
+        <div
+          className={`mt-3 md:hidden transition-all duration-300 ${mobileMenuOpen ? "block" : "hidden"}`}
+        >
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input

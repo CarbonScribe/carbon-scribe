@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from "react";
 
 interface Project {
   id: number;
@@ -13,7 +13,7 @@ interface Project {
   carbonCredits: number;
   progress: number;
   icon: string;
-  status: 'active' | 'pending' | 'completed';
+  status: "active" | "pending" | "completed";
 }
 
 interface FarmerContextType {
@@ -33,55 +33,55 @@ export const FarmerProvider = ({ children }: { children: ReactNode }) => {
   const [projects, setProjects] = useState<Project[]>([
     {
       id: 1,
-      name: 'Rainforest Restoration',
-      type: 'Reforestation',
-      location: 'Amazon Basin, Brazil',
-      area: '12.5',
-      startDate: 'Jan 2023',
+      name: "Rainforest Restoration",
+      type: "Reforestation",
+      location: "Amazon Basin, Brazil",
+      area: "12.5",
+      startDate: "Jan 2023",
       farmers: 24,
       carbonCredits: 450,
       progress: 85,
-      icon: '🌳',
-      status: 'active'
+      icon: "🌳",
+      status: "active",
     },
     {
       id: 2,
-      name: 'Sustainable Agriculture',
-      type: 'Agroforestry',
-      location: 'Kenya Highlands',
-      area: '8.2',
-      startDate: 'Mar 2023',
+      name: "Sustainable Agriculture",
+      type: "Agroforestry",
+      location: "Kenya Highlands",
+      area: "8.2",
+      startDate: "Mar 2023",
       farmers: 18,
       carbonCredits: 320,
       progress: 72,
-      icon: '🌾',
-      status: 'active'
+      icon: "🌾",
+      status: "active",
     },
     {
       id: 3,
-      name: 'Mangrove Conservation',
-      type: 'Blue Carbon',
-      location: 'Sundarbans, Bangladesh',
-      area: '5.8',
-      startDate: 'Nov 2022',
+      name: "Mangrove Conservation",
+      type: "Blue Carbon",
+      location: "Sundarbans, Bangladesh",
+      area: "5.8",
+      startDate: "Nov 2022",
       farmers: 32,
       carbonCredits: 580,
       progress: 95,
-      icon: '🌊',
-      status: 'completed'
+      icon: "🌊",
+      status: "completed",
     },
     {
       id: 4,
-      name: 'Soil Carbon Project',
-      type: 'Regenerative Farming',
-      location: 'Midwest, USA',
-      area: '15.3',
-      startDate: 'Feb 2024',
+      name: "Soil Carbon Project",
+      type: "Regenerative Farming",
+      location: "Midwest, USA",
+      area: "15.3",
+      startDate: "Feb 2024",
       farmers: 8,
       carbonCredits: 210,
       progress: 45,
-      icon: '🪴',
-      status: 'active'
+      icon: "🪴",
+      status: "active",
     },
   ]);
 
@@ -93,7 +93,9 @@ export const FarmerProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateProject = (id: number, updates: Partial<Project>) => {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    setProjects((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+    );
   };
 
   return (
@@ -106,7 +108,7 @@ export const FarmerProvider = ({ children }: { children: ReactNode }) => {
 export const useFarmer = () => {
   const context = useContext(FarmerContext);
   if (!context) {
-    throw new Error('useFarmer must be used within FarmerProvider');
+    throw new Error("useFarmer must be used within FarmerProvider");
   }
   return context;
 };

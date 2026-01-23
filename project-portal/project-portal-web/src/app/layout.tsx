@@ -1,15 +1,16 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-import PortalNavbar from '@/components/PortalNavbar';
-import PortalSidebar from '@/components/PortalSidebar';
-import { FarmerProvider } from '@/contexts/FarmerContext';
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import PortalNavbar from "@/components/PortalNavbar";
+import PortalSidebar from "@/components/PortalSidebar";
+import { FarmerProvider } from "@/contexts/FarmerContext";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'CarbonScribe Project Portal - Farmer Dashboard',
-  description: 'Manage your regenerative agriculture projects and carbon credits',
+  title: "CarbonScribe Project Portal - Farmer Dashboard",
+  description:
+    "Manage your regenerative agriculture projects and carbon credits",
 };
 
 export default function RootLayout({
@@ -19,7 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-linear-to-br from-emerald-50 via-white to-cyan-50 min-h-screen`}>
+      <body
+        className={`${inter.className} bg-linear-to-br from-emerald-50 via-white to-cyan-50 min-h-screen`}
+      >
         <FarmerProvider>
           <PortalNavbar />
           <div className="flex">
@@ -33,21 +36,6 @@ export default function RootLayout({
     </html>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // import type { Metadata } from 'next';
 // import { Inter } from 'next/font/google';

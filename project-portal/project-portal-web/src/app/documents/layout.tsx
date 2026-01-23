@@ -1,7 +1,7 @@
 export default function DocumentsLayout({
-    children,
-  }: Readonly<{
-    children: React.ReactNode;
-  }>) {
-    return children;
-  }
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return children;
+}

@@ -1,13 +1,13 @@
 // File: app/monitoring/page.tsx
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { 
-  Satellite, 
-  AlertTriangle, 
-  CheckCircle, 
-  Camera, 
-  Upload, 
+import { useState } from "react";
+import {
+  Satellite,
+  AlertTriangle,
+  CheckCircle,
+  Camera,
+  Upload,
   Filter,
   Download,
   BarChart3,
@@ -17,138 +17,138 @@ import {
   RefreshCw,
   PlayCircle,
   PauseCircle,
-  AlertCircle
-} from 'lucide-react';
-import MonitoringAlerts from '@/components/monitoring/MonitoringAlerts';
+  AlertCircle,
+} from "lucide-react";
+import MonitoringAlerts from "@/components/monitoring/MonitoringAlerts";
 
 const MonitoringPage = () => {
-  const [timeRange, setTimeRange] = useState('30d');
-  const [viewMode, setViewMode] = useState('grid');
-  const [selectedProject, setSelectedProject] = useState('all');
+  const [timeRange, setTimeRange] = useState("30d");
+  const [viewMode, setViewMode] = useState("grid");
+  const [selectedProject, setSelectedProject] = useState("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Mock monitoring data
   const monitoringData = [
     {
       id: 1,
-      projectName: 'Amazon Rainforest Restoration',
-      type: 'satellite',
-      status: 'healthy',
-      lastUpdated: '15 minutes ago',
+      projectName: "Amazon Rainforest Restoration",
+      type: "satellite",
+      status: "healthy",
+      lastUpdated: "15 minutes ago",
       metrics: {
         ndvi: 0.78,
-        biomass: '+12%',
-        canopy: '68%',
-        health: 'Excellent'
+        biomass: "+12%",
+        canopy: "68%",
+        health: "Excellent",
       },
       alerts: 0,
       images: 24,
-      location: 'Amazon Basin, Brazil',
-      nextVerification: 'Dec 15, 2024',
-      sensorStatus: 'online'
+      location: "Amazon Basin, Brazil",
+      nextVerification: "Dec 15, 2024",
+      sensorStatus: "online",
     },
     {
       id: 2,
-      projectName: 'Kenyan Agroforestry Initiative',
-      type: 'iot',
-      status: 'warning',
-      lastUpdated: '2 hours ago',
+      projectName: "Kenyan Agroforestry Initiative",
+      type: "iot",
+      status: "warning",
+      lastUpdated: "2 hours ago",
       metrics: {
         ndvi: 0.65,
-        biomass: '+5%',
-        canopy: '54%',
-        health: 'Good'
+        biomass: "+5%",
+        canopy: "54%",
+        health: "Good",
       },
       alerts: 2,
       images: 18,
-      location: 'Kenya Highlands',
-      nextVerification: 'Nov 30, 2024',
-      sensorStatus: 'partial'
+      location: "Kenya Highlands",
+      nextVerification: "Nov 30, 2024",
+      sensorStatus: "partial",
     },
     {
       id: 3,
-      projectName: 'Sundarbans Mangrove Conservation',
-      type: 'satellite',
-      status: 'critical',
-      lastUpdated: '6 hours ago',
+      projectName: "Sundarbans Mangrove Conservation",
+      type: "satellite",
+      status: "critical",
+      lastUpdated: "6 hours ago",
       metrics: {
         ndvi: 0.42,
-        biomass: '-8%',
-        canopy: '38%',
-        health: 'Poor'
+        biomass: "-8%",
+        canopy: "38%",
+        health: "Poor",
       },
       alerts: 5,
       images: 32,
-      location: 'Sundarbans, Bangladesh',
-      nextVerification: 'Jan 15, 2025',
-      sensorStatus: 'offline'
+      location: "Sundarbans, Bangladesh",
+      nextVerification: "Jan 15, 2025",
+      sensorStatus: "offline",
     },
     {
       id: 4,
-      projectName: 'Midwest Soil Carbon Project',
-      type: 'iot',
-      status: 'healthy',
-      lastUpdated: '30 minutes ago',
+      projectName: "Midwest Soil Carbon Project",
+      type: "iot",
+      status: "healthy",
+      lastUpdated: "30 minutes ago",
       metrics: {
         ndvi: 0.72,
-        biomass: '+18%',
-        canopy: '62%',
-        health: 'Excellent'
+        biomass: "+18%",
+        canopy: "62%",
+        health: "Excellent",
       },
       alerts: 0,
       images: 16,
-      location: 'Midwest, USA',
-      nextVerification: 'Feb 28, 2025',
-      sensorStatus: 'online'
+      location: "Midwest, USA",
+      nextVerification: "Feb 28, 2025",
+      sensorStatus: "online",
     },
     {
       id: 5,
-      projectName: 'Ethiopian Forest Protection',
-      type: 'satellite',
-      status: 'healthy',
-      lastUpdated: '45 minutes ago',
+      projectName: "Ethiopian Forest Protection",
+      type: "satellite",
+      status: "healthy",
+      lastUpdated: "45 minutes ago",
       metrics: {
         ndvi: 0.81,
-        biomass: '+15%',
-        canopy: '72%',
-        health: 'Excellent'
+        biomass: "+15%",
+        canopy: "72%",
+        health: "Excellent",
       },
       alerts: 1,
       images: 28,
-      location: 'Bale Mountains, Ethiopia',
-      nextVerification: 'Mar 15, 2025',
-      sensorStatus: 'online'
+      location: "Bale Mountains, Ethiopia",
+      nextVerification: "Mar 15, 2025",
+      sensorStatus: "online",
     },
     {
       id: 6,
-      projectName: 'Vietnam Bamboo Plantation',
-      type: 'iot',
-      status: 'warning',
-      lastUpdated: '3 hours ago',
+      projectName: "Vietnam Bamboo Plantation",
+      type: "iot",
+      status: "warning",
+      lastUpdated: "3 hours ago",
       metrics: {
         ndvi: 0.58,
-        biomass: '+3%',
-        canopy: '49%',
-        health: 'Fair'
+        biomass: "+3%",
+        canopy: "49%",
+        health: "Fair",
       },
       alerts: 3,
       images: 12,
-      location: 'Mekong Delta, Vietnam',
-      nextVerification: 'Apr 10, 2025',
-      sensorStatus: 'partial'
+      location: "Mekong Delta, Vietnam",
+      nextVerification: "Apr 10, 2025",
+      sensorStatus: "partial",
     },
   ];
 
   const statusConfig = {
-    healthy: { color: 'bg-emerald-100 text-emerald-700', icon: CheckCircle },
-    warning: { color: 'bg-amber-100 text-amber-700', icon: AlertTriangle },
-    critical: { color: 'bg-red-100 text-red-700', icon: AlertCircle }
+    healthy: { color: "bg-emerald-100 text-emerald-700", icon: CheckCircle },
+    warning: { color: "bg-amber-100 text-amber-700", icon: AlertTriangle },
+    critical: { color: "bg-red-100 text-red-700", icon: AlertCircle },
   };
 
   const sensorConfig = {
-    online: { color: 'bg-emerald-100 text-emerald-700', label: 'Online' },
-    partial: { color: 'bg-amber-100 text-amber-700', label: 'Partial' },
-    offline: { color: 'bg-gray-100 text-gray-700', label: 'Offline' }
+    online: { color: "bg-emerald-100 text-emerald-700", label: "Online" },
+    partial: { color: "bg-amber-100 text-amber-700", label: "Partial" },
+    offline: { color: "bg-gray-100 text-gray-700", label: "Offline" },
   };
 
   return (
@@ -158,7 +158,9 @@ const MonitoringPage = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-3">Project Monitoring</h1>
-            <p className="text-emerald-100 opacity-90">Real-time tracking of all your regenerative agriculture projects</p>
+            <p className="text-emerald-100 opacity-90">
+              Real-time tracking of all your regenerative agriculture projects
+            </p>
           </div>
           <div className="mt-4 md:mt-0 flex items-center space-x-4">
             <button
@@ -204,7 +206,7 @@ const MonitoringPage = () => {
                 <option value="critical">Critical Only</option>
               </select>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <select
                 value={timeRange}
@@ -218,27 +220,27 @@ const MonitoringPage = () => {
               </select>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center">
               <Download className="w-4 h-4 mr-2" />
               Export Data
             </button>
-            
+
             <button className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
               <RefreshCw className="w-5 h-5" />
             </button>
-            
+
             <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
               <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                onClick={() => setViewMode("grid")}
+                className={`p-2 rounded-lg ${viewMode === "grid" ? "bg-emerald-100 text-emerald-600" : "text-gray-600 hover:bg-gray-100"}`}
               >
                 Grid
               </button>
               <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
+                onClick={() => setViewMode("list")}
+                className={`p-2 rounded-lg ${viewMode === "list" ? "bg-emerald-100 text-emerald-600" : "text-gray-600 hover:bg-gray-100"}`}
               >
                 List
               </button>
@@ -249,24 +251,35 @@ const MonitoringPage = () => {
         {/* Monitoring Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {monitoringData.map((project) => {
-            const StatusIcon = statusConfig[project.status as keyof typeof statusConfig].icon;
-            const statusColor = statusConfig[project.status as keyof typeof statusConfig].color;
-            const sensorInfo = sensorConfig[project.sensorStatus as keyof typeof sensorConfig];
-            
+            const StatusIcon =
+              statusConfig[project.status as keyof typeof statusConfig].icon;
+            const statusColor =
+              statusConfig[project.status as keyof typeof statusConfig].color;
+            const sensorInfo =
+              sensorConfig[project.sensorStatus as keyof typeof sensorConfig];
+
             return (
-              <div key={project.id} className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:border-emerald-300 hover:shadow-xl transition-all duration-300">
+              <div
+                key={project.id}
+                className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:border-emerald-300 hover:shadow-xl transition-all duration-300"
+              >
                 {/* Project Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-bold text-gray-900 text-lg mb-1">{project.projectName}</h3>
+                    <h3 className="font-bold text-gray-900 text-lg mb-1">
+                      {project.projectName}
+                    </h3>
                     <div className="flex items-center text-gray-600 text-sm">
                       <MapPin className="w-4 h-4 mr-1" />
                       {project.location}
                     </div>
                   </div>
-                  <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusColor}`}>
+                  <div
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusColor}`}
+                  >
                     <StatusIcon className="w-4 h-4 mr-2" />
-                    {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+                    {project.status.charAt(0).toUpperCase() +
+                      project.status.slice(1)}
                   </div>
                 </div>
 
@@ -274,8 +287,12 @@ const MonitoringPage = () => {
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   {Object.entries(project.metrics).map(([key, value]) => (
                     <div key={key} className="bg-gray-50 rounded-lg p-3">
-                      <div className="text-lg font-bold text-gray-900">{value}</div>
-                      <div className="text-xs text-gray-600 capitalize">{key.replace(/([A-Z])/g, ' $1')}</div>
+                      <div className="text-lg font-bold text-gray-900">
+                        {value}
+                      </div>
+                      <div className="text-xs text-gray-600 capitalize">
+                        {key.replace(/([A-Z])/g, " $1")}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -284,16 +301,22 @@ const MonitoringPage = () => {
                 <div className="space-y-3 mb-6">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-600">Last Updated</div>
-                    <div className="text-sm font-medium text-gray-900">{project.lastUpdated}</div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {project.lastUpdated}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-gray-600">Sensor Status</div>
-                    <div className={`text-xs font-medium px-2 py-1 rounded-full ${sensorInfo.color}`}>
+                    <div
+                      className={`text-xs font-medium px-2 py-1 rounded-full ${sensorInfo.color}`}
+                    >
                       {sensorInfo.label}
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">Next Verification</div>
+                    <div className="text-sm text-gray-600">
+                      Next Verification
+                    </div>
                     <div className="text-sm font-medium text-gray-900 flex items-center">
                       <Calendar className="w-4 h-4 mr-1" />
                       {project.nextVerification}
@@ -335,39 +358,17 @@ const MonitoringPage = () => {
 
 export default MonitoringPage;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // // File: app/monitoring/page.tsx
 // 'use client';
 
 // import { useState } from 'react';
-// import { 
-//   Satellite, 
-//   AlertTriangle, 
-//   CheckCircle, 
-//   Clock, 
-//   Camera, 
-//   Upload, 
+// import {
+//   Satellite,
+//   AlertTriangle,
+//   CheckCircle,
+//   Clock,
+//   Camera,
+//   Upload,
 //   Filter,
 //   Download,
 //   BarChart3,
@@ -585,7 +586,7 @@ export default MonitoringPage;
 //                 <option value="critical">Critical Only</option>
 //               </select>
 //             </div>
-            
+
 //             <div className="flex items-center space-x-2">
 //               <select
 //                 value={timeRange}
@@ -599,17 +600,17 @@ export default MonitoringPage;
 //               </select>
 //             </div>
 //           </div>
-          
+
 //           <div className="flex items-center space-x-4">
 //             <button className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center">
 //               <Download className="w-4 h-4 mr-2" />
 //               Export Data
 //             </button>
-            
+
 //             <button className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
 //               <RefreshCw className="w-5 h-5" />
 //             </button>
-            
+
 //             <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
 //               <button
 //                 onClick={() => setViewMode('grid')}
@@ -633,7 +634,7 @@ export default MonitoringPage;
 //             const StatusIcon = statusConfig[project.status as keyof typeof statusConfig].icon;
 //             const statusColor = statusConfig[project.status as keyof typeof statusConfig].color;
 //             const sensorInfo = sensorConfig[project.sensorStatus as keyof typeof sensorConfig];
-            
+
 //             return (
 //               <div key={project.id} className="bg-white border-2 border-gray-200 rounded-2xl p-6 hover:border-emerald-300 hover:shadow-xl transition-all duration-300">
 //                 {/* Project Header */}
@@ -719,7 +720,7 @@ export default MonitoringPage;
 //             View All Alerts →
 //           </button>
 //         </div>
-        
+
 //         <div className="space-y-4">
 //           {[
 //             {
@@ -761,8 +762,8 @@ export default MonitoringPage;
 //                 <div className="flex items-center justify-between mt-3">
 //                   <div className="text-sm text-gray-500">{alert.time}</div>
 //                   <button className={`px-3 py-1 text-sm font-medium rounded-lg ${
-//                     alert.type === 'critical' 
-//                       ? 'bg-red-100 text-red-700 hover:bg-red-200' 
+//                     alert.type === 'critical'
+//                       ? 'bg-red-100 text-red-700 hover:bg-red-200'
 //                       : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
 //                   }`}>
 //                     {alert.action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}

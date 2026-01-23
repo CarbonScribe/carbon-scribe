@@ -1,16 +1,41 @@
 // File: components/project-portal/actions/QuickActionsPanel.tsx
-'use client';
+"use client";
 
-import { Upload, FileText, Camera, MessageSquare, Settings, HelpCircle, Bell, Share2 } from 'lucide-react';
+import {
+  Upload,
+  FileText,
+  Camera,
+  MessageSquare,
+  Settings,
+  HelpCircle,
+  Bell,
+  Share2,
+} from "lucide-react";
 
 const QuickActionsPanel = () => {
   const actions = [
-    { icon: Upload, label: 'Upload Data', color: 'from-blue-500 to-cyan-500' },
-    { icon: FileText, label: 'Generate Report', color: 'from-purple-500 to-pink-500' },
-    { icon: Camera, label: 'Field Photos', color: 'from-emerald-500 to-green-500' },
-    { icon: MessageSquare, label: 'Support Chat', color: 'from-amber-500 to-orange-500' },
-    { icon: Bell, label: 'Set Alerts', color: 'from-red-500 to-rose-500' },
-    { icon: Share2, label: 'Share Progress', color: 'from-indigo-500 to-purple-500' },
+    { icon: Upload, label: "Upload Data", color: "from-blue-500 to-cyan-500" },
+    {
+      icon: FileText,
+      label: "Generate Report",
+      color: "from-purple-500 to-pink-500",
+    },
+    {
+      icon: Camera,
+      label: "Field Photos",
+      color: "from-emerald-500 to-green-500",
+    },
+    {
+      icon: MessageSquare,
+      label: "Support Chat",
+      color: "from-amber-500 to-orange-500",
+    },
+    { icon: Bell, label: "Set Alerts", color: "from-red-500 to-rose-500" },
+    {
+      icon: Share2,
+      label: "Share Progress",
+      color: "from-indigo-500 to-purple-500",
+    },
   ];
 
   return (
@@ -36,10 +61,14 @@ const QuickActionsPanel = () => {
               key={action.label}
               className="group flex flex-col items-center p-4 border-2 border-gray-200 rounded-xl hover:border-emerald-300 hover:shadow-md transition-all duration-200 hover:scale-105"
             >
-              <div className={`p-3 rounded-lg bg-linear-to-r ${action.color} mb-3 group-hover:scale-110 transition-transform`}>
+              <div
+                className={`p-3 rounded-lg bg-linear-to-r ${action.color} mb-3 group-hover:scale-110 transition-transform`}
+              >
                 <Icon className="w-6 h-6 text-white" />
               </div>
-              <span className="font-medium text-gray-900 text-center">{action.label}</span>
+              <span className="font-medium text-gray-900 text-center">
+                {action.label}
+              </span>
             </button>
           );
         })}
@@ -50,13 +79,26 @@ const QuickActionsPanel = () => {
         <h4 className="font-bold text-gray-900 mb-3">Recent Activity</h4>
         <div className="space-y-3">
           {[
-            { action: 'Soil sample uploaded', time: '2 hours ago', user: 'You' },
-            { action: 'Drone survey completed', time: '1 day ago', user: 'Team' },
-            { action: 'Payment received', time: '2 days ago', user: 'System' },
+            {
+              action: "Soil sample uploaded",
+              time: "2 hours ago",
+              user: "You",
+            },
+            {
+              action: "Drone survey completed",
+              time: "1 day ago",
+              user: "Team",
+            },
+            { action: "Payment received", time: "2 days ago", user: "System" },
           ].map((activity, index) => (
-            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            <div
+              key={index}
+              className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+            >
               <div>
-                <div className="font-medium text-gray-900">{activity.action}</div>
+                <div className="font-medium text-gray-900">
+                  {activity.action}
+                </div>
                 <div className="text-sm text-gray-600">By {activity.user}</div>
               </div>
               <div className="text-sm text-gray-500">{activity.time}</div>
