@@ -11,6 +11,7 @@ require (
 	gorm.io/gorm v1.25.12
 	gorm.io/driver/postgres v1.5.11
 	github.com/lib/pq v1.10.9
+	github.com/jmoiron/sqlx v1.4.0
 
 	// Geospatial Libraries
 	github.com/twpayne/go-geom v1.5.7
@@ -28,27 +29,33 @@ require (
 
 	// HTTP Client (for Mapbox/Google Maps APIs)
 	github.com/go-resty/resty/v2 v2.16.2
+
+	// Messaging
+	github.com/eclipse/paho.mqtt.golang v1.4.3
+	github.com/gorilla/websocket v1.5.0
+
+	// Reporting & Export
+	github.com/robfig/cron/v3 v3.0.1
+	github.com/xuri/excelize/v2 v2.8.1
+	github.com/jung-kurt/gofpdf v1.16.2
 )
 
 require (
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/eclipse/paho.mqtt.golang v1.4.3
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/gin-gonic/gin v1.11.0
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/goccy/go-yaml v1.18.0 // indirect
-	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.0
-	github.com/jmoiron/sqlx v1.4.0
+	github.com/jackc/pgx/v5 v5.7.2 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
-	github.com/lib/pq v1.10.9
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -69,7 +76,4 @@ require (
 	golang.org/x/tools v0.34.0 // indirect
 	google.golang.org/protobuf v1.36.9 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	github.com/jackc/pgx/v5 v5.7.2 // indirect
-	github.com/jinzhu/inflection v1.0.0 // indirect
-	github.com/jinzhu/now v1.1.5 // indirect
 )
