@@ -24,8 +24,6 @@ func main() {
 	defer logger.Sync()
 
 	// Load configuration
-	// For simplicity, we'll try to load from generic config or env
-	// Assuming config package works as expected or we fallback to env
 	cfg, err := config.LoadConfig("config.json")
 	if err != nil {
 		logger.Warn("Failed to load config file, using environment variables", zap.Error(err))

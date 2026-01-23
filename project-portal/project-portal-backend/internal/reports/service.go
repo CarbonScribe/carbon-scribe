@@ -291,7 +291,6 @@ func (s *Service) processExecution(ctx context.Context, execution *ReportExecuti
 	execution.RecordCount = &totalCount
 
 	// For now, we'll store results in memory
-	// In production, export to file and upload to S3
 	execution.Status = ExecutionStatusCompleted
 	completedAt := time.Now()
 	execution.CompletedAt = &completedAt
@@ -482,8 +481,7 @@ func (s *Service) ListSchedules(ctx context.Context, filters *ScheduleFilters) (
 
 // calculateNextExecution calculates the next execution time based on cron expression
 func (s *Service) calculateNextExecution(cronExpr, timezone string) time.Time {
-	// Simplified implementation - in production, use a proper cron parser
-	// For now, default to 1 hour from now
+	// Simplified implementation
 	return time.Now().Add(1 * time.Hour)
 }
 
@@ -550,8 +548,7 @@ func (s *Service) GetDashboardSummary(ctx context.Context, req *DashboardSummary
 
 // computeDashboardSummary computes fresh dashboard summary data
 func (s *Service) computeDashboardSummary(ctx context.Context, req *DashboardSummaryRequest) (*DashboardSummary, error) {
-	// In production, this would query multiple tables and compute aggregates
-	// For now, return mock data
+	// Mock dashboard data
 	summary := &DashboardSummary{
 		TotalProjects:        15,
 		ActiveProjects:       12,
@@ -670,8 +667,7 @@ func (s *Service) CompareBenchmark(ctx context.Context, req *BenchmarkComparison
 
 // getProjectMetrics retrieves project metrics for comparison
 func (s *Service) getProjectMetrics(ctx context.Context, projectID uuid.UUID, category BenchmarkCategory) map[string]float64 {
-	// In production, query actual project data
-	// For now, return mock data based on category
+	// Mock data based on category
 	switch category {
 	case BenchmarkCategoryCarbonSequestration:
 		return map[string]float64{
