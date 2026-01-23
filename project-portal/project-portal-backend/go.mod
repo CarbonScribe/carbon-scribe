@@ -3,7 +3,6 @@ module carbon-scribe/project-portal/project-portal-backend
 go 1.24.5
 
 require (
-
 	// Messaging
 	github.com/eclipse/paho.mqtt.golang v1.4.3
 	// Web Framework

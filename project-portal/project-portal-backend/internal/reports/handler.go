@@ -65,10 +65,6 @@ func (h *Handler) RegisterRoutes(router *gin.RouterGroup) {
 	}
 }
 
-// =====================================================
-// Report Builder Endpoints
-// =====================================================
-
 // createReport handles POST /api/v1/reports/builder
 func (h *Handler) createReport(c *gin.Context) {
 	var req CreateReportRequest
@@ -195,10 +191,6 @@ func (h *Handler) getTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"templates": templates})
 }
 
-// =====================================================
-// Report Execution Endpoints
-// =====================================================
-
 // executeReport handles POST /api/v1/reports/:id/execute
 func (h *Handler) executeReport(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -314,10 +306,6 @@ func (h *Handler) getExecution(c *gin.Context) {
 	c.JSON(http.StatusOK, execution)
 }
 
-// =====================================================
-// Dashboard Endpoints
-// =====================================================
-
 // getDashboardSummary handles GET /api/v1/reports/dashboard/summary
 func (h *Handler) getDashboardSummary(c *gin.Context) {
 	req := &DashboardSummaryRequest{}
@@ -423,10 +411,6 @@ func (h *Handler) deleteWidget(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
-
-// =====================================================
-// Schedule Endpoints
-// =====================================================
 
 // createSchedule handles POST /api/v1/reports/schedules
 func (h *Handler) createSchedule(c *gin.Context) {
@@ -540,10 +524,6 @@ func (h *Handler) deleteSchedule(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
-// =====================================================
-// Benchmark Endpoints
-// =====================================================
-
 // compareBenchmark handles POST /api/v1/reports/benchmark/comparison
 func (h *Handler) compareBenchmark(c *gin.Context) {
 	var req BenchmarkComparisonRequest
@@ -601,10 +581,6 @@ func (h *Handler) listBenchmarks(c *gin.Context) {
 	})
 }
 
-// =====================================================
-// Data Source Endpoints
-// =====================================================
-
 // getDataSources handles GET /api/v1/reports/datasets
 func (h *Handler) getDataSources(c *gin.Context) {
 	sources, err := h.service.GetDataSources(c.Request.Context())
@@ -630,10 +606,6 @@ func (h *Handler) getDataSource(c *gin.Context) {
 
 	c.JSON(http.StatusOK, source)
 }
-
-// =====================================================
-// Helper Methods
-// =====================================================
 
 // getUserID extracts user ID from context (set by auth middleware)
 func (h *Handler) getUserID(c *gin.Context) uuid.UUID {

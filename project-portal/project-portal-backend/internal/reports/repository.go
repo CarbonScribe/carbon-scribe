@@ -78,10 +78,6 @@ func NewPostgresRepository(db *sqlx.DB) *PostgresRepository {
 	return &PostgresRepository{db: db}
 }
 
-// =====================================================
-// Report Definitions
-// =====================================================
-
 func (r *PostgresRepository) CreateReportDefinition(ctx context.Context, report *ReportDefinition) error {
 	configJSON, err := json.Marshal(report.Config)
 	if err != nil {
@@ -314,10 +310,6 @@ func (r *PostgresRepository) GetReportTemplates(ctx context.Context) ([]*ReportD
 	templates, _, err := r.ListReportDefinitions(ctx, filters)
 	return templates, err
 }
-
-// =====================================================
-// Report Schedules
-// =====================================================
 
 func (r *PostgresRepository) CreateSchedule(ctx context.Context, schedule *ReportSchedule) error {
 	deliveryConfigJSON, err := json.Marshal(schedule.DeliveryConfig)
@@ -594,10 +586,6 @@ func (r *PostgresRepository) UpdateScheduleExecution(ctx context.Context, id uui
 	return nil
 }
 
-// =====================================================
-// Report Executions
-// =====================================================
-
 func (r *PostgresRepository) CreateExecution(ctx context.Context, execution *ReportExecution) error {
 	parametersJSON, _ := json.Marshal(execution.Parameters)
 	deliveryStatusJSON, _ := json.Marshal(execution.DeliveryStatus)
@@ -843,10 +831,6 @@ func (r *PostgresRepository) GetPendingExecutions(ctx context.Context, limit int
 
 	return executions, nil
 }
-
-// =====================================================
-// Benchmark Datasets
-// =====================================================
 
 func (r *PostgresRepository) CreateBenchmark(ctx context.Context, benchmark *BenchmarkDataset) error {
 	dataJSON, _ := json.Marshal(benchmark.Data)
@@ -1128,10 +1112,6 @@ func (r *PostgresRepository) GetBenchmarksByCategory(ctx context.Context, catego
 	return benchmarks, nil
 }
 
-// =====================================================
-// Dashboard Widgets
-// =====================================================
-
 func (r *PostgresRepository) CreateWidget(ctx context.Context, widget *DashboardWidget) error {
 	configJSON, _ := json.Marshal(widget.Config)
 	cachedDataJSON, _ := json.Marshal(widget.CachedData)
@@ -1308,10 +1288,6 @@ func (r *PostgresRepository) UpdateWidgetCache(ctx context.Context, id uuid.UUID
 	return nil
 }
 
-// =====================================================
-// Dashboard Aggregates
-// =====================================================
-
 func (r *PostgresRepository) GetAggregate(ctx context.Context, key string) (*DashboardAggregate, error) {
 	query := `
 		SELECT id, aggregate_key, aggregate_type, project_id, user_id, organization_id,
@@ -1441,10 +1417,6 @@ func (r *PostgresRepository) MarkAggregatesStale(ctx context.Context, aggregateT
 	return nil
 }
 
-// =====================================================
-// Data Sources
-// =====================================================
-
 func (r *PostgresRepository) GetDataSources(ctx context.Context) ([]*ReportDataSource, error) {
 	query := `
 		SELECT id, name, display_name, description, schema_definition, source_type,
@@ -1523,10 +1495,6 @@ func (r *PostgresRepository) GetDataSource(ctx context.Context, name string) (*R
 
 	return &source, nil
 }
-
-// =====================================================
-// Dynamic Query Execution
-// =====================================================
 
 func (r *PostgresRepository) ExecuteReportQuery(ctx context.Context, config *ReportConfig, params map[string]interface{}) ([]map[string]interface{}, int, error) {
 	// This is a simplified implementation - in production, use a proper query builder

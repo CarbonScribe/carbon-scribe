@@ -25,10 +25,6 @@ func NewService(repo Repository, logger *zap.Logger) *Service {
 	}
 }
 
-// =====================================================
-// Report Definition Operations
-// =====================================================
-
 // CreateReport creates a new report definition
 func (s *Service) CreateReport(ctx context.Context, userID uuid.UUID, req *CreateReportRequest) (*ReportDefinition, error) {
 	// Validate the report configuration
@@ -216,10 +212,6 @@ func (s *Service) validateReportConfig(config *ReportConfig) error {
 	return nil
 }
 
-// =====================================================
-// Report Execution Operations
-// =====================================================
-
 // ExecuteReport executes a report and returns results or creates an async job
 func (s *Service) ExecuteReport(ctx context.Context, reportID uuid.UUID, userID uuid.UUID, req *ExecuteReportRequest) (*ExecutionResponse, error) {
 	// Get the report definition
@@ -288,7 +280,7 @@ func (s *Service) processExecution(ctx context.Context, execution *ReportExecuti
 	s.repo.UpdateExecution(ctx, execution)
 
 	// Execute the query
-	results, totalCount, err := s.repo.ExecuteReportQuery(ctx, config, nil)
+	_, totalCount, err := s.repo.ExecuteReportQuery(ctx, config, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -315,10 +307,10 @@ func (s *Service) processExecution(ctx context.Context, execution *ReportExecuti
 		zap.Int("duration_ms", duration))
 
 	return &ExecutionResponse{
-		ExecutionID:   execution.ID,
-		Status:        ExecutionStatusCompleted,
-		Message:       "Report execution completed successfully",
-		RecordCount:   &totalCount,
+		ExecutionID: execution.ID,
+		Status:      ExecutionStatusCompleted,
+		Message:     "Report execution completed successfully",
+		RecordCount: &totalCount,
 	}, nil
 }
 
@@ -338,10 +330,6 @@ func (s *Service) ListExecutions(ctx context.Context, filters *ExecutionFilters)
 
 	return s.repo.ListExecutions(ctx, filters)
 }
-
-// =====================================================
-// Schedule Operations
-// =====================================================
 
 // CreateSchedule creates a new report schedule
 func (s *Service) CreateSchedule(ctx context.Context, userID uuid.UUID, req *CreateScheduleRequest) (*ReportSchedule, error) {
@@ -499,10 +487,6 @@ func (s *Service) calculateNextExecution(cronExpr, timezone string) time.Time {
 	return time.Now().Add(1 * time.Hour)
 }
 
-// =====================================================
-// Dashboard Operations
-// =====================================================
-
 // GetDashboardSummary retrieves aggregated dashboard data
 func (s *Service) GetDashboardSummary(ctx context.Context, req *DashboardSummaryRequest) (*DashboardSummaryResponse, error) {
 	// Build aggregate key based on request
@@ -578,9 +562,9 @@ func (s *Service) computeDashboardSummary(ctx context.Context, req *DashboardSum
 		ActiveAlerts:         3,
 		PendingVerifications: 5,
 		ProjectsByStatus: map[string]int{
-			"active":     12,
-			"pending":    2,
-			"completed":  1,
+			"active":    12,
+			"pending":   2,
+			"completed": 1,
 		},
 		RevenueByMonth: map[string]float64{
 			"2025-10": 85000.00,
@@ -646,10 +630,6 @@ func (s *Service) summaryToJSONB(summary *DashboardSummary) JSONB {
 	}
 }
 
-// =====================================================
-// Benchmark Operations
-// =====================================================
-
 // CompareBenchmark compares project metrics against benchmarks
 func (s *Service) CompareBenchmark(ctx context.Context, req *BenchmarkComparisonRequest) (*BenchmarkComparisonResponse, error) {
 	// Get relevant benchmarks
@@ -701,8 +681,8 @@ func (s *Service) getProjectMetrics(ctx context.Context, projectID uuid.UUID, ca
 		}
 	case BenchmarkCategoryRevenue:
 		return map[string]float64{
-			"price_per_ton":     17.50,
-			"sales_volume":      1250.0,
+			"price_per_ton":       17.50,
+			"sales_volume":        1250.0,
 			"revenue_per_hectare": 525.0,
 		}
 	default:
@@ -886,10 +866,6 @@ func (s *Service) ListBenchmarks(ctx context.Context, filters *BenchmarkFilters)
 
 	return s.repo.ListBenchmarks(ctx, filters)
 }
-
-// =====================================================
-// Data Source Operations
-// =====================================================
 
 // GetDataSources retrieves available data sources for report building
 func (s *Service) GetDataSources(ctx context.Context) ([]*DataSourceResponse, error) {

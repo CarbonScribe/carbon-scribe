@@ -9,25 +9,24 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
 
 // StellarClient handles interactions with Stellar blockchain
 type StellarClient struct {
-	horizonURL    string
-	sorobanURL    string
+	horizonURL        string
+	sorobanURL        string
 	networkPassphrase string
-	issuerAccount *StellarAccount
-	keyManager    *KeyManager
+	issuerAccount     *StellarAccount
+	keyManager        *KeyManager
 }
 
 // StellarAccount represents a Stellar account
 type StellarAccount struct {
-	PublicKey  string `json:"public_key"`
-	SecretKey  string `json:"secret_key"` // Encrypted
-	AccountID  string `json:"account_id"`
-	Balance    string `json:"balance"`
-	Sequence   uint64 `json:"sequence"`
+	PublicKey string `json:"public_key"`
+	SecretKey string `json:"secret_key"` // Encrypted
+	AccountID string `json:"account_id"`
+	Balance   string `json:"balance"`
+	Sequence  uint64 `json:"sequence"`
 }
 
 // KeyManager handles secure key management
@@ -45,31 +44,31 @@ type SorobanContract struct {
 
 // MintRequest represents a request to mint carbon tokens
 type MintRequest struct {
-	CreditIDs     []uuid.UUID `json:"credit_ids"`
-	ContractID    string      `json:"contract_id"`
-	Recipient     string      `json:"recipient"`
-	Amount        float64     `json:"amount"`
-	Metadata      TokenMetadata `json:"metadata"`
+	CreditIDs  []uuid.UUID   `json:"credit_ids"`
+	ContractID string        `json:"contract_id"`
+	Recipient  string        `json:"recipient"`
+	Amount     float64       `json:"amount"`
+	Metadata   TokenMetadata `json:"metadata"`
 }
 
 // TokenMetadata represents metadata for carbon tokens
 type TokenMetadata struct {
-	ProjectID      uuid.UUID `json:"project_id"`
-	VintageYear    int       `json:"vintage_year"`
-	Methodology    string    `json:"methodology"`
-	CalculatedTons float64   `json:"calculated_tons"`
-	QualityScore   float64   `json:"quality_score"`
+	ProjectID      uuid.UUID  `json:"project_id"`
+	VintageYear    int        `json:"vintage_year"`
+	Methodology    string     `json:"methodology"`
+	CalculatedTons float64    `json:"calculated_tons"`
+	QualityScore   float64    `json:"quality_score"`
 	VerificationID *uuid.UUID `json:"verification_id,omitempty"`
-	IssuedAt       time.Time `json:"issued_at"`
+	IssuedAt       time.Time  `json:"issued_at"`
 }
 
 // MintResponse represents the response from token minting
 type MintResponse struct {
-	TransactionID string    `json:"transaction_id"`
-	TokenIDs      []string  `json:"token_ids"`
-	AssetCode     string    `json:"asset_code"`
-	Status        string    `json:"status"`
-	CreatedAt     time.Time `json:"created_at"`
+	TransactionID string     `json:"transaction_id"`
+	TokenIDs      []string   `json:"token_ids"`
+	AssetCode     string     `json:"asset_code"`
+	Status        string     `json:"status"`
+	CreatedAt     time.Time  `json:"created_at"`
 	ConfirmedAt   *time.Time `json:"confirmed_at,omitempty"`
 }
 
@@ -77,21 +76,21 @@ type MintResponse struct {
 type TransactionStatus string
 
 const (
-	TransactionStatusPending   TransactionStatus = "pending"
-	TransactionStatusSuccess   TransactionStatus = "success"
-	TransactionStatusFailed    TransactionStatus = "failed"
-	TransactionStatusTimeout   TransactionStatus = "timeout"
+	TransactionStatusPending TransactionStatus = "pending"
+	TransactionStatusSuccess TransactionStatus = "success"
+	TransactionStatusFailed  TransactionStatus = "failed"
+	TransactionStatusTimeout TransactionStatus = "timeout"
 )
 
 // StellarTransaction represents a Stellar transaction
 type StellarTransaction struct {
-	ID           string           `json:"id"`
-	Hash         string           `json:"hash"`
-	Status       TransactionStatus `json:"status"`
-	CreatedAt    time.Time        `json:"created_at"`
-	ConfirmedAt  *time.Time       `json:"confirmed_at,omitempty"`
-	FailureReason string          `json:"failure_reason,omitempty"`
-	Operations   []Operation      `json:"operations"`
+	ID            string            `json:"id"`
+	Hash          string            `json:"hash"`
+	Status        TransactionStatus `json:"status"`
+	CreatedAt     time.Time         `json:"created_at"`
+	ConfirmedAt   *time.Time        `json:"confirmed_at,omitempty"`
+	FailureReason string            `json:"failure_reason,omitempty"`
+	Operations    []Operation       `json:"operations"`
 }
 
 // Operation represents a Stellar operation
@@ -118,40 +117,40 @@ func (s *StellarClient) MintTokens(ctx context.Context, req *MintRequest) (*Mint
 	if err := s.validateMintRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
-	
+
 	// Generate unique transaction ID
 	transactionID := s.generateTransactionID()
-	
+
 	// Create Soroban contract call
 	contractCall, err := s.createMintContractCall(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create contract call: %w", err)
 	}
-	
+
 	// Build Stellar transaction
 	transaction, err := s.buildTransaction(contractCall)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build transaction: %w", err)
 	}
-	
+
 	// Sign transaction
 	signedTransaction, err := s.signTransaction(transaction)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
-	
+
 	// Submit transaction
 	txHash, err := s.submitTransaction(ctx, signedTransaction)
 	if err != nil {
 		return nil, fmt.Errorf("failed to submit transaction: %w", err)
 	}
-	
+
 	// Generate token IDs
 	tokenIDs := s.generateTokenIDs(req.CreditIDs)
-	
+
 	// Determine asset code
 	assetCode := s.generateAssetCode(req.Metadata.ProjectID, req.Metadata.VintageYear)
-	
+
 	return &MintResponse{
 		TransactionID: txHash,
 		TokenIDs:      tokenIDs,
@@ -168,7 +167,7 @@ func (s *StellarClient) GetTransactionStatus(ctx context.Context, transactionID 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query transaction: %w", err)
 	}
-	
+
 	return transaction, nil
 }
 
@@ -176,10 +175,10 @@ func (s *StellarClient) GetTransactionStatus(ctx context.Context, transactionID 
 func (s *StellarClient) WaitForConfirmation(ctx context.Context, transactionID string, timeout time.Duration) (*StellarTransaction, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -189,7 +188,7 @@ func (s *StellarClient) WaitForConfirmation(ctx context.Context, transactionID s
 			if err != nil {
 				continue // Retry on error
 			}
-			
+
 			if transaction.Status == TransactionStatusSuccess || transaction.Status == TransactionStatusFailed {
 				return transaction, nil
 			}
@@ -200,7 +199,7 @@ func (s *StellarClient) WaitForConfirmation(ctx context.Context, transactionID s
 // BatchMintTokens mints tokens in batches for efficiency
 func (s *StellarClient) BatchMintTokens(ctx context.Context, requests []MintRequest) ([]MintResponse, error) {
 	responses := make([]MintResponse, 0, len(requests))
-	
+
 	// Process in batches of 10 to avoid transaction size limits
 	batchSize := 10
 	for i := 0; i < len(requests); i += batchSize {
@@ -208,16 +207,16 @@ func (s *StellarClient) BatchMintTokens(ctx context.Context, requests []MintRequ
 		if end > len(requests) {
 			end = len(requests)
 		}
-		
+
 		batch := requests[i:end]
 		batchResponse, err := s.processBatch(ctx, batch)
 		if err != nil {
 			return nil, fmt.Errorf("batch %d failed: %w", i/batchSize, err)
 		}
-		
+
 		responses = append(responses, batchResponse...)
 	}
-	
+
 	return responses, nil
 }
 
@@ -226,19 +225,19 @@ func (s *StellarClient) validateMintRequest(req *MintRequest) error {
 	if len(req.CreditIDs) == 0 {
 		return fmt.Errorf("credit IDs cannot be empty")
 	}
-	
+
 	if req.ContractID == "" {
 		return fmt.Errorf("contract ID cannot be empty")
 	}
-	
+
 	if req.Recipient == "" {
 		return fmt.Errorf("recipient cannot be empty")
 	}
-	
+
 	if req.Amount <= 0 {
 		return fmt.Errorf("amount must be positive")
 	}
-	
+
 	return nil
 }
 
@@ -256,9 +255,9 @@ func (s *StellarClient) createMintContractCall(req *MintRequest) (map[string]int
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize metadata: %w", err)
 	}
-	
+
 	contractCall := map[string]interface{}{
-		"contract_id": req.ContractID,
+		"contract_id":   req.ContractID,
 		"function_name": "mint",
 		"arguments": []interface{}{
 			req.Recipient,
@@ -266,7 +265,7 @@ func (s *StellarClient) createMintContractCall(req *MintRequest) (map[string]int
 			string(metadataBytes),
 		},
 	}
-	
+
 	return contractCall, nil
 }
 
@@ -277,18 +276,18 @@ func (s *StellarClient) buildTransaction(contractCall map[string]interface{}) (m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account sequence: %w", err)
 	}
-	
+
 	transaction := map[string]interface{}{
 		"source_account": s.issuerAccount.PublicKey,
 		"sequence":       sequence,
 		"operations": []map[string]interface{}{
 			{
-				"type": "invoke_contract_function",
+				"type":          "invoke_contract_function",
 				"contract_call": contractCall,
 			},
 		},
 		"memo": map[string]interface{}{
-			"type": "text",
+			"type":  "text",
 			"value": "Carbon Token Minting",
 		},
 		"fee": 1000, // 0.0001 XLM
@@ -297,7 +296,7 @@ func (s *StellarClient) buildTransaction(contractCall map[string]interface{}) (m
 			"max_time": time.Now().Add(5 * time.Minute).Unix(),
 		},
 	}
-	
+
 	return transaction, nil
 }
 
@@ -364,7 +363,7 @@ func (s *StellarClient) generateAssetCode(projectID uuid.UUID, vintageYear int) 
 // processBatch processes a batch of mint requests
 func (s *StellarClient) processBatch(ctx context.Context, requests []MintRequest) ([]MintResponse, error) {
 	responses := make([]MintResponse, len(requests))
-	
+
 	for i, req := range requests {
 		response, err := s.MintTokens(ctx, &req)
 		if err != nil {
@@ -372,7 +371,7 @@ func (s *StellarClient) processBatch(ctx context.Context, requests []MintRequest
 		}
 		responses[i] = *response
 	}
-	
+
 	return responses, nil
 }
 
@@ -427,7 +426,7 @@ func (s *StellarClient) ValidateAddress(address string) bool {
 	if len(address) != 56 || address[0] != 'G' {
 		return false
 	}
-	
+
 	// In a real implementation, this would validate checksum
 	// For now, just check basic format
 	return true
@@ -436,8 +435,8 @@ func (s *StellarClient) ValidateAddress(address string) bool {
 // EstimateTransactionFee estimates transaction fee
 func (s *StellarClient) EstimateTransactionFee(operationCount int) (uint64, error) {
 	// Base fee + operation fees
-	baseFee := uint64(1000) // 0.0001 XLM
+	baseFee := uint64(1000)                              // 0.0001 XLM
 	operationFee := uint64(100) * uint64(operationCount) // 0.00001 XLM per operation
-	
+
 	return baseFee + operationFee, nil
 }

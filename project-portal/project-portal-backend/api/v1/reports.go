@@ -41,25 +41,25 @@ func RegisterReportsRoutes(router *gin.RouterGroup, api *ReportsAPI) {
 // ReportsConfig holds configuration for the reports API
 type ReportsConfig struct {
 	// S3 configuration for file storage
-	S3Bucket          string `json:"s3_bucket"`
-	S3Region          string `json:"s3_region"`
-	S3AccessKey       string `json:"s3_access_key"`
-	S3SecretKey       string `json:"s3_secret_key"`
+	S3Bucket    string `json:"s3_bucket"`
+	S3Region    string `json:"s3_region"`
+	S3AccessKey string `json:"s3_access_key"`
+	S3SecretKey string `json:"s3_secret_key"`
 
 	// Email configuration for report delivery
-	SMTPHost          string `json:"smtp_host"`
-	SMTPPort          int    `json:"smtp_port"`
-	SMTPUsername      string `json:"smtp_username"`
-	SMTPPassword      string `json:"smtp_password"`
-	EmailFromAddress  string `json:"email_from_address"`
-	EmailFromName     string `json:"email_from_name"`
+	SMTPHost         string `json:"smtp_host"`
+	SMTPPort         int    `json:"smtp_port"`
+	SMTPUsername     string `json:"smtp_username"`
+	SMTPPassword     string `json:"smtp_password"`
+	EmailFromAddress string `json:"email_from_address"`
+	EmailFromName    string `json:"email_from_name"`
 
 	// Cache configuration
-	CacheTTLSeconds   int    `json:"cache_ttl_seconds"`
-	
+	CacheTTLSeconds int `json:"cache_ttl_seconds"`
+
 	// Worker configuration
-	MaxConcurrentJobs int    `json:"max_concurrent_jobs"`
-	JobTimeoutMinutes int    `json:"job_timeout_minutes"`
+	MaxConcurrentJobs int `json:"max_concurrent_jobs"`
+	JobTimeoutMinutes int `json:"job_timeout_minutes"`
 }
 
 // DefaultReportsConfig returns default reports configuration
