@@ -7,8 +7,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
+
+// Local type definitions to avoid import cycle
+
+// QualityMultiplier represents quality factors for pricing
+type QualityMultiplier map[string]float64
+
+// PricingQuoteRequest represents a pricing quote request
+type PricingQuoteRequest struct {
+	MethodologyCode string            `json:"methodology_code" binding:"required"`
+	RegionCode      string            `json:"region_code"`
+	VintageYear     int               `json:"vintage_year"`
+	Tons            float64           `json:"tons" binding:"required,gt=0"`
+	QualityFactors  QualityMultiplier `json:"quality_factors"`
+}
 
 // AuctionManager manages carbon credit auctions
 type AuctionManager struct {
@@ -202,7 +215,7 @@ func (am *AuctionManager) CreateAuction(ctx context.Context, req *AuctionRequest
 	}
 	
 	// Get market price estimate
-	quoteReq := &financing.PricingQuoteRequest{
+	quoteReq := &PricingQuoteRequest{
 		MethodologyCode: req.Methodology,
 		RegionCode:      "", // Will be determined from project
 		VintageYear:     req.VintageYear,

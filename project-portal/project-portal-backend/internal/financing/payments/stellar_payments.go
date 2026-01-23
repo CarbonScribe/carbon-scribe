@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
 
 // StellarPaymentHandler handles Stellar-specific payment operations

@@ -7,8 +7,79 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
+
+// Local type definitions to avoid import cycle
+
+// DistributionType represents the type of revenue distribution
+type DistributionType string
+
+const (
+	DistributionTypeCreditSale  DistributionType = "credit_sale"
+	DistributionTypeForwardSale DistributionType = "forward_sale"
+	DistributionTypeRoyalty     DistributionType = "royalty"
+	DistributionTypeBonus       DistributionType = "bonus"
+)
+
+// PaymentStatus represents the status of a payment
+type PaymentStatus string
+
+const (
+	PaymentStatusPending    PaymentStatus = "pending"
+	PaymentStatusInitiated  PaymentStatus = "initiated"
+	PaymentStatusProcessing PaymentStatus = "processing"
+	PaymentStatusCompleted  PaymentStatus = "completed"
+	PaymentStatusFailed     PaymentStatus = "failed"
+	PaymentStatusRefunded   PaymentStatus = "refunded"
+)
+
+// Beneficiary represents a revenue beneficiary
+type Beneficiary struct {
+	UserID        uuid.UUID     `json:"user_id"`
+	Percent       float64       `json:"percent"`
+	Amount        float64       `json:"amount"`
+	TaxWithheld   float64       `json:"tax_withheld"`
+	NetAmount     float64       `json:"net_amount"`
+	PaymentStatus PaymentStatus `json:"payment_status"`
+}
+
+// BeneficiaryArray is a slice of beneficiaries
+type BeneficiaryArray []Beneficiary
+
+// RevenueDistribution represents a revenue distribution record
+type RevenueDistribution struct {
+	ID                 uuid.UUID        `json:"id"`
+	CreditSaleID       uuid.UUID        `json:"credit_sale_id"`
+	DistributionType   DistributionType `json:"distribution_type"`
+	TotalReceived      float64          `json:"total_received"`
+	Currency           string           `json:"currency"`
+	PlatformFeePercent float64          `json:"platform_fee_percent"`
+	PlatformFeeAmount  float64          `json:"platform_fee_amount"`
+	NetAmount          float64          `json:"net_amount"`
+	Beneficiaries      BeneficiaryArray `json:"beneficiaries"`
+	PaymentStatus      PaymentStatus    `json:"payment_status"`
+	PaymentProcessedAt *time.Time       `json:"payment_processed_at,omitempty"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+}
+
+// PaymentTransaction represents a payment transaction
+type PaymentTransaction struct {
+	ID                     uuid.UUID              `json:"id"`
+	UserID                 *uuid.UUID             `json:"user_id,omitempty"`
+	Amount                 float64                `json:"amount"`
+	Currency               string                 `json:"currency"`
+	PaymentMethod          string                 `json:"payment_method"`
+	PaymentProvider        string                 `json:"payment_provider"`
+	Status                 PaymentStatus          `json:"status"`
+	ExternalID             *string                `json:"external_id,omitempty"`
+	StellarTransactionHash *string                `json:"stellar_transaction_hash,omitempty"`
+	StellarAssetCode       *string                `json:"stellar_asset_code,omitempty"`
+	FailureReason          *string                `json:"failure_reason,omitempty"`
+	Metadata               map[string]interface{} `json:"metadata"`
+	CreatedAt              time.Time              `json:"created_at"`
+	UpdatedAt              time.Time              `json:"updated_at"`
+}
 
 // RevenueDistributionManager manages revenue distribution to stakeholders
 type RevenueDistributionManager struct {
@@ -21,23 +92,23 @@ type RevenueDistributionManager struct {
 
 // DistributionRepository defines the interface for distribution data access
 type DistributionRepository interface {
-	CreateRevenueDistribution(ctx context.Context, distribution *financing.RevenueDistribution) error
-	GetRevenueDistribution(ctx context.Context, distributionID uuid.UUID) (*financing.RevenueDistribution, error)
-	UpdateRevenueDistribution(ctx context.Context, distribution *financing.RevenueDistribution) error
-	ListRevenueDistributions(ctx context.Context, filters *DistributionFilters) ([]*financing.RevenueDistribution, error)
-	CreatePaymentTransaction(ctx context.Context, transaction *financing.PaymentTransaction) error
-	GetPaymentTransaction(ctx context.Context, transactionID uuid.UUID) (*financing.PaymentTransaction, error)
-	UpdatePaymentTransaction(ctx context.Context, transaction *financing.PaymentTransaction) error
-	GetUserPaymentHistory(ctx context.Context, userID uuid.UUID) ([]*financing.PaymentTransaction, error)
-	GetProjectRevenue(ctx context.Context, projectID uuid.UUID) ([]*financing.RevenueDistribution, error)
+	CreateRevenueDistribution(ctx context.Context, distribution *RevenueDistribution) error
+	GetRevenueDistribution(ctx context.Context, distributionID uuid.UUID) (*RevenueDistribution, error)
+	UpdateRevenueDistribution(ctx context.Context, distribution *RevenueDistribution) error
+	ListRevenueDistributions(ctx context.Context, filters *DistributionFilters) ([]*RevenueDistribution, error)
+	CreatePaymentTransaction(ctx context.Context, transaction *PaymentTransaction) error
+	GetPaymentTransaction(ctx context.Context, transactionID uuid.UUID) (*PaymentTransaction, error)
+	UpdatePaymentTransaction(ctx context.Context, transaction *PaymentTransaction) error
+	GetUserPaymentHistory(ctx context.Context, userID uuid.UUID) ([]*PaymentTransaction, error)
+	GetProjectRevenue(ctx context.Context, projectID uuid.UUID) ([]*RevenueDistribution, error)
 }
 
 // DistributionFilters represents filters for listing distributions
 type DistributionFilters struct {
 	ProjectID       *uuid.UUID                        `json:"project_id,omitempty"`
 	UserID          *uuid.UUID                        `json:"user_id,omitempty"`
-	DistributionType *financing.DistributionType      `json:"distribution_type,omitempty"`
-	Status          *financing.PaymentStatus          `json:"status,omitempty"`
+	DistributionType *DistributionType      `json:"distribution_type,omitempty"`
+	Status          *PaymentStatus          `json:"status,omitempty"`
 	CreatedAfter    *time.Time                        `json:"created_after,omitempty"`
 	CreatedBefore   *time.Time                        `json:"created_before,omitempty"`
 	Limit           *int                              `json:"limit,omitempty"`
@@ -170,7 +241,7 @@ type RefundResponse struct {
 // DistributionRequest represents a revenue distribution request
 type DistributionRequest struct {
 	CreditSaleID        uuid.UUID                        `json:"credit_sale_id" binding:"required"`
-	DistributionType    financing.DistributionType       `json:"distribution_type" binding:"required"`
+	DistributionType    DistributionType       `json:"distribution_type" binding:"required"`
 	TotalReceived       float64                          `json:"total_received" binding:"required,gt=0"`
 	Currency            string                           `json:"currency" binding:"required"`
 	PlatformFeePercent  float64                          `json:"platform_fee_percent" binding:"required,min=0,max=100"`
@@ -190,7 +261,7 @@ type BeneficiaryRequest struct {
 // DistributionResponse represents the response from distribution creation
 type DistributionResponse struct {
 	DistributionID     uuid.UUID                        `json:"distribution_id"`
-	Status             financing.PaymentStatus          `json:"status"`
+	Status             PaymentStatus          `json:"status"`
 	TotalAmount        float64                          `json:"total_amount"`
 	PlatformFeeAmount  float64                          `json:"platform_fee_amount"`
 	NetAmount          float64                          `json:"net_amount"`
@@ -261,7 +332,7 @@ func (rdm *RevenueDistributionManager) CreateDistribution(ctx context.Context, r
 	}
 	
 	// Create distribution
-	distribution := &financing.RevenueDistribution{
+	distribution := &RevenueDistribution{
 		ID:                 uuid.New(),
 		CreditSaleID:       req.CreditSaleID,
 		DistributionType:   req.DistributionType,
@@ -271,7 +342,7 @@ func (rdm *RevenueDistributionManager) CreateDistribution(ctx context.Context, r
 		PlatformFeeAmount:  platformFeeAmount,
 		NetAmount:          netAmount,
 		Beneficiaries:      beneficiaries,
-		PaymentStatus:      financing.PaymentStatusPending,
+		PaymentStatus:      PaymentStatusPending,
 		CreatedAt:          time.Now(),
 	}
 	
@@ -308,12 +379,12 @@ func (rdm *RevenueDistributionManager) ProcessDistribution(ctx context.Context, 
 		return fmt.Errorf("failed to get distribution: %w", err)
 	}
 	
-	if distribution.PaymentStatus != financing.PaymentStatusPending {
+	if distribution.PaymentStatus != PaymentStatusPending {
 		return fmt.Errorf("distribution is not in pending status")
 	}
 	
 	// Update status to processing
-	distribution.PaymentStatus = financing.PaymentStatusProcessing
+	distribution.PaymentStatus = PaymentStatusProcessing
 	rdm.repository.UpdateRevenueDistribution(ctx, distribution)
 	
 	// Process payments in batches
@@ -329,14 +400,14 @@ func (rdm *RevenueDistributionManager) ProcessDistribution(ctx context.Context, 
 		batch := beneficiaries[i:end]
 		if err := rdm.processBatch(ctx, distribution, batch); err != nil {
 			// Mark as failed and continue with next batch
-			distribution.PaymentStatus = financing.PaymentStatusFailed
+			distribution.PaymentStatus = PaymentStatusFailed
 			rdm.repository.UpdateRevenueDistribution(ctx, distribution)
 			return fmt.Errorf("batch %d failed: %w", i/batchSize, err)
 		}
 	}
 	
 	// Update status to completed
-	distribution.PaymentStatus = financing.PaymentStatusCompleted
+	distribution.PaymentStatus = PaymentStatusCompleted
 	now := time.Now()
 	distribution.PaymentProcessedAt = &now
 	rdm.repository.UpdateRevenueDistribution(ctx, distribution)
@@ -345,19 +416,19 @@ func (rdm *RevenueDistributionManager) ProcessDistribution(ctx context.Context, 
 }
 
 // processBatch processes a batch of beneficiary payments
-func (rdm *RevenueDistributionManager) processBatch(ctx context.Context, distribution *financing.RevenueDistribution, beneficiaries []financing.Beneficiary) error {
+func (rdm *RevenueDistributionManager) processBatch(ctx context.Context, distribution *RevenueDistribution, beneficiaries []Beneficiary) error {
 	batchID := fmt.Sprintf("batch_%s_%d", distribution.ID.String()[:8], time.Now().Unix())
 	
 	for _, beneficiary := range beneficiaries {
 		// Create payment transaction
-		transaction := &financing.PaymentTransaction{
+		transaction := &PaymentTransaction{
 			ID:             uuid.New(),
 			UserID:         &beneficiary.UserID,
 			Amount:         beneficiary.Amount,
 			Currency:       distribution.Currency,
 			PaymentMethod:  "bank_transfer", // Default
 			PaymentProvider: "stripe",       // Default
-			Status:         financing.PaymentStatusInitiated,
+			Status:         PaymentStatusInitiated,
 			Metadata: map[string]interface{}{
 				"distribution_id": distribution.ID,
 				"batch_id":        batchID,
@@ -370,7 +441,7 @@ func (rdm *RevenueDistributionManager) processBatch(ctx context.Context, distrib
 		// Get user details and payment preferences
 		paymentDetails, err := rdm.getUserPaymentDetails(ctx, beneficiary.UserID)
 		if err != nil {
-			transaction.Status = financing.PaymentStatusFailed
+			transaction.Status = PaymentStatusFailed
 			failureReason := fmt.Sprintf("Failed to get payment details: %v", err)
 			transaction.FailureReason = &failureReason
 			rdm.repository.CreatePaymentTransaction(ctx, transaction)
@@ -383,7 +454,7 @@ func (rdm *RevenueDistributionManager) processBatch(ctx context.Context, distrib
 		
 		// Process payment
 		if err := rdm.processPayment(ctx, transaction, paymentDetails); err != nil {
-			transaction.Status = financing.PaymentStatusFailed
+			transaction.Status = PaymentStatusFailed
 			failureReason := fmt.Sprintf("Payment processing failed: %v", err)
 			transaction.FailureReason = &failureReason
 			rdm.repository.CreatePaymentTransaction(ctx, transaction)
@@ -400,7 +471,7 @@ func (rdm *RevenueDistributionManager) processBatch(ctx context.Context, distrib
 }
 
 // processPayment processes a single payment
-func (rdm *RevenueDistributionManager) processPayment(ctx context.Context, transaction *financing.PaymentTransaction, details *UserPaymentDetails) error {
+func (rdm *RevenueDistributionManager) processPayment(ctx context.Context, transaction *PaymentTransaction, details *UserPaymentDetails) error {
 	// Get payment processor
 	processor, exists := rdm.paymentProcessors[transaction.PaymentProvider]
 	if !exists {
@@ -439,7 +510,7 @@ func (rdm *RevenueDistributionManager) processPayment(ctx context.Context, trans
 	
 	// Update transaction with response
 	transaction.ExternalID = &response.TransactionID
-	transaction.Status = financing.PaymentStatusProcessing
+	transaction.Status = PaymentStatusProcessing
 	
 	// For blockchain payments, add blockchain details
 	if transaction.PaymentProvider == "stellar_network" {
@@ -456,7 +527,7 @@ func (rdm *RevenueDistributionManager) processPayment(ctx context.Context, trans
 }
 
 // processBeneficiaries processes beneficiaries and calculates amounts
-func (rdm *RevenueDistributionManager) processBeneficiaries(ctx context.Context, requests []BeneficiaryRequest, netAmount float64, currency string) (financing.BeneficiaryArray, error) {
+func (rdm *RevenueDistributionManager) processBeneficiaries(ctx context.Context, requests []BeneficiaryRequest, netAmount float64, currency string) (BeneficiaryArray, error) {
 	// Validate percentages sum to 100
 	totalPercent := 0.0
 	for _, req := range requests {
@@ -467,7 +538,7 @@ func (rdm *RevenueDistributionManager) processBeneficiaries(ctx context.Context,
 		return nil, fmt.Errorf("beneficiary percentages must sum to 100%% (got %.2f%%)", totalPercent)
 	}
 	
-	beneficiaries := make(financing.BeneficiaryArray, len(requests))
+	beneficiaries := make(BeneficiaryArray, len(requests))
 	
 	for i, req := range requests {
 		// Calculate gross amount
@@ -479,13 +550,13 @@ func (rdm *RevenueDistributionManager) processBeneficiaries(ctx context.Context,
 		// Calculate net amount
 		netAmount := grossAmount - taxWithheld
 		
-		beneficiaries[i] = financing.Beneficiary{
+		beneficiaries[i] = Beneficiary{
 			UserID:       req.UserID,
 			Percent:      req.Percent,
 			Amount:       grossAmount,
 			TaxWithheld:  taxWithheld,
 			NetAmount:    netAmount,
-			PaymentStatus: financing.PaymentStatusPending,
+			PaymentStatus: PaymentStatusPending,
 		}
 	}
 	
@@ -500,7 +571,7 @@ func (rdm *RevenueDistributionManager) calculateTax(ctx context.Context, amount 
 }
 
 // generateEstimatedPayouts generates estimated payouts for response
-func (rdm *RevenueDistributionManager) generateEstimatedPayouts(beneficiaries financing.BeneficiaryArray) []EstimatedPayout {
+func (rdm *RevenueDistributionManager) generateEstimatedPayouts(beneficiaries BeneficiaryArray) []EstimatedPayout {
 	payouts := make([]EstimatedPayout, len(beneficiaries))
 	
 	for i, beneficiary := range beneficiaries {

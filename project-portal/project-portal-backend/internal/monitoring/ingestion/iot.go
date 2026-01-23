@@ -7,14 +7,37 @@ import (
 	"sync"
 	"time"
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
-
 	"github.com/google/uuid"
 )
 
+// SensorReading represents a single IoT sensor measurement
+type SensorReading struct {
+	Time           time.Time `json:"time" db:"time"`
+	ProjectID      uuid.UUID `json:"project_id" db:"project_id"`
+	SensorID       string    `json:"sensor_id" db:"sensor_id"`
+	SensorType     string    `json:"sensor_type" db:"sensor_type"`
+	Value          float64   `json:"value" db:"value"`
+	Unit           string    `json:"unit" db:"unit"`
+	Latitude       *float64  `json:"latitude,omitempty" db:"latitude"`
+	Longitude      *float64  `json:"longitude,omitempty" db:"longitude"`
+	AltitudeM      *float64  `json:"altitude_m,omitempty" db:"altitude_m"`
+	BatteryLevel   *float64  `json:"battery_level,omitempty" db:"battery_level"`
+	SignalStrength *int      `json:"signal_strength,omitempty" db:"signal_strength"`
+	DataQuality    string    `json:"data_quality" db:"data_quality"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+}
+
+// Repository defines the interface for IoT ingestion data access
+type Repository interface {
+	CreateSensorReading(ctx context.Context, reading *SensorReading) error
+	CreateSensorReadingBatch(ctx context.Context, readings []SensorReading) error
+	GetLatestSensorReading(ctx context.Context, sensorID string) (*SensorReading, error)
+	UpdateSensorLastSeen(ctx context.Context, sensorID string, lastSeen time.Time) error
+}
+
 // IoTIngestion handles IoT sensor data ingestion
 type IoTIngestion struct {
-	repo              monitoring.Repository
+	repo              Repository
 	validationRules   map[string]SensorValidationRule
 	mu                sync.RWMutex
 }
@@ -28,7 +51,7 @@ type SensorValidationRule struct {
 }
 
 // NewIoTIngestion creates a new IoT ingestion handler
-func NewIoTIngestion(repo monitoring.Repository) *IoTIngestion {
+func NewIoTIngestion(repo Repository) *IoTIngestion {
 	ingestion := &IoTIngestion{
 		repo:            repo,
 		validationRules: make(map[string]SensorValidationRule),
@@ -95,7 +118,7 @@ func (i *IoTIngestion) initializeDefaultValidationRules() {
 }
 
 // IngestSensorReading ingests a single sensor reading
-func (i *IoTIngestion) IngestSensorReading(ctx context.Context, reading monitoring.SensorReading) error {
+func (i *IoTIngestion) IngestSensorReading(ctx context.Context, reading SensorReading) error {
 	// Validate the reading
 	if err := i.validateReading(&reading); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
@@ -115,13 +138,13 @@ func (i *IoTIngestion) IngestSensorReading(ctx context.Context, reading monitori
 }
 
 // IngestBatch ingests multiple sensor readings in batch
-func (i *IoTIngestion) IngestBatch(ctx context.Context, readings []monitoring.SensorReading) error {
+func (i *IoTIngestion) IngestBatch(ctx context.Context, readings []SensorReading) error {
 	if len(readings) == 0 {
 		return errors.New("empty readings batch")
 	}
 
 	// Validate all readings
-	validReadings := make([]monitoring.SensorReading, 0, len(readings))
+	validReadings := make([]SensorReading, 0, len(readings))
 	for _, reading := range readings {
 		if err := i.validateReading(&reading); err != nil {
 			// Log validation error but continue with other readings
@@ -147,7 +170,7 @@ func (i *IoTIngestion) IngestBatch(ctx context.Context, readings []monitoring.Se
 }
 
 // validateReading validates a sensor reading against defined rules
-func (i *IoTIngestion) validateReading(reading *monitoring.SensorReading) error {
+func (i *IoTIngestion) validateReading(reading *SensorReading) error {
 	if reading == nil {
 		return errors.New("reading cannot be nil")
 	}
@@ -217,7 +240,7 @@ func (i *IoTIngestion) validateReading(reading *monitoring.SensorReading) error 
 }
 
 // updateSensorLastSeenTimes updates last seen times for sensors (async)
-func (i *IoTIngestion) updateSensorLastSeenTimes(ctx context.Context, readings []monitoring.SensorReading) {
+func (i *IoTIngestion) updateSensorLastSeenTimes(ctx context.Context, readings []SensorReading) {
 	sensorTimes := make(map[string]time.Time)
 
 	// Find the latest time for each sensor
@@ -251,11 +274,11 @@ func (i *IoTIngestion) GetValidationRule(sensorType string) (SensorValidationRul
 }
 
 // DetectAnomalies detects anomalous sensor readings
-func (i *IoTIngestion) DetectAnomalies(readings []monitoring.SensorReading) []monitoring.SensorReading {
-	anomalies := make([]monitoring.SensorReading, 0)
+func (i *IoTIngestion) DetectAnomalies(readings []SensorReading) []SensorReading {
+	anomalies := make([]SensorReading, 0)
 
 	// Group readings by sensor
-	sensorReadings := make(map[string][]monitoring.SensorReading)
+	sensorReadings := make(map[string][]SensorReading)
 	for _, reading := range readings {
 		sensorReadings[reading.SensorID] = append(sensorReadings[reading.SensorID], reading)
 	}

@@ -2,25 +2,157 @@ package alerts
 
 import (
 	"context"
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"time"
-
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
 
 	"github.com/google/uuid"
 )
 
+// Local type definitions to avoid import cycle
+
+// JSONB is a custom type for PostgreSQL JSONB columns
+type JSONB map[string]interface{}
+
+// Value implements the driver.Valuer interface
+func (j JSONB) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
+}
+
+// Scan implements the sql.Scanner interface
+func (j *JSONB) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return nil
+	}
+	return json.Unmarshal(bytes, j)
+}
+
+// AlertRule represents a monitoring alert rule
+type AlertRule struct {
+	ID                   uuid.UUID  `json:"id" db:"id"`
+	ProjectID            *uuid.UUID `json:"project_id,omitempty" db:"project_id"`
+	Name                 string     `json:"name" db:"name"`
+	Description          *string    `json:"description,omitempty" db:"description"`
+	ConditionType        string     `json:"condition_type" db:"condition_type"`
+	MetricSource         string     `json:"metric_source" db:"metric_source"`
+	MetricName           string     `json:"metric_name" db:"metric_name"`
+	SensorType           *string    `json:"sensor_type,omitempty" db:"sensor_type"`
+	ConditionConfig      JSONB      `json:"condition_config" db:"condition_config"`
+	Severity             string     `json:"severity" db:"severity"`
+	NotificationChannels JSONB      `json:"notification_channels" db:"notification_channels"`
+	CooldownMinutes      int        `json:"cooldown_minutes" db:"cooldown_minutes"`
+	IsActive             bool       `json:"is_active" db:"is_active"`
+	CreatedBy            *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
+	CreatedAt            time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// Alert represents a triggered alert
+type Alert struct {
+	ID                   uuid.UUID  `json:"id" db:"id"`
+	RuleID               *uuid.UUID `json:"rule_id,omitempty" db:"rule_id"`
+	ProjectID            uuid.UUID  `json:"project_id" db:"project_id"`
+	TriggerTime          time.Time  `json:"trigger_time" db:"trigger_time"`
+	ResolvedTime         *time.Time `json:"resolved_time,omitempty" db:"resolved_time"`
+	Severity             string     `json:"severity" db:"severity"`
+	Title                string     `json:"title" db:"title"`
+	Message              string     `json:"message" db:"message"`
+	Details              JSONB      `json:"details,omitempty" db:"details"`
+	Status               string     `json:"status" db:"status"`
+	AcknowledgedBy       *uuid.UUID `json:"acknowledged_by,omitempty" db:"acknowledged_by"`
+	AcknowledgedAt       *time.Time `json:"acknowledged_at,omitempty" db:"acknowledged_at"`
+	ResolvedBy           *uuid.UUID `json:"resolved_by,omitempty" db:"resolved_by"`
+	ResolutionNotes      *string    `json:"resolution_notes,omitempty" db:"resolution_notes"`
+	NotificationSent     bool       `json:"notification_sent" db:"notification_sent"`
+	NotificationAttempts int        `json:"notification_attempts" db:"notification_attempts"`
+	CreatedAt            time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// ProjectMetric represents a calculated metric for a project
+type ProjectMetric struct {
+	Time              time.Time `json:"time" db:"time"`
+	ProjectID         uuid.UUID `json:"project_id" db:"project_id"`
+	MetricName        string    `json:"metric_name" db:"metric_name"`
+	Value             float64   `json:"value" db:"value"`
+	AggregationPeriod string    `json:"aggregation_period" db:"aggregation_period"`
+	CalculationMethod *string   `json:"calculation_method,omitempty" db:"calculation_method"`
+	ConfidenceScore   *float64  `json:"confidence_score,omitempty" db:"confidence_score"`
+	Unit              *string   `json:"unit,omitempty" db:"unit"`
+	Metadata          JSONB     `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+}
+
+// SensorReading represents a single IoT sensor measurement
+type SensorReading struct {
+	Time           time.Time `json:"time" db:"time"`
+	ProjectID      uuid.UUID `json:"project_id" db:"project_id"`
+	SensorID       string    `json:"sensor_id" db:"sensor_id"`
+	SensorType     string    `json:"sensor_type" db:"sensor_type"`
+	Value          float64   `json:"value" db:"value"`
+	Unit           string    `json:"unit" db:"unit"`
+	Latitude       *float64  `json:"latitude,omitempty" db:"latitude"`
+	Longitude      *float64  `json:"longitude,omitempty" db:"longitude"`
+	AltitudeM      *float64  `json:"altitude_m,omitempty" db:"altitude_m"`
+	BatteryLevel   *float64  `json:"battery_level,omitempty" db:"battery_level"`
+	SignalStrength *int      `json:"signal_strength,omitempty" db:"signal_strength"`
+	DataQuality    string    `json:"data_quality" db:"data_quality"`
+	Metadata       JSONB     `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+}
+
+// SatelliteObservation represents a single satellite data point
+type SatelliteObservation struct {
+	Time                 time.Time `json:"time" db:"time"`
+	ProjectID            uuid.UUID `json:"project_id" db:"project_id"`
+	SatelliteSource      string    `json:"satellite_source" db:"satellite_source"`
+	TileID               *string   `json:"tile_id,omitempty" db:"tile_id"`
+	NDVI                 *float64  `json:"ndvi,omitempty" db:"ndvi"`
+	EVI                  *float64  `json:"evi,omitempty" db:"evi"`
+	NDWI                 *float64  `json:"ndwi,omitempty" db:"ndwi"`
+	SAVI                 *float64  `json:"savi,omitempty" db:"savi"`
+	BiomassKgPerHa       *float64  `json:"biomass_kg_per_ha,omitempty" db:"biomass_kg_per_ha"`
+	CloudCoveragePercent *float64  `json:"cloud_coverage_percent,omitempty" db:"cloud_coverage_percent"`
+	DataQualityScore     *float64  `json:"data_quality_score,omitempty" db:"data_quality_score"`
+	Geometry             *string   `json:"geometry,omitempty" db:"geometry"`
+	RawBands             JSONB     `json:"raw_bands,omitempty" db:"raw_bands"`
+	Metadata             JSONB     `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt            time.Time `json:"created_at" db:"created_at"`
+}
+
+// Repository defines the interface for alert-related data access
+type Repository interface {
+	GetActiveAlertRules(ctx context.Context, projectID *uuid.UUID) ([]AlertRule, error)
+	GetAlertRuleByID(ctx context.Context, id uuid.UUID) (*AlertRule, error)
+	CheckAlertCooldown(ctx context.Context, ruleID, projectID uuid.UUID, cooldownMinutes int) (bool, error)
+	CreateAlert(ctx context.Context, alert *Alert) error
+	UpdateAlert(ctx context.Context, alert *Alert) error
+	GetSensorReadingsByType(ctx context.Context, projectID uuid.UUID, sensorType string, start, end time.Time) ([]SensorReading, error)
+	GetLatestSatelliteObservation(ctx context.Context, projectID uuid.UUID, source string) (*SatelliteObservation, error)
+	GetLatestMetricValue(ctx context.Context, projectID uuid.UUID, metricName, aggregationPeriod string) (*ProjectMetric, error)
+	GetMetricTimeSeries(ctx context.Context, projectID uuid.UUID, metricName, aggregationPeriod string, start, end time.Time) ([]ProjectMetric, error)
+}
+
 // Engine handles alert rule evaluation and alert generation
 type Engine struct {
-	repo              monitoring.Repository
-	notificationQueue chan *monitoring.Alert
+	repo              Repository
+	notificationQueue chan *Alert
 }
 
 // NewEngine creates a new alert engine
-func NewEngine(repo monitoring.Repository) *Engine {
+func NewEngine(repo Repository) *Engine {
 	return &Engine{
 		repo:              repo,
-		notificationQueue: make(chan *monitoring.Alert, 1000),
+		notificationQueue: make(chan *Alert, 1000),
 	}
 }
 
@@ -53,7 +185,7 @@ func (e *Engine) EvaluateRules(ctx context.Context, projectID uuid.UUID) error {
 
 		if shouldTrigger {
 			// Create alert
-			alert := &monitoring.Alert{
+			alert := &Alert{
 				ID:                   uuid.New(),
 				RuleID:               &rule.ID,
 				ProjectID:            projectID,
@@ -87,7 +219,7 @@ func (e *Engine) EvaluateRules(ctx context.Context, projectID uuid.UUID) error {
 }
 
 // evaluateRule evaluates a single alert rule
-func (e *Engine) evaluateRule(ctx context.Context, rule *monitoring.AlertRule, projectID uuid.UUID) (bool, monitoring.JSONB, error) {
+func (e *Engine) evaluateRule(ctx context.Context, rule *AlertRule, projectID uuid.UUID) (bool, JSONB, error) {
 	switch rule.ConditionType {
 	case "threshold":
 		return e.evaluateThresholdCondition(ctx, rule, projectID)
@@ -103,9 +235,9 @@ func (e *Engine) evaluateRule(ctx context.Context, rule *monitoring.AlertRule, p
 }
 
 // evaluateThresholdCondition checks if a metric exceeds a threshold
-func (e *Engine) evaluateThresholdCondition(ctx context.Context, rule *monitoring.AlertRule, projectID uuid.UUID) (bool, monitoring.JSONB, error) {
+func (e *Engine) evaluateThresholdCondition(ctx context.Context, rule *AlertRule, projectID uuid.UUID) (bool, JSONB, error) {
 	config := rule.ConditionConfig
-	
+
 	threshold, ok := config["threshold"].(float64)
 	if !ok {
 		return false, nil, fmt.Errorf("threshold not specified in condition config")
@@ -126,13 +258,13 @@ func (e *Engine) evaluateThresholdCondition(ctx context.Context, rule *monitorin
 			return false, nil, fmt.Errorf("sensor type required for sensor metrics")
 		}
 		currentValue, err = e.getLatestSensorValue(ctx, projectID, *rule.SensorType)
-		
+
 	case "satellite":
 		currentValue, err = e.getLatestSatelliteMetric(ctx, projectID, rule.MetricName)
-		
+
 	case "calculated":
 		currentValue, err = e.getLatestCalculatedMetric(ctx, projectID, rule.MetricName)
-		
+
 	default:
 		return false, nil, fmt.Errorf("unknown metric source: %s", rule.MetricSource)
 	}
@@ -156,7 +288,7 @@ func (e *Engine) evaluateThresholdCondition(ctx context.Context, rule *monitorin
 		triggered = currentValue <= threshold
 	}
 
-	details := monitoring.JSONB{
+	details := JSONB{
 		"condition_type":  "threshold",
 		"threshold":       threshold,
 		"operator":        operator,
@@ -170,9 +302,9 @@ func (e *Engine) evaluateThresholdCondition(ctx context.Context, rule *monitorin
 }
 
 // evaluateRateOfChangeCondition checks if metric changes too rapidly
-func (e *Engine) evaluateRateOfChangeCondition(ctx context.Context, rule *monitoring.AlertRule, projectID uuid.UUID) (bool, monitoring.JSONB, error) {
+func (e *Engine) evaluateRateOfChangeCondition(ctx context.Context, rule *AlertRule, projectID uuid.UUID) (bool, JSONB, error) {
 	config := rule.ConditionConfig
-	
+
 	maxRate, ok := config["max_rate"].(float64)
 	if !ok {
 		return false, nil, fmt.Errorf("max_rate not specified in condition config")
@@ -187,7 +319,7 @@ func (e *Engine) evaluateRateOfChangeCondition(ctx context.Context, rule *monito
 	endTime := time.Now()
 	startTime := endTime.Add(-time.Duration(timeWindowMinutes) * time.Minute)
 
-	var timeSeries []monitoring.ProjectMetric
+	var timeSeries []ProjectMetric
 	var err error
 
 	if rule.MetricSource == "calculated" {
@@ -211,23 +343,23 @@ func (e *Engine) evaluateRateOfChangeCondition(ctx context.Context, rule *monito
 		triggered = true
 	}
 
-	details := monitoring.JSONB{
-		"condition_type":      "rate_of_change",
-		"max_rate":            maxRate,
-		"actual_rate":         rateOfChange,
-		"first_value":         firstValue,
-		"last_value":          lastValue,
-		"time_window_minutes": timeWindowMinutes,
-		"evaluation_time":     time.Now().Format(time.RFC3339),
+	details := JSONB{
+		"condition_type":       "rate_of_change",
+		"max_rate":             maxRate,
+		"actual_rate":          rateOfChange,
+		"first_value":          firstValue,
+		"last_value":           lastValue,
+		"time_window_minutes":  timeWindowMinutes,
+		"evaluation_time":      time.Now().Format(time.RFC3339),
 	}
 
 	return triggered, details, nil
 }
 
 // evaluateDataGapCondition checks for missing data
-func (e *Engine) evaluateDataGapCondition(ctx context.Context, rule *monitoring.AlertRule, projectID uuid.UUID) (bool, monitoring.JSONB, error) {
+func (e *Engine) evaluateDataGapCondition(ctx context.Context, rule *AlertRule, projectID uuid.UUID) (bool, JSONB, error) {
 	config := rule.ConditionConfig
-	
+
 	maxGapMinutes, ok := config["max_gap_minutes"].(float64)
 	if !ok {
 		return false, nil, fmt.Errorf("max_gap_minutes not specified in condition config")
@@ -243,21 +375,23 @@ func (e *Engine) evaluateDataGapCondition(ctx context.Context, rule *monitoring.
 			return false, nil, fmt.Errorf("sensor type required")
 		}
 		// Get last sensor reading time
-		readings, err := e.repo.GetSensorReadingsByType(ctx, projectID, *rule.SensorType, time.Now().Add(-24*time.Hour), time.Now())
-		if err != nil || len(readings) == 0 {
+		readings, readErr := e.repo.GetSensorReadingsByType(ctx, projectID, *rule.SensorType, time.Now().Add(-24*time.Hour), time.Now())
+		if readErr != nil || len(readings) == 0 {
 			lastDataTime = time.Time{} // No data
 		} else {
 			lastDataTime = readings[0].Time
 		}
-		
+		err = readErr
+
 	case "satellite":
-		obs, err := e.repo.GetLatestSatelliteObservation(ctx, projectID, "sentinel2")
-		if err != nil || obs == nil {
+		obs, obsErr := e.repo.GetLatestSatelliteObservation(ctx, projectID, "sentinel2")
+		if obsErr != nil || obs == nil {
 			lastDataTime = time.Time{}
 		} else {
 			lastDataTime = obs.Time
 		}
-		
+		err = obsErr
+
 	default:
 		return false, nil, fmt.Errorf("data gap check only supported for sensor and satellite sources")
 	}
@@ -269,24 +403,24 @@ func (e *Engine) evaluateDataGapCondition(ctx context.Context, rule *monitoring.
 	// Calculate gap duration
 	gapDuration := time.Since(lastDataTime)
 	maxGapDuration := time.Duration(maxGapMinutes) * time.Minute
-	
+
 	triggered := gapDuration > maxGapDuration
 
-	details := monitoring.JSONB{
-		"condition_type":    "data_gap",
-		"max_gap_minutes":   maxGapMinutes,
+	details := JSONB{
+		"condition_type":     "data_gap",
+		"max_gap_minutes":    maxGapMinutes,
 		"actual_gap_minutes": gapDuration.Minutes(),
-		"last_data_time":    lastDataTime.Format(time.RFC3339),
-		"evaluation_time":   time.Now().Format(time.RFC3339),
+		"last_data_time":     lastDataTime.Format(time.RFC3339),
+		"evaluation_time":    time.Now().Format(time.RFC3339),
 	}
 
 	return triggered, details, nil
 }
 
 // evaluateAnomalyCondition detects anomalous values using statistical methods
-func (e *Engine) evaluateAnomalyCondition(ctx context.Context, rule *monitoring.AlertRule, projectID uuid.UUID) (bool, monitoring.JSONB, error) {
+func (e *Engine) evaluateAnomalyCondition(ctx context.Context, rule *AlertRule, projectID uuid.UUID) (bool, JSONB, error) {
 	config := rule.ConditionConfig
-	
+
 	stdDevThreshold, ok := config["std_dev_threshold"].(float64)
 	if !ok {
 		stdDevThreshold = 3.0 // Default to 3 standard deviations
@@ -297,19 +431,15 @@ func (e *Engine) evaluateAnomalyCondition(ctx context.Context, rule *monitoring.
 		lookbackHours = 24 // Default to 24 hours
 	}
 
-	// Get historical data for statistical analysis
-	endTime := time.Now()
-	startTime := endTime.Add(-time.Duration(lookbackHours) * time.Hour)
-
 	// This is a simplified implementation
 	// In production, you'd want more sophisticated anomaly detection (e.g., using ML)
-	
-	details := monitoring.JSONB{
-		"condition_type":     "anomaly",
-		"std_dev_threshold":  stdDevThreshold,
-		"lookback_hours":     lookbackHours,
-		"evaluation_time":    time.Now().Format(time.RFC3339),
-		"note":               "Anomaly detection requires historical data analysis",
+
+	details := JSONB{
+		"condition_type":    "anomaly",
+		"std_dev_threshold": stdDevThreshold,
+		"lookback_hours":    lookbackHours,
+		"evaluation_time":   time.Now().Format(time.RFC3339),
+		"note":              "Anomaly detection requires historical data analysis",
 	}
 
 	// For now, return false - full implementation would require time series analysis
@@ -323,7 +453,7 @@ func (e *Engine) getLatestSensorValue(ctx context.Context, projectID uuid.UUID, 
 	if err != nil || len(readings) == 0 {
 		return 0, fmt.Errorf("no recent sensor readings found")
 	}
-	
+
 	// Calculate average of recent readings
 	sum := 0.0
 	for _, r := range readings {
@@ -362,7 +492,7 @@ func (e *Engine) getLatestCalculatedMetric(ctx context.Context, projectID uuid.U
 	return metric.Value, nil
 }
 
-func (e *Engine) generateAlertMessage(rule *monitoring.AlertRule, details monitoring.JSONB) string {
+func (e *Engine) generateAlertMessage(rule *AlertRule, details JSONB) string {
 	switch rule.ConditionType {
 	case "threshold":
 		return fmt.Sprintf("%s: Threshold breach detected for %s", rule.Name, rule.MetricName)
@@ -378,6 +508,6 @@ func (e *Engine) generateAlertMessage(rule *monitoring.AlertRule, details monito
 }
 
 // GetNotificationQueue returns the notification queue channel
-func (e *Engine) GetNotificationQueue() <-chan *monitoring.Alert {
+func (e *Engine) GetNotificationQueue() <-chan *Alert {
 	return e.notificationQueue
 }

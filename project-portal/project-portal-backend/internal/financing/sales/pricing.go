@@ -7,8 +7,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
+
+// CreditPricingModel represents pricing model for carbon credits
+type CreditPricingModel struct {
+	ID                uuid.UUID         `json:"id" db:"id"`
+	MethodologyCode   string            `json:"methodology_code" db:"methodology_code"`
+	RegionCode        *string           `json:"region_code" db:"region_code"`
+	VintageYear       *int              `json:"vintage_year" db:"vintage_year"`
+	BasePrice         float64           `json:"base_price" db:"base_price"`
+	QualityMultiplier QualityMultiplier `json:"quality_multiplier" db:"quality_multiplier"`
+	MarketMultiplier  float64           `json:"market_multiplier" db:"market_multiplier"`
+	ValidFrom         time.Time         `json:"valid_from" db:"valid_from"`
+	ValidUntil        *time.Time        `json:"valid_until" db:"valid_until"`
+	IsActive          bool              `json:"is_active" db:"is_active"`
+	CreatedAt         time.Time         `json:"created_at" db:"created_at"`
+}
 
 // PricingEngine handles dynamic pricing for carbon credits
 type PricingEngine struct {
@@ -20,10 +34,10 @@ type PricingEngine struct {
 
 // PricingRepository defines the interface for pricing data access
 type PricingRepository interface {
-	GetPricingModel(ctx context.Context, methodologyCode string, regionCode string, vintageYear int) (*financing.CreditPricingModel, error)
-	CreatePricingModel(ctx context.Context, model *financing.CreditPricingModel) error
-	UpdatePricingModel(ctx context.Context, model *financing.CreditPricingModel) error
-	ListPricingModels(ctx context.Context, filters *PricingModelFilters) ([]*financing.CreditPricingModel, error)
+	GetPricingModel(ctx context.Context, methodologyCode string, regionCode string, vintageYear int) (*CreditPricingModel, error)
+	CreatePricingModel(ctx context.Context, model *CreditPricingModel) error
+	UpdatePricingModel(ctx context.Context, model *CreditPricingModel) error
+	ListPricingModels(ctx context.Context, filters *PricingModelFilters) ([]*CreditPricingModel, error)
 	GetHistoricalPrices(ctx context.Context, methodologyCode string, regionCode string, startDate, endDate time.Time) ([]*HistoricalPrice, error)
 }
 
@@ -153,7 +167,7 @@ func NewPricingEngine(repository PricingRepository, config *PricingConfig) *Pric
 }
 
 // GetPriceQuote generates a price quote for carbon credits
-func (pe *PricingEngine) GetPriceQuote(ctx context.Context, req *financing.PricingQuoteRequest) (*financing.PricingQuoteResponse, error) {
+func (pe *PricingEngine) GetPriceQuote(ctx context.Context, req *PricingQuoteRequest) (*PricingQuoteResponse, error) {
 	// Get pricing model
 	model, err := pe.repository.GetPricingModel(ctx, req.MethodologyCode, req.RegionCode, req.VintageYear)
 	if err != nil {
@@ -197,7 +211,7 @@ func (pe *PricingEngine) GetPriceQuote(ctx context.Context, req *financing.Prici
 	// Get market conditions description
 	marketConditions, _ := pe.marketData.sources[0].GetMarketSentiment(ctx)
 	
-	return &financing.PricingQuoteResponse{
+	return &PricingQuoteResponse{
 		BasePrice:        basePrice,
 		AdjustedPrice:    finalPrice,
 		TotalPrice:       totalPrice,
@@ -209,7 +223,7 @@ func (pe *PricingEngine) GetPriceQuote(ctx context.Context, req *financing.Prici
 }
 
 // UpdatePricingModel updates or creates a pricing model
-func (pe *PricingEngine) UpdatePricingModel(ctx context.Context, model *financing.CreditPricingModel) error {
+func (pe *PricingEngine) UpdatePricingModel(ctx context.Context, model *CreditPricingModel) error {
 	// Validate model
 	if err := pe.validatePricingModel(model); err != nil {
 		return fmt.Errorf("invalid pricing model: %w", err)
@@ -231,7 +245,7 @@ func (pe *PricingEngine) UpdatePricingModel(ctx context.Context, model *financin
 }
 
 // calculatePricingFactors calculates pricing factors for a request
-func (pe *PricingEngine) calculatePricingFactors(ctx context.Context, req *financing.PricingQuoteRequest) (*PricingFactors, error) {
+func (pe *PricingEngine) calculatePricingFactors(ctx context.Context, req *PricingQuoteRequest) (*PricingFactors, error) {
 	factors := &PricingFactors{
 		CoBenefits: make(map[string]float64),
 	}
@@ -267,7 +281,7 @@ func (pe *PricingEngine) calculatePricingFactors(ctx context.Context, req *finan
 }
 
 // calculateQualityMultiplier calculates quality-based multiplier
-func (pe *PricingEngine) calculateQualityMultiplier(qFactors financing.QualityMultiplier) float64 {
+func (pe *PricingEngine) calculateQualityMultiplier(qFactors QualityMultiplier) float64 {
 	if qFactors == nil {
 		return 1.0
 	}
@@ -356,7 +370,7 @@ func (pe *PricingEngine) calculateMarketMultiplier(sentiment MarketSentiment) fl
 }
 
 // applyMultipliers applies all multipliers to base price
-func (pe *PricingEngine) applyMultipliers(basePrice float64, factors *PricingFactors, req *financing.PricingQuoteRequest) float64 {
+func (pe *PricingEngine) applyMultipliers(basePrice float64, factors *PricingFactors, req *PricingQuoteRequest) float64 {
 	adjustedPrice := basePrice
 	
 	// Apply quality multiplier
@@ -383,7 +397,7 @@ func (pe *PricingEngine) applyMultipliers(basePrice float64, factors *PricingFac
 }
 
 // applyMarketConditions applies current market conditions
-func (pe *PricingEngine) applyMarketConditions(ctx context.Context, price float64, req *financing.PricingQuoteRequest) (float64, error) {
+func (pe *PricingEngine) applyMarketConditions(ctx context.Context, price float64, req *PricingQuoteRequest) (float64, error) {
 	// Get current market price
 	marketPrice, err := pe.marketData.sources[0].GetCurrentPrice(ctx, req.MethodologyCode, req.RegionCode)
 	if err != nil {
@@ -398,7 +412,7 @@ func (pe *PricingEngine) applyMarketConditions(ctx context.Context, price float6
 }
 
 // applyOraclePrices applies oracle price feeds
-func (pe *PricingEngine) applyOraclePrices(ctx context.Context, price float64, req *financing.PricingQuoteRequest) (float64, error) {
+func (pe *PricingEngine) applyOraclePrices(ctx context.Context, price float64, req *PricingQuoteRequest) (float64, error) {
 	if len(pe.priceOracles) == 0 {
 		return price, nil
 	}
@@ -471,14 +485,14 @@ func (pe *PricingEngine) generatePricingFactorsList(factors *PricingFactors) []s
 }
 
 // createDefaultPricingModel creates a default pricing model
-func (pe *PricingEngine) createDefaultPricingModel(methodology, region string, vintage int) *financing.CreditPricingModel {
-	return &financing.CreditPricingModel{
+func (pe *PricingEngine) createDefaultPricingModel(methodology, region string, vintage int) *CreditPricingModel {
+	return &CreditPricingModel{
 		ID:                uuid.New(),
 		MethodologyCode:   methodology,
 		RegionCode:        &region,
 		VintageYear:       &vintage,
 		BasePrice:         pe.config.DefaultBasePrice,
-		QualityMultiplier: financing.QualityMultiplier{
+		QualityMultiplier: QualityMultiplier{
 			"data_quality": 1.0,
 			"verification": 1.0,
 			"monitoring":   1.0,
@@ -492,7 +506,7 @@ func (pe *PricingEngine) createDefaultPricingModel(methodology, region string, v
 }
 
 // validatePricingModel validates a pricing model
-func (pe *PricingEngine) validatePricingModel(model *financing.CreditPricingModel) error {
+func (pe *PricingEngine) validatePricingModel(model *CreditPricingModel) error {
 	if model.MethodologyCode == "" {
 		return fmt.Errorf("methodology code is required")
 	}

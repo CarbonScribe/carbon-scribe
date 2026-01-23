@@ -7,8 +7,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
+
+// CalculationRequest represents a request to calculate carbon credits
+type CalculationRequest struct {
+	ProjectID              uuid.UUID `json:"project_id"`
+	VintageYear            int       `json:"vintage_year"`
+	CalculationPeriodStart time.Time `json:"calculation_period_start"`
+	CalculationPeriodEnd   time.Time `json:"calculation_period_end"`
+	MethodologyCode        string    `json:"methodology_code"`
+}
+
+// CalculationResponse represents the response from credit calculation
+type CalculationResponse struct {
+	CreditID          uuid.UUID `json:"credit_id"`
+	CalculatedTons    float64   `json:"calculated_tons"`
+	BufferedTons      float64   `json:"buffered_tons"`
+	DataQualityScore  float64   `json:"data_quality_score"`
+	UncertaintyBuffer float64   `json:"uncertainty_buffer"`
+	ValidationResults []string  `json:"validation_results"`
+	Warnings          []string  `json:"warnings"`
+}
 
 // Engine handles carbon credit calculations
 type Engine struct {
@@ -184,7 +203,7 @@ func (e *Engine) RegisterMethodology(methodology Methodology) {
 }
 
 // CalculateCredits performs carbon credit calculation
-func (e *Engine) CalculateCredits(ctx context.Context, req *financing.CalculationRequest, monitoringData MonitoringData, baselineData BaselineData) (*financing.CalculationResponse, error) {
+func (e *Engine) CalculateCredits(ctx context.Context, req *CalculationRequest, monitoringData MonitoringData, baselineData BaselineData) (*CalculationResponse, error) {
 	// Get methodology
 	methodology, exists := e.methodologies[req.MethodologyCode]
 	if !exists {
@@ -222,7 +241,7 @@ func (e *Engine) CalculateCredits(ctx context.Context, req *financing.Calculatio
 	// Apply uncertainty buffer
 	bufferedTons := e.applyUncertaintyBuffer(result.CalculatedTons, result.DataQualityScore, result.ConfidenceLevel)
 	
-	return &financing.CalculationResponse{
+	return &CalculationResponse{
 		CreditID:          uuid.New(),
 		CalculatedTons:    result.CalculatedTons,
 		BufferedTons:      bufferedTons,

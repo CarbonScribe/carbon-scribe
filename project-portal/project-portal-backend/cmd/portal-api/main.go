@@ -17,9 +17,9 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/calculation"
-	"carbon-scribe/project-portal/project-portal/backend/internal/financing/tokenization"
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/sales"
-	"carbon-scribe/project-portal/project-portal/backend/internal/financing/payments"
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing/payments"
 )
 
 func main() {

@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"text/template"
 	"time"
-
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
 )
 
 // NotificationService handles alert notifications across multiple channels
@@ -58,7 +56,7 @@ func NewNotificationService(emailConfig *EmailConfig, smsConfig *SMSConfig, webh
 }
 
 // SendNotification sends an alert notification via configured channels
-func (n *NotificationService) SendNotification(ctx context.Context, alert *monitoring.Alert, channels []string) error {
+func (n *NotificationService) SendNotification(ctx context.Context, alert *Alert, channels []string) error {
 	var lastErr error
 	successCount := 0
 
@@ -96,7 +94,7 @@ func (n *NotificationService) SendNotification(ctx context.Context, alert *monit
 }
 
 // sendEmailNotification sends an email notification
-func (n *NotificationService) sendEmailNotification(ctx context.Context, alert *monitoring.Alert) error {
+func (n *NotificationService) sendEmailNotification(ctx context.Context, alert *Alert) error {
 	if n.emailConfig == nil {
 		return fmt.Errorf("email configuration not set")
 	}
@@ -116,7 +114,7 @@ func (n *NotificationService) sendEmailNotification(ctx context.Context, alert *
 }
 
 // sendSMSNotification sends an SMS notification
-func (n *NotificationService) sendSMSNotification(ctx context.Context, alert *monitoring.Alert) error {
+func (n *NotificationService) sendSMSNotification(ctx context.Context, alert *Alert) error {
 	if n.smsConfig == nil {
 		return fmt.Errorf("SMS configuration not set")
 	}
@@ -130,7 +128,7 @@ func (n *NotificationService) sendSMSNotification(ctx context.Context, alert *mo
 }
 
 // sendWebhookNotification sends a webhook notification
-func (n *NotificationService) sendWebhookNotification(ctx context.Context, alert *monitoring.Alert) error {
+func (n *NotificationService) sendWebhookNotification(ctx context.Context, alert *Alert) error {
 	if n.webhookConfig == nil {
 		return fmt.Errorf("webhook configuration not set")
 	}
@@ -178,7 +176,7 @@ func (n *NotificationService) sendWebhookNotification(ctx context.Context, alert
 }
 
 // renderEmailTemplate renders the email body from a template
-func (n *NotificationService) renderEmailTemplate(alert *monitoring.Alert) (string, error) {
+func (n *NotificationService) renderEmailTemplate(alert *Alert) (string, error) {
 	tmpl := `
 Alert Notification
 ==================
@@ -217,13 +215,13 @@ This is an automated alert from CarbonScribe Monitoring System
 
 // NotificationWorker processes alerts from the notification queue
 type NotificationWorker struct {
-	repo    monitoring.Repository
+	repo    Repository
 	service *NotificationService
-	queue   <-chan *monitoring.Alert
+	queue   <-chan *Alert
 }
 
 // NewNotificationWorker creates a new notification worker
-func NewNotificationWorker(repo monitoring.Repository, service *NotificationService, queue <-chan *monitoring.Alert) *NotificationWorker {
+func NewNotificationWorker(repo Repository, service *NotificationService, queue <-chan *Alert) *NotificationWorker {
 	return &NotificationWorker{
 		repo:    repo,
 		service: service,
@@ -250,7 +248,7 @@ func (w *NotificationWorker) Start(ctx context.Context) {
 }
 
 // processAlert processes a single alert notification
-func (w *NotificationWorker) processAlert(ctx context.Context, alert *monitoring.Alert) error {
+func (w *NotificationWorker) processAlert(ctx context.Context, alert *Alert) error {
 	// Get the alert rule to determine notification channels
 	if alert.RuleID == nil {
 		return fmt.Errorf("alert has no associated rule")

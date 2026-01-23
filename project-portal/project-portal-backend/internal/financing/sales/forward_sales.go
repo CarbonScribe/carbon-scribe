@@ -7,8 +7,76 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
+
+// Local type definitions to avoid import cycle
+
+// ForwardSaleStatus represents the status of a forward sale agreement
+type ForwardSaleStatus string
+
+const (
+	ForwardSaleStatusPending   ForwardSaleStatus = "pending"
+	ForwardSaleStatusActive    ForwardSaleStatus = "active"
+	ForwardSaleStatusCompleted ForwardSaleStatus = "completed"
+	ForwardSaleStatusCancelled ForwardSaleStatus = "cancelled"
+)
+
+// PaymentMilestone represents a single payment milestone
+type PaymentMilestone struct {
+	ID          string     `json:"id"`
+	Description string     `json:"description"`
+	DueDate     time.Time  `json:"due_date"`
+	Amount      float64    `json:"amount"`
+	Percentage  float64    `json:"percentage"`
+	Paid        bool       `json:"paid"`
+	PaidAt      *time.Time `json:"paid_at"`
+}
+
+// PaymentSchedule represents milestone payment schedule
+type PaymentSchedule []PaymentMilestone
+
+// ForwardSaleAgreement represents a forward sale agreement
+type ForwardSaleAgreement struct {
+	ID            uuid.UUID `json:"id" db:"id"`
+	ProjectID     uuid.UUID `json:"project_id" db:"project_id"`
+	BuyerID       uuid.UUID `json:"buyer_id" db:"buyer_id"`
+	VintageYear   int       `json:"vintage_year" db:"vintage_year"`
+
+	// Terms
+	TonsCommitted float64 `json:"tons_committed" db:"tons_committed"`
+	PricePerTon   float64 `json:"price_per_ton" db:"price_per_ton"`
+	Currency      string  `json:"currency" db:"currency"`
+	TotalAmount   float64 `json:"total_amount" db:"total_amount"`
+	DeliveryDate  time.Time `json:"delivery_date" db:"delivery_date"`
+
+	// Payment
+	DepositPercent       float64         `json:"deposit_percent" db:"deposit_percent"`
+	DepositPaid          bool            `json:"deposit_paid" db:"deposit_paid"`
+	DepositTransactionID *string         `json:"deposit_transaction_id" db:"deposit_transaction_id"`
+	PaymentSchedule      PaymentSchedule `json:"payment_schedule" db:"payment_schedule"`
+
+	// Legal
+	ContractHash     *string    `json:"contract_hash" db:"contract_hash"`
+	SignedBySellerAt *time.Time `json:"signed_by_seller_at" db:"signed_by_seller_at"`
+	SignedByBuyerAt  *time.Time `json:"signed_by_buyer_at" db:"signed_by_buyer_at"`
+
+	// Status
+	Status ForwardSaleStatus `json:"status" db:"status"`
+
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// PricingQuoteResponse represents a pricing quote response
+type PricingQuoteResponse struct {
+	BasePrice        float64   `json:"base_price"`
+	AdjustedPrice    float64   `json:"adjusted_price"`
+	TotalPrice       float64   `json:"total_price"`
+	Currency         string    `json:"currency"`
+	ValidUntil       time.Time `json:"valid_until"`
+	PricingFactors   []string  `json:"pricing_factors"`
+	MarketConditions string    `json:"market_conditions"`
+}
 
 // ForwardSaleManager manages forward sale agreements
 type ForwardSaleManager struct {
@@ -21,19 +89,19 @@ type ForwardSaleManager struct {
 
 // ForwardSaleRepository defines the interface for forward sale data access
 type ForwardSaleRepository interface {
-	CreateForwardSale(ctx context.Context, sale *financing.ForwardSaleAgreement) error
-	GetForwardSale(ctx context.Context, saleID uuid.UUID) (*financing.ForwardSaleAgreement, error)
-	UpdateForwardSale(ctx context.Context, sale *financing.ForwardSaleAgreement) error
-	ListForwardSales(ctx context.Context, filters *ForwardSaleFilters) ([]*financing.ForwardSaleAgreement, error)
-	GetProjectForwardSales(ctx context.Context, projectID uuid.UUID) ([]*financing.ForwardSaleAgreement, error)
-	GetBuyerForwardSales(ctx context.Context, buyerID uuid.UUID) ([]*financing.ForwardSaleAgreement, error)
+	CreateForwardSale(ctx context.Context, sale *ForwardSaleAgreement) error
+	GetForwardSale(ctx context.Context, saleID uuid.UUID) (*ForwardSaleAgreement, error)
+	UpdateForwardSale(ctx context.Context, sale *ForwardSaleAgreement) error
+	ListForwardSales(ctx context.Context, filters *ForwardSaleFilters) ([]*ForwardSaleAgreement, error)
+	GetProjectForwardSales(ctx context.Context, projectID uuid.UUID) ([]*ForwardSaleAgreement, error)
+	GetBuyerForwardSales(ctx context.Context, buyerID uuid.UUID) ([]*ForwardSaleAgreement, error)
 }
 
 // ForwardSaleFilters represents filters for listing forward sales
 type ForwardSaleFilters struct {
 	ProjectID     *uuid.UUID            `json:"project_id,omitempty"`
 	BuyerID       *uuid.UUID            `json:"buyer_id,omitempty"`
-	Status        []financing.ForwardSaleStatus `json:"status,omitempty"`
+	Status        []ForwardSaleStatus `json:"status,omitempty"`
 	VintageYear   *int                  `json:"vintage_year,omitempty"`
 	DeliveryDate  *time.Time            `json:"delivery_date,omitempty"`
 	CreatedAfter  *time.Time            `json:"created_after,omitempty"`
@@ -82,7 +150,7 @@ type ForwardSaleRequest struct {
 	Currency       string                        `json:"currency" binding:"required"`
 	DeliveryDate   time.Time                     `json:"delivery_date" binding:"required"`
 	DepositPercent float64                       `json:"deposit_percent" binding:"required,min=0,max=100"`
-	PaymentSchedule financing.PaymentSchedule     `json:"payment_schedule"`
+	PaymentSchedule PaymentSchedule     `json:"payment_schedule"`
 	ContractTerms  map[string]interface{}        `json:"contract_terms"`
 }
 
@@ -92,8 +160,8 @@ type ForwardSaleResponse struct {
 	ContractURL     string                        `json:"contract_url"`
 	DepositAmount   float64                       `json:"deposit_amount"`
 	TotalAmount     float64                       `json:"total_amount"`
-	PaymentSchedule financing.PaymentSchedule     `json:"payment_schedule"`
-	Status          financing.ForwardSaleStatus    `json:"status"`
+	PaymentSchedule PaymentSchedule     `json:"payment_schedule"`
+	Status          ForwardSaleStatus    `json:"status"`
 	CreatedAt       time.Time                     `json:"created_at"`
 	ExpiresAt       time.Time                     `json:"expires_at"`
 }
@@ -130,7 +198,7 @@ func (fsm *ForwardSaleManager) CreateForwardSale(ctx context.Context, req *Forwa
 	}
 	
 	// Get pricing quote to validate price
-	quoteReq := &financing.PricingQuoteRequest{
+	quoteReq := &PricingQuoteRequest{
 		MethodologyCode: "", // Will be determined from project
 		RegionCode:      "", // Will be determined from project
 		VintageYear:     req.VintageYear,
@@ -158,7 +226,7 @@ func (fsm *ForwardSaleManager) CreateForwardSale(ctx context.Context, req *Forwa
 	}
 	
 	// Create forward sale agreement
-	sale := &financing.ForwardSaleAgreement{
+	sale := &ForwardSaleAgreement{
 		ID:             uuid.New(),
 		ProjectID:      req.ProjectID,
 		BuyerID:        req.BuyerID,
@@ -171,7 +239,7 @@ func (fsm *ForwardSaleManager) CreateForwardSale(ctx context.Context, req *Forwa
 		DepositPercent: req.DepositPercent,
 		DepositPaid:    false,
 		PaymentSchedule: paymentSchedule,
-		Status:         financing.ForwardSaleStatusPending,
+		Status:         ForwardSaleStatusPending,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -213,12 +281,12 @@ func (fsm *ForwardSaleManager) CreateForwardSale(ctx context.Context, req *Forwa
 }
 
 // GetForwardSale retrieves a forward sale by ID
-func (fsm *ForwardSaleManager) GetForwardSale(ctx context.Context, saleID uuid.UUID) (*financing.ForwardSaleAgreement, error) {
+func (fsm *ForwardSaleManager) GetForwardSale(ctx context.Context, saleID uuid.UUID) (*ForwardSaleAgreement, error) {
 	return fsm.repository.GetForwardSale(ctx, saleID)
 }
 
 // ListForwardSales lists forward sales with filters
-func (fsm *ForwardSaleManager) ListForwardSales(ctx context.Context, filters *ForwardSaleFilters) ([]*financing.ForwardSaleAgreement, error) {
+func (fsm *ForwardSaleManager) ListForwardSales(ctx context.Context, filters *ForwardSaleFilters) ([]*ForwardSaleAgreement, error) {
 	return fsm.repository.ListForwardSales(ctx, filters)
 }
 
@@ -229,7 +297,7 @@ func (fsm *ForwardSaleManager) ActivateForwardSale(ctx context.Context, saleID u
 		return fmt.Errorf("failed to get forward sale: %w", err)
 	}
 	
-	if sale.Status != financing.ForwardSaleStatusPending {
+	if sale.Status != ForwardSaleStatusPending {
 		return fmt.Errorf("forward sale is not in pending status")
 	}
 	
@@ -243,7 +311,7 @@ func (fsm *ForwardSaleManager) ActivateForwardSale(ctx context.Context, saleID u
 	
 	// Check if both parties have signed
 	if sale.SignedBySellerAt != nil && sale.SignedByBuyerAt != nil {
-		sale.Status = financing.ForwardSaleStatusActive
+		sale.Status = ForwardSaleStatusActive
 		sale.UpdatedAt = now
 		
 		// Activate escrow
@@ -263,7 +331,7 @@ func (fsm *ForwardSaleManager) ProcessDeposit(ctx context.Context, saleID uuid.U
 		return fmt.Errorf("failed to get forward sale: %w", err)
 	}
 	
-	if sale.Status != financing.ForwardSaleStatusActive {
+	if sale.Status != ForwardSaleStatusActive {
 		return fmt.Errorf("forward sale is not active")
 	}
 	
@@ -292,7 +360,7 @@ func (fsm *ForwardSaleManager) ProcessMilestonePayment(ctx context.Context, sale
 		return fmt.Errorf("failed to get forward sale: %w", err)
 	}
 	
-	if sale.Status != financing.ForwardSaleStatusActive {
+	if sale.Status != ForwardSaleStatusActive {
 		return fmt.Errorf("forward sale is not active")
 	}
 	
@@ -328,7 +396,7 @@ func (fsm *ForwardSaleManager) CompleteForwardSale(ctx context.Context, saleID u
 		return fmt.Errorf("failed to get forward sale: %w", err)
 	}
 	
-	if sale.Status != financing.ForwardSaleStatusActive {
+	if sale.Status != ForwardSaleStatusActive {
 		return fmt.Errorf("forward sale is not active")
 	}
 	
@@ -339,7 +407,7 @@ func (fsm *ForwardSaleManager) CompleteForwardSale(ctx context.Context, saleID u
 	}
 	
 	// Update status
-	sale.Status = financing.ForwardSaleStatusCompleted
+	sale.Status = ForwardSaleStatusCompleted
 	sale.UpdatedAt = time.Now()
 	
 	// Release escrow funds
@@ -357,7 +425,7 @@ func (fsm *ForwardSaleManager) CancelForwardSale(ctx context.Context, saleID uui
 		return fmt.Errorf("failed to get forward sale: %w", err)
 	}
 	
-	if sale.Status == financing.ForwardSaleStatusCompleted {
+	if sale.Status == ForwardSaleStatusCompleted {
 		return fmt.Errorf("cannot cancel completed forward sale")
 	}
 	
@@ -369,7 +437,7 @@ func (fsm *ForwardSaleManager) CancelForwardSale(ctx context.Context, saleID uui
 	}
 	
 	// Update status
-	sale.Status = financing.ForwardSaleStatusCancelled
+	sale.Status = ForwardSaleStatusCancelled
 	sale.UpdatedAt = time.Now()
 	
 	return fsm.repository.UpdateForwardSale(ctx, sale)
@@ -400,7 +468,7 @@ func (fsm *ForwardSaleManager) validateRequest(req *ForwardSaleRequest) error {
 }
 
 // validatePrice validates price against market quote
-func (fsm *ForwardSaleManager) validatePrice(requestedPrice float64, quote *financing.PricingQuoteResponse) error {
+func (fsm *ForwardSaleManager) validatePrice(requestedPrice float64, quote *PricingQuoteResponse) error {
 	// Allow 20% variance from market price
 	minPrice := quote.BasePrice * 0.8
 	maxPrice := quote.BasePrice * 1.2
@@ -414,12 +482,12 @@ func (fsm *ForwardSaleManager) validatePrice(requestedPrice float64, quote *fina
 }
 
 // generateDefaultPaymentSchedule generates default payment schedule
-func (fsm *ForwardSaleManager) generateDefaultPaymentSchedule(req *ForwardSaleRequest) financing.PaymentSchedule {
+func (fsm *ForwardSaleManager) generateDefaultPaymentSchedule(req *ForwardSaleRequest) PaymentSchedule {
 	totalAmount := req.TonsCommitted * req.PricePerTon
 	depositAmount := totalAmount * (req.DepositPercent / 100.0)
 	remainingAmount := totalAmount - depositAmount
 	
-	schedule := financing.PaymentSchedule{
+	schedule := PaymentSchedule{
 		{
 			ID:          "deposit",
 			Description: "Initial deposit",
@@ -435,7 +503,7 @@ func (fsm *ForwardSaleManager) generateDefaultPaymentSchedule(req *ForwardSaleRe
 	milestone2Amount := remainingAmount * 0.5
 	
 	schedule = append(schedule,
-		financing.PaymentMilestone{
+PaymentMilestone{
 			ID:          "delivery",
 			Description: "Payment at delivery",
 			DueDate:     req.DeliveryDate,
@@ -443,7 +511,7 @@ func (fsm *ForwardSaleManager) generateDefaultPaymentSchedule(req *ForwardSaleRe
 			Percentage:  50.0,
 			Paid:        false,
 		},
-		financing.PaymentMilestone{
+PaymentMilestone{
 			ID:          "final",
 			Description: "Final payment",
 			DueDate:     req.DeliveryDate.AddDate(0, 0, 30),
@@ -465,7 +533,7 @@ func NewContractGenerator() *ContractGenerator {
 }
 
 // GenerateContract generates a legal contract
-func (cg *ContractGenerator) GenerateContract(ctx context.Context, sale *financing.ForwardSaleAgreement, terms map[string]interface{}) (string, error) {
+func (cg *ContractGenerator) GenerateContract(ctx context.Context, sale *ForwardSaleAgreement, terms map[string]interface{}) (string, error) {
 	// In a real implementation, this would:
 	// 1. Load contract template
 	// 2. Fill in template with sale details

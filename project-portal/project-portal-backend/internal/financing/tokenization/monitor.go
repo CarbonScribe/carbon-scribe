@@ -6,8 +6,17 @@ import (
 	"log"
 	"sync"
 	"time"
+)
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
+// CreditStatus represents the status of a carbon credit
+type CreditStatus string
+
+const (
+	CreditStatusCalculated CreditStatus = "calculated"
+	CreditStatusVerified   CreditStatus = "verified"
+	CreditStatusMinting    CreditStatus = "minting"
+	CreditStatusMinted     CreditStatus = "minted"
+	CreditStatusRetired    CreditStatus = "retired"
 )
 
 // TransactionMonitor monitors Stellar transactions and handles confirmations
@@ -434,7 +443,7 @@ func (tm *TransactionMonitor) updateCreditRecords(batchID string, result *Monito
 	
 	// Update credit status to minted
 	for _, creditID := range batch.CreditIDs {
-		err := tm.repository.UpdateCreditMintingStatus(ctx, creditID, financing.CreditStatusMinted, &result.TransactionID, result.TokenIDs)
+		err := tm.repository.UpdateCreditMintingStatus(ctx, creditID, CreditStatusMinted, &result.TransactionID, result.TokenIDs)
 		if err != nil {
 			log.Printf("Failed to update credit %s: %v", creditID, err)
 			continue
@@ -462,7 +471,7 @@ func (tm *TransactionMonitor) updateCreditRecordsToFailed(batchID string, errorM
 	
 	// Update credit status back to calculated
 	for _, creditID := range batch.CreditIDs {
-		err := tm.repository.UpdateCreditMintingStatus(ctx, creditID, financing.CreditStatusCalculated, nil, nil)
+		err := tm.repository.UpdateCreditMintingStatus(ctx, creditID, CreditStatusCalculated, nil, nil)
 		if err != nil {
 			log.Printf("Failed to reset credit %s: %v", creditID, err)
 			continue

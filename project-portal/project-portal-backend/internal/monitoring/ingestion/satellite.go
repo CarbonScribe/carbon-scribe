@@ -7,11 +7,52 @@ import (
 	"fmt"
 	"time"
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/processing"
 
 	"github.com/google/uuid"
 )
+
+// JSONB is a custom type for PostgreSQL JSONB columns
+type JSONB map[string]interface{}
+
+// SatelliteObservation represents a single satellite data point
+type SatelliteObservation struct {
+	Time                 time.Time `json:"time" db:"time"`
+	ProjectID            uuid.UUID `json:"project_id" db:"project_id"`
+	SatelliteSource      string    `json:"satellite_source" db:"satellite_source"`
+	TileID               *string   `json:"tile_id,omitempty" db:"tile_id"`
+	NDVI                 *float64  `json:"ndvi,omitempty" db:"ndvi"`
+	EVI                  *float64  `json:"evi,omitempty" db:"evi"`
+	NDWI                 *float64  `json:"ndwi,omitempty" db:"ndwi"`
+	SAVI                 *float64  `json:"savi,omitempty" db:"savi"`
+	BiomassKgPerHa       *float64  `json:"biomass_kg_per_ha,omitempty" db:"biomass_kg_per_ha"`
+	CloudCoveragePercent *float64  `json:"cloud_coverage_percent,omitempty" db:"cloud_coverage_percent"`
+	DataQualityScore     *float64  `json:"data_quality_score,omitempty" db:"data_quality_score"`
+	Geometry             *string   `json:"geometry,omitempty" db:"geometry"`
+	RawBands             JSONB     `json:"raw_bands,omitempty" db:"raw_bands"`
+	Metadata             JSONB     `json:"metadata,omitempty" db:"metadata"`
+	CreatedAt            time.Time `json:"created_at" db:"created_at"`
+}
+
+// SatelliteWebhookPayload represents incoming webhook data from satellite providers
+type SatelliteWebhookPayload struct {
+	Source          string                 `json:"source" binding:"required"`
+	TileID          string                 `json:"tile_id" binding:"required"`
+	AcquisitionTime time.Time              `json:"acquisition_time" binding:"required"`
+	ProjectID       *uuid.UUID             `json:"project_id,omitempty"`
+	Bands           map[string]float64     `json:"bands"`
+	CloudCover      float64                `json:"cloud_cover"`
+	Quality         float64                `json:"quality"`
+	Geometry        interface{}            `json:"geometry"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SatelliteRepository defines the interface for satellite data access
+type SatelliteRepository interface {
+	CreateSatelliteObservation(ctx context.Context, obs *SatelliteObservation) error
+	CreateSatelliteObservationBatch(ctx context.Context, observations []SatelliteObservation) error
+	GetLatestSatelliteObservation(ctx context.Context, projectID uuid.UUID, source string) (*SatelliteObservation, error)
+}
 
 // SatelliteIngestion handles satellite data ingestion and processing
 type SatelliteIngestion struct {

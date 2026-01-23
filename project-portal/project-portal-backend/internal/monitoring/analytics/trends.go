@@ -6,26 +6,29 @@ import (
 	"math"
 	"time"
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
-
 	"github.com/google/uuid"
 )
 
+// TrendRepository defines the interface for trend data access
+type TrendRepository interface {
+	GetMetricTimeSeries(ctx context.Context, projectID uuid.UUID, metricName, aggregationPeriod string, start, end time.Time) ([]ProjectMetric, error)
+}
+
 // TrendAnalyzer analyzes trends in time-series data
 type TrendAnalyzer struct {
-	repo monitoring.Repository
+	repo TrendRepository
 }
 
 // NewTrendAnalyzer creates a new trend analyzer
-func NewTrendAnalyzer(repo monitoring.Repository) *TrendAnalyzer {
+func NewTrendAnalyzer(repo TrendRepository) *TrendAnalyzer {
 	return &TrendAnalyzer{
 		repo: repo,
 	}
 }
 
 // AnalyzeMetricTrends analyzes trends for multiple metrics
-func (t *TrendAnalyzer) AnalyzeMetricTrends(ctx context.Context, projectID uuid.UUID, metricNames []string, start, end time.Time) (map[string]monitoring.TrendAnalysis, error) {
-	trends := make(map[string]monitoring.TrendAnalysis)
+func (t *TrendAnalyzer) AnalyzeMetricTrends(ctx context.Context, projectID uuid.UUID, metricNames []string, start, end time.Time) (map[string]TrendAnalysis, error) {
+	trends := make(map[string]TrendAnalysis)
 
 	for _, metricName := range metricNames {
 		trend, err := t.AnalyzeSingleMetricTrend(ctx, projectID, metricName, start, end)
@@ -40,7 +43,7 @@ func (t *TrendAnalyzer) AnalyzeMetricTrends(ctx context.Context, projectID uuid.
 }
 
 // AnalyzeSingleMetricTrend analyzes trend for a single metric
-func (t *TrendAnalyzer) AnalyzeSingleMetricTrend(ctx context.Context, projectID uuid.UUID, metricName string, start, end time.Time) (*monitoring.TrendAnalysis, error) {
+func (t *TrendAnalyzer) AnalyzeSingleMetricTrend(ctx context.Context, projectID uuid.UUID, metricName string, start, end time.Time) (*TrendAnalysis, error) {
 	// Get time series data
 	timeSeries, err := t.repo.GetMetricTimeSeries(ctx, projectID, metricName, "daily", start, end)
 	if err != nil {
@@ -80,7 +83,7 @@ func (t *TrendAnalyzer) AnalyzeSingleMetricTrend(ctx context.Context, projectID 
 	// Forecast next value
 	forecastedValue := slope*float64(len(timeSeries)) + intercept
 
-	return &monitoring.TrendAnalysis{
+	return &TrendAnalysis{
 		MetricName:      metricName,
 		Direction:       direction,
 		ChangePercent:   changePercent,
@@ -91,7 +94,7 @@ func (t *TrendAnalyzer) AnalyzeSingleMetricTrend(ctx context.Context, projectID 
 }
 
 // DetectAnomalies detects anomalous values in time series data
-func (t *TrendAnalyzer) DetectAnomalies(ctx context.Context, projectID uuid.UUID, metricName string, start, end time.Time) ([]monitoring.ProjectMetric, error) {
+func (t *TrendAnalyzer) DetectAnomalies(ctx context.Context, projectID uuid.UUID, metricName string, start, end time.Time) ([]ProjectMetric, error) {
 	timeSeries, err := t.repo.GetMetricTimeSeries(ctx, projectID, metricName, "daily", start, end)
 	if err != nil {
 		return nil, err
@@ -105,7 +108,7 @@ func (t *TrendAnalyzer) DetectAnomalies(ctx context.Context, projectID uuid.UUID
 	mean, stdDev := calculateMeanAndStdDev(timeSeries)
 
 	// Detect anomalies (values beyond 3 standard deviations)
-	anomalies := []monitoring.ProjectMetric{}
+	anomalies := []ProjectMetric{}
 	threshold := 3.0
 
 	for _, metric := range timeSeries {
@@ -189,7 +192,7 @@ type ForecastPoint struct {
 
 // Statistical helper functions
 
-func linearRegression(timeSeries []monitoring.ProjectMetric) (slope, intercept float64) {
+func linearRegression(timeSeries []ProjectMetric) (slope, intercept float64) {
 	n := float64(len(timeSeries))
 	if n == 0 {
 		return 0, 0
@@ -221,7 +224,7 @@ func linearRegression(timeSeries []monitoring.ProjectMetric) (slope, intercept f
 	return slope, intercept
 }
 
-func calculateMeanAndStdDev(timeSeries []monitoring.ProjectMetric) (mean, stdDev float64) {
+func calculateMeanAndStdDev(timeSeries []ProjectMetric) (mean, stdDev float64) {
 	if len(timeSeries) == 0 {
 		return 0, 0
 	}
@@ -244,7 +247,7 @@ func calculateMeanAndStdDev(timeSeries []monitoring.ProjectMetric) (mean, stdDev
 	return mean, stdDev
 }
 
-func calculatePValue(timeSeries []monitoring.ProjectMetric, slope float64) float64 {
+func calculatePValue(timeSeries []ProjectMetric, slope float64) float64 {
 	// Simplified p-value calculation
 	// In a real implementation, you'd use proper statistical tests
 	n := float64(len(timeSeries))
@@ -275,7 +278,7 @@ func calculatePValue(timeSeries []monitoring.ProjectMetric, slope float64) float
 	return 0.5
 }
 
-func calculateConfidenceInterval(timeSeries []monitoring.ProjectMetric, slope float64, x float64) float64 {
+func calculateConfidenceInterval(timeSeries []ProjectMetric, slope float64, x float64) float64 {
 	// Simplified confidence interval calculation
 	_, stdDev := calculateMeanAndStdDev(timeSeries)
 	

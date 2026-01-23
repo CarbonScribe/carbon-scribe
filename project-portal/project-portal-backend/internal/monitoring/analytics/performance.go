@@ -5,20 +5,124 @@ import (
 	"fmt"
 	"time"
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/processing"
 
 	"github.com/google/uuid"
 )
 
+// Local type definitions to avoid import cycle
+
+// SensorReading represents a single IoT sensor measurement
+type SensorReading struct {
+	Time           time.Time `json:"time" db:"time"`
+	ProjectID      uuid.UUID `json:"project_id" db:"project_id"`
+	SensorID       string    `json:"sensor_id" db:"sensor_id"`
+	SensorType     string    `json:"sensor_type" db:"sensor_type"`
+	Value          float64   `json:"value" db:"value"`
+	Unit           string    `json:"unit" db:"unit"`
+	DataQuality    string    `json:"data_quality" db:"data_quality"`
+	CreatedAt      time.Time `json:"created_at" db:"created_at"`
+}
+
+// CarbonMetrics represents carbon sequestration metrics
+type CarbonMetrics struct {
+	DailyRateKgCO2  float64 `json:"daily_rate_kg_co2"`
+	MonthlyTotalKg  float64 `json:"monthly_total_kg"`
+	YearlyTotalKg   float64 `json:"yearly_total_kg"`
+	ConfidenceScore float64 `json:"confidence_score"`
+}
+
+// VegetationMetrics represents vegetation health metrics
+type VegetationMetrics struct {
+	AverageNDVI     float64 `json:"average_ndvi"`
+	BiomassKgPerHa  float64 `json:"biomass_kg_per_ha"`
+	CanopyCoverage  float64 `json:"canopy_coverage_percent"`
+	VegetationTrend string  `json:"vegetation_trend"`
+}
+
+// SoilMetrics represents soil health metrics
+type SoilMetrics struct {
+	AverageMoisture    float64 `json:"average_moisture_percent"`
+	AveragePH          float64 `json:"average_ph"`
+	OrganicMatter      float64 `json:"organic_matter_percent"`
+	TemperatureCelsius float64 `json:"temperature_celsius"`
+}
+
+// WaterMetrics represents water retention metrics
+type WaterMetrics struct {
+	RainfallMm       float64 `json:"rainfall_mm"`
+	NDWI             float64 `json:"ndwi"`
+	SoilWaterContent float64 `json:"soil_water_content_percent"`
+}
+
+// BiodiversityMetrics represents biodiversity indicators
+type BiodiversityMetrics struct {
+	SpeciesCount       int     `json:"species_count"`
+	ShannonsIndex      float64 `json:"shannons_index"`
+	PollinatorActivity float64 `json:"pollinator_activity_index"`
+}
+
+// TrendAnalysis represents trend analysis for a metric
+type TrendAnalysis struct {
+	MetricName      string   `json:"metric_name"`
+	Direction       string   `json:"direction"`
+	ChangePercent   float64  `json:"change_percent"`
+	Significance    string   `json:"significance"`
+	PValue          *float64 `json:"p_value,omitempty"`
+	ForecastedValue *float64 `json:"forecasted_value,omitempty"`
+}
+
+// Alert represents a triggered alert (minimal definition)
+type Alert struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	ProjectID uuid.UUID `json:"project_id" db:"project_id"`
+	Severity  string    `json:"severity" db:"severity"`
+	Title     string    `json:"title" db:"title"`
+	Message   string    `json:"message" db:"message"`
+	Status    string    `json:"status" db:"status"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+// PerformanceDashboard represents comprehensive project performance metrics
+type PerformanceDashboard struct {
+	ProjectID              uuid.UUID                `json:"project_id"`
+	Period                 string                   `json:"period"`
+	CarbonSequestration    CarbonMetrics            `json:"carbon_sequestration"`
+	VegetationHealth       VegetationMetrics        `json:"vegetation_health"`
+	SoilHealth             SoilMetrics              `json:"soil_health"`
+	WaterRetention         WaterMetrics             `json:"water_retention"`
+	BiodiversityIndicators BiodiversityMetrics      `json:"biodiversity_indicators"`
+	Trends                 map[string]TrendAnalysis `json:"trends"`
+	Alerts                 []Alert                  `json:"active_alerts"`
+	GeneratedAt            time.Time                `json:"generated_at"`
+}
+
+// ProjectMetric represents a calculated metric for a project
+type ProjectMetric struct {
+	Time              time.Time `json:"time" db:"time"`
+	ProjectID         uuid.UUID `json:"project_id" db:"project_id"`
+	MetricName        string    `json:"metric_name" db:"metric_name"`
+	Value             float64   `json:"value" db:"value"`
+	AggregationPeriod string    `json:"aggregation_period" db:"aggregation_period"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+}
+
+// Repository defines the interface for performance data access
+type Repository interface {
+	GetSensorReadingsByType(ctx context.Context, projectID uuid.UUID, sensorType string, start, end time.Time) ([]SensorReading, error)
+	GetActiveProjectAlerts(ctx context.Context, projectID uuid.UUID) ([]Alert, error)
+	CalculateAverageNDVI(ctx context.Context, projectID uuid.UUID, start, end time.Time) (float64, error)
+	CalculateAverageBiomass(ctx context.Context, projectID uuid.UUID, start, end time.Time) (float64, error)
+}
+
 // PerformanceCalculator calculates project performance metrics
 type PerformanceCalculator struct {
-	repo             monitoring.Repository
+	repo             Repository
 	biomassEstimator *processing.BiomassEstimator
 }
 
 // NewPerformanceCalculator creates a new performance calculator
-func NewPerformanceCalculator(repo monitoring.Repository) *PerformanceCalculator {
+func NewPerformanceCalculator(repo Repository) *PerformanceCalculator {
 	return &PerformanceCalculator{
 		repo:             repo,
 		biomassEstimator: processing.NewBiomassEstimator(),
@@ -26,12 +130,12 @@ func NewPerformanceCalculator(repo monitoring.Repository) *PerformanceCalculator
 }
 
 // CalculateDashboard generates a comprehensive performance dashboard
-func (p *PerformanceCalculator) CalculateDashboard(ctx context.Context, projectID uuid.UUID, period string) (*monitoring.PerformanceDashboard, error) {
-	dashboard := &monitoring.PerformanceDashboard{
+func (p *PerformanceCalculator) CalculateDashboard(ctx context.Context, projectID uuid.UUID, period string) (*PerformanceDashboard, error) {
+	dashboard := &PerformanceDashboard{
 		ProjectID:   projectID,
 		Period:      period,
 		GeneratedAt: time.Now(),
-		Trends:      make(map[string]monitoring.TrendAnalysis),
+		Trends:      make(map[string]TrendAnalysis),
 	}
 
 	// Parse period (e.g., "2024-01" for monthly)
@@ -84,7 +188,7 @@ func (p *PerformanceCalculator) CalculateDashboard(ctx context.Context, projectI
 }
 
 // calculateCarbonMetrics calculates carbon sequestration metrics
-func (p *PerformanceCalculator) calculateCarbonMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*monitoring.CarbonMetrics, error) {
+func (p *PerformanceCalculator) calculateCarbonMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*CarbonMetrics, error) {
 	// Get average biomass for the period
 	avgBiomass, err := p.repo.CalculateAverageBiomass(ctx, projectID, start, end)
 	if err != nil {
@@ -111,7 +215,7 @@ func (p *PerformanceCalculator) calculateCarbonMetrics(ctx context.Context, proj
 	yearlyTotal := co2Rate                    // Annual rate
 	dailyRate := co2Rate / 365                // Daily rate
 
-	return &monitoring.CarbonMetrics{
+	return &CarbonMetrics{
 		DailyRateKgCO2:  dailyRate * 1000, // Convert tonnes to kg
 		MonthlyTotalKg:  monthlyTotal * 1000,
 		YearlyTotalKg:   yearlyTotal * 1000,
@@ -120,7 +224,7 @@ func (p *PerformanceCalculator) calculateCarbonMetrics(ctx context.Context, proj
 }
 
 // calculateVegetationMetrics calculates vegetation health metrics
-func (p *PerformanceCalculator) calculateVegetationMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*monitoring.VegetationMetrics, error) {
+func (p *PerformanceCalculator) calculateVegetationMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*VegetationMetrics, error) {
 	// Get average NDVI
 	avgNDVI, err := p.repo.CalculateAverageNDVI(ctx, projectID, start, end)
 	if err != nil {
@@ -152,7 +256,7 @@ func (p *PerformanceCalculator) calculateVegetationMetrics(ctx context.Context, 
 	// Estimate canopy coverage from NDVI
 	canopyCoverage := estimateCanopyCoverage(avgNDVI)
 
-	return &monitoring.VegetationMetrics{
+	return &VegetationMetrics{
 		AverageNDVI:     avgNDVI,
 		BiomassKgPerHa:  avgBiomass,
 		CanopyCoverage:  canopyCoverage,
@@ -161,7 +265,7 @@ func (p *PerformanceCalculator) calculateVegetationMetrics(ctx context.Context, 
 }
 
 // calculateSoilMetrics calculates soil health metrics
-func (p *PerformanceCalculator) calculateSoilMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*monitoring.SoilMetrics, error) {
+func (p *PerformanceCalculator) calculateSoilMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*SoilMetrics, error) {
 	// Get sensor readings for soil metrics
 	moistureReadings, err := p.repo.GetSensorReadingsByType(ctx, projectID, "soil_moisture", start, end)
 	if err != nil {
@@ -170,12 +274,12 @@ func (p *PerformanceCalculator) calculateSoilMetrics(ctx context.Context, projec
 
 	phReadings, err := p.repo.GetSensorReadingsByType(ctx, projectID, "ph", start, end)
 	if err != nil {
-		phReadings = []monitoring.SensorReading{} // Optional metric
+		phReadings = []SensorReading{} // Optional metric
 	}
 
 	tempReadings, err := p.repo.GetSensorReadingsByType(ctx, projectID, "temperature", start, end)
 	if err != nil {
-		tempReadings = []monitoring.SensorReading{}
+		tempReadings = []SensorReading{}
 	}
 
 	// Calculate averages
@@ -183,7 +287,7 @@ func (p *PerformanceCalculator) calculateSoilMetrics(ctx context.Context, projec
 	avgPH := calculateAverageValue(phReadings)
 	avgTemp := calculateAverageValue(tempReadings)
 
-	return &monitoring.SoilMetrics{
+	return &SoilMetrics{
 		AverageMoisture:    avgMoisture,
 		AveragePH:          avgPH,
 		OrganicMatter:      0, // Would require specific sensor data
@@ -192,11 +296,11 @@ func (p *PerformanceCalculator) calculateSoilMetrics(ctx context.Context, projec
 }
 
 // calculateWaterMetrics calculates water retention metrics
-func (p *PerformanceCalculator) calculateWaterMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*monitoring.WaterMetrics, error) {
+func (p *PerformanceCalculator) calculateWaterMetrics(ctx context.Context, projectID uuid.UUID, start, end time.Time) (*WaterMetrics, error) {
 	// Get rainfall data
 	rainfallReadings, err := p.repo.GetSensorReadingsByType(ctx, projectID, "rainfall", start, end)
 	if err != nil {
-		rainfallReadings = []monitoring.SensorReading{}
+		rainfallReadings = []SensorReading{}
 	}
 
 	totalRainfall := 0.0
@@ -207,12 +311,12 @@ func (p *PerformanceCalculator) calculateWaterMetrics(ctx context.Context, proje
 	// Get soil moisture for water content
 	moistureReadings, err := p.repo.GetSensorReadingsByType(ctx, projectID, "soil_moisture", start, end)
 	if err != nil {
-		moistureReadings = []monitoring.SensorReading{}
+		moistureReadings = []SensorReading{}
 	}
 
 	avgSoilWater := calculateAverageValue(moistureReadings)
 
-	return &monitoring.WaterMetrics{
+	return &WaterMetrics{
 		RainfallMm:       totalRainfall,
 		NDWI:             0, // Would need to be calculated from satellite data
 		SoilWaterContent: avgSoilWater,
@@ -220,8 +324,8 @@ func (p *PerformanceCalculator) calculateWaterMetrics(ctx context.Context, proje
 }
 
 // CalculateMetricForProject calculates a specific metric for a project
-func (p *PerformanceCalculator) CalculateMetricForProject(ctx context.Context, projectID uuid.UUID, metricName string, period time.Time) (*monitoring.ProjectMetric, error) {
-	metric := &monitoring.ProjectMetric{
+func (p *PerformanceCalculator) CalculateMetricForProject(ctx context.Context, projectID uuid.UUID, metricName string, period time.Time) (*ProjectMetric, error) {
+	metric := &ProjectMetric{
 		Time:              period,
 		ProjectID:         projectID,
 		MetricName:        metricName,
@@ -298,7 +402,7 @@ func (p *PerformanceCalculator) calculateAverageSoilMoisture(ctx context.Context
 	return calculateAverageValue(readings), nil
 }
 
-func calculateAverageValue(readings []monitoring.SensorReading) float64 {
+func calculateAverageValue(readings []SensorReading) float64 {
 	if len(readings) == 0 {
 		return 0
 	}

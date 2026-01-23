@@ -1,6 +1,7 @@
 package payments
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
 
 // PaymentProcessorRegistry manages payment processors
@@ -387,7 +387,7 @@ func (mp *M_PesaProcessor) ProcessPayment(ctx context.Context, req *PaymentReque
 		"TransactionType":   "CustomerPayBillOnline",
 		"Amount":            fmt.Sprintf("%.0f", req.Amount),
 		"PartyA":            req.Recipient.Phone,
-		""PartyB":           mp.config.Shortcode,
+		"PartyB":            mp.config.Shortcode,
 		"PhoneNumber":       req.Recipient.Phone,
 		"CallBackURL":       "https://api.carbon-scribe.com/webhooks/m-pesa",
 		"AccountReference":  req.ReferenceID,
@@ -647,6 +647,3 @@ func makeHTTPRequest(client *http.Client, method, url string, headers map[string
 	
 	return io.ReadAll(resp.Body)
 }
-
-// Import bytes package for makeHTTPRequest
-import "bytes"
