@@ -20,6 +20,10 @@ import (
 	"carbon-scribe/project-portal/project-portal/backend/internal/financing/tokenization"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/sales"
 	"carbon-scribe/project-portal/project-portal/backend/internal/financing/payments"
+	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/pdf"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/security"
 )
 
 func main() {
@@ -156,8 +160,22 @@ func main() {
 		paymentRegistry,
 	)
 
+	// Initialize Document Management
+	docRepo := documents.NewRepository(db)
+	s3Client := storage.NewS3Client()
+	ipfsClient := storage.NewIPFSClient()
+	storageProvider := documents.NewStorageProvider(s3Client, ipfsClient)
+	pdfGenerator := pdf.NewGenerator()
+	pdfService := documents.NewPDFService(pdfGenerator)
+	signatureValidator := security.NewValidator()
+	signatureService := documents.NewSignatureService(signatureValidator)
+	workflowService := documents.NewWorkflowService(docRepo)
+
+	docService := documents.NewService(docRepo, storageProvider, pdfService, signatureService, workflowService)
+	docHandler := documents.NewHandler(docService)
+
 	// Setup Gin router
-	router := setupRouter(cfg, financingHandler)
+	router := setupRouter(cfg, financingHandler, docHandler)
 
 	// Start HTTP server
 	server := &http.Server{
@@ -193,7 +211,7 @@ func main() {
 }
 
 // setupRouter sets up the Gin router with middleware and routes
-func setupRouter(cfg *config.Config, financingHandler *financing.Handler) *gin.Engine {
+func setupRouter(cfg *config.Config, financingHandler *financing.Handler, docHandler *documents.Handler) *gin.Engine {
 	// Set Gin mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -215,6 +233,9 @@ func setupRouter(cfg *config.Config, financingHandler *financing.Handler) *gin.E
 	{
 		// Register financing routes
 		financingHandler.RegisterRoutes(v1)
+
+		// Register document routes
+		docHandler.RegisterRoutes(v1)
 
 		// TODO: Add other module routes (projects, users, etc.)
 	}

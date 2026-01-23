@@ -17,6 +17,7 @@ type Config struct {
 	Security   SecurityConfig   `json:"security"`
 	Logging    LoggingConfig    `json:"logging"`
 	Monitoring MonitoringConfig `json:"monitoring"`
+	Documents  DocumentsConfig  `json:"documents"`
 }
 
 // ServerConfig represents server configuration
@@ -311,6 +312,34 @@ type AlertRuleConfig struct {
 	Labels    map[string]string      `json:"labels"`
 	Enabled   bool                   `json:"enabled"`
 }
+
+// DocumentsConfig represents document management configuration
+type DocumentsConfig struct {
+	S3   S3Config   `json:"s3"`
+	IPFS IPFSConfig `json:"ipfs"`
+	PDF  PDFConfig  `json:"pdf"`
+}
+
+// S3Config represents AWS S3 configuration
+type S3Config struct {
+	Bucket    string `json:"bucket"`
+	Region    string `json:"region"`
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
+}
+
+// IPFSConfig represents IPFS configuration
+type IPFSConfig struct {
+	Endpoint string `json:"endpoint"`
+	APIKey   string `json:"api_key"`
+	Secret   string `json:"secret"`
+}
+
+// PDFConfig represents PDF generation configuration
+type PDFConfig struct {
+	TemplatePath string `json:"template_path"`
+}
+
 
 // LoadConfig loads configuration from file and environment variables
 func LoadConfig(configPath string) (*Config, error) {
