@@ -8,6 +8,12 @@ type AuthService struct {
 	users map[string]string // map[email]password
 }
 
+type Service struct{}
+
+func NewService() *Service {
+	return &Service{}
+}
+
 func NewAuthService() *AuthService {
 	return &AuthService{users: make(map[string]string)}
 }
