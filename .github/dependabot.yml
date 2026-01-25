@@ -1,58 +1,22 @@
+# .github/dependabot.yml
 version: 2
 updates:
-  # Rust dependencies
-  - package-ecosystem: "cargo"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      rust-dependencies:
-        patterns:
-          - "*"
-  
-  # Node.js dependencies
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    groups:
-      nestjs-dependencies:
-        patterns:
-          - "@nestjs/*"
-      frontend-dependencies:
-        patterns:
-          - "@types/*"
-          - "react*"
-          - "next*"
-  
-  # Python dependencies
-  - package-ecosystem: "pip"
-    directories:
-      - "/verification-layer/satellite-oracle-network"
-      - "/verification-layer/ground-truth-validation"
-      - "/global-registry/compliance-adapter"
-    schedule:
-      interval: "weekly"
-  
-  # Go dependencies
   - package-ecosystem: "gomod"
-    directories:
-      - "/project-portal/project-portal-backend"
-      - "/verification-layer/iot-device-network"
-      - "/financialization/project-financing"
-      - "/global-registry/api-gateway"
-      - "/transparency-layer/data-availability/archiver-node"
+    directory: "/project-portal/project-portal-backend"
     schedule:
       interval: "weekly"
   
-  # Docker dependencies
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: "cargo"
+    directory: "/stellar-core/carbon-asset-factory"
     schedule:
       interval: "weekly"
   
-  # GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: "cargo"
+    directory: "/stellar-core/compliance-engine"
+    schedule:
+      interval: "weekly"
+  
+  - package-ecosystem: "cargo"
+    directory: "/stellar-core/verifiable-registry"
     schedule:
       interval: "weekly"

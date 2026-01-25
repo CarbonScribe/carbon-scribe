@@ -80,7 +80,7 @@ func NewManager(executor ReportExecutor, repository ScheduleRepository, config M
 		executor:      executor,
 		repository:    repository,
 		jobs:          make(map[uuid.UUID]cron.EntryID),
-		workerPool:    make(chan struct{}, config.maxConcurrent),
+		workerPool:    make(chan struct{}, config.MaxConcurrentJobs),
 		maxConcurrent: config.MaxConcurrentJobs,
 	}
 }
