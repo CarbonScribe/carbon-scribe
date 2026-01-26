@@ -6,60 +6,53 @@ import (
 	"math"
 )
 
-// ValidateGeoJSON validates that the input is valid JSON and contains a "type" field
+// ValidateGeoJSON validates the input as JSON and checks for a "type" field
 func ValidateGeoJSON(input string) (map[string]interface{}, error) {
-	var parsed map[string]interface{}
-	err := json.Unmarshal([]byte(input), &parsed)
+	var data map[string]interface{}
+	err := json.Unmarshal([]byte(input), &data)
 	if err != nil {
 		return nil, err
 	}
-	if _, ok := parsed["type"]; !ok {
-		return nil, errors.New("invalid GeoJSON: missing type field")
+	if _, ok := data["type"]; !ok {
+		return nil, errors.New("missing 'type' field in GeoJSON")
 	}
-	return parsed, nil
+	return data, nil
 }
 
-// CalculateArea calculates the area for a geometry map, returns 0 if unsupported or missing
+// CalculateArea calculates the area of a GeoJSON geometry
+// Currently supports Polygon type, returns 0 for others
 func CalculateArea(geom map[string]interface{}) float64 {
 	geomType, ok := geom["type"].(string)
-	if !ok {
-		return 0
-	}
-	if geomType != "Polygon" {
+	if !ok || geomType != "Polygon" {
 		return 0
 	}
 	coordinates, ok := geom["coordinates"].([]interface{})
 	if !ok || len(coordinates) == 0 {
 		return 0
 	}
+	// For Polygon, coordinates[0] is the outer ring
 	ring, ok := coordinates[0].([]interface{})
-	if !ok {
+	if !ok || len(ring) < 4 { // Need at least 4 points for a closed polygon
 		return 0
 	}
-	return calculatePolygonArea(ring)
-}
-
-// calculatePolygonArea calculates area using shoelace formula for a ring of coordinates
-func calculatePolygonArea(ring []interface{}) float64 {
-	if len(ring) < 4 { // need at least 4 points for closed polygon
-		return 0
-	}
+	// Shoelace formula
 	var area float64
-	n := len(ring) - 1 // last point same as first
+	n := len(ring)
 	for i := 0; i < n; i++ {
-		p1, ok1 := ring[i].([]interface{})
-		p2, ok2 := ring[(i+1)%n].([]interface{})
-		if !ok1 || !ok2 || len(p1) < 2 || len(p2) < 2 {
+		j := (i + 1) % n
+		pointI, okI := ring[i].([]interface{})
+		pointJ, okJ := ring[j].([]interface{})
+		if !okI || !okJ || len(pointI) < 2 || len(pointJ) < 2 {
 			return 0
 		}
-		x1, ok1 := p1[0].(float64)
-		y1, ok1 := p1[1].(float64)
-		x2, ok2 := p2[0].(float64)
-		y2, ok2 := p2[1].(float64)
-		if !ok1 || !ok2 {
+		xI, okXI := pointI[0].(float64)
+		yI, okYI := pointI[1].(float64)
+		xJ, okXJ := pointJ[0].(float64)
+		yJ, okYJ := pointJ[1].(float64)
+		if !okXI || !okYI || !okXJ || !okYJ {
 			return 0
 		}
-		area += x1*y2 - x2*y1
+		area += xI*yJ - xJ*yI
 	}
 	return math.Abs(area) / 2
 }
