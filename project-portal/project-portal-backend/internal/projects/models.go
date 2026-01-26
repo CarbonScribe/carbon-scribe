@@ -1,7 +1,6 @@
 package projects
 
 import (
-	"context"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +13,7 @@ type Project struct {
 	ID          uuid.UUID      `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Name        string         `gorm:"not null" json:"name"`
 	Description string         `json:"description"`
-	Status      string         `gorm:"not null;default:'DRAFT'" json:"status"`
+	Status      string         `gorm:"not null;default:'draft'" json:"status"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`

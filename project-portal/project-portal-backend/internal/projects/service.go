@@ -6,26 +6,27 @@ import (
 	"fmt"
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/pkg/geospatial"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/workflows"
+
 	"github.com/google/uuid"
-	"carbon-scribe/project-portal-backend/pkg/geospatial"
-	"carbon-scribe/project-portal-backend/pkg/workflows"
 )
 
 // Requests
 
 type CreateProjectRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
 	OwnerID     uuid.UUID `json:"owner_id"`
-	Geometry    string  `json:"geometry"` // GeoJSON string
-	Area        float64 `json:"area"`
+	Geometry    string    `json:"geometry"` // GeoJSON string
+	Area        float64   `json:"area"`
 }
 
 type UpdateProjectRequest struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Status      *string `json:"status"`
-	Geometry    *string `json:"geometry"`
+	Name        *string  `json:"name"`
+	Description *string  `json:"description"`
+	Status      *string  `json:"status"`
+	Geometry    *string  `json:"geometry"`
 	Area        *float64 `json:"area"`
 }
 
@@ -34,7 +35,7 @@ type ProjectService interface {
 	CreateProject(ctx context.Context, req CreateProjectRequest) (*Project, error)
 	GetProject(ctx context.Context, id uuid.UUID) (*Project, error)
 	UpdateProject(ctx context.Context, id uuid.UUID, req UpdateProjectRequest, userID uuid.UUID) (*Project, error)
-	DeleteProject(ctx context.Context, id uuid.UUID, userID uuid.UUID) error
+	DeleteProject(ctx context.Context, id uuid.UUID, userID uuid.UUID) (*Project, error)
 	ListProjects(ctx context.Context, filter ProjectFilter) ([]*Project, error)
 }
 
@@ -71,7 +72,7 @@ func (s *projectService) CreateProject(ctx context.Context, req CreateProjectReq
 	project := &Project{
 		Name:        req.Name,
 		Description: req.Description,
-		Status:      "DRAFT",
+		Status:      "draft",
 		OwnerID:     req.OwnerID,
 		Geometry:    nil, // TODO: parse GeoJSON
 		Area:        req.Area,
@@ -110,11 +111,11 @@ func (s *projectService) CreateProject(ctx context.Context, req CreateProjectReq
 
 	// Add activity
 	activity := &ProjectActivity{
-		ProjectID:   project.ID,
+		ProjectID:    project.ID,
 		ActivityType: "CREATED",
-		Description: fmt.Sprintf("Project %s created", project.Name),
-		CreatedAt:   time.Now(),
-		UserID:      req.OwnerID,
+		Description:  fmt.Sprintf("Project %s created", project.Name),
+		CreatedAt:    time.Now(),
+		UserID:       req.OwnerID,
 	}
 	s.activityRepo.Create(ctx, activity)
 
@@ -162,11 +163,11 @@ func (s *projectService) UpdateProject(ctx context.Context, id uuid.UUID, req Up
 
 		// Add activity
 		activity := &ProjectActivity{
-			ProjectID:   id,
+			ProjectID:    id,
 			ActivityType: "STATUS_CHANGED",
-			Description: fmt.Sprintf("Status changed from %s to %s", oldStatus, *req.Status),
-			CreatedAt:   time.Now(),
-			UserID:      userID,
+			Description:  fmt.Sprintf("Status changed from %s to %s", oldStatus, *req.Status),
+			CreatedAt:    time.Now(),
+			UserID:       userID,
 		}
 		s.activityRepo.Create(ctx, activity)
 	}
@@ -213,11 +214,11 @@ func (s *projectService) DeleteProject(ctx context.Context, id uuid.UUID, userID
 
 	// Add activity
 	activity := &ProjectActivity{
-		ProjectID:   id,
+		ProjectID:    id,
 		ActivityType: "DELETED",
-		Description: fmt.Sprintf("Project %s deleted", project.Name),
-		CreatedAt:   time.Now(),
-		UserID:      userID,
+		Description:  fmt.Sprintf("Project %s deleted", project.Name),
+		CreatedAt:    time.Now(),
+		UserID:       userID,
 	}
 	s.activityRepo.Create(ctx, activity)
 
