@@ -54,7 +54,7 @@ func (s *Service) AddComment(ctx context.Context, comment *Comment) error {
 	if err := s.repo.CreateComment(ctx, comment); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: comment.ProjectID,
@@ -72,7 +72,7 @@ func (s *Service) CreateTask(ctx context.Context, task *Task) error {
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: task.ProjectID,
@@ -91,7 +91,7 @@ func (s *Service) AddResource(ctx context.Context, resource *SharedResource) err
 	if err := s.repo.CreateResource(ctx, resource); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: resource.ProjectID,

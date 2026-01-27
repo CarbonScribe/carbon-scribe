@@ -59,7 +59,7 @@ func (h *Handler) CreateComment(c *gin.Context) {
 		return
 	}
 	// Assume UserID is set from auth middleware context, but for now take from body
-	
+
 	if err := h.service.AddComment(c.Request.Context(), &comment); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -74,7 +74,7 @@ func (h *Handler) CreateTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if err := h.service.CreateTask(c.Request.Context(), &task); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -89,7 +89,7 @@ func (h *Handler) CreateResource(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	if err := h.service.AddResource(c.Request.Context(), &resource); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -30,15 +30,15 @@ func (s *Service) TestConnection(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Simulate connection test based on Provider
 	// e.g., if conn.Provider == "stripe" { ... }
-	
+
 	// Update LastTested
 	now := time.Now()
 	conn.LastTested = &now
 	_ = s.repo.UpdateConnection(ctx, conn)
-	
+
 	// Record Health
 	_ = s.repo.RecordHealth(ctx, &IntegrationHealth{
 		ConnectionID: conn.ID,
@@ -80,21 +80,21 @@ func (s *Service) TriggerWebhook(ctx context.Context, eventType string, payload 
 	if err != nil {
 		return err
 	}
-	
+
 	// 2. In a real system, we would enqueue these for async delivery
 	for _, sub := range subs {
 		// Simulate delivery
 		delivery := &WebhookDelivery{
-			WebhookID:      sub.ID, // Using Sub ID as placeholder
-			EventID:        uuid.New().String(),
-			EventType:      eventType,
-			Payload:        payload,
-			Status:         "pending",
-			CreatedAt:      time.Now(),
+			WebhookID: sub.ID, // Using Sub ID as placeholder
+			EventID:   uuid.New().String(),
+			EventType: eventType,
+			Payload:   payload,
+			Status:    "pending",
+			CreatedAt: time.Now(),
 		}
 		_ = s.repo.CreateWebhookDelivery(ctx, delivery)
 	}
-	
+
 	return nil
 }
 
