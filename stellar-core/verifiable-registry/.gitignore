@@ -4,3 +4,6 @@ target
 # Local settings
 .soroban
 .stellar
+
+# Test snapshots (generated during testing)
+**/test_snapshots
