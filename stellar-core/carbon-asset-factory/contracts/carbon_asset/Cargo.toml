@@ -11,4 +11,5 @@ crate-type = ["cdylib", "rlib"]
 soroban-sdk = { workspace = true }
 
 [features]
+default = ["testutils"]
 testutils = ["soroban-sdk/testutils"]
