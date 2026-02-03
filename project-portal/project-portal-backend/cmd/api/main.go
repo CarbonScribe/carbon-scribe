@@ -15,6 +15,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
@@ -87,6 +88,10 @@ func main() {
 	reportsService := reports.NewService(reportsRepo, nil) // Exporter can be added later
 	reportsHandler := reports.NewHandler(reportsService)
 
+	projectRepo := project.NewRepository(db)
+	projectService := project.NewService(projectRepo)
+	projectHandler := project.NewHandler(projectService)
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -136,6 +141,9 @@ func main() {
 	// API v1 routes (for reports and future APIs)
 	v1 := router.Group("/api/v1")
 	{
+		// Register projects routes under v1
+		projectHandler.RegisterRoutes(v1)
+
 		// Register reports routes under v1
 		reportsHandler.RegisterRoutes(v1)
 
