@@ -1,0 +1,110 @@
+name: Project Portal Web CI
+
+on:
+  push:
+    paths:
+      - 'project-portal/project-portal-web/**'
+    branches: [main, develop]
+  pull_request:
+    paths:
+      - 'project-portal/project-portal-web/**'
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./project-portal/project-portal-web
+
+    steps:
+      # ----------------------------------
+      # Checkout repository
+      # ----------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------
+      # Detect package manager
+      # ----------------------------------
+      - name: Detect package manager
+        id: detect
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+          elif [ -f package-lock.json ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+          else
+            echo "No lockfile found. Exiting."
+            exit 1
+          fi
+
+      # ----------------------------------
+      # Setup Node
+      # ----------------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ${{ steps.detect.outputs.manager }}
+          cache-dependency-path: |
+            project-portal/project-portal-web/pnpm-lock.yaml
+            project-portal/project-portal-web/package-lock.json
+
+      # ----------------------------------
+      # Setup pnpm if needed
+      # ----------------------------------
+      - name: Setup pnpm
+        if: steps.detect.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      # ----------------------------------
+      # Install dependencies
+      # ----------------------------------
+      - name: Install dependencies (pnpm)
+        if: steps.detect.outputs.manager == 'pnpm'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (npm)
+        if: steps.detect.outputs.manager == 'npm'
+        run: npm ci
+
+      # ----------------------------------
+      # TypeScript type check
+      # ----------------------------------
+      - name: Type check
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm exec tsc --noEmit
+          else
+            npx tsc --noEmit
+          fi
+
+      # ----------------------------------
+      # Run tests if test script exists
+      # ----------------------------------
+      - name: Run tests (if available)
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm run test --if-present
+          else
+            npm run test --if-present
+          fi
+
+      # ----------------------------------
+      # Build (ensures compilable code only)
+      # ----------------------------------
+      - name: Build Next.js
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm run build
+          else
+            npm run build
+          fi

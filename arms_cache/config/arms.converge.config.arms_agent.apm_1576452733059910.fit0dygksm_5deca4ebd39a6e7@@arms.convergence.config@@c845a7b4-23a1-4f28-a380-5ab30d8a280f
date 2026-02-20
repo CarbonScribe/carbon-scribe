@@ -1,1 +1,0 @@
-{"id":3255,"version":0,"configs":{"raw_sql":{"pri":5,"over":true,"type":"unknown","enable":true,"converge":true,"before":{},"after":{},"lmtCfg":{"wnd":3600,"th":50,"globalLimit":200,"ignWhenFail":false,"limit":100,"type":"s_lmt","enable":true,"stopWhExclude":true},"monRAW":false,"monRS":false}},"appId":"fit0dygksm@5deca4ebd39a6e7","enable":true,"extraLabels":{}}

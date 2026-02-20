@@ -1,0 +1,125 @@
+name: Corporate Platform Backend CI
+
+on:
+  push:
+    paths:
+      - 'corporate-platform/corporate-platform-backend/**'
+    branches: [main, develop]
+  pull_request:
+    paths:
+      - 'corporate-platform/corporate-platform-backend/**'
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: corporate-platform-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./corporate-platform/corporate-platform-backend
+
+    steps:
+      # ----------------------------------
+      # Checkout
+      # ----------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------
+      # Detect package manager
+      # ----------------------------------
+      - name: Detect package manager
+        id: detect
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "manager=pnpm" >> $GITHUB_OUTPUT
+          elif [ -f package-lock.json ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+          else
+            echo "No lockfile found. CI requires a lockfile."
+            exit 1
+          fi
+
+      # ----------------------------------
+      # Setup Node
+      # ----------------------------------
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ${{ steps.detect.outputs.manager }}
+          cache-dependency-path: |
+            corporate-platform/corporate-platform-backend/pnpm-lock.yaml
+            corporate-platform/corporate-platform-backend/package-lock.json
+
+      # ----------------------------------
+      # Setup pnpm if needed
+      # ----------------------------------
+      - name: Setup pnpm
+        if: steps.detect.outputs.manager == 'pnpm'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      # ----------------------------------
+      # Install Dependencies
+      # ----------------------------------
+      - name: Install dependencies (pnpm)
+        if: steps.detect.outputs.manager == 'pnpm'
+        run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies (npm)
+        if: steps.detect.outputs.manager == 'npm'
+        run: npm ci
+
+      # ----------------------------------
+      # TypeScript Strict Type Check
+      # ----------------------------------
+      - name: Type check
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm exec tsc --noEmit
+          else
+            npx tsc --noEmit
+          fi
+
+      # ----------------------------------
+      # Lint (fail on error)
+      # ----------------------------------
+      - name: Lint
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm run lint
+          else
+            npm run lint
+          fi
+
+      # ----------------------------------
+      # Run Unit Tests (if available)
+      # ----------------------------------
+      - name: Run tests (if available)
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm run test --if-present
+          else
+            npm run test --if-present
+          fi
+
+      # ----------------------------------
+      # Build NestJS (Hard Gate)
+      # ----------------------------------
+      - name: Build
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm run build
+          else
+            npm run build
+          fi

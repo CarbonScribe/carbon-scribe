@@ -1,4 +1,8 @@
-.PHONY: build run test clean lint fmt deps docker-build docker-run lambda-build
+.PHONY: build run test clean lint fmt deps docker-build docker-run lambda-build db-up db-down db-logs db-shell test-integration
+
+# Load environment variables from .env file
+-include .env
+export
 
 # Go parameters
 GOCMD=go
@@ -11,7 +15,7 @@ GOFMT=gofmt
 GOLINT=golangci-lint
 
 # Binary names
-BINARY_NAME=portal-api
+BINARY_NAME=api
 LAMBDA_BINARY=bootstrap
 
 # Build directories
@@ -19,7 +23,7 @@ BUILD_DIR=./build
 LAMBDA_DIR=./build/lambda
 
 # Main package
-MAIN_PACKAGE=./cmd/portal-api
+MAIN_PACKAGE=./cmd/api
 
 # Docker
 DOCKER_IMAGE=carbonscribe-portal-api
@@ -27,19 +31,28 @@ DOCKER_TAG=latest
 
 all: deps lint test build
 
-# Dependencies
-deps:
-	$(GOMOD) download
-	$(GOMOD) tidy
 
 # Build
 build:
-	mkdir -p $(BUILD_DIR)
-	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PACKAGE)
+	go build -tags "!future" ./...
 
 build-linux:
 	mkdir -p $(BUILD_DIR)
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME)-linux $(MAIN_PACKAGE)
+
+check:
+	@echo "🔍 Checking Go project..."
+	go mod tidy
+	go mod download
+	go build -tags "!future" ./...
+	go vet ./...
+	@echo "✅ Project builds successfully"
+
+deps:
+	@echo "📦 Installing Go dependencies..."
+	$(GOMOD) download
+	$(GOMOD) tidy
+	@echo "✅ Dependencies installed successfully"
 
 # Lambda builds
 lambda-build:
@@ -50,12 +63,24 @@ lambda-zip: lambda-build
 	cd $(LAMBDA_DIR) && zip function.zip $(LAMBDA_BINARY)
 
 # Run
-run:
-	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PACKAGE)
-	$(BUILD_DIR)/$(BINARY_NAME)
+run: 
+	go run cmd/api/main.go
 
 dev:
 	air -c .air.toml
+
+# Database (Postgres)
+db-up:
+	docker-compose up -d db
+
+db-down:
+	docker-compose down
+
+db-logs:
+	docker-compose logs -f db
+
+db-shell:
+	docker-compose exec db psql -U user -d carbonscribe
 
 # Test
 test:
@@ -67,6 +92,9 @@ test-coverage:
 
 test-notifications:
 	$(GOTEST) -v ./internal/notifications/...
+
+test-integration: db-up
+	$(GOTEST) -v -tags integration ./internal/health/...
 
 # Lint and format
 lint:
@@ -157,9 +185,14 @@ help:
 	@echo "  test              - Run tests"
 	@echo "  test-coverage     - Run tests with coverage"
 	@echo "  test-notifications- Run notification module tests"
+	@echo "  test-integration  - Run health integration tests"
 	@echo "  lint              - Run linter"
 	@echo "  fmt               - Format code"
 	@echo "  clean             - Clean build artifacts"
+	@echo "  db-up             - Start Postgres database"
+	@echo "  db-down           - Stop Postgres database"
+	@echo "  db-logs           - View database logs"
+	@echo "  db-shell          - Login to database shell"
 	@echo "  docker-build      - Build Docker image"
 	@echo "  docker-run        - Run Docker container"
 	@echo "  migrate-up        - Run database migrations"

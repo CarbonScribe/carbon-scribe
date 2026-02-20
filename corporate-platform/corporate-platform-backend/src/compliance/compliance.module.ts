@@ -4,6 +4,6 @@ import { ComplianceController } from './compliance.controller';
 
 @Module({
   providers: [ComplianceService],
-  controllers: [ComplianceController]
+  controllers: [ComplianceController],
 })
 export class ComplianceModule {}

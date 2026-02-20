@@ -1,14 +1,18 @@
 [package]
-name = "time_lock"
+name = "time-lock"
 version = "0.1.0"
 edition = "2021"
-publish = false
+description = "Time lock contract for vintage locking mechanisms"
+license = "Apache-2.0"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
