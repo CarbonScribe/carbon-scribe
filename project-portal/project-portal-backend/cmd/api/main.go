@@ -12,6 +12,7 @@ import (
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/auth"
 	"carbon-scribe/project-portal/project-portal-backend/internal/collaboration"
+	"carbon-scribe/project-portal/project-portal-backend/internal/compliance"
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
@@ -92,6 +93,10 @@ func main() {
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService)
 
+	complianceRepo := compliance.NewRepository(db)
+	complianceService := compliance.NewService(complianceRepo)
+	complianceHandler := compliance.NewHandler(complianceService)
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -109,7 +114,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "integration", "reports", "search"},
+			"modules":   []string{"auth", "collaboration", "compliance", "integration", "reports", "search"},
 		})
 	})
 
@@ -122,6 +127,7 @@ func main() {
 				"health":        "/health",
 				"auth":          "/api/auth/*",
 				"collaboration": "/api/collaboration/*",
+				"compliance":    "/api/v1/compliance/*",
 				"integration":   "/api/integration/*",
 				"reports":       "/api/v1/reports/*",
 				"search":        "/api/v1/search/*",
@@ -152,6 +158,9 @@ func main() {
 
 		// Register search routes under v1
 		searchHandler.RegisterRoutes(v1)
+
+		// Register compliance routes under v1
+		complianceHandler.RegisterRoutes(v1)
 
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
@@ -184,6 +193,7 @@ func main() {
 		fmt.Println("   - Integrations: /api/integration/*")
 		fmt.Println("   - Reports: /api/v1/reports/*")
 		fmt.Println("   - Search: /api/v1/search/*")
+		fmt.Println("   - Compliance: /api/v1/compliance/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
@@ -273,6 +283,15 @@ func runAllMigrations(db *gorm.DB) error {
 		&reports.ReportExecution{},
 		&reports.BenchmarkDataset{},
 		&reports.DashboardWidget{},
+
+		// Compliance models
+		&compliance.RetentionPolicy{},
+		&compliance.PrivacyRequest{},
+		&compliance.PrivacyPreference{},
+		&compliance.ConsentRecord{},
+		&compliance.AuditLog{},
+		&compliance.RetentionSchedule{},
+		&compliance.LegalHold{},
 	)
 
 	if err != nil {

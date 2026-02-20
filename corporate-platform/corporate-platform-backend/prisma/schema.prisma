@@ -1,0 +1,84 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Company {
+  id          String       @id @default(cuid())
+  name        String
+  retirements Retirement[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Credit {
+  id          String       @id @default(cuid())
+  projectName String
+  totalAmount Int
+  available   Int
+  retirements Retirement[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Retirement {
+  id                String    @id @default(cuid())
+  companyId         String
+  company           Company   @relation(fields: [companyId], references: [id])
+  userId            String    // User who performed retirement
+  
+  creditId          String
+  credit            Credit    @relation(fields: [creditId], references: [id])
+  
+  // Retirement details
+  amount            Int
+  purpose           String    // scope1, scope2, scope3, corporate, events, product
+  purposeDetails    String?   // Additional context
+  
+  // Pricing
+  priceAtRetirement Float
+  
+  // Certificate details
+  certificateId     String?    @unique
+  certificateUrl    String?
+  
+  // Blockchain
+  transactionHash   String?
+  transactionUrl    String?
+  verifiedAt        DateTime?
+  
+  // Metadata
+  retiredAt         DateTime  @default(now())
+  
+  // Relations
+  certificate       RetirementCertificate?
+
+  @@index([companyId])
+  @@index([creditId])
+  @@index([purpose])
+  @@index([retiredAt])
+}
+
+model RetirementCertificate {
+  id                String    @id @default(cuid())
+  retirementId      String    @unique
+  retirement        Retirement @relation(fields: [retirementId], references: [id])
+  
+  certificateNumber String    @unique // e.g., "RET-2024-001234"
+  pdfUrl            String
+  ipfsHash          String?   // IPFS storage for permanence
+  
+  // Certificate data (snapshot)
+  companyName       String
+  retirementDate    DateTime
+  creditProject     String
+  creditAmount      Int
+  creditPurpose     String
+  transactionHash   String?
+  
+  createdAt         DateTime  @default(now())
+}
