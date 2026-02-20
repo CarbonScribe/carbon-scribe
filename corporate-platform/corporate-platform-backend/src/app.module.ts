@@ -7,9 +7,10 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
 import { StellarModule } from './stellar/stellar.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { CacheModule } from './cache/cache.module';
 
 @Module({
-  imports: [RetirementModule, ComplianceModule, MarketplaceModule, StellarModule, WebhooksModule, AnalyticsModule],
+  imports: [RetirementModule, ComplianceModule, MarketplaceModule, StellarModule, WebhooksModule, AnalyticsModule, CacheModule],
   controllers: [AppController],
   providers: [AppService],
 })
