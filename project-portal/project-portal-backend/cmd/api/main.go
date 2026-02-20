@@ -13,12 +13,14 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/auth"
 	"carbon-scribe/project-portal/project-portal-backend/internal/collaboration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
+	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -92,6 +94,40 @@ func main() {
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService)
 
+	// Initialize document management service
+	var docsHandler *documents.Handler
+	s3Client, s3Err := storage.NewS3Client(storage.S3Config{
+		Region:          cfg.AWS.Region,
+		AccessKeyID:     cfg.AWS.AccessKeyID,
+		SecretAccessKey: cfg.AWS.SecretAccessKey,
+		BucketName:      cfg.Storage.S3BucketName,
+		Endpoint:        cfg.AWS.Endpoint,
+	})
+	if s3Err != nil {
+		log.Printf("⚠️  Documents: S3 client init failed (%v) — document upload will be unavailable", s3Err)
+	} else {
+		log.Println("✅ S3 client initialized")
+		docStorageSvc := documents.NewStorageService(s3Client)
+		docRepo := documents.NewRepository(db)
+
+		// Optional IPFS pinning.
+		var ipfsUploader *documents.IPFSUploader
+		if cfg.Storage.IPFSEnabled {
+			ipfsClient := storage.NewIPFSClient(cfg.Storage.IPFSNodeURL)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if ipfsClient.IsAvailable(ctx) {
+				log.Printf("✅ IPFS node reachable at %s", cfg.Storage.IPFSNodeURL)
+				ipfsUploader = documents.NewIPFSUploader(ipfsClient)
+			} else {
+				log.Printf("⚠️  IPFS node at %s not reachable — pinning disabled", cfg.Storage.IPFSNodeURL)
+			}
+			cancel()
+		}
+
+		docSvc := documents.NewServiceWithIPFS(docRepo, docStorageSvc, ipfsUploader)
+		docsHandler = documents.NewHandler(docSvc)
+	}
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -109,7 +145,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "integration", "reports", "search"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search"},
 		})
 	})
 
@@ -122,6 +158,7 @@ func main() {
 				"health":        "/health",
 				"auth":          "/api/auth/*",
 				"collaboration": "/api/collaboration/*",
+				"documents":     "/api/v1/documents/*",
 				"integration":   "/api/integration/*",
 				"reports":       "/api/v1/reports/*",
 				"search":        "/api/v1/search/*",
@@ -153,6 +190,11 @@ func main() {
 		// Register search routes under v1
 		searchHandler.RegisterRoutes(v1)
 
+		// Register document management routes (only if S3 is available)
+		if docsHandler != nil {
+			documents.RegisterRoutes(v1, docsHandler)
+		}
+
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong", "timestamp": time.Now().Unix()})
@@ -181,6 +223,7 @@ func main() {
 		fmt.Println("   - Authentication: /api/auth/*")
 		fmt.Println("   - Collaboration: /api/collaboration/*")
 		fmt.Println("   - System health metrics: /api/v1/health/*")
+		fmt.Println("   - Documents:       /api/v1/documents/*")
 		fmt.Println("   - Integrations: /api/integration/*")
 		fmt.Println("   - Reports: /api/v1/reports/*")
 		fmt.Println("   - Search: /api/v1/search/*")
