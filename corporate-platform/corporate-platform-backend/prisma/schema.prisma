@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Order {
+  id              String             @id @default(cuid())
+  orderNumber     String             @unique
+  companyId       String
+  userId          String
+  status          String             @default("pending") // pending, processing, completed, failed, refunded
+  subtotal        Float
+  serviceFee      Float
+  total           Float
+  paymentMethod   String?
+  transactionHash String?
+  paidAt          DateTime?
+  createdAt       DateTime           @default(now())
+  completedAt     DateTime?
+
+  items           OrderItem[]
+  statusEvents    OrderStatusEvent[]
+
+  @@index([companyId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id                    String @id @default(cuid())
+  orderId               String
+  creditId              String
+  creditName            String
+  projectName           String
+  quantity              Int
+  unitPrice             Float
+  totalPrice            Float
+  vintage               Int?
+  verificationStandard  String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model OrderStatusEvent {
+  id        String   @id @default(cuid())
+  orderId   String
+  status    String
+  message   String?
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  type            String   // purchase, retirement
+  orderId         String?
+  retirementId    String?
+  companyId       String
+  userId          String
+  amount          Float
+  description     String
+  transactionHash String?
+  createdAt       DateTime @default(now())
+
+  @@index([companyId])
+  @@index([type])
+  @@index([createdAt])
+}
