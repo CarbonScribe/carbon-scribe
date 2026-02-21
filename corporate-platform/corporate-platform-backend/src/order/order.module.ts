@@ -9,15 +9,15 @@ import { InvoiceService } from './services/invoice.service';
 import { TransactionService } from './services/transaction.service';
 
 @Module({
-    imports: [DatabaseModule],
-    controllers: [OrderController, TransactionController],
-    providers: [
-        OrderService,
-        HistoryService,
-        TrackingService,
-        InvoiceService,
-        TransactionService,
-    ],
-    exports: [OrderService],
+  imports: [DatabaseModule],
+  controllers: [OrderController, TransactionController],
+  providers: [
+    OrderService,
+    HistoryService,
+    TrackingService,
+    InvoiceService,
+    TransactionService,
+  ],
+  exports: [OrderService],
 })
-export class OrderModule { }
+export class OrderModule {}

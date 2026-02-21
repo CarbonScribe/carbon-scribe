@@ -81,6 +81,17 @@ jobs:
         run: npm ci
 
       # ----------------------------------
+      # Generate Prisma Client
+      # ----------------------------------
+      - name: Generate Prisma Client
+        run: |
+          if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
+            pnpm exec prisma generate
+          else
+            npx prisma generate
+          fi
+
+      # ----------------------------------
       # TypeScript Strict Type Check
       # ----------------------------------
       - name: Type check
