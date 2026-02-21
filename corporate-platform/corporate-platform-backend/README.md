@@ -1,99 +1,195 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# CarbonScribe Corporate Platform Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+![NestJS](https://img.shields.io/badge/NestJS-10.0-red)
+![Prisma](https://img.shields.io/badge/Prisma-7.4-blue)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-green)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
+![License](https://img.shields.io/badge/license-AGPL--3.0-green)
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+The **Corporate Platform Backend** is a NestJS service that powers the enterprise carbon credit retirement system for CarbonScribe. It provides instant retirement capabilities, compliance reporting, marketplace functionality, and blockchain integration for corporate carbon management.
 
-## Description
+This service is **Layer 4** of the CarbonScribe 7-layer architecture, enabling corporations to purchase, retire, and report carbon credits with full transparency and on-chain verification.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## 📋 Table of Contents
+* [Overview](#-overview)
+* [Architecture](#️-architecture)
+* [Tech Stack](#tech-stack)
+* [Prerequisites](#prerequisites)
+* [Installation](#installation)
+* [Configuration](#configuration)
+* [Database Setup](#database-setup)
+* [Running the Service](#running-the-service)
+* [API Documentation](#api-documentation)
+* [Testing](#testing)
+* [Project Structure](#project-structure)
+* [Contributing](#contributing)
+* [Troubleshooting](#troubleshooting)
+* [License](#license)
 
+---
+
+## 🌟 Overview
+The Corporate Platform Backend handles all server-side operations for corporate carbon credit management:
+
+* **Instant Credit Retirement:** One-click retirement with on-chain verification.
+* **Certificate Generation:** PDF certificates with IPFS anchoring.
+* **Compliance Reporting:** Automated ESG reports (GHG Protocol, CSRD, SBTi).
+* **Marketplace Operations:** Dutch auctions, credit discovery, and portfolio management.
+* **Blockchain Integration:** Stellar/Soroban smart contract interactions.
+* **Real-time Analytics:** Impact dashboards and carbon accounting.
+
+---
+
+## 🏗️ Architecture
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Corporate Platform Backend                 │
+├─────────────────────────────────────────────────────────────┤
+│                      Presentation Layer                       │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Controllers│  │   Webhooks  │  │   GraphQL Resolvers │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                       Service Layer                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │  Retirement │  │ Compliance  │  │    Marketplace      │  │
+│  │   Service   │  │   Service   │  │      Service        │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │  Analytics  │  │ Certificate │  │    Validation       │  │
+│  │   Service   │  │   Service   │  │      Service        │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                    Integration Layer                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Stellar   │  │    IPFS     │  │      Redis          │  │
+│  │   Service   │  │   Service   │  │      Cache          │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                      Data Layer                              │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              PostgreSQL + Prisma ORM                   │  │
+│  │         Companies │ Credits │ Retirements │ Certs      │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+---
+
+## 💻 Tech Stack
+
+| Component | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Framework** | NestJS 10.x | Node.js server framework |
+| **Language** | TypeScript 5.x | Type-safe JavaScript |
+| **Database** | PostgreSQL 16+ | Primary data store |
+| **ORM** | Prisma 7.4+ | Type-safe database access |
+| **Cache** | Redis 7+ | Real-time data & sessions |
+| **Blockchain** | Stellar SDK + Soroban | On-chain operations |
+| **Storage** | IPFS (Pinata) | Certificate permanence |
+| **PDF Generation** | PDFKit | Retirement certificates |
+| **Validation** | class-validator + class-transformer | DTO validation |
+| **Testing** | Jest + Supertest | Unit & E2E tests |
+| **Documentation** | Swagger/OpenAPI | API documentation |
+
+---
+
+## 📋 Prerequisites
+
+Before you begin, ensure you have installed:
+* **Node.js**: 20.x or higher
+* **npm**: 10.x or higher (or yarn/pnpm)
+* **PostgreSQL**: 16.x or higher
+* **Redis**: 7.x or higher (for caching)
+* **Git**: for version control
+* **Stellar Testnet Account**: (for development)
+
+---
+
+## 🔧 Installation
+
+### 1. Clone the Repository
 ```bash
-$ npm install
+  # Clone your fork
+  git clone https://github.com/YOUR_USERNAME/carbon-scribe.git
+  cd corporate-platform/corporate-platform-backend
+  npm install
+  npm install -g prisma
+  # or use npx
+  npx prisma --version
+  cp .env.example .env
+
+  # Generate Prisma Client
+  npx prisma generate
+
+  # Run initial migration
+  npx prisma migrate dev --name init
 ```
 
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+## 📁 Project Structure
 ```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+corporate-platform-backend/
+├── src/
+│   ├── retirement/                 # Retirement module
+│   │   ├── dto/                    # Data transfer objects
+│   │   │   ├── retire-credits.dto.ts
+│   │   │   └── retirement-query.dto.ts
+│   │   ├── services/               
+│   │   │   ├── instant-retirement.service.ts
+│   │   │   ├── validation.service.ts
+│   │   │   ├── certificate.service.ts
+│   │   │   └── history.service.ts
+│   │   ├── retirement.controller.ts
+│   │   ├── retirement.service.ts
+│   │   └── retirement.module.ts
+│   ├── compliance/                  # Compliance module
+│   │   ├── compliance.controller.ts
+│   │   ├── reporting-engine.service.ts
+│   │   └── compliance.module.ts
+│   ├── marketplace/                 # Marketplace module
+│   │   ├── marketplace.controller.ts
+│   │   ├── discovery-engine.service.ts
+│   │   └── marketplace.module.ts
+│   ├── stellar/                     # Blockchain integration
+│   │   ├── stellar.service.ts
+│   │   ├── soroban.service.ts
+│   │   └── stellar.module.ts
+│   ├── webhooks/                     # Webhook handlers
+│   │   ├── webhooks.controller.ts
+│   │   ├── stellar-webhook.service.ts
+│   │   └── webhooks.module.ts
+│   ├── analytics/                     # Analytics module
+│   │   ├── analytics.controller.ts
+│   │   ├── impact-dashboard.service.ts
+│   │   └── analytics.module.ts
+│   ├── shared/                        # Shared resources
+│   │   ├── database/
+│   │   │   ├── database.module.ts
+│   │   │   └── prisma.service.ts      # Prisma client service
+│   │   ├── cache/
+│   │   │   └── redis.service.ts       # Redis cache
+│   │   ├── ipfs/
+│   │   │   └── ipfs.service.ts        # IPFS storage
+│   │   ├── guards/                     # Auth guards
+│   │   └── interceptors/               # HTTP interceptors
+│   ├── app.module.ts
+│   ├── app.controller.ts
+│   └── main.ts
+├── prisma/
+│   ├── schema.prisma                   # Database schema
+│   └── migrations/                      # Migration files
+├── test/
+│   ├── retirement.e2e-spec.ts
+│   └── compliance.e2e-spec.ts
+├── .env.example
+├── .eslintrc.js
+├── .prettierrc
+├── nest-cli.json
+├── package.json
+├── prisma.config.js                     # Prisma 7+ config
+├── tsconfig.json
+└── README.md
 ```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+---
+CarbonScribe Corporate Platform Backend - Making corporate carbon retirement instant, transparent, and verifiable. 🌍
