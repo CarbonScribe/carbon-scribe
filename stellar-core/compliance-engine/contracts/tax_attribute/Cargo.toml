@@ -1,14 +1,13 @@
 [package]
-name = "tax_attribute"
+name = "tax-attribute"
 version = "0.1.0"
 edition = "2021"
-publish = false
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { workspace = true }
+soroban-sdk = "21.0.0"
 
-[features]
-testutils = ["soroban-sdk/testutils"]
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }

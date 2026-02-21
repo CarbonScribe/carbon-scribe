@@ -1,14 +1,23 @@
-[package]
-name = "regulatory_checks"
-version = "0.1.0"
-edition = "2021"
-publish = false
+[workspace]
+resolver = "2"
+members = [
+  "contracts/*",
+]
 
-[lib]
-crate-type = ["cdylib", "rlib"]
+[workspace.dependencies]
+soroban-sdk = "23"
 
-[dependencies]
-soroban-sdk = { workspace = true }
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
 
-[features]
-testutils = ["soroban-sdk/testutils"]
+# For more information about this profile see https://soroban.stellar.org/docs/basic-tutorials/logging#cargotoml-profile
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true
