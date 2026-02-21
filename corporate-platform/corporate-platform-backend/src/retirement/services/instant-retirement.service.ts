@@ -19,14 +19,15 @@ export class InstantRetirementService {
     );
 
     return this.prisma.$transaction(async (tx) => {
+      const client = tx as any;
       // 2. Decrease availability
-      await tx.credit.update({
+      await client.credit.update({
         where: { id: dto.creditId },
         data: { available: { decrement: dto.amount } },
       });
 
       // 3. Create retirement record
-      const retirement = await tx.retirement.create({
+      const retirement = await client.retirement.create({
         data: {
           companyId,
           userId,
@@ -49,7 +50,7 @@ export class InstantRetirementService {
       // 4. Update retirement with serial number/certificate placeholder
       const serialNumber = `RET-${new Date().getFullYear()}-${retirement.id.slice(-6).toUpperCase()}`;
 
-      const updatedRetirement = await tx.retirement.update({
+      const updatedRetirement = await client.retirement.update({
         where: { id: retirement.id },
         data: {
           certificateId: serialNumber,

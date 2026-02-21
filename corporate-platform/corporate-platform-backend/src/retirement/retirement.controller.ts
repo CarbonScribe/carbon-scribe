@@ -7,6 +7,7 @@ import {
   Query,
   Res,
   NotFoundException,
+  UseGuards,
 } from '@nestjs/common';
 import { InstantRetirementService } from './services/instant-retirement.service';
 import { HistoryService } from './services/history.service';
@@ -16,7 +17,11 @@ import { RetireCreditsDto } from './dto/retire-credits.dto';
 import { RetirementQueryDto } from './dto/retirement-query.dto';
 import { Response } from 'express';
 import { PrismaService } from '../shared/database/prisma.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
+@UseGuards(JwtAuthGuard)
 @Controller('api/v1/retirements')
 export class RetirementController {
   constructor(
@@ -28,22 +33,26 @@ export class RetirementController {
   ) {}
 
   @Post()
-  async retireCredits(@Body() dto: RetireCreditsDto) {
-    // In a real app, companyId and userId would come from the Auth Guard (req.user)
-    const companyId = 'default-company-id';
-    const userId = 'default-user-id';
+  async retireCredits(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: RetireCreditsDto,
+  ) {
+    const companyId = user.companyId;
+    const userId = user.sub;
     return this.instantRetirementService.retire(companyId, userId, dto);
   }
 
   @Get()
-  async getHistory(@Query() query: RetirementQueryDto) {
+  async getHistory(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: RetirementQueryDto,
+  ) {
     return this.historyService.getHistory(query);
   }
 
   @Get('stats')
-  async getStats() {
-    const companyId = 'default-company-id';
-    return this.historyService.getStats(companyId);
+  async getStats(@CurrentUser() user: JwtPayload) {
+    return this.historyService.getStats(user.companyId);
   }
 
   @Get('purposes')
@@ -53,12 +62,12 @@ export class RetirementController {
 
   @Get('validate')
   async validate(
+    @CurrentUser() user: JwtPayload,
     @Query('creditId') creditId: string,
     @Query('amount') amount: number,
   ) {
-    const companyId = 'default-company-id';
     return this.validationService.validateRetirement(
-      companyId,
+      user.companyId,
       creditId,
       Number(amount),
     );
@@ -98,9 +107,8 @@ export class RetirementController {
   }
 
   @Get('export/csv')
-  async exportCsv(@Res() res: Response) {
-    const companyId = 'default-company-id';
-    const csv = await this.historyService.exportCsv(companyId);
+  async exportCsv(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    const csv = await this.historyService.exportCsv(user.companyId);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader(
       'Content-Disposition',

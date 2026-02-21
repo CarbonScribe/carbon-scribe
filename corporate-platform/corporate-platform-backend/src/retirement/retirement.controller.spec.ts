@@ -5,9 +5,18 @@ import { HistoryService } from './services/history.service';
 import { ValidationService } from './services/validation.service';
 import { CertificateService } from './services/certificate.service';
 import { PrismaService } from '../shared/database/prisma.service';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 
 describe('RetirementController', () => {
   let controller: RetirementController;
+
+  const mockUser: JwtPayload = {
+    sub: 'user-id',
+    email: 'user@example.com',
+    companyId: 'company-id',
+    role: 'viewer',
+    sessionId: 'session-id',
+  };
 
   const mockInstantRetirementService = { retire: jest.fn() };
   const mockHistoryService = { getHistory: jest.fn(), getStats: jest.fn() };
@@ -39,12 +48,12 @@ describe('RetirementController', () => {
 
   it('should call retire service', async () => {
     const dto = { creditId: 'cred1', amount: 10, purpose: 'scope1' };
-    await controller.retireCredits(dto as any);
+    await controller.retireCredits(mockUser, dto as any);
     expect(mockInstantRetirementService.retire).toHaveBeenCalled();
   });
 
   it('should return history', async () => {
-    await controller.getHistory({});
+    await controller.getHistory(mockUser, {} as any);
     expect(mockHistoryService.getHistory).toHaveBeenCalled();
   });
 });
