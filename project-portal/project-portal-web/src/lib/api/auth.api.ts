@@ -7,7 +7,6 @@ import type {
 } from "@/store/auth/auth.types";
 
 // These shapes must match backend responses.
-// We'll support a couple common variants so we don't block on backend tweaks.
 function normalizeAuthResponse(data: any): AuthResponse {
   // Variant A: { token, user }
   if (data?.token && data?.user) return data;
@@ -43,7 +42,6 @@ export async function registerApi(
   payload: RegisterPayload,
 ): Promise<AuthResponse | { user: User }> {
   const res = await api.post("/auth/register", payload);
-  // Some backends auto-login after register; some return user only.
   try {
     return normalizeAuthResponse(res.data);
   } catch {

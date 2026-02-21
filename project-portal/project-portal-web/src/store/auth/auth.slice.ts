@@ -40,6 +40,7 @@ export const createAuthSlice: StateCreator<
         });
       } catch (e: any) {
         const msg = e?.response?.data?.error || e?.message || "Login failed";
+        console.log("Login error:", msg);
         set((s) => ({ loading: { ...s.loading, login: false }, error: msg }));
         throw e;
       }
@@ -67,6 +68,7 @@ export const createAuthSlice: StateCreator<
       } catch (e: any) {
         const msg =
           e?.response?.data?.error || e?.message || "Registration failed";
+        console.log("Registration error:", msg);
         set((s) => ({
           loading: { ...s.loading, register: false },
           error: msg,
