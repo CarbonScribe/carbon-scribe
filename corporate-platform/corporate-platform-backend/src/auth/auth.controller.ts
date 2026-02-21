@@ -79,7 +79,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Delete('sessions/:id')
   async terminateSession(@CurrentUser() user: JwtPayload, @Req() req: Request) {
-    const sessionId = req.params.id;
+    const sessionId = Array.isArray(req.params.id)
+      ? req.params.id[0]
+      : req.params.id;
     return this.authService.terminateSession(user.sub, sessionId);
   }
 
