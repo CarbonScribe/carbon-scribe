@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DatabaseModule } from './shared/database/database.module';
 import { RetirementModule } from './retirement/retirement.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
@@ -8,7 +9,7 @@ import { StellarModule } from './stellar/stellar.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CacheModule } from './cache/cache.module';
-import { DatabaseModule } from './shared/database/database.module';
+import { RetirementAnalyticsModule } from './retirement-analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { AuthModule } from './auth/auth.module';
     WebhooksModule,
     AnalyticsModule,
     CacheModule,
+    RetirementAnalyticsModule,
     AuthModule,
   ],
   controllers: [AppController],
