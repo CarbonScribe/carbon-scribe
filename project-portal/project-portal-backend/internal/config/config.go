@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -12,6 +13,8 @@ type Config struct {
 	DatabaseURL   string
 	Debug         bool
 	Elasticsearch ElasticsearchConfig
+	AWS           AWSConfig
+	Storage       StorageConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -21,6 +24,22 @@ type ElasticsearchConfig struct {
 	Password  string
 	CloudID   string
 	APIKey    string
+}
+
+// AWSConfig holds AWS credentials and region.
+type AWSConfig struct {
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	Endpoint        string // optional: LocalStack / MinIO override
+}
+
+// StorageConfig holds document storage settings.
+type StorageConfig struct {
+	S3BucketName    string
+	MaxUploadSizeMB int64
+	IPFSEnabled     bool
+	IPFSNodeURL     string
 }
 
 // Load loads configuration from environment variables
@@ -42,6 +61,11 @@ func Load() (*Config, error) {
 		esAddresses = "http://localhost:9200"
 	}
 
+	maxUpload, _ := strconv.ParseInt(os.Getenv("MAX_UPLOAD_SIZE_MB"), 10, 64)
+	if maxUpload <= 0 {
+		maxUpload = 100
+	}
+
 	return &Config{
 		Port:        port,
 		DatabaseURL: databaseURL,
@@ -53,5 +77,24 @@ func Load() (*Config, error) {
 			CloudID:   os.Getenv("ELASTICSEARCH_CLOUD_ID"),
 			APIKey:    os.Getenv("ELASTICSEARCH_API_KEY"),
 		},
+		AWS: AWSConfig{
+			Region:          getEnvOrDefault("AWS_REGION", "us-east-1"),
+			AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			Endpoint:        os.Getenv("AWS_ENDPOINT_URL"), // for LocalStack
+		},
+		Storage: StorageConfig{
+			S3BucketName:    getEnvOrDefault("S3_BUCKET_NAME", "carbon-scribe-documents"),
+			MaxUploadSizeMB: maxUpload,
+			IPFSEnabled:     os.Getenv("IPFS_ENABLED") == "true",
+			IPFSNodeURL:     getEnvOrDefault("IPFS_NODE_URL", "http://localhost:5001"),
+		},
 	}, nil
+}
+
+func getEnvOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
 }
