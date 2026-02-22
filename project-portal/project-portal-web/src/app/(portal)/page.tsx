@@ -11,6 +11,7 @@ import { useStore } from '@/lib/store/store';
 
 export default function ProjectPortalHome() {
   const fetchProjects = useStore((state) => state.fetchProjects);
+  const name = useStore((s) => s.user?.full_name) || 'Farmer';
 
   // Fetch projects on mount
   useEffect(() => {
@@ -23,7 +24,7 @@ export default function ProjectPortalHome() {
       <div className="bg-linear-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl p-6 md:p-8 text-white shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold mb-2">Welcome back, Farmer Samuel! 🌱</h1>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2">Welcome back, {name}! 🌱</h1>
             <p className="text-emerald-100 opacity-90">Your land is sequestering carbon right now. Let&apos;s grow together.</p>
           </div>
           <div className="mt-4 md:mt-0">

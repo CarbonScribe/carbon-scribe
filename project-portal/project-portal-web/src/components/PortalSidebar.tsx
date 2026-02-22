@@ -3,10 +3,13 @@
 import { Home, FolderKanban, BarChart3, Satellite, CreditCard, Users, FileText, Settings, LogOut, ChevronLeft } from 'lucide-react';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useStore } from '@/lib/store/store';
+import Link from 'next/link';
 
 const PortalSidebar = () => {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const logout = useStore((s) => s.logout);
 
   const navItems = [
     { icon: Home, label: 'Dashboard', href: '/', active: pathname === '/' },
@@ -38,7 +41,7 @@ const PortalSidebar = () => {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 className={`flex items-center p-3 rounded-xl transition-all duration-200 ${
@@ -49,14 +52,17 @@ const PortalSidebar = () => {
               >
                 <Icon className="w-5 h-5 shrink-0" />
                 {!collapsed && <span className="ml-3 font-medium">{item.label}</span>}
-              </a>
+              </Link>
             );
           })}
         </nav>
 
         {/* Bottom Section */}
         <div className="p-4 border-t border-gray-200">
-          <button className="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-xl w-full transition-colors">
+          <button
+            onClick={() => logout()}
+            className="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-xl w-full transition-colors"
+          >
             <LogOut className="w-5 h-5" />
             {!collapsed && <span className="ml-3 font-medium">Log Out</span>}
           </button>
@@ -78,7 +84,7 @@ const PortalSidebar = () => {
           {navItems.slice(0, 5).map((item) => {
             const Icon = item.icon;
             return (
-              <a
+              <Link
                 key={item.label}
                 href={item.href}
                 className={`flex flex-col items-center p-2 rounded-xl transition-colors ${
@@ -87,7 +93,7 @@ const PortalSidebar = () => {
               >
                 <Icon className="w-5 h-5" />
                 <span className="text-xs font-medium mt-1">{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </div>
