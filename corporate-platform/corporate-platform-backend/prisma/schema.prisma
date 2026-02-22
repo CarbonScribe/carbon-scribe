@@ -1,18 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
 datasource db {
   provider = "postgresql"
 }
 
-generator client {
-  provider = "prisma-client-js"
+enum RetirementPurpose {
+  SCOPE_1
+  SCOPE_2
+  SCOPE_3
+  CORPORATE
+  EVENTS
+  PRODUCT
 }
 
 model Company {
-  id          String       @id @default(cuid())
-  name        String
-  retirements Retirement[]
-  users       User[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                      String              @id @default(cuid())
+  name                    String
+  annualRetirementTarget  Float               @default(0)
+  netZeroTarget           Float               @default(0)
+  netZeroTargetYear       Int?
+  
+  retirements             Retirement[]
+  retirementTargets       RetirementTarget[]
+  users                   User[]
+
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  @@map("companies")
 }
 
 model Credit {
@@ -26,35 +44,34 @@ model Credit {
 }
 
 model Retirement {
-  id                String    @id @default(cuid())
+  id                String              @id @default(cuid())
   companyId         String
-  company           Company   @relation(fields: [companyId], references: [id])
-  userId            String
-  user              User      @relation(fields: [userId], references: [id])
-  
+  company           Company             @relation(fields: [companyId], references: [id])
+  userId            String              // User who performed retirement
+  user              User                @relation(fields: [userId], references: [id])
   creditId          String
-  credit            Credit    @relation(fields: [creditId], references: [id])
-  
+  credit            Credit              @relation(fields: [creditId], references: [id])
+
   // Retirement details
-  amount            Int
-  purpose           String    // scope1, scope2, scope3, corporate, events, product
-  purposeDetails    String?   // Additional context
-  
+  amount            Float
+  purpose           String              // scope1, scope2, scope3, corporate, events, product
+  purposeDetails    String?             // Additional context
+
   // Pricing
   priceAtRetirement Float
-  
+
   // Certificate details
-  certificateId     String?    @unique
+  certificateId     String?             @unique
   certificateUrl    String?
-  
+
   // Blockchain
   transactionHash   String?
   transactionUrl    String?
   verifiedAt        DateTime?
-  
+
   // Metadata
-  retiredAt         DateTime  @default(now())
-  
+  retiredAt         DateTime            @default(now())
+
   // Relations
   certificate       RetirementCertificate?
 
@@ -69,11 +86,11 @@ model RetirementCertificate {
   id                String    @id @default(cuid())
   retirementId      String    @unique
   retirement        Retirement @relation(fields: [retirementId], references: [id])
-  
+
   certificateNumber String    @unique // e.g., "RET-2024-001234"
   pdfUrl            String
   ipfsHash          String?   // IPFS storage for permanence
-  
+
   // Certificate data (snapshot)
   companyName       String
   retirementDate    DateTime
@@ -81,8 +98,21 @@ model RetirementCertificate {
   creditAmount      Int
   creditPurpose     String
   transactionHash   String?
-  
+
   createdAt         DateTime  @default(now())
+}
+
+model RetirementTarget {
+  id          String   @id @default(cuid())
+  companyId   String
+  year        Int
+  month       Int
+  target      Float
+
+  company     Company  @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, year, month])
+  @@map("retirement_targets")
 }
 
 model User {
