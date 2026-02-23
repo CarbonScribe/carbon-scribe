@@ -17,83 +17,82 @@ enum RetirementPurpose {
 }
 
 model Company {
-  id                     String @id @default(cuid())
-  name                   String
-  annualRetirementTarget Float  @default(0)
-  netZeroTarget          Float  @default(0)
-  netZeroTargetYear      Int?
+  id                      String              @id @default(cuid())
+  name                    String
+  annualRetirementTarget  Float               @default(0)
+  netZeroTarget           Float               @default(0)
+  netZeroTargetYear       Int?
 
-  retirements       Retirement[]
-  retirementTargets RetirementTarget[]
-  users             User[]
-  carts             Cart[]
-  orders            Order[]
+  retirements             Retirement[]
+  retirementTargets       RetirementTarget[]
+  users                   User[]
+  carts                   Cart[]
+  orders                  Order[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   @@map("companies")
 }
 
 model RetirementTarget {
-  id        String @id @default(cuid())
-  companyId String
-  year      Int
-  month     Int
-  target    Float
+  id          String   @id @default(cuid())
+  companyId   String
+  year        Int
+  month       Int
+  target      Float
 
-  company Company @relation(fields: [companyId], references: [id])
+  company     Company  @relation(fields: [companyId], references: [id])
 
   @@unique([companyId, year, month])
   @@map("retirement_targets")
 }
 
 model Credit {
-  id           String              @id @default(cuid())
+  id           String               @id @default(cuid())
   projectName  String
   totalAmount  Int
   available    Int
-  price        Float               @default(0) // Price per tCO₂
+  price        Float                @default(0) // Price per tCO₂
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
   reservations CreditReservation[]
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 }
 
 model Retirement {
-  id        String  @id @default(cuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  userId    String // User who performed retirement
-  user      User    @relation(fields: [userId], references: [id])
-
-  creditId String
-  credit   Credit @relation(fields: [creditId], references: [id])
+  id                String              @id @default(cuid())
+  companyId         String
+  company           Company             @relation(fields: [companyId], references: [id])
+  userId            String              // User who performed retirement
+  user              User                @relation(fields: [userId], references: [id])
+  creditId          String
+  credit            Credit              @relation(fields: [creditId], references: [id])
 
   // Retirement details
-  amount         Float
-  purpose        String // scope1, scope2, scope3, corporate, events, product
-  purposeDetails String? // Additional context
+  amount            Float
+  purpose           String              // scope1, scope2, scope3, corporate, events, product
+  purposeDetails    String?             // Additional context
 
   // Pricing
   priceAtRetirement Float
 
   // Certificate details
-  certificateId  String? @unique
-  certificateUrl String?
+  certificateId     String?             @unique
+  certificateUrl    String?
 
   // Blockchain
-  transactionHash String?
-  transactionUrl  String?
-  verifiedAt      DateTime?
+  transactionHash   String?
+  transactionUrl    String?
+  verifiedAt        DateTime?
 
   // Metadata
-  retiredAt DateTime @default(now())
+  retiredAt         DateTime            @default(now())
 
   // Relations
-  certificate RetirementCertificate?
+  certificate       RetirementCertificate?
 
   @@index([companyId])
   @@index([userId])
@@ -103,60 +102,60 @@ model Retirement {
 }
 
 model RetirementCertificate {
-  id           String     @id @default(cuid())
-  retirementId String     @unique
-  retirement   Retirement @relation(fields: [retirementId], references: [id])
+  id                String    @id @default(cuid())
+  retirementId      String    @unique
+  retirement        Retirement @relation(fields: [retirementId], references: [id])
 
-  certificateNumber String  @unique // e.g., "RET-2024-001234"
+  certificateNumber String    @unique // e.g., "RET-2024-001234"
   pdfUrl            String
-  ipfsHash          String? // IPFS storage for permanence
+  ipfsHash          String?   // IPFS storage for permanence
 
   // Certificate data (snapshot)
-  companyName     String
-  retirementDate  DateTime
-  creditProject   String
-  creditAmount    Int
-  creditPurpose   String
-  transactionHash String?
+  companyName       String
+  retirementDate    DateTime
+  creditProject     String
+  creditAmount      Int
+  creditPurpose     String
+  transactionHash   String?
 
-  createdAt DateTime @default(now())
+  createdAt         DateTime  @default(now())
 }
 
 model User {
-  id                   String       @id @default(cuid())
-  email                String       @unique
-  password             String
-  firstName            String
-  lastName             String
-  role                 String       @default("viewer")
-  companyId            String
-  company              Company      @relation(fields: [companyId], references: [id])
-  refreshToken         String?
-  lastLoginAt          DateTime?
-  lastLoginIp          String?
-  isActive             Boolean      @default(true)
-  emailVerified        Boolean      @default(false)
-  passwordResetToken   String?
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  password            String
+  firstName           String
+  lastName            String
+  role                String    @default("viewer")
+  companyId           String
+  company             Company   @relation(fields: [companyId], references: [id])
+  refreshToken        String?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  isActive            Boolean   @default(true)
+  emailVerified       Boolean   @default(false)
+  passwordResetToken  String?
   passwordResetExpires DateTime?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
-  sessions             Session[]
-  retirements          Retirement[]
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  sessions            Session[]
+  retirements         Retirement[]
 
   @@unique([companyId, email])
   @@index([email])
 }
 
 model Session {
-  id           String    @id @default(cuid())
+  id           String   @id @default(cuid())
   userId       String
-  user         User      @relation(fields: [userId], references: [id])
-  refreshToken String    @unique
+  user         User     @relation(fields: [userId], references: [id])
+  refreshToken String   @unique
   userAgent    String?
   ipAddress    String?
   expiresAt    DateTime
-  isValid      Boolean   @default(true)
-  createdAt    DateTime  @default(now())
+  isValid      Boolean  @default(true)
+  createdAt    DateTime @default(now())
   lastUsedAt   DateTime?
 
   @@index([refreshToken])
@@ -168,25 +167,25 @@ model Session {
 // ==========================================
 
 model Cart {
-  id        String  @id @default(cuid())
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
 
   // Session
-  sessionId String   @unique
-  expiresAt DateTime // Carts expire after 7 days
+  sessionId       String    @unique
+  expiresAt       DateTime  // Carts expire after 7 days
 
   // Totals
-  subtotal   Float @default(0)
-  serviceFee Float @default(0)
-  total      Float @default(0)
+  subtotal        Float     @default(0)
+  serviceFee      Float     @default(0)
+  total           Float     @default(0)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   // Relations
-  items CartItem[]
-  order Order?
+  items           CartItem[]
+  order           Order?
 
   @@index([companyId])
   @@index([sessionId])
@@ -194,56 +193,56 @@ model Cart {
 }
 
 model CartItem {
-  id       String @id @default(cuid())
-  cartId   String
-  cart     Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  creditId String
-  credit   Credit @relation(fields: [creditId], references: [id])
+  id              String    @id @default(cuid())
+  cartId          String
+  cart            Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  creditId        String
+  credit          Credit    @relation(fields: [creditId], references: [id])
 
-  quantity Int   @default(1000) // Standard lot size
-  price    Float // Price snapshot at add time
+  quantity        Int       @default(1000) // Standard lot size
+  price           Float     // Price snapshot at add time
 
-  createdAt DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   @@unique([cartId, creditId])
   @@index([cartId])
 }
 
 model Order {
-  id          String @id @default(cuid())
-  orderNumber String @unique // Human-readable (e.g., "ORD-2024-0001")
+  id              String    @id @default(cuid())
+  orderNumber     String    @unique // Human-readable (e.g., "ORD-2024-0001")
 
-  companyId String
-  company   Company @relation(fields: [companyId], references: [id])
-  userId    String // User who placed order
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  userId          String    // User who placed order
 
-  cartId String? @unique // Original cart
-  cart   Cart?   @relation(fields: [cartId], references: [id])
+  cartId          String?   @unique // Original cart
+  cart            Cart?     @relation(fields: [cartId], references: [id])
 
   // Order details
-  subtotal   Float
-  serviceFee Float
-  total      Float
-  status     String // pending, processing, completed, failed, refunded
+  subtotal        Float
+  serviceFee      Float
+  total           Float
+  status          String    // pending, processing, completed, failed, refunded
 
   // Payment
-  paymentMethod String? // credit_card, wire, crypto
-  paymentId     String?
-  paidAt        DateTime?
+  paymentMethod   String?   // credit_card, wire, crypto
+  paymentId       String?
+  paidAt          DateTime?
 
   // Blockchain
-  transactionHash String? // Stellar transaction hash
+  transactionHash String?   // Stellar transaction hash
 
   // Metadata
-  notes String?
+  notes           String?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
 
   // Relations
-  items     OrderItem[]
-  auditLogs OrderAuditLog[]
+  items           OrderItem[]
+  auditLogs       OrderAuditLog[]
 
   @@index([companyId])
   @@index([orderNumber])
@@ -252,17 +251,17 @@ model Order {
 }
 
 model OrderItem {
-  id       String @id @default(cuid())
-  orderId  String
-  order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  creditId String
-  credit   Credit @relation(fields: [creditId], references: [id])
+  id              String    @id @default(cuid())
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditId        String
+  credit          Credit    @relation(fields: [creditId], references: [id])
 
-  quantity Int
-  price    Float // Price at purchase
-  subtotal Float
+  quantity        Int
+  price           Float     // Price at purchase
+  subtotal        Float
 
-  createdAt DateTime @default(now())
+  createdAt       DateTime  @default(now())
 
   @@index([orderId])
 }
@@ -294,11 +293,11 @@ model OrderAuditLog {
   id         String   @id @default(cuid())
   orderId    String
   order      Order    @relation(fields: [orderId], references: [id])
-  event      String // created, confirmed, failed, cancelled, refunded
+  event      String   // created, confirmed, failed, cancelled, refunded
   fromStatus String?
   toStatus   String
   userId     String?
-  metadata   String? // JSON string for extra context
+  metadata   String?  // JSON string for extra context
   createdAt  DateTime @default(now())
 
   @@index([orderId])
