@@ -25,6 +25,8 @@ model Company {
 
   retirements             Retirement[]
   retirementTargets       RetirementTarget[]
+  retirementSchedules     RetirementSchedule[]
+  batchRetirements        BatchRetirement[]
   users                   User[]
   carts                   Cart[]
   orders                  Order[]
@@ -52,9 +54,14 @@ model RetirementTarget {
 model Credit {
   id           String               @id @default(cuid())
   projectName  String
+  country      String?
+  methodology  String?
+  standard     String?
+  sdgs         String?
+  vintageYear  Int?
+  price        Float                @default(0) // Price per tCO₂
   totalAmount  Int
   available    Int
-  price        Float                @default(0) // Price per tCO₂
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
@@ -62,6 +69,19 @@ model Credit {
   auctions     Auction[]
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
+
+  // Search optimization
+  searchVector    String?
+  featured        Boolean   @default(false)
+  featuredUntil   DateTime?
+  viewCount       Int       @default(0)
+  purchaseCount   Int       @default(0)
+  lastPurchasedAt DateTime?
+
+  @@index([searchVector])
+  @@index([featured])
+  @@index([viewCount])
+  @@index([purchaseCount])
 }
 
 model Retirement {
@@ -366,4 +386,95 @@ model Bid {
 
   @@index([auctionId])
   @@index([userId])
+}
+
+model RetirementSchedule {
+  id              String             @id @default(cuid())
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       String
+
+  name            String
+  description     String?
+
+  purpose         String
+  amount          Int
+
+  creditSelection String
+  creditIds       String[]
+
+  frequency       String
+  interval        Int?
+  startDate       DateTime
+  endDate         DateTime?
+  nextRunDate     DateTime
+
+  isActive        Boolean            @default(true)
+  lastRunDate     DateTime?
+  lastRunStatus   String?
+  runCount        Int                @default(0)
+
+  notifyBefore    Int?
+  notifyAfter     Boolean            @default(true)
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  executions      ScheduleExecution[]
+
+  @@index([companyId])
+  @@index([nextRunDate])
+  @@index([isActive])
+  @@index([frequency])
+}
+
+model ScheduleExecution {
+  id              String             @id @default(cuid())
+  scheduleId      String
+  schedule        RetirementSchedule @relation(fields: [scheduleId], references: [id])
+
+  scheduledDate   DateTime
+  executedDate    DateTime?
+  status          String
+
+  amountRetired   Int?
+  retirementIds   String[]
+  errorMessage    String?
+
+  retryCount      Int                @default(0)
+  nextRetryDate   DateTime?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([scheduledDate])
+}
+
+model BatchRetirement {
+  id              String             @id @default(cuid())
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       String
+
+  name            String
+  description     String?
+
+  items           Json
+
+  status          String
+  totalItems      Int
+  completedItems  Int
+  failedItems     Int
+
+  retirementIds   String[]
+  errorLog        Json?
+
+  createdAt       DateTime           @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime           @updatedAt
+
+  @@index([companyId])
+  @@index([status])
 }
