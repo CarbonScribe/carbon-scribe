@@ -18,16 +18,15 @@ export class InstantRetirementService {
       dto.amount,
     );
 
-    return this.prisma.$transaction(async (tx) => {
-      const client = tx as any;
+    return (this.prisma as any).$transaction(async (tx: any) => {
       // 2. Decrease availability
-      await client.credit.update({
+      await tx.credit.update({
         where: { id: dto.creditId },
         data: { available: { decrement: dto.amount } },
       });
 
       // 3. Create retirement record
-      const retirement = await client.retirement.create({
+      const retirement = await tx.retirement.create({
         data: {
           companyId,
           userId,
@@ -36,7 +35,6 @@ export class InstantRetirementService {
           purpose: dto.purpose,
           purposeDetails: dto.purposeDetails,
           priceAtRetirement: 10.0, // Mock price for now
-          // Blockchain stub
           transactionHash: `tx_${Math.random().toString(36).substring(7)}`,
           transactionUrl: 'https://stellar.expert/explorer/testnet/tx/...',
           verifiedAt: new Date(),
@@ -48,9 +46,11 @@ export class InstantRetirementService {
       });
 
       // 4. Update retirement with serial number/certificate placeholder
-      const serialNumber = `RET-${new Date().getFullYear()}-${retirement.id.slice(-6).toUpperCase()}`;
+      const serialNumber = `RET-${new Date().getFullYear()}-${retirement.id
+        .slice(-6)
+        .toUpperCase()}`;
 
-      const updatedRetirement = await client.retirement.update({
+      const updatedRetirement = await tx.retirement.update({
         where: { id: retirement.id },
         data: {
           certificateId: serialNumber,
