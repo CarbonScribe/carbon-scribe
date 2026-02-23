@@ -1,10 +1,20 @@
 'use client';
 
+import { useStore } from '@/lib/store/store';
 import { Menu, Bell, Search, Globe, User, Sparkles } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 const PortalNavbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const router = useRouter();
+
+  const user = useStore((s) => s.user);
+  const isHydrated = useStore((s) => s.isHydrated);
+  const logout = useStore((s) => s.logout);
+
+  const displayName = user?.full_name || 'Guest';
+  const subtitle = user ? 'Verified Partner' : 'Not signed in';
 
   return (
     <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
@@ -60,12 +70,33 @@ const PortalNavbar = () => {
             {/* User Profile */}
             <div className="flex items-center space-x-3">
               <div className="hidden md:block text-right">
-                <div className="font-medium text-gray-900">Farmer Samuel</div>
-                <div className="text-sm text-gray-600">Verified Partner</div>
+                <div className="font-medium text-gray-900">
+                  {isHydrated ? displayName : '...'}
+                </div>
+                <div className="text-sm text-gray-600">{subtitle}</div>
               </div>
               <button className="p-2 bg-linear-to-r from-emerald-100 to-teal-100 rounded-full">
                 <User className="w-6 h-6 text-emerald-700" />
               </button>
+
+              {isHydrated && !user && (
+                <button
+                  onClick={() => router.push('/login')}
+                  className="hidden md:inline-flex px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                >
+                  Login
+                </button>
+              )}
+
+              {isHydrated && user && (
+                <button
+                  onClick={() => logout()}
+                  className="hidden md:inline-flex px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black transition"
+                >
+                  Logout
+                </button>
+              )}
+
             </div>
           </div>
         </div>
