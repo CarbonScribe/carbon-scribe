@@ -95,34 +95,37 @@ export class ScheduleService {
       throw new BadRequestException('endDate must be after startDate');
     }
 
-    const frequency = dto.frequency || existing.frequency;
+    const frequency = dto.frequency ?? existing.frequency;
     const interval = dto.interval ?? existing.interval;
 
-    const nextRunDate =
-      existing.runCount > 0
+    const scheduleChanged =
+      dto.frequency !== undefined ||
+      dto.interval !== undefined ||
+      dto.startDate !== undefined ||
+      dto.endDate !== undefined;
+
+    const nextRunDate = scheduleChanged
+      ? existing.runCount > 0
         ? this.calculateNextRunDate(
             existing.lastRunDate || existing.nextRunDate,
             frequency,
             interval,
           )
-        : startDate;
+        : startDate
+      : existing.nextRunDate;
 
     return this.prisma.retirementSchedule.update({
       where: { id: existing.id },
       data: {
-        name: dto.name,
-        description: dto.description,
-        purpose: dto.purpose,
-        amount: dto.amount,
-        creditSelection: dto.creditSelection,
-        creditIds: dto.creditIds,
-        frequency,
-        interval,
-        startDate,
-        endDate,
-        nextRunDate,
-        notifyBefore: dto.notifyBefore,
-        notifyAfter: dto.notifyAfter,
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.purpose !== undefined && { purpose: dto.purpose }),
+        ...(dto.amount !== undefined && { amount: dto.amount }),
+        ...(dto.creditSelection !== undefined && { creditSelection: dto.creditSelection }),
+        ...(dto.creditIds !== undefined && { creditIds: dto.creditIds }),
+        ...(scheduleChanged && { frequency, interval, startDate, endDate, nextRunDate }),
+        ...(dto.notifyBefore !== undefined && { notifyBefore: dto.notifyBefore }),
+        ...(dto.notifyAfter !== undefined && { notifyAfter: dto.notifyAfter }),
       },
     });
   }

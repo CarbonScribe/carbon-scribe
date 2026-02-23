@@ -217,12 +217,13 @@ export class ExecutorService {
       const retireAmount = Math.min(remaining, credit.available);
       if (retireAmount <= 0) continue;
 
-      const retirement = await (this.prisma as any).$transaction(async (tx: any) => {
+      const retirement = await this.prisma.$transaction(async (tx) => {
         await tx.credit.update({
           where: { id: credit.id },
           data: { available: { decrement: retireAmount } },
         });
 
+        const serialNumber = `RET-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
         return tx.retirement.create({
           data: {
             companyId: schedule.companyId,
@@ -232,6 +233,7 @@ export class ExecutorService {
             purpose: schedule.purpose,
             purposeDetails: `Scheduled retirement: ${schedule.name}`,
             priceAtRetirement: 10,
+            certificateId: serialNumber,
             transactionHash: `tx_${Math.random().toString(36).slice(2, 10)}`,
             transactionUrl: 'https://stellar.expert/explorer/testnet/tx/...',
             verifiedAt: new Date(),

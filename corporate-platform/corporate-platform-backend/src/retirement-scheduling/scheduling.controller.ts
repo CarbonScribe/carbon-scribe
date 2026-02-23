@@ -1,8 +1,11 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -25,6 +28,7 @@ export class SchedulingController {
   constructor(private readonly schedulingService: SchedulingService) {}
 
   @Post('retirement-schedules')
+  @HttpCode(HttpStatus.CREATED)
   createSchedule(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateScheduleDto,
@@ -77,6 +81,7 @@ export class SchedulingController {
   }
 
   @Post('retirement-batches')
+  @HttpCode(HttpStatus.CREATED)
   createBatch(@CurrentUser() user: JwtPayload, @Body() dto: BatchRetirementDto) {
     return this.schedulingService.createBatch(user.companyId, user.sub, dto);
   }
@@ -85,11 +90,14 @@ export class SchedulingController {
   @UseInterceptors(FileInterceptor('file'))
   createBatchFromCsv(
     @CurrentUser() user: JwtPayload,
-    @UploadedFile() file: any,
+    @UploadedFile() file: { buffer?: Buffer } | undefined,
     @Body('name') name: string,
     @Body('description') description?: string,
   ) {
-    const csvContent = file?.buffer?.toString('utf-8') || '';
+    if (!file?.buffer) {
+      throw new BadRequestException('CSV file is required');
+    }
+    const csvContent = file.buffer.toString('utf-8');
     return this.schedulingService.createBatchFromCsv(
       user.companyId,
       user.sub,
