@@ -5,8 +5,6 @@ import { RbacModule } from './rbac.module';
 import { RbacService } from './rbac.service';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
-import { Permissions } from './decorators/permissions.decorator';
-import { Roles } from './decorators/roles.decorator';
 import { CREDIT_RETIRE, PORTFOLIO_VIEW } from './constants/permissions.constants';
 
 function createContext(user: { sub: string; role: string; companyId: string }): ExecutionContext {

@@ -29,8 +29,10 @@ export class RbacService {
   async getUserPermissions(
     _userId: string,
     role: string,
-    _companyId?: string,
+    _companyId?: string, // reserved for per-company overrides
   ): Promise<Permission[]> {
+    void _userId;
+    void _companyId;
     const normalizedRole = this.normalizeRole(role);
     const cacheKey = `role:${normalizedRole}`;
     const cached = this.getCached(cacheKey);
