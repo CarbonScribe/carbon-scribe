@@ -4,7 +4,6 @@ import { PrismaService } from '../../shared/database/prisma.service';
 
 describe('ComparisonService', () => {
   let service: ComparisonService;
-  let prisma: PrismaService;
 
   const mockPrismaService = {
     credit: {
@@ -25,7 +24,6 @@ describe('ComparisonService', () => {
     }).compile();
 
     service = module.get<ComparisonService>(ComparisonService);
-    prisma = module.get<PrismaService>(PrismaService);
   });
 
   it('should be defined', () => {
@@ -35,7 +33,14 @@ describe('ComparisonService', () => {
   describe('compareProjects', () => {
     it('should return performance data and benchmarks', async () => {
       const mockCredits = [
-        { projectId: 'p1', projectName: 'P1', pricePerTon: 20, dynamicScore: 80, country: 'Kenya', methodology: 'REDD+' },
+        {
+          projectId: 'p1',
+          projectName: 'P1',
+          pricePerTon: 20,
+          dynamicScore: 80,
+          country: 'Kenya',
+          methodology: 'REDD+',
+        },
       ];
       mockPrismaService.credit.findMany.mockResolvedValue(mockCredits);
       mockPrismaService.credit.aggregate.mockResolvedValue({

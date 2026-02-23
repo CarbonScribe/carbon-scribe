@@ -6,7 +6,6 @@ import { CreditStatus } from '../dto/credit-update.dto';
 
 describe('AvailabilityService', () => {
   let service: AvailabilityService;
-  let prisma: PrismaService;
 
   const mockPrismaService = {
     credit: {
@@ -30,7 +29,6 @@ describe('AvailabilityService', () => {
     }).compile();
 
     service = module.get<AvailabilityService>(AvailabilityService);
-    prisma = module.get<PrismaService>(PrismaService);
   });
 
   it('should be defined', () => {
@@ -41,16 +39,26 @@ describe('AvailabilityService', () => {
     it('should decrement inventory and update status if 0', async () => {
       const id = 'credit-1';
       const amount = 10;
-      const mockCredit = { id, availableAmount: 10, status: CreditStatus.AVAILABLE };
-      
+      const mockCredit = {
+        id,
+        availableAmount: 10,
+        status: CreditStatus.AVAILABLE,
+      };
+
       const mockTx = {
         credit: {
           findUnique: jest.fn().mockResolvedValue(mockCredit),
-          update: jest.fn().mockResolvedValue({ ...mockCredit, availableAmount: 0, status: CreditStatus.RETIRED }),
+          update: jest.fn().mockResolvedValue({
+            ...mockCredit,
+            availableAmount: 0,
+            status: CreditStatus.RETIRED,
+          }),
         },
       };
 
-      mockPrismaService.$transaction.mockImplementation(async (cb) => cb(mockTx));
+      mockPrismaService.$transaction.mockImplementation(async (cb) =>
+        cb(mockTx),
+      );
 
       const result = await service.decrementInventory(id, amount);
 
@@ -68,17 +76,25 @@ describe('AvailabilityService', () => {
     it('should throw BadRequestException if insufficient stock', async () => {
       const id = 'credit-1';
       const amount = 20;
-      const mockCredit = { id, availableAmount: 10, status: CreditStatus.AVAILABLE };
-      
+      const mockCredit = {
+        id,
+        availableAmount: 10,
+        status: CreditStatus.AVAILABLE,
+      };
+
       const mockTx = {
         credit: {
           findUnique: jest.fn().mockResolvedValue(mockCredit),
         },
       };
 
-      mockPrismaService.$transaction.mockImplementation(async (cb) => cb(mockTx));
+      mockPrismaService.$transaction.mockImplementation(async (cb) =>
+        cb(mockTx),
+      );
 
-      await expect(service.decrementInventory(id, amount)).rejects.toThrow(BadRequestException);
+      await expect(service.decrementInventory(id, amount)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 });

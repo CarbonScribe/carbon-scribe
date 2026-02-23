@@ -42,11 +42,11 @@ export class QualityService {
   }): number {
     const score =
       metrics.verificationScore * 0.25 +
-      metrics.additionalityScore * 0.20 +
+      metrics.additionalityScore * 0.2 +
       metrics.permanenceScore * 0.15 +
-      metrics.leakageScore * 0.10 +
-      metrics.cobenefitsScore * 0.20 +
-      metrics.transparencyScore * 0.10;
+      metrics.leakageScore * 0.1 +
+      metrics.cobenefitsScore * 0.2 +
+      metrics.transparencyScore * 0.1;
 
     return Math.round(score);
   }

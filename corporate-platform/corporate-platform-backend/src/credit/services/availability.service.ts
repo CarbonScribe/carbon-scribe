@@ -68,7 +68,10 @@ export class AvailabilityService {
           availableAmount: {
             decrement: amount,
           },
-          status: credit.availableAmount - amount === 0 ? CreditStatus.RETIRED : credit.status,
+          status:
+            credit.availableAmount - amount === 0
+              ? CreditStatus.RETIRED
+              : credit.status,
         },
       });
 

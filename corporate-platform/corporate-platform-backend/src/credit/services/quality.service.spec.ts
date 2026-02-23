@@ -76,7 +76,10 @@ describe('QualityService', () => {
       };
 
       mockPrismaService.credit.findUnique.mockResolvedValue(mockMetrics);
-      mockPrismaService.credit.update.mockResolvedValue({ id, dynamicScore: 100 });
+      mockPrismaService.credit.update.mockResolvedValue({
+        id,
+        dynamicScore: 100,
+      });
 
       const result = await service.updateDynamicScore(id);
 
