@@ -26,6 +26,8 @@ model Company {
   
   retirements             Retirement[]
   retirementTargets       RetirementTarget[]
+  retirementSchedules     RetirementSchedule[]
+  batchRetirements        BatchRetirement[]
   users                   User[]
   bids                    Bid[]
 
@@ -36,91 +38,33 @@ model Company {
 }
 
 model Credit {
-  id                    String    @id @default(cuid())
-  projectName           String
-  projectId             String?
-  project               Project?  @relation(fields: [projectId], references: [id])
-  
-  // Credit Details
-  pricePerTon           Float
-  availableAmount       Int
-  totalAmount           Int
-  status                String    // available, reserved, retired, pending
-  
-  // Quality Metrics
-  dynamicScore          Int       @default(0) // 0-100 composite score
-  verificationScore     Int?      // 0-100
-  additionalityScore    Int?
-  permanenceScore       Int?
-  leakageScore          Int?
-  cobenefitsScore       Int?
-  transparencyScore     Int?
-  
-  // Metadata
-  methodology           String
-  vintage               Int
-  verificationStandard  String
-  lastVerification      DateTime
-  country               String
-  sdgs                  Int[]     // Array of SDG numbers
-  
-  // Blockchain
-  assetCode             String?
-  issuer                String?
-  contractId            String?
-  
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
-  // Relations
-  retirements           Retirement[]
-  auctions              Auction[]
-  
-  @@index([status])
-  @@index([country])
-  @@index([methodology])
-  @@index([vintage])
-  @@index([dynamicScore])
-}
+  id          String       @id @default(cuid())
+  projectName String
+  country     String?
+  methodology String?
+  standard    String?
+  sdgs        String?
+  vintageYear Int?
+  price       Float?
+  totalAmount Int
+  available   Int
+  retirements Retirement[]
+  auctions    Auction[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-model Project {
-  id                    String    @id @default(cuid())
-  name                  String
-  description           String?
-  country               String
-  region                String?
-  
-  // Classification
-  type                  String    // forestry, renewable, agriculture, bluecarbon, cookstoves, methane
-  methodology           String
-  verificationStandard  String
-  
-  // Impact
-  totalCredits          Int
-  availableCredits      Int
-  avgScore              Float
-  communities           Int?      // People benefited
-  sdgs                  Int[]
-  
-  // Timeline
-  startDate             DateTime
-  endDate               DateTime?
-  lastVerification      DateTime
-  
-  // Metadata
-  status                String    // active, completed, pending
-  developer             String?
-  website               String?
-  
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  
-  // Relations
-  credits               Credit[]
-  
-  @@index([country])
-  @@index([type])
-  @@index([status])
+  // Search optimization
+  searchVector    String?
+  featured        Boolean   @default(false)
+  featuredUntil   DateTime?
+  viewCount       Int       @default(0)
+  purchaseCount   Int       @default(0)
+  lastPurchasedAt DateTime?
+
+  @@index([searchVector])
+  @@index([featured])
+  @@index([viewCount])
+  @@index([purchaseCount])
 }
 
 model Retirement {
@@ -291,4 +235,95 @@ model Bid {
 
   @@index([auctionId])
   @@index([userId])
+}
+
+model RetirementSchedule {
+  id              String             @id @default(cuid())
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       String
+
+  name            String
+  description     String?
+
+  purpose         String
+  amount          Int
+
+  creditSelection String
+  creditIds       String[]
+
+  frequency       String
+  interval        Int?
+  startDate       DateTime
+  endDate         DateTime?
+  nextRunDate     DateTime
+
+  isActive        Boolean            @default(true)
+  lastRunDate     DateTime?
+  lastRunStatus   String?
+  runCount        Int                @default(0)
+
+  notifyBefore    Int?
+  notifyAfter     Boolean            @default(true)
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  executions      ScheduleExecution[]
+
+  @@index([companyId])
+  @@index([nextRunDate])
+  @@index([isActive])
+  @@index([frequency])
+}
+
+model ScheduleExecution {
+  id              String             @id @default(cuid())
+  scheduleId      String
+  schedule        RetirementSchedule @relation(fields: [scheduleId], references: [id])
+
+  scheduledDate   DateTime
+  executedDate    DateTime?
+  status          String
+
+  amountRetired   Int?
+  retirementIds   String[]
+  errorMessage    String?
+
+  retryCount      Int                @default(0)
+  nextRetryDate   DateTime?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([scheduledDate])
+}
+
+model BatchRetirement {
+  id              String             @id @default(cuid())
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id])
+  createdBy       String
+
+  name            String
+  description     String?
+
+  items           Json
+
+  status          String
+  totalItems      Int
+  completedItems  Int
+  failedItems     Int
+
+  retirementIds   String[]
+  errorLog        Json?
+
+  createdAt       DateTime           @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime           @updatedAt
+
+  @@index([companyId])
+  @@index([status])
 }
