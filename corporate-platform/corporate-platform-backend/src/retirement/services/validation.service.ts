@@ -23,9 +23,9 @@ export class ValidationService {
       throw new NotFoundException(`Credit with ID ${creditId} not found`);
     }
 
-    if (credit.available < amount) {
+    if (credit.availableAmount < amount) {
       throw new BadRequestException(
-        `Insufficient credits available. Requested: ${amount}, Available: ${credit.available}`,
+        `Insufficient credits available. Requested: ${amount}, Available: ${credit.availableAmount}`,
       );
     }
 
@@ -35,8 +35,8 @@ export class ValidationService {
 
     return {
       valid: true,
-      available: credit.available,
-      maxAllowed: credit.available,
+      available: credit.availableAmount,
+      maxAllowed: credit.availableAmount,
     };
   }
 }

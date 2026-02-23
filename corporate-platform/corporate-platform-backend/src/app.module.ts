@@ -11,6 +11,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { CacheModule } from './cache/cache.module';
 import { RetirementAnalyticsModule } from './retirement-analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
+import { CreditModule } from './credit/credit.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { AuthModule } from './auth/auth.module';
     CacheModule,
     RetirementAnalyticsModule,
     AuthModule,
+    CreditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

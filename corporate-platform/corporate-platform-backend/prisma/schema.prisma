@@ -5,6 +5,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum RetirementPurpose {
@@ -34,13 +35,90 @@ model Company {
 }
 
 model Credit {
-  id          String       @id @default(cuid())
-  projectName String
-  totalAmount Int
-  available   Int
-  retirements Retirement[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                    String    @id @default(cuid())
+  projectName           String
+  projectId             String
+  project               Project   @relation(fields: [projectId], references: [id])
+  
+  // Credit Details
+  pricePerTon           Float
+  availableAmount       Int
+  totalAmount           Int
+  status                String    // available, reserved, retired, pending
+  
+  // Quality Metrics
+  dynamicScore          Int       @default(0) // 0-100 composite score
+  verificationScore     Int?      // 0-100
+  additionalityScore    Int?
+  permanenceScore       Int?
+  leakageScore          Int?
+  cobenefitsScore       Int?
+  transparencyScore     Int?
+  
+  // Metadata
+  methodology           String
+  vintage               Int
+  verificationStandard  String
+  lastVerification      DateTime
+  country               String
+  sdgs                  Int[]     // Array of SDG numbers
+  
+  // Blockchain
+  assetCode             String?
+  issuer                String?
+  contractId            String?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  retirements           Retirement[]
+  
+  @@index([status])
+  @@index([country])
+  @@index([methodology])
+  @@index([vintage])
+  @@index([dynamicScore])
+}
+
+model Project {
+  id                    String    @id @default(cuid())
+  name                  String
+  description           String?
+  country               String
+  region                String?
+  
+  // Classification
+  type                  String    // forestry, renewable, agriculture, bluecarbon, cookstoves, methane
+  methodology           String
+  verificationStandard  String
+  
+  // Impact
+  totalCredits          Int
+  availableCredits      Int
+  avgScore              Float
+  communities           Int?      // People benefited
+  sdgs                  Int[]
+  
+  // Timeline
+  startDate             DateTime
+  endDate               DateTime?
+  lastVerification      DateTime
+  
+  // Metadata
+  status                String    // active, completed, pending
+  developer             String?
+  website               String?
+  
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Relations
+  credits               Credit[]
+  
+  @@index([country])
+  @@index([type])
+  @@index([status])
 }
 
 model Retirement {
