@@ -11,18 +11,24 @@ model Company {
   name        String
   retirements Retirement[]
   users       User[]
+  carts       Cart[]
+  orders      Order[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
 
 model Credit {
-  id          String       @id @default(cuid())
-  projectName String
-  totalAmount Int
-  available   Int
-  retirements Retirement[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String               @id @default(cuid())
+  projectName  String
+  totalAmount  Int
+  available    Int
+  price        Float                @default(0) // Price per tCO₂
+  retirements  Retirement[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  reservations CreditReservation[]
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 }
 
 model Retirement {
@@ -124,4 +130,147 @@ model Session {
 
   @@index([refreshToken])
   @@index([expiresAt])
+}
+
+// ==========================================
+// Shopping Cart & Checkout Models
+// ==========================================
+
+model Cart {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  
+  // Session
+  sessionId       String    @unique
+  expiresAt       DateTime  // Carts expire after 7 days
+  
+  // Totals
+  subtotal        Float     @default(0)
+  serviceFee      Float     @default(0)
+  total           Float     @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  items           CartItem[]
+  order           Order?
+  
+  @@index([companyId])
+  @@index([sessionId])
+  @@index([expiresAt])
+}
+
+model CartItem {
+  id              String    @id @default(cuid())
+  cartId          String
+  cart            Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  creditId        String
+  credit          Credit    @relation(fields: [creditId], references: [id])
+  
+  quantity        Int       @default(1000) // Standard lot size
+  price           Float     // Price snapshot at add time
+  
+  createdAt       DateTime  @default(now())
+  
+  @@unique([cartId, creditId])
+  @@index([cartId])
+}
+
+model Order {
+  id              String    @id @default(cuid())
+  orderNumber     String    @unique // Human-readable (e.g., "ORD-2024-0001")
+  
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  userId          String    // User who placed order
+  
+  cartId          String?   @unique // Original cart
+  cart            Cart?     @relation(fields: [cartId], references: [id])
+  
+  // Order details
+  subtotal        Float
+  serviceFee      Float
+  total           Float
+  status          String    // pending, processing, completed, failed, refunded
+  
+  // Payment
+  paymentMethod   String?   // credit_card, wire, crypto
+  paymentId       String?
+  paidAt          DateTime?
+  
+  // Blockchain
+  transactionHash String?   // Stellar transaction hash
+  
+  // Metadata
+  notes           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+  
+  // Relations
+  items           OrderItem[]
+  auditLogs       OrderAuditLog[]
+  
+  @@index([companyId])
+  @@index([orderNumber])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id              String    @id @default(cuid())
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  creditId        String
+  credit          Credit    @relation(fields: [creditId], references: [id])
+  
+  quantity        Int
+  price           Float     // Price at purchase
+  subtotal        Float
+  
+  createdAt       DateTime  @default(now())
+  
+  @@index([orderId])
+}
+
+// ==========================================
+// Credit Reservation (15-minute hold)
+// ==========================================
+
+model CreditReservation {
+  id        String   @id @default(cuid())
+  cartId    String
+  creditId  String
+  credit    Credit   @relation(fields: [creditId], references: [id])
+  quantity  Int
+  expiresAt DateTime // 15-minute TTL
+  createdAt DateTime @default(now())
+
+  @@unique([cartId, creditId])
+  @@index([cartId])
+  @@index([creditId])
+  @@index([expiresAt])
+}
+
+// ==========================================
+// Order Audit Log
+// ==========================================
+
+model OrderAuditLog {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  event      String   // created, confirmed, failed, cancelled, refunded
+  fromStatus String?
+  toStatus   String
+  userId     String?
+  metadata   String?  // JSON string for extra context
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@index([event])
+  @@index([createdAt])
 }
