@@ -121,19 +121,6 @@ model RetirementCertificate {
   createdAt         DateTime  @default(now())
 }
 
-model RetirementTarget {
-  id          String   @id @default(cuid())
-  companyId   String
-  year        Int
-  month       Int
-  target      Float
-
-  company     Company  @relation(fields: [companyId], references: [id])
-
-  @@unique([companyId, year, month])
-  @@map("retirement_targets")
-}
-
 model User {
   id                  String    @id @default(cuid())
   email               String    @unique
