@@ -29,6 +29,7 @@ model Company {
   compliances             Compliance[]
   reports                 Report[]
   activities              Activity[]
+  apiKeys                 ApiKey[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -612,4 +613,35 @@ model Activity {
   @@index([action])
   @@index([createdAt])
   @@map("activities")
+}
+
+model ApiKey {
+  id            String    @id @default(cuid())
+  name          String
+  key           String    @unique
+  prefix        String
+
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id])
+  createdBy     String
+
+  permissions   String[]  @default([])
+
+  lastUsedAt    DateTime?
+  requestCount  Int       @default(0)
+
+  expiresAt     DateTime?
+  rateLimit     Int       @default(100)
+  ipWhitelist   String[]  @default([])
+
+  isActive      Boolean   @default(true)
+  revokedAt     DateTime?
+  revokedReason String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([key])
+  @@index([companyId])
+  @@index([prefix])
 }
