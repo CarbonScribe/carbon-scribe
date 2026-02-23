@@ -16,6 +16,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/compliance"
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
+	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
@@ -133,6 +134,10 @@ func main() {
 	complianceService := compliance.NewService(complianceRepo)
 	complianceHandler := compliance.NewHandler(complianceService)
 
+	geospatialRepo := geospatial.NewRepository(db)
+	geospatialService := geospatial.NewService(geospatialRepo)
+	geospatialHandler := geospatial.NewHandler(geospatialService)
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -150,7 +155,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial"},
 		})
 	})
 
@@ -168,6 +173,7 @@ func main() {
 				"integration":   "/api/integration/*",
 				"reports":       "/api/v1/reports/*",
 				"search":        "/api/v1/search/*",
+				"geospatial":    "/api/v1/geospatial/*",
 			},
 		})
 	})
@@ -202,6 +208,8 @@ func main() {
 		}
 		// Register compliance routes under v1
 		complianceHandler.RegisterRoutes(v1)
+		// Register geospatial routes under v1
+		geospatialHandler.RegisterRoutes(v1)
 
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
@@ -236,6 +244,7 @@ func main() {
 		fmt.Println("   - Reports: /api/v1/reports/*")
 		fmt.Println("   - Search: /api/v1/search/*")
 		fmt.Println("   - Compliance: /api/v1/compliance/*")
+		fmt.Println("   - Geospatial: /api/v1/geospatial/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
@@ -368,6 +377,99 @@ func runAllMigrations(db *gorm.DB) error {
 		return err
 	}
 
+	// PostGIS geospatial tables
+	if err := runGeospatialDDL(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func runGeospatialDDL(db *gorm.DB) error {
+	stmts := []string{
+		"CREATE EXTENSION IF NOT EXISTS postgis",
+		"CREATE EXTENSION IF NOT EXISTS postgis_topology",
+		`CREATE TABLE IF NOT EXISTS project_geometries (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			project_id UUID NOT NULL UNIQUE REFERENCES projects(id) ON DELETE CASCADE,
+			geometry GEOGRAPHY(GEOMETRY, 4326) NOT NULL,
+			centroid GEOGRAPHY(POINT, 4326) NOT NULL,
+			bounding_box GEOGRAPHY(POLYGON, 4326),
+			area_hectares DECIMAL(12, 4) NOT NULL,
+			perimeter_meters DECIMAL(12, 4),
+			is_valid BOOLEAN DEFAULT TRUE,
+			validation_errors TEXT[],
+			simplification_tolerance DECIMAL(10, 6),
+			source_type VARCHAR(50) DEFAULT 'manual',
+			source_file VARCHAR(500),
+			accuracy_score DECIMAL(3, 2),
+			version INTEGER DEFAULT 1,
+			previous_version_id UUID REFERENCES project_geometries(id),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_geometry ON project_geometries USING GIST (geometry)",
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_centroid ON project_geometries USING GIST (centroid)",
+		`CREATE TABLE IF NOT EXISTS administrative_boundaries (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			admin_level INTEGER NOT NULL,
+			country_code CHAR(2),
+			geometry GEOGRAPHY(MULTIPOLYGON, 4326) NOT NULL,
+			centroid GEOGRAPHY(POINT, 4326),
+			source VARCHAR(100) DEFAULT 'natural_earth',
+			source_version VARCHAR(50),
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_admin_boundaries_geometry ON administrative_boundaries USING GIST (geometry)",
+		`CREATE TABLE IF NOT EXISTS geofences (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			name VARCHAR(255) NOT NULL,
+			description TEXT,
+			geometry GEOGRAPHY(POLYGON, 4326) NOT NULL,
+			geofence_type VARCHAR(50) NOT NULL,
+			alert_rules JSONB NOT NULL DEFAULT '{"on_enter":true,"on_exit":false,"on_proximity":true,"proximity_meters":1000}',
+			is_active BOOLEAN DEFAULT TRUE,
+			priority INTEGER DEFAULT 1,
+			metadata JSONB DEFAULT '{}',
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_geofences_geometry ON geofences USING GIST (geometry)",
+		`CREATE TABLE IF NOT EXISTS map_tile_cache (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			tile_key VARCHAR(500) UNIQUE NOT NULL,
+			tile_data BYTEA NOT NULL,
+			content_type VARCHAR(50) NOT NULL,
+			map_style VARCHAR(100),
+			zoom_level INTEGER,
+			x_coordinate INTEGER,
+			y_coordinate INTEGER,
+			accessed_count INTEGER DEFAULT 0,
+			last_accessed_at TIMESTAMPTZ,
+			expires_at TIMESTAMPTZ NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_map_tile_cache_key ON map_tile_cache (tile_key)",
+		"CREATE INDEX IF NOT EXISTS idx_map_tile_cache_expiry ON map_tile_cache (expires_at)",
+		`CREATE TABLE IF NOT EXISTS geofence_events (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			geofence_id UUID NOT NULL REFERENCES geofences(id),
+			project_id UUID NOT NULL REFERENCES projects(id),
+			event_type VARCHAR(50) NOT NULL,
+			distance_meters DECIMAL(10, 2),
+			location GEOGRAPHY(POINT, 4326),
+			alert_generated BOOLEAN DEFAULT FALSE,
+			alert_id UUID,
+			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+		)`,
+	}
+
+	for _, stmt := range stmts {
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("geospatial ddl failed: %w", err)
+		}
+	}
 	return nil
 }
 
