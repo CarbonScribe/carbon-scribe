@@ -27,6 +27,7 @@ model Company {
   retirements             Retirement[]
   retirementTargets       RetirementTarget[]
   users                   User[]
+  bids                    Bid[]
 
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
@@ -37,8 +38,8 @@ model Company {
 model Credit {
   id                    String    @id @default(cuid())
   projectName           String
-  projectId             String
-  project               Project   @relation(fields: [projectId], references: [id])
+  projectId             String?
+  project               Project?  @relation(fields: [projectId], references: [id])
   
   // Credit Details
   pricePerTon           Float
@@ -73,6 +74,7 @@ model Credit {
   
   // Relations
   retirements           Retirement[]
+  auctions              Auction[]
   
   @@index([status])
   @@index([country])
@@ -213,6 +215,7 @@ model User {
   updatedAt           DateTime  @updatedAt
   sessions            Session[]
   retirements         Retirement[]
+  bids                Bid[]
 
   @@unique([companyId, email])
   @@index([email])
@@ -232,4 +235,60 @@ model Session {
 
   @@index([refreshToken])
   @@index([expiresAt])
+}
+
+model Auction {
+  id              String   @id @default(cuid())
+  creditId        String
+  credit          Credit   @relation(fields: [creditId], references: [id])
+  
+  // Auction parameters
+  quantity        Int      // Total credits for auction
+  remaining       Int      // Credits still available
+  
+  // Pricing
+  startPrice      Float
+  currentPrice    Float
+  floorPrice      Float
+  priceDecrement  Float    // Amount price drops each interval
+  decrementInterval Int    // Minutes between price drops
+  
+  // Timing
+  startTime       DateTime
+  endTime         DateTime
+  lastPriceUpdate DateTime
+  
+  // Status
+  status          String   // pending, active, ended, settled, cancelled
+  
+  // Results
+  winnerId        String?  // User ID of winner
+  finalPrice      Float?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  bids            Bid[]
+  
+  @@index([status])
+  @@index([creditId])
+  @@index([endTime])
+}
+
+model Bid {
+  id          String   @id @default(cuid())
+  auctionId   String
+  auction     Auction  @relation(fields: [auctionId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  bidPrice    Float
+  quantity    Int
+  status      String   // pending, accepted, rejected, outbid
+  createdAt   DateTime @default(now())
+
+  @@index([auctionId])
+  @@index([userId])
 }
