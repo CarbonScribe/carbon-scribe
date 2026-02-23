@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,12 +15,14 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/collaboration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/compliance"
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
+	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -93,6 +96,39 @@ func main() {
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService)
 
+	// Initialize document management service
+	var docsHandler *documents.Handler
+	s3Client, s3Err := storage.NewS3Client(storage.S3Config{
+		Region:          cfg.AWS.Region,
+		AccessKeyID:     cfg.AWS.AccessKeyID,
+		SecretAccessKey: cfg.AWS.SecretAccessKey,
+		BucketName:      cfg.Storage.S3BucketName,
+		Endpoint:        cfg.AWS.Endpoint,
+	})
+	if s3Err != nil {
+		log.Printf("⚠️  Documents: S3 client init failed (%v) — document upload will be unavailable", s3Err)
+	} else {
+		log.Println("✅ S3 client initialized")
+		docStorageSvc := documents.NewStorageService(s3Client)
+		docRepo := documents.NewRepository(db)
+
+		// Optional IPFS pinning.
+		var ipfsUploader *documents.IPFSUploader
+		if cfg.Storage.IPFSEnabled {
+			ipfsClient := storage.NewIPFSClient(cfg.Storage.IPFSNodeURL)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if ipfsClient.IsAvailable(ctx) {
+				log.Printf("✅ IPFS node reachable at %s", cfg.Storage.IPFSNodeURL)
+				ipfsUploader = documents.NewIPFSUploader(ipfsClient)
+			} else {
+				log.Printf("⚠️  IPFS node at %s not reachable — pinning disabled", cfg.Storage.IPFSNodeURL)
+			}
+			cancel()
+		}
+
+		docSvc := documents.NewServiceWithIPFS(docRepo, docStorageSvc, ipfsUploader)
+		docsHandler = documents.NewHandler(docSvc)
+	}
 	complianceRepo := compliance.NewRepository(db)
 	complianceService := compliance.NewService(complianceRepo)
 	complianceHandler := compliance.NewHandler(complianceService)
@@ -114,7 +150,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "compliance", "integration", "reports", "search"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search"},
 		})
 	})
 
@@ -127,6 +163,7 @@ func main() {
 				"health":        "/health",
 				"auth":          "/api/auth/*",
 				"collaboration": "/api/collaboration/*",
+				"documents":     "/api/v1/documents/*",
 				"compliance":    "/api/v1/compliance/*",
 				"integration":   "/api/integration/*",
 				"reports":       "/api/v1/reports/*",
@@ -159,6 +196,10 @@ func main() {
 		// Register search routes under v1
 		searchHandler.RegisterRoutes(v1)
 
+		// Register document management routes (only if S3 is available)
+		if docsHandler != nil {
+			documents.RegisterRoutes(v1, docsHandler)
+		}
 		// Register compliance routes under v1
 		complianceHandler.RegisterRoutes(v1)
 
@@ -190,6 +231,7 @@ func main() {
 		fmt.Println("   - Authentication: /api/auth/*")
 		fmt.Println("   - Collaboration: /api/collaboration/*")
 		fmt.Println("   - System health metrics: /api/v1/health/*")
+		fmt.Println("   - Documents:       /api/v1/documents/*")
 		fmt.Println("   - Integrations: /api/integration/*")
 		fmt.Println("   - Reports: /api/v1/reports/*")
 		fmt.Println("   - Search: /api/v1/search/*")
@@ -253,6 +295,9 @@ func initDatabase(config *config.Config) (*gorm.DB, error) {
 func runAllMigrations(db *gorm.DB) error {
 	// Auto-migrate all models from all modules
 	err := db.AutoMigrate(
+		// Project models
+		&project.Project{},
+
 		// Collaboration models
 		&collaboration.ProjectMember{},
 		&collaboration.ProjectInvitation{},
@@ -334,7 +379,22 @@ func corsMiddleware() gin.HandlerFunc {
 			allowedOrigins = "*"
 		}
 
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
+		origin := c.Request.Header.Get("Origin")
+		allowOrigin := "*"
+		if allowedOrigins != "*" {
+			for _, o := range strings.Split(allowedOrigins, ",") {
+				if o == origin {
+					allowOrigin = origin
+					break
+				}
+			}
+			// If not matching, fallback to the first origin so the header is always valid
+			if allowOrigin == "*" {
+				allowOrigin = strings.Split(allowedOrigins, ",")[0]
+			}
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-ID")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
