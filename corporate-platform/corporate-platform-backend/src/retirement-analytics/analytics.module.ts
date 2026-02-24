@@ -10,7 +10,10 @@ import { ApiKeyModule } from '../api-key/api-key.module';
 
 @Module({
   imports: [ApiKeyModule],
-  controllers: [RetirementAnalyticsController, ApiKeyRetirementAnalyticsController],
+  controllers: [
+    RetirementAnalyticsController,
+    ApiKeyRetirementAnalyticsController,
+  ],
   providers: [
     RetirementAnalyticsService,
     PurposeBreakdownService,

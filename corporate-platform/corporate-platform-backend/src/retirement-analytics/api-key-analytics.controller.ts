@@ -27,7 +27,9 @@ export class ApiKeyRetirementAnalyticsController {
     @Query() query: AnalyticsQueryDto,
     @CurrentApiKey() apiKey: ApiKeyAuthContext,
   ) {
-    return this.analyticsService.getTrends(this.withCompanyScope(query, apiKey));
+    return this.analyticsService.getTrends(
+      this.withCompanyScope(query, apiKey),
+    );
   }
 
   @Get('forecast')
@@ -35,7 +37,9 @@ export class ApiKeyRetirementAnalyticsController {
     @Query() query: AnalyticsQueryDto,
     @CurrentApiKey() apiKey: ApiKeyAuthContext,
   ) {
-    return this.analyticsService.getForecast(this.withCompanyScope(query, apiKey));
+    return this.analyticsService.getForecast(
+      this.withCompanyScope(query, apiKey),
+    );
   }
 
   @Get('impact')
@@ -53,7 +57,9 @@ export class ApiKeyRetirementAnalyticsController {
     @Query() query: AnalyticsQueryDto,
     @CurrentApiKey() apiKey: ApiKeyAuthContext,
   ) {
-    return this.analyticsService.getProgress(this.withCompanyScope(query, apiKey));
+    return this.analyticsService.getProgress(
+      this.withCompanyScope(query, apiKey),
+    );
   }
 
   @Get('summary')
@@ -61,7 +67,9 @@ export class ApiKeyRetirementAnalyticsController {
     @Query() query: AnalyticsQueryDto,
     @CurrentApiKey() apiKey: ApiKeyAuthContext,
   ) {
-    return this.analyticsService.getSummary(this.withCompanyScope(query, apiKey));
+    return this.analyticsService.getSummary(
+      this.withCompanyScope(query, apiKey),
+    );
   }
 
   private withCompanyScope(

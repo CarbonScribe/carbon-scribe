@@ -116,7 +116,9 @@ export class ApiKeyService {
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.permissions !== undefined ? { permissions: dto.permissions } : {}),
+        ...(dto.permissions !== undefined
+          ? { permissions: dto.permissions }
+          : {}),
         ...(dto.expiresAt !== undefined
           ? { expiresAt: new Date(dto.expiresAt) }
           : {}),
@@ -157,10 +159,14 @@ export class ApiKeyService {
     const existing = await this.findCompanyKeyOrThrow(id, actor.companyId);
 
     if (!existing.isActive || existing.revokedAt) {
-      throw new BadApiKeyStateException('Cannot rotate a revoked or inactive key');
+      throw new BadApiKeyStateException(
+        'Cannot rotate a revoked or inactive key',
+      );
     }
 
-    const environment = existing.prefix.startsWith('sk_test_') ? 'test' : 'live';
+    const environment = existing.prefix.startsWith('sk_test_')
+      ? 'test'
+      : 'live';
     const generated = this.generateApiKey(environment);
     const updated = (await this.apiKeyRepo.update({
       where: { id },
@@ -303,7 +309,9 @@ export class ApiKeyService {
     }
 
     const normalizedIp = ipAddress.trim();
-    const allowed = record.ipWhitelist.some((allowedIp) => allowedIp === normalizedIp);
+    const allowed = record.ipWhitelist.some(
+      (allowedIp) => allowedIp === normalizedIp,
+    );
 
     if (!allowed) {
       throw new UnauthorizedException('IP address not allowed');
@@ -324,14 +332,17 @@ export class ApiKeyService {
 
     if (state.count >= limit) {
       const reset = Math.ceil((state.windowStartMs + windowMs) / 1000);
-      throw new HttpException({
-        message: 'API key rate limit exceeded',
-        rateLimit: {
-          limit,
-          remaining: 0,
-          reset,
+      throw new HttpException(
+        {
+          message: 'API key rate limit exceeded',
+          rateLimit: {
+            limit,
+            remaining: 0,
+            reset,
+          },
         },
-      }, HttpStatus.TOO_MANY_REQUESTS);
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     state.count += 1;

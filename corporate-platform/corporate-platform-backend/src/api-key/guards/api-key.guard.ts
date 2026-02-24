@@ -28,11 +28,23 @@ export class ApiKeyGuard implements CanActivate {
 
     let validation;
     try {
-      validation = await this.apiKeyStrategy.validate(request, requiredPermissions);
+      validation = await this.apiKeyStrategy.validate(
+        request,
+        requiredPermissions,
+      );
     } catch (error) {
-      if (error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS) {
+      if (
+        error instanceof HttpException &&
+        error.getStatus() === HttpStatus.TOO_MANY_REQUESTS
+      ) {
         const payload = error.getResponse() as
-          | { rateLimit?: { limit?: number; remaining?: number; reset?: number } }
+          | {
+              rateLimit?: {
+                limit?: number;
+                remaining?: number;
+                reset?: number;
+              };
+            }
           | string;
 
         if (typeof payload === 'object' && payload?.rateLimit) {

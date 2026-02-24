@@ -147,7 +147,9 @@ describe('ApiKeyService', () => {
       throw new Error('Expected rate limit exception');
     } catch (error) {
       expect(error).toBeInstanceOf(HttpException);
-      expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+      expect((error as HttpException).getStatus()).toBe(
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   });
 
@@ -172,9 +174,9 @@ describe('ApiKeyService', () => {
       updatedAt: new Date(),
     });
 
-    await expect(service.authenticate('sk_live_test', {}, [])).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.authenticate('sk_live_test', {}, []),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('should reject expired keys', async () => {
@@ -198,8 +200,8 @@ describe('ApiKeyService', () => {
       updatedAt: new Date(),
     });
 
-    await expect(service.authenticate('sk_live_test', {}, [])).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.authenticate('sk_live_test', {}, []),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });

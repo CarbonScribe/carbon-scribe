@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { ApiKeyStrategy } from './strategies/api-key.strategy';
@@ -75,7 +79,7 @@ describe('ApiKeyGuard (integration)', () => {
 
   function buildContext(
     requestOverrides: Partial<TestRequest> = {},
-    handler: Function = TestProtectedController.prototype.protectedHandler,
+    handler: () => void = TestProtectedController.prototype.protectedHandler,
   ) {
     const request: TestRequest = {
       headers: {
@@ -155,7 +159,10 @@ describe('ApiKeyGuard (integration)', () => {
       ipWhitelist: ['198.51.100.10'],
     });
     const { context } = buildContext({
-      headers: { 'x-api-key': 'sk_live_secret', 'x-forwarded-for': '203.0.113.10' },
+      headers: {
+        'x-api-key': 'sk_live_secret',
+        'x-forwarded-for': '203.0.113.10',
+      },
       socket: { remoteAddress: '203.0.113.10' },
     });
 
@@ -187,8 +194,13 @@ describe('ApiKeyGuard (integration)', () => {
       throw new Error('Expected rate limit exception');
     } catch (error) {
       expect(error).toBeInstanceOf(HttpException);
-      expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
-      expect(second.response.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', '1');
+      expect((error as HttpException).getStatus()).toBe(
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+      expect(second.response.setHeader).toHaveBeenCalledWith(
+        'X-RateLimit-Limit',
+        '1',
+      );
       expect(second.response.setHeader).toHaveBeenCalledWith(
         'X-RateLimit-Remaining',
         '0',
