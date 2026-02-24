@@ -79,7 +79,9 @@ export class ReservationService {
    * Called when cart is cleared, checkout is abandoned, or payment fails.
    */
   async releaseReservations(cartId: string): Promise<void> {
-    await this.prisma.creditReservation.deleteMany({
+    const prisma = this.prisma as any;
+
+    await prisma.creditReservation.deleteMany({
       where: { cartId },
     });
   }
@@ -90,7 +92,9 @@ export class ReservationService {
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async releaseExpiredReservations(): Promise<void> {
-    const result = await this.prisma.creditReservation.deleteMany({
+    const prisma = this.prisma as any;
+
+    const result = await prisma.creditReservation.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     });
 

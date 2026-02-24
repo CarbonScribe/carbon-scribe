@@ -29,7 +29,9 @@ export class CheckoutService {
     dto: CheckoutDto,
   ): Promise<CheckoutResult> {
     // 1. Get the active cart
-    const cart = await this.prisma.cart.findFirst({
+    const prisma = this.prisma as any;
+
+    const cart = await prisma.cart.findFirst({
       where: {
         companyId,
         expiresAt: { gt: new Date() },
@@ -127,7 +129,9 @@ export class CheckoutService {
     companyId: string,
   ): Promise<ConfirmResult> {
     // 1. Find the order
-    const order = await this.prisma.order.findUnique({
+    const prisma = this.prisma as any;
+
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         items: {
@@ -154,7 +158,7 @@ export class CheckoutService {
           await this.reservationService.releaseReservations(order.cartId);
         }
 
-        await this.prisma.order.update({
+        await prisma.order.update({
           where: { id: orderId },
           data: { status: 'failed' },
         });
@@ -188,7 +192,7 @@ export class CheckoutService {
         await this.reservationService.releaseReservations(order.cartId);
       }
 
-      await this.prisma.order.update({
+      await prisma.order.update({
         where: { id: orderId },
         data: { status: 'failed' },
       });

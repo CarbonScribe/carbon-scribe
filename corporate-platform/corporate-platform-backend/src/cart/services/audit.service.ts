@@ -29,7 +29,9 @@ export class AuditService {
     metadata?: Record<string, unknown>,
   ): Promise<void> {
     try {
-      await this.prisma.orderAuditLog.create({
+      const prisma = this.prisma as any;
+
+      await prisma.orderAuditLog.create({
         data: {
           orderId,
           event,
@@ -51,7 +53,9 @@ export class AuditService {
    * Retrieve the full audit history for an order.
    */
   async getOrderAuditHistory(orderId: string) {
-    return this.prisma.orderAuditLog.findMany({
+    const prisma = this.prisma as any;
+
+    return prisma.orderAuditLog.findMany({
       where: { orderId },
       orderBy: { createdAt: 'asc' },
     });

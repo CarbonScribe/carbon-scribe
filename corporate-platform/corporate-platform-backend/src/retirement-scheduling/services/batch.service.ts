@@ -28,7 +28,9 @@ export class BatchService {
       throw new BadRequestException('Batch must contain at least one item');
     }
 
-    const batch = await this.prisma.batchRetirement.create({
+    const prisma = this.prisma as any;
+
+    const batch = await prisma.batchRetirement.create({
       data: {
         companyId,
         createdBy,
@@ -40,7 +42,7 @@ export class BatchService {
         completedItems: 0,
         failedItems: 0,
         retirementIds: [],
-      },
+      } as any,
     });
 
     if (autoProcess) {
@@ -72,14 +74,18 @@ export class BatchService {
   }
 
   async listBatches(companyId: string) {
-    return this.prisma.batchRetirement.findMany({
+    const prisma = this.prisma as any;
+
+    return prisma.batchRetirement.findMany({
       where: { companyId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async getBatch(companyId: string, id: string) {
-    const batch = await this.prisma.batchRetirement.findFirst({
+    const prisma = this.prisma as any;
+
+    const batch = await prisma.batchRetirement.findFirst({
       where: { id, companyId },
     });
 
@@ -91,18 +97,22 @@ export class BatchService {
   }
 
   async processBatch(id: string): Promise<BatchExecutionResult> {
-    const batch = await this.prisma.batchRetirement.findUnique({
+    const prisma = this.prisma as any;
+
+    const batch = (await prisma.batchRetirement.findUnique({
       where: { id },
-    });
+    })) as any;
     if (!batch) {
       throw new NotFoundException('Batch job not found');
     }
 
     const items = batch.items as unknown as BatchRetirementItem[];
 
-    await this.prisma.batchRetirement.update({
+    await prisma.batchRetirement.update({
       where: { id },
-      data: { status: 'processing' },
+      data: {
+        status: 'processing',
+      } as any,
     });
 
     const retirementIds: string[] = [];
@@ -153,14 +163,14 @@ export class BatchService {
         });
       }
 
-      await this.prisma.batchRetirement.update({
+      await prisma.batchRetirement.update({
         where: { id },
         data: {
           completedItems: retirementIds.length,
           failedItems: errors.length,
           retirementIds,
           errorLog: errors as any,
-        },
+        } as any,
       });
     }
 
@@ -171,7 +181,7 @@ export class BatchService {
           ? 'completed'
           : 'failed';
 
-    await this.prisma.batchRetirement.update({
+    await prisma.batchRetirement.update({
       where: { id },
       data: {
         status,
@@ -180,7 +190,7 @@ export class BatchService {
         failedItems: errors.length,
         errorLog: errors as any,
         completedAt: new Date(),
-      },
+      } as any,
     });
 
     return {

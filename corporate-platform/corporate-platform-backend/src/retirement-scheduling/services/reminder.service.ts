@@ -32,7 +32,7 @@ export class ReminderService {
         const reminderPayload = {
           scheduleId: schedule.id,
           companyId: schedule.companyId,
-          createdBy: schedule.createdBy,
+          createdBy: schedule.userId,
           type: 'retirement-reminder',
           channel: ['email', 'in-app'],
           message: `Scheduled retirement "${schedule.name}" is due on ${schedule.nextRunDate.toISOString()} for ${schedule.amount} credits (${schedule.purpose}).`,

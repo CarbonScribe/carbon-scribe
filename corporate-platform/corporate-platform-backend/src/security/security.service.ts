@@ -2,12 +2,12 @@ import { Injectable } from '@nestjs/common';
 import * as http from 'http';
 import * as https from 'https';
 import { PrismaService } from '../shared/database/prisma.service';
-import { SecurityEventInput } from './interfaces/security-event.interface';
 import {
   EventSeverityMap,
   SecurityEvents,
   SecuritySeverity,
 } from './constants/security-events.constants';
+import { SecurityEventInput } from './interfaces/security-event.interface';
 
 @Injectable()
 export class SecurityService {
@@ -31,10 +31,11 @@ export class SecurityService {
       return true;
     }
 
-    const prisma = this.prisma as any;
-
-    const entries = await prisma.ipWhitelist.findMany({
-      where: { companyId, isActive: true },
+    const entries = await this.prisma.ipWhitelist.findMany({
+      where: {
+        companyId,
+        isActive: true,
+      },
     });
 
     if (!entries.length) {
@@ -43,15 +44,11 @@ export class SecurityService {
 
     const normalizedIp = this.normalizeIp(ipAddress);
 
-    return entries.some((entry: { cidr: string }) =>
-      this.isIpInCidr(normalizedIp, entry.cidr),
-    );
+    return entries.some((entry) => this.isIpInCidr(normalizedIp, entry.cidr));
   }
 
   async listWhitelist(companyId: string) {
-    const prisma = this.prisma as any;
-
-    return prisma.ipWhitelist.findMany({
+    return this.prisma.ipWhitelist.findMany({
       where: { companyId },
       orderBy: { createdAt: 'desc' },
     });
@@ -65,9 +62,7 @@ export class SecurityService {
   ) {
     this.ensureValidCidr(cidr);
 
-    const prisma = this.prisma as any;
-
-    return prisma.ipWhitelist.create({
+    const entry = await this.prisma.ipWhitelist.create({
       data: {
         companyId,
         cidr,
@@ -75,61 +70,165 @@ export class SecurityService {
         createdBy: userId,
       },
     });
+
+    await this.logEvent({
+      eventType: SecurityEvents.IpWhitelistAdded,
+      companyId,
+      userId,
+      details: { cidr, description },
+      status: 'success',
+    });
+
+    return entry;
   }
 
   async removeWhitelist(id: string, companyId: string, userId: string) {
-    const prisma = this.prisma as any;
+    const existing = await this.prisma.ipWhitelist.findUnique({
+      where: { id },
+    });
 
-    await prisma.ipWhitelist.delete({
+    if (!existing || existing.companyId !== companyId) {
+      return { success: false };
+    }
+
+    await this.prisma.ipWhitelist.delete({
       where: { id },
     });
 
     await this.logEvent({
-      eventType: SecurityEvents.IpBlocked,
+      eventType: SecurityEvents.IpWhitelistRemoved,
       companyId,
       userId,
-      status: 'removed-whitelist',
+      details: { cidr: existing.cidr },
+      status: 'success',
     });
+
+    return { success: true };
   }
 
-  async logEvent(event: SecurityEventInput): Promise<void> {
-    const timestamp = event.timestamp ?? new Date();
+  // Backwards-compatible wrappers for older naming used in tests/controllers
+  async addWhitelistEntry(
+    companyId: string,
+    cidr: string,
+    userId: string,
+    description?: string,
+  ) {
+    return this.addWhitelist(companyId, userId, cidr, description);
+  }
 
-    const prisma = this.prisma as any;
+  async removeWhitelistEntry(companyId: string, id: string, userId: string) {
+    return this.removeWhitelist(id, companyId, userId);
+  }
 
-    await prisma.auditLog.create({
+  async logEvent(input: SecurityEventInput) {
+    const severity =
+      input.severity ||
+      EventSeverityMap[input.eventType] ||
+      SecuritySeverity.Info;
+
+    const timestamp = input.timestamp || new Date();
+
+    await this.prisma.auditLog.create({
       data: {
-        companyId: event.companyId,
-        userId: event.userId,
-        eventType: event.eventType,
-        severity:
-          event.severity ||
-          EventSeverityMap[event.eventType] ||
-          ('info' as SecuritySeverity),
-        ipAddress: event.ipAddress,
-        userAgent: event.userAgent,
-        resource: event.resource,
-        method: event.method,
-        status: event.status ?? 'ok',
-        statusCode: event.statusCode,
-        details: event.metadata ?? undefined,
-        oldValue: undefined,
-        newValue: undefined,
+        companyId: input.companyId ?? null,
+        userId: input.userId ?? null,
+        eventType: input.eventType,
+        severity,
+        ipAddress: input.ipAddress ?? null,
+        userAgent: input.userAgent ?? null,
+        resource: input.resource ?? null,
+        method: input.method ?? null,
+        details: input.details ?? undefined,
+        oldValue: input.oldValue ?? undefined,
+        newValue: input.newValue ?? undefined,
+        status: input.status,
+        statusCode: input.statusCode ?? null,
         timestamp,
       },
     });
 
-    this.triggerAlert(event);
+    if (severity === SecuritySeverity.Critical) {
+      this.triggerAlert(input);
+    }
+
+    await this.enforceRetention();
   }
 
-  async queryAuditLogs(companyId: string, limit = 100) {
-    const prisma = this.prisma as any;
+  async queryAuditLogs(options: {
+    companyId?: string;
+    userId?: string;
+    eventType?: string;
+    severity?: string;
+    status?: string;
+    from?: Date;
+    to?: Date;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = options.page && options.page > 0 ? options.page : 1;
+    const limit =
+      options.limit && options.limit > 0 && options.limit <= 100
+        ? options.limit
+        : 20;
+    const skip = (page - 1) * limit;
 
-    return prisma.auditLog.findMany({
-      where: { companyId },
-      orderBy: { timestamp: 'desc' },
-      take: limit,
-    });
+    const where: any = {};
+
+    if (options.companyId) where.companyId = options.companyId;
+    if (options.userId) where.userId = options.userId;
+    if (options.eventType) where.eventType = options.eventType;
+    if (options.severity) where.severity = options.severity;
+    if (options.status) where.status = options.status;
+    if (options.from || options.to) {
+      where.timestamp = {};
+      if (options.from) where.timestamp.gte = options.from;
+      if (options.to) where.timestamp.lte = options.to;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { timestamp: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return { data, total, page, limit };
+  }
+
+  async getSummary(companyId: string) {
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [totalEvents, criticalEvents, recentFailedLogins] = await Promise.all(
+      [
+        this.prisma.auditLog.count({
+          where: { companyId },
+        }),
+        this.prisma.auditLog.count({
+          where: {
+            companyId,
+            severity: SecuritySeverity.Critical,
+            timestamp: { gte: oneDayAgo },
+          },
+        }),
+        this.prisma.auditLog.count({
+          where: {
+            companyId,
+            eventType: SecurityEvents.AuthLoginFailed,
+            timestamp: { gte: oneDayAgo },
+          },
+        }),
+      ],
+    );
+
+    return {
+      totalEvents,
+      criticalEventsLast24h: criticalEvents,
+      failedLoginsLast24h: recentFailedLogins,
+    };
   }
 
   registerFailedLogin(key: string) {
@@ -146,11 +245,12 @@ export class SecurityService {
     const cutoff = new Date(
       Date.now() - this.retentionDays * 24 * 60 * 60 * 1000,
     );
-
-    const prisma = this.prisma as any;
-
-    await prisma.auditLog.deleteMany({
-      where: { timestamp: { lt: cutoff } },
+    await this.prisma.auditLog.deleteMany({
+      where: {
+        timestamp: {
+          lt: cutoff,
+        },
+      },
     });
   }
 
@@ -167,13 +267,12 @@ export class SecurityService {
         severity:
           event.severity ||
           EventSeverityMap[event.eventType] ||
-          ('info' as SecuritySeverity),
+          SecuritySeverity.Info,
         companyId: event.companyId,
         userId: event.userId,
         status: event.status,
         statusCode: event.statusCode,
         timestamp: (event.timestamp || new Date()).toISOString(),
-        metadata: event.metadata,
       });
 
       const isHttps = url.protocol === 'https:';
@@ -190,7 +289,7 @@ export class SecurityService {
             'Content-Length': Buffer.byteLength(payload),
           },
         },
-        (res) => {
+        (res: any) => {
           res.on('data', () => undefined);
         },
       );
@@ -208,10 +307,8 @@ export class SecurityService {
     if (parts.length !== 2) {
       throw new Error('Invalid CIDR');
     }
-
     const [ip, prefix] = parts;
     const prefixNum = Number(prefix);
-
     if (
       !this.isValidIpv4(ip) ||
       !Number.isInteger(prefixNum) ||
@@ -228,7 +325,6 @@ export class SecurityService {
     if (segments.length !== 4) {
       return false;
     }
-
     return segments.every((seg) => {
       if (!/^\d+$/.test(seg)) return false;
       const n = Number(seg);
@@ -239,37 +335,32 @@ export class SecurityService {
   private normalizeIp(ip: string) {
     if (ip.includes(':') && ip.includes('.')) {
       const lastIndex = ip.lastIndexOf(':');
-      return ip.substring(lastIndex + 1);
+      return ip.slice(lastIndex + 1);
     }
-
+    if (ip === '::1') {
+      return '127.0.0.1';
+    }
     return ip;
   }
 
   private isIpInCidr(ip: string, cidr: string) {
-    const [cidrIp, prefixStr] = cidr.split('/');
-    const prefix = Number(prefixStr);
-    const ipParts = ip.split('.').map((x) => Number(x));
-    const cidrParts = cidrIp.split('.').map((x) => Number(x));
+    const [network, prefix] = cidr.split('/');
+    const ipNum = this.ipToNumber(this.normalizeIp(ip));
+    const networkNum = this.ipToNumber(this.normalizeIp(network));
+    const mask = prefix === '0' ? 0 : ~((1 << (32 - Number(prefix))) - 1);
+    return (ipNum & mask) === (networkNum & mask);
+  }
 
-    if (ipParts.length !== 4 || cidrParts.length !== 4) {
-      return false;
-    }
-
-    const mask = ~((1 << (32 - prefix)) - 1);
-
-    const ipNum =
-      (ipParts[0] << 24) |
-      (ipParts[1] << 16) |
-      (ipParts[2] << 8) |
-      ipParts[3];
-
-    const cidrNum =
-      (cidrParts[0] << 24) |
-      (cidrParts[1] << 16) |
-      (cidrParts[2] << 8) |
-      cidrParts[3];
-
-    return (ipNum & mask) === (cidrNum & mask);
+  private ipToNumber(ip: string) {
+    const segments = this.normalizeIp(ip)
+      .split('.')
+      .map((n) => Number(n));
+    return (
+      ((segments[0] << 24) |
+        (segments[1] << 16) |
+        (segments[2] << 8) |
+        segments[3]) >>>
+      0
+    );
   }
 }
-

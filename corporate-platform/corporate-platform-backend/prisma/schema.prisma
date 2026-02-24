@@ -1,74 +1,53 @@
-generator client {
-  provider = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
-}
-
 datasource db {
   provider = "postgresql"
 }
 
-enum RetirementPurpose {
-  SCOPE_1
-  SCOPE_2
-  SCOPE_3
-  CORPORATE
-  EVENTS
-  PRODUCT
+generator client {
+  provider = "prisma-client-js"
 }
 
 model Company {
-  id                      String              @id @default(cuid())
-  name                    String
-  annualRetirementTarget  Float               @default(0)
-  netZeroTarget           Float               @default(0)
-  netZeroTargetYear       Int?
+  id                     String              @id @default(cuid())
+  name                   String
+  annualRetirementTarget Float               @default(0)
+  netZeroTarget          Float               @default(0)
+  netZeroTargetYear      Int?
 
-  retirements             Retirement[]
-  retirementTargets       RetirementTarget[]
-  retirementSchedules     RetirementSchedule[]
-  batchRetirements        BatchRetirement[]
-  users                   User[]
-  carts                   Cart[]
-  orders                  Order[]
-  bids                    Bid[]
+  retirements          Retirement[]
+  retirementTargets    RetirementTarget[]
+  retirementSchedules  RetirementSchedule[]
+  batchRetirements     BatchRetirement[]
+  users                User[]
+  bids                 Bid[]
+  ipWhitelists         IpWhitelist[]
+  auditLogs            AuditLog[]
+  carts                Cart[]
+  orders               Order[]
 
-  createdAt               DateTime            @default(now())
-  updatedAt               DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("companies")
 }
 
-model RetirementTarget {
-  id          String   @id @default(cuid())
-  companyId   String
-  year        Int
-  month       Int
-  target      Float
-
-  company     Company  @relation(fields: [companyId], references: [id])
-
-  @@unique([companyId, year, month])
-  @@map("retirement_targets")
-}
-
 model Credit {
-  id           String               @id @default(cuid())
-  projectName  String
-  country      String?
-  methodology  String?
-  standard     String?
-  sdgs         String?
-  vintageYear  Int?
-  price        Float                @default(0) // Price per tCO₂
-  totalAmount  Int
-  available    Int
-  retirements  Retirement[]
-  cartItems    CartItem[]
-  orderItems   OrderItem[]
-  reservations CreditReservation[]
-  auctions     Auction[]
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id          String       @id @default(cuid())
+  projectName String
+  country     String?
+  methodology String?
+  standard    String?
+  sdgs        String?
+  vintageYear Int?
+  price       Float?
+  totalAmount Int
+  available   Int
+  retirements        Retirement[]
+  auctions           Auction[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  creditReservations CreditReservation[]
 
   // Search optimization
   searchVector    String?
@@ -85,34 +64,35 @@ model Credit {
 }
 
 model Retirement {
-  id                String              @id @default(cuid())
+  id                String    @id @default(cuid())
   companyId         String
-  company           Company             @relation(fields: [companyId], references: [id])
-  userId            String              // User who performed retirement
-  user              User                @relation(fields: [userId], references: [id])
+  company           Company   @relation(fields: [companyId], references: [id])
+  userId            String
+  user              User      @relation(fields: [userId], references: [id])
+  
   creditId          String
-  credit            Credit              @relation(fields: [creditId], references: [id])
-
+  credit            Credit    @relation(fields: [creditId], references: [id])
+  
   // Retirement details
-  amount            Float
-  purpose           String              // scope1, scope2, scope3, corporate, events, product
-  purposeDetails    String?             // Additional context
-
+  amount            Int
+  purpose           String    // scope1, scope2, scope3, corporate, events, product
+  purposeDetails    String?   // Additional context
+  
   // Pricing
   priceAtRetirement Float
-
+  
   // Certificate details
-  certificateId     String?             @unique
+  certificateId     String?    @unique
   certificateUrl    String?
-
+  
   // Blockchain
   transactionHash   String?
   transactionUrl    String?
   verifiedAt        DateTime?
-
+  
   // Metadata
-  retiredAt         DateTime            @default(now())
-
+  retiredAt         DateTime  @default(now())
+  
   // Relations
   certificate       RetirementCertificate?
 
@@ -127,11 +107,11 @@ model RetirementCertificate {
   id                String    @id @default(cuid())
   retirementId      String    @unique
   retirement        Retirement @relation(fields: [retirementId], references: [id])
-
+  
   certificateNumber String    @unique // e.g., "RET-2024-001234"
   pdfUrl            String
   ipfsHash          String?   // IPFS storage for permanence
-
+  
   // Certificate data (snapshot)
   companyName       String
   retirementDate    DateTime
@@ -139,31 +119,36 @@ model RetirementCertificate {
   creditAmount      Int
   creditPurpose     String
   transactionHash   String?
-
+  
   createdAt         DateTime  @default(now())
 }
 
 model User {
-  id                  String    @id @default(cuid())
-  email               String    @unique
-  password            String
-  firstName           String
-  lastName            String
-  role                String    @default("viewer")
-  companyId           String
-  company             Company   @relation(fields: [companyId], references: [id])
-  refreshToken        String?
-  lastLoginAt         DateTime?
-  lastLoginIp         String?
-  isActive            Boolean   @default(true)
-  emailVerified       Boolean   @default(false)
-  passwordResetToken  String?
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  password             String
+  firstName            String
+  lastName             String
+  role                 String   @default("viewer")
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id])
+  refreshToken         String?
+  lastLoginAt          DateTime?
+  lastLoginIp          String?
+  isActive             Boolean  @default(true)
+  emailVerified        Boolean  @default(false)
+  passwordResetToken   String?
   passwordResetExpires DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
   sessions            Session[]
   retirements         Retirement[]
   bids                Bid[]
+  wonAuctions         Auction[]
+  retirementSchedules RetirementSchedule[]
+  auditLogs           AuditLog[]
+  orders              Order[]
 
   @@unique([companyId, email])
   @@index([email])
@@ -185,296 +170,293 @@ model Session {
   @@index([expiresAt])
 }
 
-// ==========================================
-// Shopping Cart & Checkout Models
-// ==========================================
+model IpWhitelist {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  cidr        String
+  description String?
+  createdBy   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-model Cart {
-  id              String    @id @default(cuid())
-  companyId       String
-  company         Company   @relation(fields: [companyId], references: [id])
+  @@unique([companyId, cidr])
+  @@index([companyId])
+}
 
-  // Session
-  sessionId       String    @unique
-  expiresAt       DateTime  // Carts expire after 7 days
-
-  // Totals
-  subtotal        Float     @default(0)
-  serviceFee      Float     @default(0)
-  total           Float     @default(0)
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  // Relations
-  items           CartItem[]
-  order           Order?
+model AuditLog {
+  id         String   @id @default(cuid())
+  companyId  String?
+  company    Company? @relation(fields: [companyId], references: [id])
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  eventType  String
+  severity   String
+  ipAddress  String?
+  userAgent  String?
+  resource   String?
+  method     String?
+  details    Json?
+  oldValue   Json?
+  newValue   Json?
+  status     String
+  statusCode Int?
+  timestamp  DateTime @default(now())
 
   @@index([companyId])
-  @@index([sessionId])
+  @@index([userId])
+  @@index([eventType])
+  @@index([timestamp])
+  @@index([severity])
+}
+
+model Auction {
+  id                String   @id @default(cuid())
+  creditId          String
+  credit            Credit   @relation(fields: [creditId], references: [id])
+  quantity          Int
+  remaining         Int
+  startPrice        Float
+  currentPrice      Float
+  floorPrice        Float
+  priceDecrement    Float
+  decrementInterval Int
+  startTime         DateTime
+  endTime           DateTime
+  lastPriceUpdate   DateTime
+  status            String
+  winnerId          String?
+  winner            User?    @relation(fields: [winnerId], references: [id])
+  finalPrice        Float?
+  bids              Bid[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([creditId])
+  @@index([status])
+}
+
+model Bid {
+  id        String   @id @default(cuid())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  bidPrice  Float
+  quantity  Int
+  status    String
+  createdAt DateTime @default(now())
+
+  @@index([auctionId])
+  @@index([companyId])
+  @@index([userId])
+}
+
+model RetirementTarget {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  year      Int
+  month     Int
+  target    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, year, month])
+}
+
+model RetirementSchedule {
+  id               String   @id @default(cuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id])
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  name             String
+  description      String?
+  purpose          String
+  amount           Int
+  creditSelection  String
+  creditIds        String[]
+  frequency        String
+  interval         Int?
+  startDate        DateTime
+  endDate          DateTime?
+  nextRunDate      DateTime
+  timezone         String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastRunDate      DateTime?
+  lastRunStatus    String?
+  runCount         Int      @default(0)
+  notifyBefore     Int?
+  notifyAfter      Boolean  @default(true)
+  executions       ScheduleExecution[]
+  batchRetirements BatchRetirement[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([isActive, nextRunDate])
+}
+
+model ScheduleExecution {
+  id            String   @id @default(cuid())
+  scheduleId    String
+  schedule      RetirementSchedule @relation(fields: [scheduleId], references: [id])
+  runAt         DateTime
+  completedAt   DateTime?
+  status        String
+  error         String?
+  createdAt     DateTime @default(now())
+  scheduledDate DateTime?
+  executedDate  DateTime?
+  amountRetired Int?
+  retirementIds String[]
+  errorMessage  String?
+  retryCount    Int      @default(0)
+  nextRetryDate DateTime?
+  batchItems    BatchRetirement[]
+
+  @@index([scheduleId])
+  @@index([status])
+  @@index([runAt])
+}
+
+model BatchRetirement {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+  createdBy      String
+  name           String
+  description    String?
+  items          Json
+  status         String
+  totalItems     Int
+  completedItems Int
+  failedItems    Int
+  retirementIds  String[]
+  errorLog       Json?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  scheduleId     String?
+  schedule       RetirementSchedule? @relation(fields: [scheduleId], references: [id])
+  executionId    String?
+  execution      ScheduleExecution?  @relation(fields: [executionId], references: [id])
+
+  @@index([companyId])
+  @@index([scheduleId])
+  @@index([executionId])
+}
+
+model Cart {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  sessionId String
+  subtotal  Float    @default(0)
+  serviceFee Float   @default(0)
+  total     Float    @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items   CartItem[]
+  orders  Order[]
+  reservations CreditReservation[]
+
+  @@index([companyId])
   @@index([expiresAt])
 }
 
 model CartItem {
-  id              String    @id @default(cuid())
-  cartId          String
-  cart            Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  creditId        String
-  credit          Credit    @relation(fields: [creditId], references: [id])
-
-  quantity        Int       @default(1000) // Standard lot size
-  price           Float     // Price snapshot at add time
-
-  createdAt       DateTime  @default(now())
-
-  @@unique([cartId, creditId])
-  @@index([cartId])
-}
-
-model Order {
-  id              String    @id @default(cuid())
-  orderNumber     String    @unique // Human-readable (e.g., "ORD-2024-0001")
-
-  companyId       String
-  company         Company   @relation(fields: [companyId], references: [id])
-  userId          String    // User who placed order
-
-  cartId          String?   @unique // Original cart
-  cart            Cart?     @relation(fields: [cartId], references: [id])
-
-  // Order details
-  subtotal        Float
-  serviceFee      Float
-  total           Float
-  status          String    // pending, processing, completed, failed, refunded
-
-  // Payment
-  paymentMethod   String?   // credit_card, wire, crypto
-  paymentId       String?
-  paidAt          DateTime?
-
-  // Blockchain
-  transactionHash String?   // Stellar transaction hash
-
-  // Metadata
-  notes           String?
-
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  completedAt     DateTime?
-
-  // Relations
-  items           OrderItem[]
-  auditLogs       OrderAuditLog[]
-
-  @@index([companyId])
-  @@index([orderNumber])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model OrderItem {
-  id              String    @id @default(cuid())
-  orderId         String
-  order           Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  creditId        String
-  credit          Credit    @relation(fields: [creditId], references: [id])
-
-  quantity        Int
-  price           Float     // Price at purchase
-  subtotal        Float
-
-  createdAt       DateTime  @default(now())
-
-  @@index([orderId])
-}
-
-// ==========================================
-// Credit Reservation (15-minute hold)
-// ==========================================
-
-model CreditReservation {
   id        String   @id @default(cuid())
   cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id])
   creditId  String
   credit    Credit   @relation(fields: [creditId], references: [id])
   quantity  Int
-  expiresAt DateTime // 15-minute TTL
+  price     Float
   createdAt DateTime @default(now())
 
   @@unique([cartId, creditId])
   @@index([cartId])
   @@index([creditId])
-  @@index([expiresAt])
 }
 
-// ==========================================
-// Order Audit Log
-// ==========================================
+model Order {
+  id              String   @id @default(cuid())
+  orderNumber     String   @unique
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  cartId          String?
+  cart            Cart?    @relation(fields: [cartId], references: [id])
+  subtotal        Float
+  serviceFee      Float
+  total           Float
+  status          String
+  paymentMethod   String
+  paymentId       String?
+  transactionHash String?
+  notes           String?
+  paidAt          DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items      OrderItem[]
+  auditLogs  OrderAuditLog[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  creditId  String
+  credit    Credit   @relation(fields: [creditId], references: [id])
+  quantity  Int
+  price     Float
+  subtotal  Float
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([creditId])
+}
 
 model OrderAuditLog {
   id         String   @id @default(cuid())
   orderId    String
   order      Order    @relation(fields: [orderId], references: [id])
-  event      String   // created, confirmed, failed, cancelled, refunded
+  event      String
   fromStatus String?
   toStatus   String
   userId     String?
-  metadata   String?  // JSON string for extra context
+  metadata   String?
   createdAt  DateTime @default(now())
 
   @@index([orderId])
-  @@index([event])
   @@index([createdAt])
 }
 
-// ==========================================
-// Auction Models
-// ==========================================
+model CreditReservation {
+  id        String   @id @default(cuid())
+  cartId    String
+  cart      Cart     @relation(fields: [cartId], references: [id])
+  creditId  String
+  credit    Credit   @relation(fields: [creditId], references: [id])
+  quantity  Int
+  expiresAt DateTime
 
-model Auction {
-  id              String   @id @default(cuid())
-  creditId        String
-  credit          Credit   @relation(fields: [creditId], references: [id])
-  
-  // Auction parameters
-  quantity        Int      // Total credits for auction
-  remaining       Int      // Credits still available
-  
-  // Pricing
-  startPrice      Float
-  currentPrice    Float
-  floorPrice      Float
-  priceDecrement  Float    // Amount price drops each interval
-  decrementInterval Int    // Minutes between price drops
-  
-  // Timing
-  startTime       DateTime
-  endTime         DateTime
-  lastPriceUpdate DateTime
-  
-  // Status
-  status          String   // pending, active, ended, settled, cancelled
-  
-  // Results
-  winnerId        String?  // User ID of winner
-  finalPrice      Float?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  // Relations
-  bids            Bid[]
-  
-  @@index([status])
+  @@unique([cartId, creditId])
   @@index([creditId])
-  @@index([endTime])
-}
-
-model Bid {
-  id          String   @id @default(cuid())
-  auctionId   String
-  auction     Auction  @relation(fields: [auctionId], references: [id])
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  bidPrice    Float
-  quantity    Int
-  status      String   // pending, accepted, rejected, outbid
-  createdAt   DateTime @default(now())
-
-  @@index([auctionId])
-  @@index([userId])
-}
-
-model RetirementSchedule {
-  id              String             @id @default(cuid())
-  companyId       String
-  company         Company            @relation(fields: [companyId], references: [id])
-  createdBy       String
-
-  name            String
-  description     String?
-
-  purpose         String
-  amount          Int
-
-  creditSelection String
-  creditIds       String[]
-
-  frequency       String
-  interval        Int?
-  startDate       DateTime
-  endDate         DateTime?
-  nextRunDate     DateTime
-
-  isActive        Boolean            @default(true)
-  lastRunDate     DateTime?
-  lastRunStatus   String?
-  runCount        Int                @default(0)
-
-  notifyBefore    Int?
-  notifyAfter     Boolean            @default(true)
-
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  executions      ScheduleExecution[]
-
-  @@index([companyId])
-  @@index([nextRunDate])
-  @@index([isActive])
-  @@index([frequency])
-}
-
-model ScheduleExecution {
-  id              String             @id @default(cuid())
-  scheduleId      String
-  schedule        RetirementSchedule @relation(fields: [scheduleId], references: [id])
-
-  scheduledDate   DateTime
-  executedDate    DateTime?
-  status          String
-
-  amountRetired   Int?
-  retirementIds   String[]
-  errorMessage    String?
-
-  retryCount      Int                @default(0)
-  nextRetryDate   DateTime?
-
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  @@index([scheduleId])
-  @@index([status])
-  @@index([scheduledDate])
-}
-
-model BatchRetirement {
-  id              String             @id @default(cuid())
-  companyId       String
-  company         Company            @relation(fields: [companyId], references: [id])
-  createdBy       String
-
-  name            String
-  description     String?
-
-  items           Json
-
-  status          String
-  totalItems      Int
-  completedItems  Int
-  failedItems     Int
-
-  retirementIds   String[]
-  errorLog        Json?
-
-  createdAt       DateTime           @default(now())
-  completedAt     DateTime?
-  updatedAt       DateTime           @updatedAt
-
-  @@index([companyId])
-  @@index([status])
+  @@index([expiresAt])
 }

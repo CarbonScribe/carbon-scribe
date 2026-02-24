@@ -2,34 +2,30 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { SecurityService } from '../security.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
-import { SecurityEvents } from '../constants/security-events.constants';
-
-type RequestWithUser = Request & { user?: JwtPayload };
 
 @Injectable()
 export class AuditLogMiddleware implements NestMiddleware {
   constructor(private readonly securityService: SecurityService) {}
 
-  async use(req: Request, res: Response, next: NextFunction) {
-    const request = req as RequestWithUser;
-    const user = request.user;
-    const companyId = user?.companyId;
-    const ipAddress =
-      (request.headers['x-forwarded-for'] as string) || (request.ip as string);
-    const userAgent = request.headers['user-agent'] as string;
-    const resource = request.originalUrl || request.url;
-    const method = request.method;
+  use(req: Request, res: Response, next: NextFunction) {
+    const start = Date.now();
 
     res.on('finish', () => {
+      const duration = Date.now() - start;
+      const user = req.user as JwtPayload | undefined;
+
       this.securityService.logEvent({
-        eventType: SecurityEvents.AuditLog,
-        companyId,
+        eventType: 'http.request' as any,
+        companyId: user?.companyId,
         userId: user?.sub,
-        ipAddress,
-        userAgent,
-        resource,
-        method,
-        status: res.statusCode >= 400 ? 'error' : 'success',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'] as string,
+        resource: req.originalUrl || req.url,
+        method: req.method,
+        details: {
+          duration,
+        },
+        status: res.statusCode >= 400 ? 'failure' : 'success',
         statusCode: res.statusCode,
       });
     });
@@ -37,4 +33,3 @@ export class AuditLogMiddleware implements NestMiddleware {
     next();
   }
 }
-

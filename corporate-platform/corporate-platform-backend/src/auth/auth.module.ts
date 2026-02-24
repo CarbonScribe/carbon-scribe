@@ -6,10 +6,12 @@ import { AuthController } from './auth.controller';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { DatabaseModule } from '../shared/database/database.module';
+import { SecurityModule } from '../security/security.module';
 
 @Module({
   imports: [
     DatabaseModule,
+    SecurityModule,
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'dev-jwt-secret',

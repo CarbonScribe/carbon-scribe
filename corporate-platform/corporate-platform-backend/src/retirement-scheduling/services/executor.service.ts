@@ -12,23 +12,25 @@ export class ExecutorService {
   ) {}
 
   async executeDueSchedules(now: Date = new Date()) {
-    const dueSchedules = await this.prisma.retirementSchedule.findMany({
+    const prisma = this.prisma as any;
+
+    const dueSchedules = (await prisma.retirementSchedule.findMany({
       where: {
         isActive: true,
         nextRunDate: { lte: now },
         OR: [{ endDate: null }, { endDate: { gte: now } }],
       },
       orderBy: { nextRunDate: 'asc' },
-    });
+    } as any)) as any[];
 
-    const retriable = await this.prisma.scheduleExecution.findMany({
+    const retriable = (await prisma.scheduleExecution.findMany({
       where: {
         status: 'failed',
         retryCount: { lt: 3 },
         nextRetryDate: { lte: now },
       },
       include: { schedule: true },
-    });
+    } as any)) as any[];
 
     const scheduleResults = [];
     for (const schedule of dueSchedules) {
@@ -59,29 +61,31 @@ export class ExecutorService {
     isManual: boolean,
     existingExecutionId?: string,
   ) {
-    const schedule = await this.prisma.retirementSchedule.findUnique({
+    const prisma = this.prisma as any;
+
+    const schedule = (await prisma.retirementSchedule.findUnique({
       where: { id: scheduleId },
-    });
+    })) as any;
 
     if (!schedule) {
       return { scheduleId, status: 'failed', error: 'Schedule not found' };
     }
 
     const execution = existingExecutionId
-      ? await this.prisma.scheduleExecution.update({
+      ? await prisma.scheduleExecution.update({
           where: { id: existingExecutionId },
           data: {
             status: 'processing',
             executedDate: new Date(),
-          },
+          } as any,
         })
-      : await this.prisma.scheduleExecution.create({
+      : await prisma.scheduleExecution.create({
           data: {
             scheduleId: schedule.id,
             scheduledDate: schedule.nextRunDate,
             status: 'processing',
             executedDate: new Date(),
-          },
+          } as any,
         });
 
     try {
@@ -101,7 +105,7 @@ export class ExecutorService {
             ? 'completed'
             : 'failed';
 
-      await this.prisma.scheduleExecution.update({
+      await prisma.scheduleExecution.update({
         where: { id: execution.id },
         data: {
           status: executionStatus,
@@ -117,17 +121,17 @@ export class ExecutorService {
             executionStatus === 'failed'
               ? new Date(Date.now() + 60 * 60 * 1000)
               : null,
-        },
+        } as any,
       });
 
       const now = new Date();
       if (executionStatus === 'failed') {
-        await this.prisma.retirementSchedule.update({
+        await prisma.retirementSchedule.update({
           where: { id: schedule.id },
           data: {
             lastRunDate: now,
             lastRunStatus: completedStatus,
-          },
+          } as any,
         });
       } else {
         const nextRunDate = this.scheduleService.calculateNextRunDate(
@@ -136,7 +140,7 @@ export class ExecutorService {
           schedule.interval,
         );
 
-        await this.prisma.retirementSchedule.update({
+        await prisma.retirementSchedule.update({
           where: { id: schedule.id },
           data: {
             lastRunDate: now,
@@ -145,7 +149,7 @@ export class ExecutorService {
             nextRunDate,
             isActive:
               schedule.frequency === 'one-time' ? false : schedule.isActive,
-          },
+          } as any,
         });
       }
 
@@ -178,22 +182,22 @@ export class ExecutorService {
         `Execution failed for schedule ${scheduleId}: ${err.message}`,
       );
 
-      await this.prisma.scheduleExecution.update({
+      await prisma.scheduleExecution.update({
         where: { id: execution.id },
         data: {
           status: 'failed',
           errorMessage: err.message,
           retryCount: { increment: 1 },
           nextRetryDate: new Date(Date.now() + 60 * 60 * 1000),
-        },
+        } as any,
       });
 
-      await this.prisma.retirementSchedule.update({
+      await prisma.retirementSchedule.update({
         where: { id: schedule.id },
         data: {
           lastRunDate: new Date(),
           lastRunStatus: 'failed',
-        },
+        } as any,
       });
 
       return {

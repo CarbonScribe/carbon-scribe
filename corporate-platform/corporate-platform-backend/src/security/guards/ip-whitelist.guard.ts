@@ -9,17 +9,15 @@ import { SecurityService } from '../security.service';
 import { JwtPayload } from '../../auth/interfaces/jwt-payload.interface';
 import { SecurityEvents } from '../constants/security-events.constants';
 
-type RequestWithUser = Request & { user?: JwtPayload };
-
 @Injectable()
 export class IpWhitelistGuard implements CanActivate {
   constructor(private readonly securityService: SecurityService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const http = context.switchToHttp();
-    const request = http.getRequest<RequestWithUser>();
+    const request = http.getRequest<Request>();
 
-    const user = request.user;
+    const user = request.user as JwtPayload | undefined;
     const companyId = user?.companyId ?? null;
     const clientIp =
       (request.headers['x-forwarded-for'] as string) || (request.ip as string);
@@ -47,11 +45,9 @@ export class IpWhitelistGuard implements CanActivate {
         status: 'blocked',
         statusCode: 403,
       });
-
       throw new ForbiddenException('IP not allowed');
     }
 
     return true;
   }
 }
-

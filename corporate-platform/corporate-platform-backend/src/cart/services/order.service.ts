@@ -28,8 +28,10 @@ export class OrderService {
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
+    const prisma = this.prisma as any;
+
     const [data, total] = await Promise.all([
-      this.prisma.order.findMany({
+      prisma.order.findMany({
         where,
         skip,
         take: limit,
@@ -40,7 +42,7 @@ export class OrderService {
           },
         },
       }),
-      this.prisma.order.count({ where }),
+      prisma.order.count({ where }),
     ]);
 
     return {
@@ -55,7 +57,9 @@ export class OrderService {
     companyId: string,
     orderId: string,
   ): Promise<OrderDetails> {
-    const order = await this.prisma.order.findUnique({
+    const prisma = this.prisma as any;
+
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         items: {
@@ -77,7 +81,9 @@ export class OrderService {
     orderId: string,
     res: Response,
   ): Promise<void> {
-    const order = await this.prisma.order.findUnique({
+    const prisma = this.prisma as any;
+
+    const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
         items: {

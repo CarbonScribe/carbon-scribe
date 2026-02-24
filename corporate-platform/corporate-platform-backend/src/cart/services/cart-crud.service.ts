@@ -22,8 +22,10 @@ export class CartCrudService {
   ) {}
 
   async getOrCreateCart(companyId: string): Promise<CartDetails> {
+    const prisma = this.prisma as any;
+
     // Find existing active cart for this company
-    let cart = await this.prisma.cart.findFirst({
+    let cart = await prisma.cart.findFirst({
       where: {
         companyId,
         expiresAt: { gt: new Date() },
@@ -40,7 +42,7 @@ export class CartCrudService {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + CART_EXPIRY_DAYS);
 
-      cart = await this.prisma.cart.create({
+      cart = await prisma.cart.create({
         data: {
           companyId,
           sessionId: this.generateSessionId(),
@@ -61,7 +63,9 @@ export class CartCrudService {
     const quantity = dto.quantity ?? DEFAULT_QUANTITY;
 
     // 1. Check credit exists and is available
-    const credit = await this.prisma.credit.findUnique({
+    const prisma = this.prisma as any;
+
+    const credit = await prisma.credit.findUnique({
       where: { id: dto.creditId },
     });
 
@@ -79,7 +83,7 @@ export class CartCrudService {
     const cart = await this.getOrCreateCartRecord(companyId);
 
     // 3. Check if item already exists in cart
-    const existingItem = await this.prisma.cartItem.findUnique({
+    const existingItem = await prisma.cartItem.findUnique({
       where: {
         cartId_creditId: {
           cartId: cart.id,
@@ -95,7 +99,7 @@ export class CartCrudService {
     }
 
     // 4. Add item to cart with real credit price
-    await this.prisma.cartItem.create({
+    await prisma.cartItem.create({
       data: {
         cartId: cart.id,
         creditId: dto.creditId,
@@ -117,7 +121,9 @@ export class CartCrudService {
     dto: UpdateCartDto,
   ): Promise<CartDetails> {
     // 1. Find the cart item
-    const cartItem = await this.prisma.cartItem.findUnique({
+    const prisma = this.prisma as any;
+
+    const cartItem = await prisma.cartItem.findUnique({
       where: { id: itemId },
       include: { cart: true, credit: true },
     });
@@ -134,7 +140,7 @@ export class CartCrudService {
     }
 
     // 3. Update quantity
-    await this.prisma.cartItem.update({
+    await prisma.cartItem.update({
       where: { id: itemId },
       data: { quantity: dto.quantity },
     });
@@ -147,7 +153,9 @@ export class CartCrudService {
 
   async removeItem(companyId: string, itemId: string): Promise<CartDetails> {
     // 1. Find the cart item
-    const cartItem = await this.prisma.cartItem.findUnique({
+    const prisma = this.prisma as any;
+
+    const cartItem = await prisma.cartItem.findUnique({
       where: { id: itemId },
       include: { cart: true },
     });
@@ -157,7 +165,7 @@ export class CartCrudService {
     }
 
     // 2. Delete the item
-    await this.prisma.cartItem.delete({
+    await prisma.cartItem.delete({
       where: { id: itemId },
     });
 
@@ -171,7 +179,9 @@ export class CartCrudService {
   }
 
   async clearCart(companyId: string): Promise<{ success: boolean }> {
-    const cart = await this.prisma.cart.findFirst({
+    const prisma = this.prisma as any;
+
+    const cart = await prisma.cart.findFirst({
       where: {
         companyId,
         expiresAt: { gt: new Date() },
@@ -186,11 +196,11 @@ export class CartCrudService {
     await this.reservationService.releaseReservations(cart.id);
 
     // Delete all items and reset totals
-    await this.prisma.cartItem.deleteMany({
+    await prisma.cartItem.deleteMany({
       where: { cartId: cart.id },
     });
 
-    await this.prisma.cart.update({
+    await prisma.cart.update({
       where: { id: cart.id },
       data: {
         subtotal: 0,
@@ -203,7 +213,9 @@ export class CartCrudService {
   }
 
   async getCart(companyId: string): Promise<CartDetails> {
-    const cart = await this.prisma.cart.findFirst({
+    const prisma = this.prisma as any;
+
+    const cart = await prisma.cart.findFirst({
       where: {
         companyId,
         expiresAt: { gt: new Date() },
@@ -235,7 +247,9 @@ export class CartCrudService {
   }
 
   async recalculateTotals(cartId: string): Promise<void> {
-    const items = await this.prisma.cartItem.findMany({
+    const prisma = this.prisma as any;
+
+    const items = await prisma.cartItem.findMany({
       where: { cartId },
     });
 
@@ -246,14 +260,16 @@ export class CartCrudService {
     const serviceFee = subtotal * SERVICE_FEE_RATE;
     const total = subtotal + serviceFee;
 
-    await this.prisma.cart.update({
+    await prisma.cart.update({
       where: { id: cartId },
       data: { subtotal, serviceFee, total },
     });
   }
 
   async cleanupExpiredCarts(): Promise<number> {
-    const result = await this.prisma.cart.deleteMany({
+    const prisma = this.prisma as any;
+
+    const result = await prisma.cart.deleteMany({
       where: {
         expiresAt: { lt: new Date() },
       },
@@ -263,7 +279,9 @@ export class CartCrudService {
   }
 
   private async getOrCreateCartRecord(companyId: string) {
-    let cart = await this.prisma.cart.findFirst({
+    const prisma = this.prisma as any;
+
+    let cart = await prisma.cart.findFirst({
       where: {
         companyId,
         expiresAt: { gt: new Date() },
@@ -274,7 +292,7 @@ export class CartCrudService {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + CART_EXPIRY_DAYS);
 
-      cart = await this.prisma.cart.create({
+      cart = await prisma.cart.create({
         data: {
           companyId,
           sessionId: this.generateSessionId(),
@@ -290,7 +308,9 @@ export class CartCrudService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + CART_EXPIRY_DAYS);
 
-    await this.prisma.cart.update({
+    const prisma = this.prisma as any;
+
+    await prisma.cart.update({
       where: { id: cartId },
       data: { expiresAt },
     });

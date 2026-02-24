@@ -13,10 +13,12 @@ import { AuctionModule } from './auction/auction.module';
 import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './logger/logger.module';
 import { RequestLoggerMiddleware } from './logger/middleware/request-logger.middleware';
+import { SecurityModule } from './security/security.module';
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
+    SecurityModule,
     RetirementModule,
     ComplianceModule,
     MarketplaceModule,

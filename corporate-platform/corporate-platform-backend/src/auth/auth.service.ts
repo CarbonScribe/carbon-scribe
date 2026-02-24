@@ -16,6 +16,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthResponse, AuthUser } from './interfaces/auth-result.interface';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { randomBytes } from 'crypto';
+import { SecurityService } from '../security/security.service';
+import { SecurityEvents } from '../security/constants/security-events.constants';
 
 interface RequestMetadata {
   ipAddress?: string;
@@ -47,6 +49,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly securityService: SecurityService,
   ) {}
 
   async register(
@@ -101,11 +104,25 @@ export class AuthService {
       }),
     ]);
 
-    return {
+    const response: AuthResponse = {
       user: this.toAuthUser(user),
       accessToken,
       refreshToken,
     };
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.UserCreated,
+      companyId: user.companyId,
+      userId: user.id,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+      resource: '/api/v1/auth/register',
+      method: 'POST',
+      status: 'success',
+      statusCode: 201,
+    });
+
+    return response;
   }
 
   async validateUser(email: string, password: string): Promise<User | null> {
@@ -128,6 +145,17 @@ export class AuthService {
     const user = await this.validateUser(dto.email, dto.password);
     if (!user) {
       this.registerFailedAttempt(dto.email);
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthLoginFailed,
+        companyId: undefined,
+        userId: undefined,
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+        resource: '/api/v1/auth/login',
+        method: 'POST',
+        status: 'failure',
+        statusCode: 401,
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -156,11 +184,25 @@ export class AuthService {
       }),
     ]);
 
-    return {
+    const response: AuthResponse = {
       user: this.toAuthUser(user),
       accessToken,
       refreshToken,
     };
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthLoginSuccess,
+      companyId: user.companyId,
+      userId: user.id,
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+      resource: '/api/v1/auth/login',
+      method: 'POST',
+      status: 'success',
+      statusCode: 200,
+    });
+
+    return response;
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthResponse> {
@@ -256,6 +298,14 @@ export class AuthService {
       },
     });
 
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthLogout,
+      companyId: payload.companyId,
+      userId: payload.sub,
+      status: 'success',
+      statusCode: 200,
+    });
+
     return { success: true };
   }
 
@@ -292,6 +342,14 @@ export class AuthService {
         },
       }),
     ]);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthPasswordChange,
+      companyId: user.companyId,
+      userId: user.id,
+      status: 'success',
+      statusCode: 200,
+    });
 
     return { success: true };
   }
@@ -365,6 +423,14 @@ export class AuthService {
       },
     });
 
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthPasswordReset,
+      companyId: user.companyId,
+      userId: user.id,
+      status: 'success',
+      statusCode: 200,
+    });
+
     return {
       message:
         'If an account exists for this email, a reset link has been sent',
@@ -403,6 +469,14 @@ export class AuthService {
         },
       }),
     ]);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthPasswordChange,
+      companyId: user.companyId,
+      userId: user.id,
+      status: 'success',
+      statusCode: 200,
+    });
 
     return { success: true };
   }

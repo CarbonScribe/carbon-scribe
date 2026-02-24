@@ -28,8 +28,11 @@ import {
   PORTFOLIO_VIEW,
   PORTFOLIO_EXPORT,
 } from '../rbac/constants/permissions.constants';
+import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
+import { SecurityService } from '../security/security.service';
+import { SecurityEvents } from '../security/constants/security-events.constants';
 
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 @Controller('api/v1/retirements')
 export class RetirementController {
   constructor(
@@ -38,6 +41,7 @@ export class RetirementController {
     private validationService: ValidationService,
     private certificateService: CertificateService,
     private prisma: PrismaService,
+    private securityService: SecurityService,
   ) {}
 
   @Post()
@@ -48,7 +52,27 @@ export class RetirementController {
   ) {
     const companyId = user.companyId;
     const userId = user.sub;
-    return this.instantRetirementService.retire(companyId, userId, dto);
+    const result = await this.instantRetirementService.retire(
+      companyId,
+      userId,
+      dto,
+    );
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.CreditRetired,
+      companyId,
+      userId,
+      resource: '/api/v1/retirements',
+      method: 'POST',
+      status: 'success',
+      statusCode: 201,
+      details: {
+        amount: dto.amount,
+        creditId: dto.creditId,
+      },
+    });
+
+    return result;
   }
 
   @Get()
@@ -96,6 +120,16 @@ export class RetirementController {
       'attachment; filename=retirement-history.csv',
     );
     res.send(csv);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId: user.companyId,
+      userId: user.sub,
+      resource: '/api/v1/retirements/export/csv',
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
+    });
   }
 
   @Get(':id')
