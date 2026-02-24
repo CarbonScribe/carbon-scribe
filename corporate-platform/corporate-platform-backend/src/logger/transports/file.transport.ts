@@ -1,21 +1,24 @@
-import { appendFileSync, existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
+import { appendFile } from 'fs/promises';
 import { join } from 'path';
 import { LogTransport } from '../interfaces/transport.interface';
 import { LogEntry } from '../interfaces/log-entry.interface';
 import { formatJson } from '../formatters/json.formatter';
 
 export class FileTransport implements LogTransport {
-  private readonly filePath: string;
+  private readonly directory: string;
 
   constructor(directory: string) {
     if (!existsSync(directory)) {
       mkdirSync(directory, { recursive: true });
     }
-    this.filePath = join(directory, 'application.log');
+    this.directory = directory;
   }
 
-  log(entry: LogEntry) {
+  async log(entry: LogEntry) {
+    const date = new Date().toISOString().slice(0, 10);
+    const filePath = join(this.directory, `application-${date}.log`);
     const line = `${formatJson(entry)}\n`;
-    appendFileSync(this.filePath, line, { encoding: 'utf8' });
+    await appendFile(filePath, line, { encoding: 'utf8' });
   }
 }
