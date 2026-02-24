@@ -32,7 +32,7 @@ export class ReminderService {
         const reminderPayload = {
           scheduleId: schedule.id,
           companyId: schedule.companyId,
-          createdBy: schedule.createdBy,
+          createdBy: schedule.userId,
           type: 'retirement-reminder',
           channel: ['email', 'in-app'],
           message: `Scheduled retirement "${schedule.name}" is due on ${schedule.nextRunDate.toISOString()} for ${schedule.amount} credits (${schedule.purpose}).`,
@@ -60,7 +60,10 @@ export class ReminderService {
   }
 
   private async estimateProjectedBalance(schedule: any) {
-    if (schedule.creditSelection === 'specific' && schedule.creditIds.length > 0) {
+    if (
+      schedule.creditSelection === 'specific' &&
+      schedule.creditIds.length > 0
+    ) {
       const credits = await this.prisma.credit.findMany({
         where: { id: { in: schedule.creditIds } },
         select: { available: true },

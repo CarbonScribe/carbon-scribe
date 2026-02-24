@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, FolderKanban, BarChart3, Satellite, CreditCard, Users, FileText, Settings, LogOut, ChevronLeft } from 'lucide-react';
+import { Home, FolderKanban, BarChart3, Satellite, CreditCard, Users, FileText, Settings, LogOut, ChevronLeft, FileBarChart } from 'lucide-react';
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useStore } from '@/lib/store/store';
@@ -15,6 +15,7 @@ const PortalSidebar = () => {
     { icon: Home, label: 'Dashboard', href: '/', active: pathname === '/' },
     { icon: FolderKanban, label: 'Projects', href: '/projects', active: pathname.includes('/projects') },
     { icon: BarChart3, label: 'Analytics', href: '/analytics', active: pathname.includes('/analytics') },
+    { icon: FileBarChart, label: 'Reports', href: '/reports', active: pathname.includes('/reports') },
     { icon: Satellite, label: 'Monitoring', href: '/monitoring', active: pathname.includes('/monitoring') },
     { icon: CreditCard, label: 'Financing', href: '/financing', active: pathname.includes('/financing') },
     { icon: Users, label: 'Team', href: '/team', active: pathname.includes('/team') },
@@ -60,6 +61,7 @@ const PortalSidebar = () => {
         {/* Bottom Section */}
         <div className="p-4 border-t border-gray-200">
           <button
+            type="button"
             onClick={() => logout()}
             className="flex items-center p-3 text-gray-700 hover:bg-gray-100 rounded-xl w-full transition-colors"
           >

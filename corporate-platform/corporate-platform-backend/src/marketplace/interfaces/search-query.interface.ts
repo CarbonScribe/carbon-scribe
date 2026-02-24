@@ -1,4 +1,8 @@
-export type MarketplaceSortBy = 'price' | 'vintage' | 'popularity' | 'createdAt';
+export type MarketplaceSortBy =
+  | 'price'
+  | 'vintage'
+  | 'popularity'
+  | 'createdAt';
 
 export type MarketplaceSortOrder = 'asc' | 'desc';
 
@@ -44,4 +48,3 @@ export interface MarketplaceSearchResult<T> {
   limit: number;
   facets: MarketplaceSearchFacets;
 }
-

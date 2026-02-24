@@ -11,4 +11,3 @@ export interface DiscoveryResponse<T> {
   bestValue: T[];
   regionalSpotlights: DiscoverySection<T>[];
 }
-

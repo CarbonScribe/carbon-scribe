@@ -77,7 +77,10 @@ export class SchedulingController {
   }
 
   @Post('retirement-batches')
-  createBatch(@CurrentUser() user: JwtPayload, @Body() dto: BatchRetirementDto) {
+  createBatch(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: BatchRetirementDto,
+  ) {
     return this.schedulingService.createBatch(user.companyId, user.sub, dto);
   }
 

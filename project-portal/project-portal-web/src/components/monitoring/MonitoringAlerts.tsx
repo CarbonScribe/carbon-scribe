@@ -1,29 +1,67 @@
-// File: components/project-portal/monitoring/MonitoringAlerts.tsx
 'use client';
 
-import { AlertTriangle, CheckCircle, Clock, Zap, Wind, Thermometer } from 'lucide-react';
+import { useEffect } from 'react';
+import { AlertTriangle, CheckCircle, Clock, Zap, Wind } from 'lucide-react';
+import { useReportsStore } from '@/store/store';
+import { Loader2 } from 'lucide-react';
 
-const MonitoringAlerts = () => {
-  const alerts = [
-    { id: 1, type: 'warning', title: 'Soil Moisture Low', message: 'Zone A needs irrigation', time: '2 hours ago', icon: AlertTriangle },
-    { id: 2, type: 'success', title: 'NDVI Improvement', message: 'Vegetation health +12%', time: '1 day ago', icon: CheckCircle },
-    { id: 3, type: 'info', title: 'Drone Survey Ready', message: 'Schedule flight for mapping', time: '3 days ago', icon: Clock },
-    { id: 4, type: 'warning', title: 'Wind Speed High', message: '30 km/h - check saplings', time: 'Just now', icon: Wind },
-  ];
-
-//   const sensorData = [
-//     { sensor: 'Soil Temp', value: '24.5°C', status: 'optimal', icon: Thermometer },
-//     { sensor: 'Humidity', value: '68%', status: 'good', icon: Wind },
-//     { sensor: 'pH Level', value: '6.8', status: 'optimal', icon: Zap },
-//     { sensor: 'Rainfall', value: '12mm', status: 'good', icon: '💧' },
-//   ];
+const FALLBACK_ALERTS = [
+  { id: '1', type: 'warning' as const, title: 'Soil Moisture Low', message: 'Zone A needs irrigation', time: '2 hours ago', icon: AlertTriangle },
+  { id: '2', type: 'success' as const, title: 'NDVI Improvement', message: 'Vegetation health +12%', time: '1 day ago', icon: CheckCircle },
+  { id: '3', type: 'info' as const, title: 'Drone Survey Ready', message: 'Schedule flight for mapping', time: '3 days ago', icon: Clock },
+  { id: '4', type: 'warning' as const, title: 'Wind Speed High', message: '30 km/h - check saplings', time: 'Just now', icon: Wind },
+];
 
 const sensorData = [
-    { sensor: 'Soil Temp', value: '24.5°C', status: 'optimal', icon: 'thermometer', Component: Thermometer },
-    { sensor: 'Humidity', value: '68%', status: 'good', icon: 'wind', Component: Wind },
-    { sensor: 'pH Level', value: '6.8', status: 'optimal', icon: 'zap', Component: Zap },
-    { sensor: 'Rainfall', value: '12mm', status: 'good', icon: '💧' }, // ← Just icon string
-  ];
+  { sensor: 'Soil Temp', value: '24.5°C', status: 'optimal', icon: '🌡️' },
+  { sensor: 'Humidity', value: '68%', status: 'good', icon: '💨' },
+  { sensor: 'pH Level', value: '6.8', status: 'optimal', icon: '⚡' },
+  { sensor: 'Rainfall', value: '12mm', status: 'good', icon: '💧' },
+];
+
+function formatTimeAgo(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffM = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffM / 60);
+  const diffD = Math.floor(diffH / 24);
+  if (diffM < 60) return diffM <= 1 ? 'Just now' : `${diffM} min ago`;
+  if (diffH < 24) return `${diffH} hours ago`;
+  if (diffD < 7) return `${diffD} days ago`;
+  return d.toLocaleDateString();
+}
+
+const MonitoringAlerts = () => {
+  const {
+    dashboardSummary,
+    dashboardSummaryLoading,
+    fetchDashboardSummary,
+  } = useReportsStore();
+
+  useEffect(() => {
+    fetchDashboardSummary();
+  }, [fetchDashboardSummary]);
+
+  const activity = dashboardSummary?.recent_activity ?? [];
+  const alerts = activity.length > 0
+    ? activity.slice(0, 4).map((a) => ({
+        id: a.id,
+        type: (a.type === 'alert' ? 'warning' : a.type === 'success' ? 'success' : 'info') as 'warning' | 'success' | 'info',
+        title: a.type,
+        message: a.description,
+        time: formatTimeAgo(a.timestamp),
+        icon: a.type === 'success' ? CheckCircle : a.type === 'alert' ? AlertTriangle : Clock,
+      }))
+    : FALLBACK_ALERTS;
+
+  if (dashboardSummaryLoading && !dashboardSummary) {
+    return (
+      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 flex items-center justify-center min-h-[240px]">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
@@ -36,18 +74,20 @@ const sensorData = [
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Alerts Panel */}
         <div>
           <h3 className="font-bold text-gray-900 mb-4">Recent Alerts</h3>
           <div className="space-y-4">
             {alerts.map((alert) => {
               const Icon = alert.icon;
               return (
-                <div key={alert.id} className={`p-4 rounded-xl border-2 transition-all duration-200 hover:scale-102 cursor-pointer ${
-                  alert.type === 'warning' ? 'border-amber-200 bg-amber-50' :
-                  alert.type === 'success' ? 'border-emerald-200 bg-emerald-50' :
-                  'border-blue-200 bg-blue-50'
-                }`}>
+                <div
+                  key={alert.id}
+                  className={`p-4 rounded-xl border-2 transition-all duration-200 hover:scale-102 cursor-pointer ${
+                    alert.type === 'warning' ? 'border-amber-200 bg-amber-50' :
+                    alert.type === 'success' ? 'border-emerald-200 bg-emerald-50' :
+                    'border-blue-200 bg-blue-50'
+                  }`}
+                >
                   <div className="flex items-start">
                     <div className={`p-2 rounded-lg mr-3 ${
                       alert.type === 'warning' ? 'bg-amber-100 text-amber-600' :
@@ -70,7 +110,6 @@ const sensorData = [
           </div>
         </div>
 
-        {/* Sensor Data Panel */}
         <div>
           <h3 className="font-bold text-gray-900 mb-4">Sensor Network</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -91,7 +130,6 @@ const sensorData = [
             ))}
           </div>
 
-          {/* Satellite Connection Status */}
           <div className="mt-6 p-4 bg-linear-to-r from-cyan-50 to-blue-50 rounded-xl border border-cyan-200">
             <div className="flex items-center justify-between">
               <div>
@@ -99,7 +137,7 @@ const sensorData = [
                 <div className="text-sm text-gray-600">Sentinel-2 • Planet Labs</div>
               </div>
               <div className="flex items-center">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse mr-2"></div>
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse mr-2" />
                 <span className="font-medium text-emerald-700">Live</span>
               </div>
             </div>

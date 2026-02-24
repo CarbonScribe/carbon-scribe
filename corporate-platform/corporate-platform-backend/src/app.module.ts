@@ -1,7 +1,6 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { DatabaseModule } from './shared/database/database.module';
 import { RetirementModule } from './retirement/retirement.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
@@ -9,13 +8,17 @@ import { StellarModule } from './stellar/stellar.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CacheModule } from './cache/cache.module';
-import { RetirementAnalyticsModule } from './retirement-analytics/analytics.module';
 import { AuthModule } from './auth/auth.module';
 import { AuctionModule } from './auction/auction.module';
-import { SchedulingModule } from './retirement-scheduling/scheduling.module';
+import { ConfigModule } from './config/config.module';
+import { LoggerModule } from './logger/logger.module';
+import { RequestLoggerMiddleware } from './logger/middleware/request-logger.middleware';
+import { SecurityModule } from './security/security.module';
 @Module({
   imports: [
-    DatabaseModule,
+    ConfigModule,
+    LoggerModule,
+    SecurityModule,
     RetirementModule,
     ComplianceModule,
     MarketplaceModule,
@@ -23,12 +26,14 @@ import { SchedulingModule } from './retirement-scheduling/scheduling.module';
     WebhooksModule,
     AnalyticsModule,
     CacheModule,
-    RetirementAnalyticsModule,
     AuthModule,
     AuctionModule,
-    SchedulingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+  }
+}

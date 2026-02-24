@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { Credit } from '@prisma/client';
-import { DiscoveryResponse, DiscoverySection } from '../interfaces/discovery.interface';
+import {
+  DiscoveryResponse,
+  DiscoverySection,
+} from '../interfaces/discovery.interface';
 
 @Injectable()
 export class DiscoveryService {
@@ -52,7 +55,9 @@ export class DiscoveryService {
     });
   }
 
-  async getRegionalSpotlights(limitPerRegion = 5): Promise<DiscoverySection<Credit>[]> {
+  async getRegionalSpotlights(
+    limitPerRegion = 5,
+  ): Promise<DiscoverySection<Credit>[]> {
     const credits = await this.prisma.credit.findMany({
       where: { available: { gt: 0 } },
       orderBy: [{ viewCount: 'desc' }, { purchaseCount: 'desc' }] as any,
@@ -77,15 +82,21 @@ export class DiscoveryService {
   }
 
   async getDiscoveryOverview(): Promise<DiscoveryResponse<Credit>> {
-    const [featured, trending, newest, highestQuality, bestValue, regionalSpotlights] =
-      await Promise.all([
-        this.getFeatured(12),
-        this.getTrending(12),
-        this.getNewest(12),
-        this.getHighestQuality(12),
-        this.getBestValue(12),
-        this.getRegionalSpotlights(5),
-      ]);
+    const [
+      featured,
+      trending,
+      newest,
+      highestQuality,
+      bestValue,
+      regionalSpotlights,
+    ] = await Promise.all([
+      this.getFeatured(12),
+      this.getTrending(12),
+      this.getNewest(12),
+      this.getHighestQuality(12),
+      this.getBestValue(12),
+      this.getRegionalSpotlights(5),
+    ]);
 
     return {
       featured,

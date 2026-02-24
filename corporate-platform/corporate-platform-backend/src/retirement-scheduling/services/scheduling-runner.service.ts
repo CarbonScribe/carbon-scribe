@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ExecutorService } from './executor.service';
 import { ReminderService } from './reminder.service';
 
@@ -13,14 +18,17 @@ export class SchedulingRunnerService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    this.intervalRef = setInterval(async () => {
-      try {
-        await this.runOnce();
-      } catch (error) {
-        const err = error as Error;
-        this.logger.error(`Scheduling runner failed: ${err.message}`);
-      }
-    }, 60 * 60 * 1000);
+    this.intervalRef = setInterval(
+      async () => {
+        try {
+          await this.runOnce();
+        } catch (error) {
+          const err = error as Error;
+          this.logger.error(`Scheduling runner failed: ${err.message}`);
+        }
+      },
+      60 * 60 * 1000,
+    );
   }
 
   onModuleDestroy() {

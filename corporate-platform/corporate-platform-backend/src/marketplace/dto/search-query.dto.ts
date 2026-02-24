@@ -8,7 +8,10 @@ import {
   Min,
 } from 'class-validator';
 import { PaginationDto } from './pagination.dto';
-import { MarketplaceSortBy, MarketplaceSortOrder } from '../interfaces/search-query.interface';
+import {
+  MarketplaceSortBy,
+  MarketplaceSortOrder,
+} from '../interfaces/search-query.interface';
 
 export class SearchQueryDto extends PaginationDto {
   @IsOptional()
@@ -61,4 +64,3 @@ export class SearchQueryDto extends PaginationDto {
   @IsIn(['asc', 'desc'])
   sortOrder?: MarketplaceSortOrder;
 }
-
