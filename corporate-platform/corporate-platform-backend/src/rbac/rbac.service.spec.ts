@@ -89,9 +89,9 @@ describe('RbacService', () => {
     });
 
     it('should return true for empty required list', async () => {
-      expect(
-        await service.hasAllPermissions('u1', 'viewer', 'c1', []),
-      ).toBe(true);
+      expect(await service.hasAllPermissions('u1', 'viewer', 'c1', [])).toBe(
+        true,
+      );
     });
   });
 

@@ -10,4 +10,3 @@ export interface RecommendationOptions {
   sdgs?: number[];
   limit?: number;
 }
-

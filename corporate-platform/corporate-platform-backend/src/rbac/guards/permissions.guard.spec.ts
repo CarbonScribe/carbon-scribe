@@ -4,7 +4,9 @@ import { PermissionsGuard } from './permissions.guard';
 import { RbacService } from '../rbac.service';
 import { CREDIT_RETIRE } from '../constants/permissions.constants';
 
-function createMockContext(user: Record<string, unknown> | undefined): ExecutionContext {
+function createMockContext(
+  user: Record<string, unknown> | undefined,
+): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user, path: '/test' }),
@@ -28,7 +30,11 @@ describe('PermissionsGuard', () => {
   });
 
   it('should allow when no permissions metadata', async () => {
-    const ctx = createMockContext({ sub: 'u1', role: 'viewer', companyId: 'c1' });
+    const ctx = createMockContext({
+      sub: 'u1',
+      role: 'viewer',
+      companyId: 'c1',
+    });
     expect(await guard.canActivate(ctx)).toBe(true);
     expect(rbacService.hasAllPermissions).not.toHaveBeenCalled();
   });
@@ -59,13 +65,17 @@ describe('PermissionsGuard', () => {
       companyId: 'c1',
     });
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(ctx)).rejects.toThrow(/missing required permission/);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(
+      /missing required permission/,
+    );
   });
 
   it('should deny when user identity missing', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([CREDIT_RETIRE]);
     const ctx = createMockContext(undefined);
     await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(ctx)).rejects.toThrow(/user identity required/);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(
+      /user identity required/,
+    );
   });
 });

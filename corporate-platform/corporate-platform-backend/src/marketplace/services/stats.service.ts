@@ -79,8 +79,7 @@ export class StatsService {
             median:
               prices.length % 2 === 1
                 ? prices[(prices.length - 1) / 2]
-                : (prices[prices.length / 2 - 1] +
-                    prices[prices.length / 2]) /
+                : (prices[prices.length / 2 - 1] + prices[prices.length / 2]) /
                   2,
           };
 
@@ -153,4 +152,3 @@ export class StatsService {
     };
   }
 }
-

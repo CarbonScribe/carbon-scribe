@@ -5,14 +5,21 @@ import { RbacModule } from './rbac.module';
 import { RbacService } from './rbac.service';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
-import { CREDIT_RETIRE, PORTFOLIO_VIEW } from './constants/permissions.constants';
+import {
+  CREDIT_RETIRE,
+  PORTFOLIO_VIEW,
+} from './constants/permissions.constants';
 
-function createContext(user: { sub: string; role: string; companyId: string }): ExecutionContext {
+function createContext(user: {
+  sub: string;
+  role: string;
+  companyId: string;
+}): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user, path: '/api/v1/retirements' }),
     }),
-    getHandler: () => Reflect.getMetadata ? class {} : () => ({}),
+    getHandler: () => (Reflect.getMetadata ? class {} : () => ({})),
     getClass: () => ({}),
   } as unknown as ExecutionContext;
 }
@@ -34,8 +41,16 @@ describe('RBAC integration', () => {
   });
 
   it('should resolve RbacService with role-to-permissions', async () => {
-    const adminPerms = await rbacService.getUserPermissions('u1', 'admin', 'c1');
-    const viewerPerms = await rbacService.getUserPermissions('u2', 'viewer', 'c2');
+    const adminPerms = await rbacService.getUserPermissions(
+      'u1',
+      'admin',
+      'c1',
+    );
+    const viewerPerms = await rbacService.getUserPermissions(
+      'u2',
+      'viewer',
+      'c2',
+    );
     expect(adminPerms).toContain(CREDIT_RETIRE);
     expect(adminPerms).toContain(PORTFOLIO_VIEW);
     expect(viewerPerms).toContain(PORTFOLIO_VIEW);
@@ -63,7 +78,9 @@ describe('RBAC integration', () => {
   it('PermissionsGuard should return 403 for viewer for credit:retire', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([CREDIT_RETIRE]);
     const ctx = createContext({ sub: 'u1', role: 'viewer', companyId: 'c1' });
-    await expect(permissionsGuard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    await expect(permissionsGuard.canActivate(ctx)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('Admin role has all permissions', async () => {

@@ -134,10 +134,7 @@ export class RetirementController {
 
   @Get(':id')
   @Permissions(CREDIT_VIEW)
-  async getDetails(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-  ) {
+  async getDetails(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     const retirement = await this.prisma.retirement.findUnique({
       where: { id },
       include: { credit: true, company: true },

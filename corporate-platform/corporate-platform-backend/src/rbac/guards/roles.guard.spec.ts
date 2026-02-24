@@ -2,7 +2,9 @@ import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from './roles.guard';
 
-function createMockContext(user: Record<string, unknown> | undefined): ExecutionContext {
+function createMockContext(
+  user: Record<string, unknown> | undefined,
+): ExecutionContext {
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user, path: '/test' }),
@@ -27,14 +29,24 @@ describe('RolesGuard', () => {
   });
 
   it('should allow when user has required role', () => {
-    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['viewer', 'admin']);
-    const ctx = createMockContext({ sub: 'u1', role: 'viewer', companyId: 'c1' });
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue(['viewer', 'admin']);
+    const ctx = createMockContext({
+      sub: 'u1',
+      role: 'viewer',
+      companyId: 'c1',
+    });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
   it('should deny when user role not in required list', () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(['admin']);
-    const ctx = createMockContext({ sub: 'u1', role: 'viewer', companyId: 'c1' });
+    const ctx = createMockContext({
+      sub: 'u1',
+      role: 'viewer',
+      companyId: 'c1',
+    });
     expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
     expect(() => guard.canActivate(ctx)).toThrow(/requires one of/);
   });

@@ -48,9 +48,7 @@ export class PermissionsGuard implements CanActivate {
     const user = request.user as RequestUserForPermissions | undefined;
 
     if (!user?.sub || !user?.role) {
-      this.logger.warn(
-        `RBAC denied: no user identity (path=${request.path})`,
-      );
+      this.logger.warn(`RBAC denied: no user identity (path=${request.path})`);
       throw new ForbiddenException('Access denied: user identity required');
     }
 

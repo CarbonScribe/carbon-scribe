@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { TrendingUp, Trees, Coins, Globe, Droplets, Leaf } from 'lucide-react';
 import { useProjectStats } from '@/lib/store/projects/projects.selectors';
 import { useStore } from '@/lib/store/store';
@@ -103,7 +104,6 @@ const ProjectStatsDashboard = () => {
         ))}
       </div>
 
-      {/* Progress Bars */}
       <div className="mt-8 space-y-4">
         <div>
           <div className="flex justify-between text-sm mb-2">

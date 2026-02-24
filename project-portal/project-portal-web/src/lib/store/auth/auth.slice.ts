@@ -6,7 +6,7 @@ import { setAuthToken, setOnUnauthorized } from "@/lib/api/axios";
 
 export const createAuthSlice: StateCreator<
   StoreState,
-  [["zustand/persist", unknown]],
+  [],
   [],
   AuthSlice
 > = (set, get) => {

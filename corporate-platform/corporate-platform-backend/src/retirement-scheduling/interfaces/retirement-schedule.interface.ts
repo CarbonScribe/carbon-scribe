@@ -1,9 +1,6 @@
 export type ScheduleFrequency = 'monthly' | 'quarterly' | 'annual' | 'one-time';
 
-export type CreditSelectionMode =
-  | 'automatic'
-  | 'specific'
-  | 'portfolio-only';
+export type CreditSelectionMode = 'automatic' | 'specific' | 'portfolio-only';
 
 export type ScheduleRunStatus = 'success' | 'failed' | 'partial';
 

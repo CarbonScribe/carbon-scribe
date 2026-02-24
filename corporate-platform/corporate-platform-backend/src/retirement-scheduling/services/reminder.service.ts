@@ -60,7 +60,10 @@ export class ReminderService {
   }
 
   private async estimateProjectedBalance(schedule: any) {
-    if (schedule.creditSelection === 'specific' && schedule.creditIds.length > 0) {
+    if (
+      schedule.creditSelection === 'specific' &&
+      schedule.creditIds.length > 0
+    ) {
       const credits = await this.prisma.credit.findMany({
         where: { id: { in: schedule.creditIds } },
         select: { available: true },
