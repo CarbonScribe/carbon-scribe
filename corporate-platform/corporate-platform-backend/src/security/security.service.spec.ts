@@ -65,9 +65,7 @@ describe('SecurityService', () => {
     });
 
     it('returns true when ip is in one of the CIDR ranges', async () => {
-      prisma.ipWhitelist.findMany.mockResolvedValue([
-        { cidr: '1.2.3.0/24' },
-      ]);
+      prisma.ipWhitelist.findMany.mockResolvedValue([{ cidr: '1.2.3.0/24' }]);
 
       const result = await service.isIpAllowed('company-1', '1.2.3.42');
 
@@ -75,9 +73,7 @@ describe('SecurityService', () => {
     });
 
     it('returns false when ip is not in any CIDR range', async () => {
-      prisma.ipWhitelist.findMany.mockResolvedValue([
-        { cidr: '10.0.0.0/24' },
-      ]);
+      prisma.ipWhitelist.findMany.mockResolvedValue([{ cidr: '10.0.0.0/24' }]);
 
       const result = await service.isIpAllowed('company-1', '1.2.3.4');
 

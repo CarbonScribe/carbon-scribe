@@ -31,7 +31,7 @@ import {
 import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
 import { SecurityService } from '../security/security.service';
 import { SecurityEvents } from '../security/constants/security-events.constants';
- 
+
 @UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 @Controller('api/v1/retirements')
 export class RetirementController {
@@ -120,7 +120,7 @@ export class RetirementController {
       'attachment; filename=retirement-history.csv',
     );
     res.send(csv);
- 
+
     await this.securityService.logEvent({
       eventType: SecurityEvents.ReportExported,
       companyId: user.companyId,

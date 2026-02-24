@@ -59,7 +59,10 @@ describe('SecurityController', () => {
   it('removes whitelist entry', async () => {
     const user = { companyId: 'c1', sub: 'u1' } as any;
     await controller.removeWhitelist(user, 'id1');
-    expect(service.removeWhitelistEntry).toHaveBeenCalledWith('c1', 'id1', 'u1');
+    expect(service.removeWhitelistEntry).toHaveBeenCalledWith(
+      'c1',
+      'id1',
+      'u1',
+    );
   });
 });
-

@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import * as http from 'http';
+import * as https from 'https';
 import { PrismaService } from '../shared/database/prisma.service';
 import {
   EventSeverityMap,
@@ -114,11 +116,7 @@ export class SecurityService {
     return this.addWhitelist(companyId, userId, cidr, description);
   }
 
-  async removeWhitelistEntry(
-    companyId: string,
-    id: string,
-    userId: string,
-  ) {
+  async removeWhitelistEntry(companyId: string, id: string, userId: string) {
     return this.removeWhitelist(id, companyId, userId);
   }
 
@@ -278,7 +276,7 @@ export class SecurityService {
       });
 
       const isHttps = url.protocol === 'https:';
-      const client = isHttps ? require('https') : require('http');
+      const client = isHttps ? https : http;
 
       const request = client.request(
         {
