@@ -32,8 +32,9 @@ export class ScheduleService {
     }
 
     const nextRunDate = startDate;
+    const prisma = this.prisma as any;
 
-    return this.prisma.retirementSchedule.create({
+    return prisma.retirementSchedule.create({
       data: {
         companyId,
         createdBy,
@@ -50,19 +51,23 @@ export class ScheduleService {
         nextRunDate,
         notifyBefore: dto.notifyBefore,
         notifyAfter: dto.notifyAfter ?? true,
-      },
+      } as any,
     });
   }
 
   async list(companyId: string) {
-    return this.prisma.retirementSchedule.findMany({
+    const prisma = this.prisma as any;
+
+    return prisma.retirementSchedule.findMany({
       where: { companyId },
       orderBy: { nextRunDate: 'asc' },
-    });
+    } as any);
   }
 
   async getById(companyId: string, id: string) {
-    const schedule = await this.prisma.retirementSchedule.findFirst({
+    const prisma = this.prisma as any;
+
+    const schedule = await prisma.retirementSchedule.findFirst({
       where: { id, companyId },
       include: {
         executions: {
@@ -107,7 +112,9 @@ export class ScheduleService {
           )
         : startDate;
 
-    return this.prisma.retirementSchedule.update({
+    const prisma = this.prisma as any;
+
+    return prisma.retirementSchedule.update({
       where: { id: existing.id },
       data: {
         name: dto.name,
@@ -123,19 +130,21 @@ export class ScheduleService {
         nextRunDate,
         notifyBefore: dto.notifyBefore,
         notifyAfter: dto.notifyAfter,
-      },
+      } as any,
     });
   }
 
   async remove(companyId: string, id: string) {
     const existing = await this.getById(companyId, id);
-    await this.prisma.retirementSchedule.delete({ where: { id: existing.id } });
+    const prisma = this.prisma as any;
+    await prisma.retirementSchedule.delete({ where: { id: existing.id } });
     return { deleted: true };
   }
 
   async pause(companyId: string, id: string) {
     const existing = await this.getById(companyId, id);
-    return this.prisma.retirementSchedule.update({
+    const prisma = this.prisma as any;
+    return prisma.retirementSchedule.update({
       where: { id: existing.id },
       data: { isActive: false },
     });
@@ -143,18 +152,21 @@ export class ScheduleService {
 
   async resume(companyId: string, id: string) {
     const existing = await this.getById(companyId, id);
-    return this.prisma.retirementSchedule.update({
+    const prisma = this.prisma as any;
+    return prisma.retirementSchedule.update({
       where: { id: existing.id },
       data: {
         isActive: true,
-        nextRunDate: existing.nextRunDate < new Date() ? new Date() : existing.nextRunDate,
-      },
+        nextRunDate:
+          existing.nextRunDate < new Date() ? new Date() : existing.nextRunDate,
+      } as any,
     });
   }
 
   async getExecutions(companyId: string, id: string) {
     await this.getById(companyId, id);
-    return this.prisma.scheduleExecution.findMany({
+    const prisma = this.prisma as any;
+    return prisma.scheduleExecution.findMany({
       where: {
         scheduleId: id,
         schedule: { companyId },

@@ -272,31 +272,49 @@ model RetirementSchedule {
   user             User     @relation(fields: [userId], references: [id])
   name             String
   description      String?
+  purpose          String
+  amount           Int
+  creditSelection  String
+  creditIds        String[]
   frequency        String
-  nextRunAt        DateTime
+  interval         Int?
+  startDate        DateTime
   endDate          DateTime?
+  nextRunDate      DateTime
   timezone         String?
   isActive         Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  lastRunDate      DateTime?
+  lastRunStatus    String?
+  runCount         Int      @default(0)
+  notifyBefore     Int?
+  notifyAfter      Boolean  @default(true)
   executions       ScheduleExecution[]
   batchRetirements BatchRetirement[]
 
   @@index([companyId])
   @@index([userId])
-  @@index([isActive, nextRunAt])
+  @@index([isActive, nextRunDate])
 }
 
 model ScheduleExecution {
-  id          String   @id @default(cuid())
-  scheduleId  String
-  schedule    RetirementSchedule @relation(fields: [scheduleId], references: [id])
-  runAt       DateTime
-  completedAt DateTime?
-  status      String
-  error       String?
-  createdAt   DateTime @default(now())
-  batchItems  BatchRetirement[]
+  id            String   @id @default(cuid())
+  scheduleId    String
+  schedule      RetirementSchedule @relation(fields: [scheduleId], references: [id])
+  runAt         DateTime
+  completedAt   DateTime?
+  status        String
+  error         String?
+  createdAt     DateTime @default(now())
+  scheduledDate DateTime?
+  executedDate  DateTime?
+  amountRetired Int?
+  retirementIds String[]
+  errorMessage  String?
+  retryCount    Int      @default(0)
+  nextRetryDate DateTime?
+  batchItems    BatchRetirement[]
 
   @@index([scheduleId])
   @@index([status])
@@ -304,25 +322,27 @@ model ScheduleExecution {
 }
 
 model BatchRetirement {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  creditId    String
-  credit      Credit   @relation(fields: [creditId], references: [id])
-  scheduleId  String?
-  schedule    RetirementSchedule? @relation(fields: [scheduleId], references: [id])
-  executionId String?
-  execution   ScheduleExecution?  @relation(fields: [executionId], references: [id])
-  amount      Int
-  status      String
-  error       String?
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+  createdBy      String
+  name           String
+  description    String?
+  items          Json
+  status         String
+  totalItems     Int
+  completedItems Int
+  failedItems    Int
+  retirementIds  String[]
+  errorLog       Json?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  scheduleId     String?
+  schedule       RetirementSchedule? @relation(fields: [scheduleId], references: [id])
+  executionId    String?
+  execution      ScheduleExecution?  @relation(fields: [executionId], references: [id])
 
   @@index([companyId])
-  @@index([userId])
-  @@index([creditId])
   @@index([scheduleId])
   @@index([executionId])
 }
