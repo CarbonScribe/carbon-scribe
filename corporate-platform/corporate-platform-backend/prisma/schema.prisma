@@ -21,6 +21,8 @@ model Company {
   bids                 Bid[]
   ipWhitelists         IpWhitelist[]
   auditLogs            AuditLog[]
+  carts                Cart[]
+  orders               Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -39,10 +41,13 @@ model Credit {
   price       Float?
   totalAmount Int
   available   Int
-  retirements Retirement[]
-  auctions    Auction[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  retirements        Retirement[]
+  auctions           Auction[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  cartItems          CartItem[]
+  orderItems         OrderItem[]
+  creditReservations CreditReservation[]
 
   // Search optimization
   searchVector    String?
@@ -143,6 +148,7 @@ model User {
   wonAuctions         Auction[]
   retirementSchedules RetirementSchedule[]
   auditLogs           AuditLog[]
+  orders              Order[]
 
   @@unique([companyId, email])
   @@index([email])
