@@ -46,7 +46,7 @@ export class SettlementService {
         await tx.credit.update({
           where: { id: credit.id },
           data: {
-            available: Math.max(0, credit.available - totalSold),
+            availableAmount: Math.max(0, credit.availableAmount - totalSold),
           },
         });
       }
