@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma.service';
 import { BaseRepository } from './base.repository';
 
 @Injectable()
-export class ProjectRepository extends BaseRepository<PrismaService['project']> {
+export class ProjectRepository extends BaseRepository<
+  PrismaService['project']
+> {
   constructor(prisma: PrismaService) {
     super(prisma, prisma.project);
   }
@@ -17,6 +19,9 @@ export class ProjectRepository extends BaseRepository<PrismaService['project']> 
   }
 
   listGlobal() {
-    return this.findMany({ where: { companyId: null }, orderBy: { name: 'asc' } });
+    return this.findMany({
+      where: { companyId: null },
+      orderBy: { name: 'asc' },
+    });
   }
 }

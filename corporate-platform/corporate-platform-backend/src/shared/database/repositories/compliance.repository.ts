@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma.service';
 import { BaseRepository } from './base.repository';
 
 @Injectable()
-export class ComplianceRepository extends BaseRepository<PrismaService['compliance']> {
+export class ComplianceRepository extends BaseRepository<
+  PrismaService['compliance']
+> {
   constructor(prisma: PrismaService) {
     super(prisma, prisma.compliance);
   }

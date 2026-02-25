@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma.service';
 import { BaseRepository } from './base.repository';
 
 @Injectable()
-export class ActivityRepository extends BaseRepository<PrismaService['activity']> {
+export class ActivityRepository extends BaseRepository<
+  PrismaService['activity']
+> {
   constructor(prisma: PrismaService) {
     super(prisma, prisma.activity);
   }
@@ -12,7 +14,10 @@ export class ActivityRepository extends BaseRepository<PrismaService['activity']
     return this.findUnique({ where: { id } });
   }
 
-  listByCompanyId(companyId: string, options?: { userId?: string; action?: string; take?: number }) {
+  listByCompanyId(
+    companyId: string,
+    options?: { userId?: string; action?: string; take?: number },
+  ) {
     return this.findMany({
       where: {
         companyId,

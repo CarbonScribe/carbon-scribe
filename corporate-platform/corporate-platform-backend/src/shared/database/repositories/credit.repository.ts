@@ -13,14 +13,24 @@ export class CreditRepository extends BaseRepository<PrismaService['credit']> {
   }
 
   listAvailable(limit = 50) {
-    return this.findMany({ where: { available: { gt: 0 } }, orderBy: { available: 'desc' }, take: limit });
+    return this.findMany({
+      where: { available: { gt: 0 } },
+      orderBy: { available: 'desc' },
+      take: limit,
+    });
   }
 
   listByProjectId(projectId: string) {
-    return this.findMany({ where: { projectId }, orderBy: { projectName: 'asc' } });
+    return this.findMany({
+      where: { projectId },
+      orderBy: { projectName: 'asc' },
+    });
   }
 
   countAvailable() {
-    return this.prisma.credit.aggregate({ _sum: { available: true }, where: { available: { gt: 0 } } });
+    return this.prisma.credit.aggregate({
+      _sum: { available: true },
+      where: { available: { gt: 0 } },
+    });
   }
 }

@@ -35,9 +35,15 @@ describe('CompanyRepository', () => {
 
   describe('findById', () => {
     it('calls findUnique with id and optional include', async () => {
-      mockPrisma.company.findUnique.mockResolvedValue({ id: 'c1', name: 'Acme' });
+      mockPrisma.company.findUnique.mockResolvedValue({
+        id: 'c1',
+        name: 'Acme',
+      });
       await repository.findById('c1');
-      expect(mockPrisma.company.findUnique).toHaveBeenCalledWith({ where: { id: 'c1' }, include: undefined });
+      expect(mockPrisma.company.findUnique).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        include: undefined,
+      });
     });
   });
 

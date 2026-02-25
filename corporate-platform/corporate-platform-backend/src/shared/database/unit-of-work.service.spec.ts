@@ -18,7 +18,9 @@ describe('UnitOfWorkService', () => {
         {
           provide: PrismaService,
           useValue: {
-            $transaction: jest.fn((fn: (tx: any) => Promise<any>) => fn(mockTx)),
+            $transaction: jest.fn((fn: (tx: any) => Promise<any>) =>
+              fn(mockTx),
+            ),
           },
         },
       ],

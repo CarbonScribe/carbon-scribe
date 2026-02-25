@@ -90,7 +90,9 @@ export class ScheduleService {
   async update(companyId: string, id: string, dto: UpdateScheduleDto) {
     const existing = await this.getById(companyId, id);
 
-    const startDate = dto.startDate ? new Date(dto.startDate) : existing.startDate;
+    const startDate = dto.startDate
+      ? new Date(dto.startDate)
+      : existing.startDate;
     const endDate = dto.endDate ? new Date(dto.endDate) : existing.endDate;
     if (Number.isNaN(startDate.getTime())) {
       throw new BadRequestException('Invalid startDate');

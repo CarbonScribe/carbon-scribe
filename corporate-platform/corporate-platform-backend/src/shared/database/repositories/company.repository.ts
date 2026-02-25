@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma.service';
 import { BaseRepository } from './base.repository';
 
 @Injectable()
-export class CompanyRepository extends BaseRepository<PrismaService['company']> {
+export class CompanyRepository extends BaseRepository<
+  PrismaService['company']
+> {
   constructor(prisma: PrismaService) {
     super(prisma, prisma.company);
   }
@@ -15,6 +17,9 @@ export class CompanyRepository extends BaseRepository<PrismaService['company']> 
 
   /** List companies with optional filters (multi-tenant listing for admin). */
   listByCompanyIds(companyIds: string[]) {
-    return this.findMany({ where: { id: { in: companyIds } }, orderBy: { name: 'asc' } });
+    return this.findMany({
+      where: { id: { in: companyIds } },
+      orderBy: { name: 'asc' },
+    });
   }
 }

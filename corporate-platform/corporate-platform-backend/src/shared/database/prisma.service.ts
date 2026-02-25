@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -7,7 +12,10 @@ const CONNECT_RETRY_MS = 2000;
 const CONNECT_RETRIES = 5;
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
@@ -30,7 +38,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Database connection attempt ${attempt}/${CONNECT_RETRIES} failed: ${message}`);
+        this.logger.warn(
+          `Database connection attempt ${attempt}/${CONNECT_RETRIES} failed: ${message}`,
+        );
         if (attempt === CONNECT_RETRIES) {
           throw err;
         }
