@@ -6,6 +6,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import Redis, { Cluster, RedisOptions } from 'ioredis';
+import { ConfigService } from '../config/config.service';
 
 export type RedisClient = Redis | Cluster;
 
@@ -16,6 +17,8 @@ export class RedisService
   private readonly logger = new Logger(RedisService.name);
   private client: RedisClient;
   private healthy = false;
+
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     const useCluster = process.env.REDIS_CLUSTER === 'true';
@@ -46,13 +49,11 @@ export class RedisService
           name,
         } as RedisOptions);
       } else {
-        const host = process.env.REDIS_HOST || '127.0.0.1';
-        const port = Number(process.env.REDIS_PORT || 6379);
-        const password = process.env.REDIS_PASSWORD;
+        const config = this.configService.getRedisConfig();
         this.client = new Redis({
-          host,
-          port,
-          password,
+          host: config.host,
+          port: config.port,
+          password: config.password,
           maxRetriesPerRequest: 3,
         });
       }

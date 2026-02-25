@@ -15,6 +15,6 @@ import { HistoryService } from './services/history.service';
     HistoryService,
   ],
   controllers: [RetirementController],
-  exports: [RetirementService],
+  exports: [RetirementService, InstantRetirementService, ValidationService],
 })
 export class RetirementModule {}

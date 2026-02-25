@@ -6,6 +6,11 @@ import { ValidationService } from './services/validation.service';
 import { CertificateService } from './services/certificate.service';
 import { PrismaService } from '../shared/database/prisma.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { RbacService } from '../rbac/rbac.service';
+import { PermissionsGuard } from '../rbac/guards/permissions.guard';
+import { Reflector } from '@nestjs/core';
+import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
+import { SecurityService } from '../security/security.service';
 
 describe('RetirementController', () => {
   let controller: RetirementController;
@@ -23,6 +28,14 @@ describe('RetirementController', () => {
   const mockValidationService = { validateRetirement: jest.fn() };
   const mockCertificateService = { generateCertificate: jest.fn() };
   const mockPrisma = { retirement: { findUnique: jest.fn() } };
+  const mockRbacService = {
+    hasAllPermissions: jest.fn().mockResolvedValue(true),
+    getUserPermissions: jest.fn().mockResolvedValue([]),
+  };
+  const mockSecurityService = {
+    isIpAllowed: jest.fn().mockResolvedValue(true),
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -36,6 +49,11 @@ describe('RetirementController', () => {
         { provide: ValidationService, useValue: mockValidationService },
         { provide: CertificateService, useValue: mockCertificateService },
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: RbacService, useValue: mockRbacService },
+        { provide: SecurityService, useValue: mockSecurityService },
+        Reflector,
+        PermissionsGuard,
+        IpWhitelistGuard,
       ],
     }).compile();
 

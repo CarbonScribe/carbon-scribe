@@ -22,7 +22,12 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "db:seed": "npx prisma db seed",
+    "db:migrate": "npx prisma migrate deploy"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -30,7 +35,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.0",
-    "@prisma/adapter-pg": "^6.5.0",
+    "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^6.5.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
@@ -38,6 +43,7 @@
     "csv-stringify": "^6.5.0",
     "dotenv": "^17.3.1",
     "ioredis": "^5.4.1",
+    "joi": "^17.13.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
@@ -48,6 +54,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "prisma": "^7.4.1",
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",

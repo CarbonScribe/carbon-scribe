@@ -1,7 +1,10 @@
-//go:build future
-// +build future
-
 package postgis
 
-// This file won't be compiled in normal builds
-// Implementation pending
+const (
+	FnGeomFromGeoJSON = "ST_GeomFromGeoJSON"
+	FnAsGeoJSON       = "ST_AsGeoJSON"
+	FnDWithin         = "ST_DWithin"
+	FnDistance        = "ST_Distance"
+	FnIntersects      = "ST_Intersects"
+	FnTransform       = "ST_Transform"
+)

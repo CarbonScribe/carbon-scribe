@@ -14,6 +14,7 @@
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "sonner": "^1.7.1",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

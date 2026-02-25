@@ -1,7 +1,7 @@
-//go:build future
-// +build future
+package geometry
 
-package geospatial
+const HectaresPerSquareMeter = 0.0001
 
-// This file won't be compiled in normal builds
-// Implementation pending
+func ToHectares(squareMeters float64) float64 {
+	return squareMeters * HectaresPerSquareMeter
+}

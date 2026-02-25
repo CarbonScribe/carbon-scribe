@@ -1,7 +1,10 @@
-//go:build future
-// +build future
+package geometry
 
-package geospatial
+import "fmt"
 
-// This file won't be compiled in normal builds
-// Implementation pending
+func ValidateSRID(srid int) error {
+	if srid <= 0 {
+		return fmt.Errorf("invalid srid")
+	}
+	return nil
+}
