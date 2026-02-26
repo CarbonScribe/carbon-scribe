@@ -6,13 +6,28 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum TransactionType {
+  PURCHASE
+  RETIREMENT
+}
+
 model Company {
-  id          String       @id @default(cuid())
-  name        String
-  retirements Retirement[]
-  users       User[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id           String        @id @default(cuid())
+  name         String
+  retirements  Retirement[]
+  users        User[]
+  orders       Order[]
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model Credit {
@@ -105,6 +120,8 @@ model User {
   updatedAt           DateTime  @updatedAt
   sessions            Session[]
   retirements         Retirement[]
+  orders              Order[]
+  transactions        Transaction[]
 
   @@unique([companyId, email])
   @@index([email])
@@ -124,4 +141,79 @@ model Session {
 
   @@index([refreshToken])
   @@index([expiresAt])
+}
+
+model Order {
+  id              String             @id @default(cuid())
+  orderNumber     String             @unique
+  companyId       String
+  company         Company            @relation(fields: [companyId], references: [id])
+  userId          String
+  user            User               @relation(fields: [userId], references: [id])
+  status          OrderStatus        @default(PENDING)
+  subtotal        Float
+  serviceFee      Float              @default(0)
+  total           Float
+  paymentMethod   String?
+  transactionHash String?
+  paidAt          DateTime?
+  createdAt       DateTime           @default(now())
+  completedAt     DateTime?
+  items           OrderItem[]
+  statusEvents    OrderStatusEvent[]
+  transactions    Transaction[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([orderNumber])
+}
+
+model OrderItem {
+  id                   String @id @default(cuid())
+  orderId              String
+  order                Order  @relation(fields: [orderId], references: [id])
+  creditId             String
+  creditName           String
+  projectName          String
+  quantity             Int
+  unitPrice            Float
+  totalPrice           Float
+  vintage              String?
+  verificationStandard String?
+
+  @@index([orderId])
+}
+
+model OrderStatusEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id])
+  status    OrderStatus
+  message   String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+model Transaction {
+  id              String          @id @default(cuid())
+  type            TransactionType
+  orderId         String?
+  order           Order?          @relation(fields: [orderId], references: [id])
+  companyId       String
+  company         Company         @relation(fields: [companyId], references: [id])
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  amount          Float
+  description     String
+  transactionHash String?
+  createdAt       DateTime        @default(now())
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
 }
