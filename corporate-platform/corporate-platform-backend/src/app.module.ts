@@ -9,13 +9,8 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CacheModule } from './cache/cache.module';
 import { AuthModule } from './auth/auth.module';
-import { AuctionModule } from './auction/auction.module';
-import { ConfigModule } from './config/config.module';
-import { LoggerModule } from './logger/logger.module';
-import { RequestLoggerMiddleware } from './logger/middleware/request-logger.middleware';
-import { SecurityModule } from './security/security.module';
-import { EventBusModule } from './event-bus/event-bus.module';
-import { ApiKeyModule } from './api-key/api-key.module';
+import { OrderModule } from './order/order.module';
+
 @Module({
   imports: [
     ConfigModule,
@@ -29,9 +24,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
     AnalyticsModule,
     CacheModule,
     AuthModule,
-    AuctionModule,
-    EventBusModule,
-    ApiKeyModule,
+    OrderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
