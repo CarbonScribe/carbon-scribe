@@ -85,7 +85,8 @@ model Credit {
   orderItems   OrderItem[]
   reservations CreditReservation[]
   auctions     Auction[]
-  portfolioEntries PortfolioEntry[]
+  portfolioHoldings  PortfolioHolding[] @relation("PortfolioHolding")
+  portfolioEntries   PortfolioEntry[] @relation("PortfolioEntry")
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
@@ -494,20 +495,79 @@ model CreditReservation {
 // ==========================================
 
 model Portfolio {
-  id            String           @id @default(cuid())
-  companyId     String
-  company       Company          @relation(fields: [companyId], references: [id])
-  name          String?          // e.g. "Q1 2024 Holdings"
-  totalCredits  Int              @default(0)  // Snapshot metric
-  totalRetired  Float            @default(0)  // Snapshot metric
-  asOfDate      DateTime         @default(now())
-  entries       PortfolioEntry[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id                    String                    @id @default(cuid())
+  companyId             String                    @unique
+  company               Company                   @relation(fields: [companyId], references: [id])
+  
+  // Summary metrics
+  totalRetired          Int                       @default(0)
+  currentBalance        Int                       @default(0)
+  totalValue            Float                     @default(0)
+  avgPricePerTon        Float                     @default(0)
+  
+  // Progress tracking
+  netZeroTarget         Int?                      // Target tCO₂ by target year
+  netZeroProgress       Float                     @default(0)   // Percentage
+  scope3Coverage        Float                     @default(0)   // Percentage
+  
+  // Risk metrics
+  diversificationScore  Int                       @default(0)
+  riskRating            String                    @default("Low")  // Low, Medium, High
+  avgVintage            Float?
+  
+  // Relations
+  holdings              PortfolioHolding[]
+  snapshots             PortfolioSnapshot[]
+  entries               PortfolioEntry[]
+  
+  // Timestamps
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   @@index([companyId])
-  @@index([asOfDate])
   @@map("portfolios")
+}
+
+model PortfolioHolding {
+  id              String    @id @default(cuid())
+  portfolioId     String
+  portfolio       Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  creditId        String
+  credit          Credit    @relation("PortfolioHolding", fields: [creditId], references: [id])
+  
+  quantity        Int
+  purchasePrice   Float
+  purchaseDate    DateTime
+  currentValue    Float
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([portfolioId, creditId])
+  @@index([portfolioId])
+  @@index([creditId])
+  @@map("portfolio_holdings")
+}
+
+model PortfolioSnapshot {
+  id                      String    @id @default(cuid())
+  portfolioId             String
+  portfolio               Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  
+  // Snapshot data
+  totalValue              Float
+  totalRetired            Int
+  currentBalance          Int
+  
+  // Breakdowns (stored as JSON for performance)
+  methodologyDistribution Json
+  geographicDistribution  Json
+  sdgDistribution         Json
+  
+  snapshotDate            DateTime  @default(now())
+  
+  @@index([portfolioId, snapshotDate])
+  @@map("portfolio_snapshots")
 }
 
 model PortfolioEntry {
@@ -515,7 +575,7 @@ model PortfolioEntry {
   portfolioId String
   portfolio   Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   creditId    String
-  credit      Credit   @relation(fields: [creditId], references: [id])
+  credit      Credit   @relation("PortfolioEntry", fields: [creditId], references: [id])
   quantity    Int
   createdAt   DateTime @default(now())
 
