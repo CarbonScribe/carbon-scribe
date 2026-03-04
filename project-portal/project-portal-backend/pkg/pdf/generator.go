@@ -22,7 +22,7 @@ const (
 
 // GenerateRequest carries everything needed to produce a PDF.
 type GenerateRequest struct {
-	TemplateID string                 // "PDD" | "MONITORING_REPORT" | "VERIFICATION_CERTIFICATE"
+	TemplateID string // "PDD" | "MONITORING_REPORT" | "VERIFICATION_CERTIFICATE"
 	ProjectID  string
 	Data       map[string]interface{}
 	Watermark  WatermarkText

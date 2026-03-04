@@ -2,11 +2,11 @@ package privacy
 
 // Manager coordinates all privacy operations.
 type Manager struct {
-	repo          interface{}
-	preferences   *PreferenceManager
-	consent       *ConsentManager
-	jurisdiction  *JurisdictionManager
-	enforcement   *EnforcementEngine
+	repo         interface{}
+	preferences  *PreferenceManager
+	consent      *ConsentManager
+	jurisdiction *JurisdictionManager
+	enforcement  *EnforcementEngine
 }
 
 // NewManager creates a privacy manager with all sub-components.

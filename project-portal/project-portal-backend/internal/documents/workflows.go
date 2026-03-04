@@ -37,18 +37,18 @@ type WorkflowTransition struct {
 
 // TransitionRequest is the JSON body for POST /api/v1/documents/:id/transition.
 type TransitionRequest struct {
-	To           DocumentStatus `json:"to" binding:"required"`
-	Comment      string         `json:"comment"`
-	PerformerRole string        `json:"performer_role"` // role of the requesting user
+	To            DocumentStatus `json:"to" binding:"required"`
+	Comment       string         `json:"comment"`
+	PerformerRole string         `json:"performer_role"` // role of the requesting user
 }
 
 // TransitionResponse is returned after a successful state transition.
 type TransitionResponse struct {
-	DocumentID uuid.UUID      `json:"document_id"`
-	FromStatus DocumentStatus `json:"from_status"`
-	ToStatus   DocumentStatus `json:"to_status"`
-	Comment    string         `json:"comment,omitempty"`
-	TransitionedAt time.Time  `json:"transitioned_at"`
+	DocumentID     uuid.UUID      `json:"document_id"`
+	FromStatus     DocumentStatus `json:"from_status"`
+	ToStatus       DocumentStatus `json:"to_status"`
+	Comment        string         `json:"comment,omitempty"`
+	TransitionedAt time.Time      `json:"transitioned_at"`
 }
 
 // AdvanceWorkflow validates the requested status transition and applies it.
@@ -74,11 +74,11 @@ func (s *Service) AdvanceWorkflow(ctx context.Context, docID uuid.UUID, req *Tra
 	// if a workflow is attached) and in the access log.
 	if doc.WorkflowID != nil {
 		_ = s.repo.AppendWorkflowStep(ctx, *doc.WorkflowID, WorkflowStepEntry{
-			Step:           fmt.Sprintf("%s → %s", fromStatus, req.To),
-			PerformedBy:    userIDString(userID),
-			PerformerRole:  req.PerformerRole,
-			Comment:        req.Comment,
-			PerformedAt:    time.Now().UTC().Format(time.RFC3339),
+			Step:          fmt.Sprintf("%s → %s", fromStatus, req.To),
+			PerformedBy:   userIDString(userID),
+			PerformerRole: req.PerformerRole,
+			Comment:       req.Comment,
+			PerformedAt:   time.Now().UTC().Format(time.RFC3339),
 		})
 	}
 
@@ -109,8 +109,8 @@ func (s *Service) GetWorkflowState(ctx context.Context, docID uuid.UUID) (*Workf
 	available := validTransitions[doc.Status]
 
 	resp := &WorkflowStateResponse{
-		DocumentID:         docID,
-		CurrentStatus:      doc.Status,
+		DocumentID:           docID,
+		CurrentStatus:        doc.Status,
 		AvailableTransitions: available,
 	}
 
@@ -129,7 +129,7 @@ func (s *Service) GetWorkflowState(ctx context.Context, docID uuid.UUID) (*Workf
 type WorkflowStateResponse struct {
 	DocumentID           uuid.UUID            `json:"document_id"`
 	CurrentStatus        DocumentStatus       `json:"current_status"`
-	AvailableTransitions []WorkflowTransition  `json:"available_transitions"`
+	AvailableTransitions []WorkflowTransition `json:"available_transitions"`
 	WorkflowName         string               `json:"workflow_name,omitempty"`
 	WorkflowSteps        datatypes.JSON       `json:"workflow_steps,omitempty"`
 }

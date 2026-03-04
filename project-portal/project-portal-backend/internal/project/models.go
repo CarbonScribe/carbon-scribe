@@ -9,19 +9,19 @@ import (
 
 // Project represents a carbon project
 type Project struct {
-	ID             uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
-	Name           string    `json:"name" gorm:"not null"`
-	Type           string    `json:"type" gorm:"not null"` // e.g., Reforestation, Agroforestry
-	Location       string    `json:"location" gorm:"not null"`
-	Area           float64   `json:"area" gorm:"not null"` // in hectares
-	StartDate      time.Time `json:"start_date"`
-	Farmers        int       `json:"farmers"`
-	CarbonCredits  int       `json:"carbon_credits"`
-	Progress       int       `json:"progress"` // percentage
-	Icon           string    `json:"icon"`
-	Status         string    `json:"status" gorm:"default:'pending'"` // active, pending, completed
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID            uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
+	Name          string    `json:"name" gorm:"not null"`
+	Type          string    `json:"type" gorm:"not null"` // e.g., Reforestation, Agroforestry
+	Location      string    `json:"location" gorm:"not null"`
+	Area          float64   `json:"area" gorm:"not null"` // in hectares
+	StartDate     time.Time `json:"start_date"`
+	Farmers       int       `json:"farmers"`
+	CarbonCredits int       `json:"carbon_credits"`
+	Progress      int       `json:"progress"` // percentage
+	Icon          string    `json:"icon"`
+	Status        string    `json:"status" gorm:"default:'pending'"` // active, pending, completed
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // BeforeCreate will set a UUID rather than numeric ID.

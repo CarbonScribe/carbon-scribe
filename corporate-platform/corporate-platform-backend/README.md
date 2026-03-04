@@ -193,3 +193,35 @@ corporate-platform-backend/
 ```
 ---
 CarbonScribe Corporate Platform Backend - Making corporate carbon retirement instant, transparent, and verifiable. 🌍
+
+## API Key Authentication
+
+The backend includes an API key management module at `src/api-key/` for machine-to-machine access.
+
+Management endpoints (JWT admin required):
+
+- `POST /api/v1/api-keys` - Create a key (returns the secret once)
+- `GET /api/v1/api-keys` - List company API keys
+- `GET /api/v1/api-keys/:id` - Get API key details (no secret)
+- `PATCH /api/v1/api-keys/:id` - Update name/permissions/limits/expiry
+- `DELETE /api/v1/api-keys/:id` - Revoke a key
+- `POST /api/v1/api-keys/:id/rotate` - Rotate and return a new secret once
+- `GET /api/v1/api-keys/:id/usage` - Usage summary (request count, last used)
+
+For API key protected endpoints, send the key in either:
+
+- `x-api-key: sk_live_...`
+- `Authorization: Bearer sk_live_...`
+
+The `ApiKeyGuard` enforces key validity, expiry, optional IP whitelist, permissions metadata, and per-key rate limiting headers (`X-RateLimit-*`).
+
+Designated API key protected endpoints for programmatic reporting:
+
+- `GET /api/v1/integrations/retirement-analytics/purpose-breakdown`
+- `GET /api/v1/integrations/retirement-analytics/trends`
+- `GET /api/v1/integrations/retirement-analytics/forecast`
+- `GET /api/v1/integrations/retirement-analytics/impact`
+- `GET /api/v1/integrations/retirement-analytics/progress`
+- `GET /api/v1/integrations/retirement-analytics/summary`
+
+These endpoints require the API key permission `analytics:read` and automatically scope analytics queries to the key's `companyId`.

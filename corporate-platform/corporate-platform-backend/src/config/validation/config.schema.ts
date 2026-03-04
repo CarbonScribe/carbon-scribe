@@ -14,6 +14,14 @@ export const configSchema = Joi.object({
   REDIS_PASSWORD: Joi.string().allow('', null),
   KAFKA_BROKERS: Joi.string().allow(''),
   KAFKA_CLIENT_ID: Joi.string().default('corporate-platform-backend'),
+  KAFKA_SSL_ENABLED: Joi.boolean().default(false),
+  KAFKA_SASL_MECHANISM: Joi.string()
+    .valid('plain', 'scram-sha-256', 'scram-sha-512', 'oauthbearer')
+    .allow(''),
+  KAFKA_SASL_USERNAME: Joi.string().allow(''),
+  KAFKA_SASL_PASSWORD: Joi.string().allow(''),
+  KAFKA_RETRY_INITIAL: Joi.number().integer().min(100).default(300),
+  KAFKA_RETRY_MAX: Joi.number().integer().min(0).default(5),
   STELLAR_NETWORK: Joi.string().default('testnet'),
   HORIZON_URL: Joi.string().uri().allow(''),
   JWT_SECRET: Joi.string().default('dev-jwt-secret'),

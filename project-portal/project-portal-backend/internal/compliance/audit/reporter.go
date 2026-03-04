@@ -18,9 +18,9 @@ func NewReporter() *Reporter {
 
 // ComplianceReport contains a comprehensive compliance status report.
 type ComplianceReport struct {
-	GeneratedAt    time.Time      `json:"generated_at"`
-	Period         ReportPeriod   `json:"period"`
-	Anomalies      []Anomaly      `json:"anomalies"`
+	GeneratedAt    time.Time       `json:"generated_at"`
+	Period         ReportPeriod    `json:"period"`
+	Anomalies      []Anomaly       `json:"anomalies"`
 	IntegrityCheck IntegrityResult `json:"integrity_check"`
 }
 
@@ -49,7 +49,7 @@ func (r *Reporter) BuildReport(start, end time.Time, totalLogs int64) *Complianc
 		Anomalies: []Anomaly{},
 		IntegrityCheck: IntegrityResult{
 			Valid:       true,
-			TotalLogs:  totalLogs,
+			TotalLogs:   totalLogs,
 			CheckedLogs: 0,
 		},
 	}

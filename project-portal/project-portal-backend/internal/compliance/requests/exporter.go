@@ -34,9 +34,9 @@ func (e *Exporter) Export(ctx context.Context, userID string, locations []DataLo
 			continue
 		}
 		categoryData[loc.Category] = map[string]interface{}{
-			"source":        loc.Source,
-			"record_count":  loc.RecordCount,
-			"description":   loc.Description,
+			"source":       loc.Source,
+			"record_count": loc.RecordCount,
+			"description":  loc.Description,
 		}
 	}
 

@@ -20,8 +20,8 @@ type DataSource struct {
 // DataLocation describes where user data was found.
 type DataLocation struct {
 	Source      string `json:"source"`
-	Category   string `json:"category"`
-	RecordCount int64 `json:"record_count"`
+	Category    string `json:"category"`
+	RecordCount int64  `json:"record_count"`
 	Description string `json:"description"`
 }
 
@@ -60,7 +60,7 @@ func (d *Discoverer) DiscoverUserData(ctx context.Context, userID string, catego
 			}
 			locations = append(locations, DataLocation{
 				Source:      source.Name,
-				Category:   cat,
+				Category:    cat,
 				RecordCount: 0,
 				Description: source.Type + " records in " + source.Name,
 			})

@@ -10,18 +10,18 @@ type SensitiveDataClassifier struct {
 func NewSensitiveDataClassifier() *SensitiveDataClassifier {
 	return &SensitiveDataClassifier{
 		sensitiveFields: map[string]string{
-			"password":       "highly_sensitive",
-			"ssn":            "highly_sensitive",
-			"credit_card":    "highly_sensitive",
-			"bank_account":   "highly_sensitive",
-			"email":          "sensitive",
-			"phone":          "sensitive",
-			"address":        "sensitive",
-			"date_of_birth":  "sensitive",
-			"ip_address":     "sensitive",
+			"password":      "highly_sensitive",
+			"ssn":           "highly_sensitive",
+			"credit_card":   "highly_sensitive",
+			"bank_account":  "highly_sensitive",
+			"email":         "sensitive",
+			"phone":         "sensitive",
+			"address":       "sensitive",
+			"date_of_birth": "sensitive",
+			"ip_address":    "sensitive",
 		},
 		sensitiveEndpoints: map[string]string{
-			"/api/v1/compliance/":  "sensitive",
+			"/api/v1/compliance/": "sensitive",
 			"/api/auth/":          "sensitive",
 			"/api/v1/users/":      "sensitive",
 		},

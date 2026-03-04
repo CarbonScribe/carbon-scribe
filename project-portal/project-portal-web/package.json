@@ -8,13 +8,17 @@
     "start": "next start"
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.1",
     "axios": "^1.13.5",
+    "critters": "^0.0.25",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "recharts": "^3.7.0",
     "sonner": "^1.7.1",
+    "xss-clean": "^0.1.4",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

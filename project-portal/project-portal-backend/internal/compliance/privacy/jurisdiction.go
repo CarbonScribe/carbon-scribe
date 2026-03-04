@@ -7,14 +7,14 @@ type JurisdictionManager struct {
 
 // JurisdictionRules defines the privacy rules for a specific jurisdiction.
 type JurisdictionRules struct {
-	Name                string            `json:"name"`
-	Code                string            `json:"code"`
-	MaxResponseDays     int               `json:"max_response_days"`
-	RequiresExplicitConsent bool          `json:"requires_explicit_consent"`
-	RightToErasure      bool              `json:"right_to_erasure"`
-	RightToPortability  bool              `json:"right_to_portability"`
-	BreachNotificationHours int           `json:"breach_notification_hours"`
-	FieldRestrictions   map[string]string `json:"field_restrictions"`
+	Name                    string            `json:"name"`
+	Code                    string            `json:"code"`
+	MaxResponseDays         int               `json:"max_response_days"`
+	RequiresExplicitConsent bool              `json:"requires_explicit_consent"`
+	RightToErasure          bool              `json:"right_to_erasure"`
+	RightToPortability      bool              `json:"right_to_portability"`
+	BreachNotificationHours int               `json:"breach_notification_hours"`
+	FieldRestrictions       map[string]string `json:"field_restrictions"`
 }
 
 // NewJurisdictionManager creates a manager with preconfigured jurisdiction rules.
@@ -25,7 +25,7 @@ func NewJurisdictionManager() *JurisdictionManager {
 				Name:                    "General Data Protection Regulation",
 				Code:                    "GDPR",
 				MaxResponseDays:         30,
-				RequiresExplicitConsent:  true,
+				RequiresExplicitConsent: true,
 				RightToErasure:          true,
 				RightToPortability:      true,
 				BreachNotificationHours: 72,
@@ -39,7 +39,7 @@ func NewJurisdictionManager() *JurisdictionManager {
 				Name:                    "California Consumer Privacy Act",
 				Code:                    "CCPA",
 				MaxResponseDays:         45,
-				RequiresExplicitConsent:  false,
+				RequiresExplicitConsent: false,
 				RightToErasure:          true,
 				RightToPortability:      true,
 				BreachNotificationHours: 0, // no specific requirement
@@ -51,7 +51,7 @@ func NewJurisdictionManager() *JurisdictionManager {
 				Name:                    "Lei Geral de Protecao de Dados",
 				Code:                    "LGPD",
 				MaxResponseDays:         15,
-				RequiresExplicitConsent:  true,
+				RequiresExplicitConsent: true,
 				RightToErasure:          true,
 				RightToPortability:      true,
 				BreachNotificationHours: 48,
@@ -64,7 +64,7 @@ func NewJurisdictionManager() *JurisdictionManager {
 				Name:                    "Global Default",
 				Code:                    "global",
 				MaxResponseDays:         30,
-				RequiresExplicitConsent:  false,
+				RequiresExplicitConsent: false,
 				RightToErasure:          true,
 				RightToPortability:      true,
 				BreachNotificationHours: 72,

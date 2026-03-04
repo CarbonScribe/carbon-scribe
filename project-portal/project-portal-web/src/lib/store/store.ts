@@ -1,22 +1,35 @@
+import { setAuthToken } from "@/lib/api/axios";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createAuthSlice } from "./auth/auth.slice";
-import { createProjectsSlice } from "./projects/projectsSlice";
-import { createSearchSlice, loadPersistedSearchData } from "./search/searchSlice";
 import type { AuthSlice } from "./auth/auth.types";
+import type { CollaborationSlice } from "./collaboration/collaboration.types";
+import { createCollaborationSlice } from "./collaboration/collaborationSlice";
+import type { HealthSlice } from "./health/health.types";
+import { createHealthSlice } from "./health/healthSlice";
 import type { ProjectsSlice } from "./projects/projects.types";
+import { createProjectsSlice } from "./projects/projectsSlice";
 import type { SearchSlice } from "./search/search.types";
-import { setAuthToken } from "@/lib/api/axios";
+import {
+  createSearchSlice,
+  loadPersistedSearchData,
+} from "./search/searchSlice";
 
 // Unified store state type
-export type StoreState = AuthSlice & ProjectsSlice & SearchSlice;
+export type StoreState = AuthSlice &
+  ProjectsSlice &
+  CollaborationSlice &
+  SearchSlice &
+  HealthSlice;
 
 export const useStore = create<StoreState>()(
   persist(
     (...args) => ({
       ...createAuthSlice(...args),
       ...createProjectsSlice(...args),
+      ...createCollaborationSlice(...args),
       ...createSearchSlice(...args),
+      ...createHealthSlice(...args),
     }),
     {
       name: "project-portal-store",
@@ -47,6 +60,6 @@ export const useStore = create<StoreState>()(
           }
         }
       },
-    }
-  )
+    },
+  ),
 );

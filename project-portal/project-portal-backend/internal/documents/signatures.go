@@ -13,11 +13,11 @@ import (
 
 // VerifySignatureResult is returned to API callers after a verification run.
 type VerifySignatureResult struct {
-	DocumentID  uuid.UUID               `json:"document_id"`
+	DocumentID  uuid.UUID                `json:"document_id"`
 	Signatures  []security.SignatureInfo `json:"signatures"`
-	AllValid    bool                    `json:"all_valid"`
-	SignedCount int                     `json:"signed_count"`
-	VerifiedAt  time.Time               `json:"verified_at"`
+	AllValid    bool                     `json:"all_valid"`
+	SignedCount int                      `json:"signed_count"`
+	VerifiedAt  time.Time                `json:"verified_at"`
 }
 
 // VerifySignature downloads the document from S3, runs cryptographic signature
@@ -53,8 +53,8 @@ func (s *Service) VerifySignature(ctx context.Context, docID uuid.UUID, userID *
 			SignerName:          sig.SignerName,
 			SignerEmail:         sig.SignerEmail,
 			SignerRole:          sig.SignerRole,
-			CertificateIssuer:  sig.CertificateIssuer,
-			CertificateSubject: sig.CertificateSubject,
+			CertificateIssuer:   sig.CertificateIssuer,
+			CertificateSubject:  sig.CertificateSubject,
 			SigningTime:         sig.SigningTime,
 			IsValid:             sig.IsValid,
 			VerificationDetails: details,

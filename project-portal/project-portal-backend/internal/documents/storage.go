@@ -15,17 +15,17 @@ import (
 
 // allowedMIMETypes maps MIME content types to our FileType enum.
 var allowedMIMETypes = map[string]FileType{
-	"application/pdf":                                                     FileTypePDF,
+	"application/pdf": FileTypePDF,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": FileTypeDOCX,
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":   FileTypeXLSX,
-	"application/msword":               FileTypeDOCX,
-	"application/vnd.ms-excel":         FileTypeXLSX,
-	"image/jpeg":                        FileTypeImage,
-	"image/png":                         FileTypeImage,
-	"image/gif":                         FileTypeImage,
-	"image/webp":                        FileTypeImage,
-	"application/zip":                   FileTypeZIP,
-	"application/x-zip-compressed":      FileTypeZIP,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":       FileTypeXLSX,
+	"application/msword":           FileTypeDOCX,
+	"application/vnd.ms-excel":     FileTypeXLSX,
+	"image/jpeg":                   FileTypeImage,
+	"image/png":                    FileTypeImage,
+	"image/gif":                    FileTypeImage,
+	"image/webp":                   FileTypeImage,
+	"application/zip":              FileTypeZIP,
+	"application/x-zip-compressed": FileTypeZIP,
 }
 
 // maxUploadSize is 100 MB.

@@ -127,27 +127,31 @@ export class BatchService {
           item.amount,
         );
 
-        const retirement = await (this.prisma as any).$transaction(async (tx: any) => {
-          await tx.credit.update({
-            where: { id: item.creditId },
-            data: { available: { decrement: item.amount } },
-          });
+        const retirement = await (this.prisma as any).$transaction(
+          async (tx: any) => {
+            await tx.credit.update({
+              where: { id: item.creditId },
+              data: { available: { decrement: item.amount } },
+            });
 
-          return tx.retirement.create({
-            data: {
-              companyId: batch.companyId,
-              userId: batch.createdBy,
-              creditId: item.creditId,
-              amount: item.amount,
-              purpose: item.purpose,
-              purposeDetails: item.purposeDetails || `Batch retirement: ${batch.name}`,
-              priceAtRetirement: 10,
-              transactionHash: `tx_${Math.random().toString(36).slice(2, 10)}`,
-              transactionUrl: 'https://stellar.expert/explorer/testnet/tx/...',
-              verifiedAt: new Date(),
-            },
-          });
-        });
+            return tx.retirement.create({
+              data: {
+                companyId: batch.companyId,
+                userId: batch.createdBy,
+                creditId: item.creditId,
+                amount: item.amount,
+                purpose: item.purpose,
+                purposeDetails:
+                  item.purposeDetails || `Batch retirement: ${batch.name}`,
+                priceAtRetirement: 10,
+                transactionHash: `tx_${Math.random().toString(36).slice(2, 10)}`,
+                transactionUrl:
+                  'https://stellar.expert/explorer/testnet/tx/...',
+                verifiedAt: new Date(),
+              },
+            });
+          },
+        );
 
         retirementIds.push(retirement.id);
       } catch (error) {

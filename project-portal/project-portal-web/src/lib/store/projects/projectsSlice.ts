@@ -7,7 +7,7 @@ import {
   updateProjectApi,
   deleteProjectApi,
 } from './projects.api';
-import { AxiosError } from 'axios';
+import { getErrorMessage } from '@/lib/utils/errorMessage';
 
 const initialState = {
   projects: [] as Project[],
@@ -35,16 +35,6 @@ const initialState = {
     search: '',
   },
 };
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof AxiosError) {
-    return error.response?.data?.error || error.message || 'An unexpected error occurred';
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return 'An unexpected error occurred';
-}
 
 export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
   ...initialState,

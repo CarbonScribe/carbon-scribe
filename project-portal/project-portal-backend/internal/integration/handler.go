@@ -89,11 +89,11 @@ func (h *Handler) OAuth2Authorize(c *gin.Context) {
 func (h *Handler) OAuth2Callback(c *gin.Context) {
 	provider := c.Param("provider")
 	code := c.Query("code")
-	
+
 	if err := h.service.HandleOAuth2Callback(c.Request.Context(), provider, code); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"message": "Authentication successful"})
 }

@@ -304,7 +304,6 @@ func (h *Handler) GetVersion(c *gin.Context) {
 
 // --- helpers ---
 
-
 // parseUUID extracts and validates a UUID path parameter.
 func parseUUID(c *gin.Context, param string) (uuid.UUID, error) {
 	id, err := uuid.Parse(c.Param(param))
@@ -349,4 +348,3 @@ func containsAny(s string, subs ...string) bool {
 	}
 	return false
 }
-

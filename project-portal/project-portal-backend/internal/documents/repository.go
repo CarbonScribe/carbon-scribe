@@ -231,4 +231,3 @@ func marshalStep(v interface{}) (string, error) {
 	}
 	return string(b), nil
 }
-

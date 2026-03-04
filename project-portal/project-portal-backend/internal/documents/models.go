@@ -11,11 +11,11 @@ import (
 type DocumentType string
 
 const (
-	DocumentTypePDD                    DocumentType = "PDD"
-	DocumentTypeMonitoringReport       DocumentType = "MONITORING_REPORT"
+	DocumentTypePDD                     DocumentType = "PDD"
+	DocumentTypeMonitoringReport        DocumentType = "MONITORING_REPORT"
 	DocumentTypeVerificationCertificate DocumentType = "VERIFICATION_CERTIFICATE"
-	DocumentTypeCompliance             DocumentType = "COMPLIANCE"
-	DocumentTypeOther                  DocumentType = "OTHER"
+	DocumentTypeCompliance              DocumentType = "COMPLIANCE"
+	DocumentTypeOther                   DocumentType = "OTHER"
 )
 
 // FileType represents the file format.
@@ -44,13 +44,13 @@ const (
 type AccessAction string
 
 const (
-	ActionView          AccessAction = "VIEW"
-	ActionDownload      AccessAction = "DOWNLOAD"
-	ActionUpload        AccessAction = "UPLOAD"
-	ActionApprove       AccessAction = "APPROVE"
-	ActionReject        AccessAction = "REJECT"
-	ActionDelete        AccessAction = "DELETE"
-	ActionVersionUpload AccessAction = "VERSION_UPLOAD"
+	ActionView            AccessAction = "VIEW"
+	ActionDownload        AccessAction = "DOWNLOAD"
+	ActionUpload          AccessAction = "UPLOAD"
+	ActionApprove         AccessAction = "APPROVE"
+	ActionReject          AccessAction = "REJECT"
+	ActionDelete          AccessAction = "DELETE"
+	ActionVersionUpload   AccessAction = "VERSION_UPLOAD"
 	ActionVerifySignature AccessAction = "VERIFY_SIGNATURE"
 )
 
@@ -112,17 +112,17 @@ func (DocumentVersion) TableName() string { return "document_versions" }
 
 // DocumentSignature stores digital signature verification results.
 type DocumentSignature struct {
-	ID                 uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	DocumentID         uuid.UUID      `gorm:"type:uuid;not null;index" json:"document_id"`
-	SignerName         string         `gorm:"size:255;not null" json:"signer_name"`
-	SignerEmail        string         `gorm:"size:255" json:"signer_email,omitempty"`
-	SignerRole         string         `gorm:"size:100" json:"signer_role,omitempty"`
-	CertificateIssuer  string         `gorm:"size:255" json:"certificate_issuer,omitempty"`
-	CertificateSubject string         `gorm:"size:255" json:"certificate_subject,omitempty"`
-	SigningTime        time.Time      `gorm:"not null" json:"signing_time"`
-	IsValid            bool           `gorm:"not null;default:false" json:"is_valid"`
+	ID                  uuid.UUID      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	DocumentID          uuid.UUID      `gorm:"type:uuid;not null;index" json:"document_id"`
+	SignerName          string         `gorm:"size:255;not null" json:"signer_name"`
+	SignerEmail         string         `gorm:"size:255" json:"signer_email,omitempty"`
+	SignerRole          string         `gorm:"size:100" json:"signer_role,omitempty"`
+	CertificateIssuer   string         `gorm:"size:255" json:"certificate_issuer,omitempty"`
+	CertificateSubject  string         `gorm:"size:255" json:"certificate_subject,omitempty"`
+	SigningTime         time.Time      `gorm:"not null" json:"signing_time"`
+	IsValid             bool           `gorm:"not null;default:false" json:"is_valid"`
 	VerificationDetails datatypes.JSON `gorm:"type:jsonb;default:'{}'" json:"verification_details"`
-	VerifiedAt         time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"verified_at"`
+	VerifiedAt          time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"verified_at"`
 }
 
 func (DocumentSignature) TableName() string { return "document_signatures" }

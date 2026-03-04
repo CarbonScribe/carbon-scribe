@@ -3,7 +3,9 @@ import { PrismaService } from '../prisma.service';
 import { BaseRepository } from './base.repository';
 
 @Injectable()
-export class TransactionRepository extends BaseRepository<PrismaService['transaction']> {
+export class TransactionRepository extends BaseRepository<
+  PrismaService['transaction']
+> {
   constructor(prisma: PrismaService) {
     super(prisma, prisma.transaction);
   }
@@ -12,7 +14,10 @@ export class TransactionRepository extends BaseRepository<PrismaService['transac
     return this.findUnique({ where: { id } });
   }
 
-  listByCompanyId(companyId: string, options?: { take?: number; skip?: number; type?: string }) {
+  listByCompanyId(
+    companyId: string,
+    options?: { take?: number; skip?: number; type?: string },
+  ) {
     return this.findMany({
       where: { companyId, ...(options?.type && { type: options.type }) },
       orderBy: { createdAt: 'desc' },
@@ -22,6 +27,9 @@ export class TransactionRepository extends BaseRepository<PrismaService['transac
   }
 
   listByOrderId(orderId: string) {
-    return this.findMany({ where: { orderId }, orderBy: { createdAt: 'desc' } });
+    return this.findMany({
+      where: { orderId },
+      orderBy: { createdAt: 'desc' },
+    });
   }
 }

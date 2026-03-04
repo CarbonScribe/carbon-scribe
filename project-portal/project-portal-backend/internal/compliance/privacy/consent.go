@@ -64,9 +64,9 @@ func (cm *ConsentManager) IsConsentActive(given bool, expiresAt, withdrawnAt *ti
 
 // ConsentSummary provides a summary of a user's consent status per type.
 type ConsentSummary struct {
-	ConsentType string    `json:"consent_type"`
-	IsActive    bool      `json:"is_active"`
-	Version     string    `json:"version"`
-	GivenAt     time.Time `json:"given_at"`
+	ConsentType string     `json:"consent_type"`
+	IsActive    bool       `json:"is_active"`
+	Version     string     `json:"version"`
+	GivenAt     time.Time  `json:"given_at"`
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 }

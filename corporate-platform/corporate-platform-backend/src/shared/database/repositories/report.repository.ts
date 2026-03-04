@@ -12,7 +12,10 @@ export class ReportRepository extends BaseRepository<PrismaService['report']> {
     return this.findUnique({ where: { id } });
   }
 
-  listByCompanyId(companyId: string, options?: { type?: string; take?: number }) {
+  listByCompanyId(
+    companyId: string,
+    options?: { type?: string; take?: number },
+  ) {
     return this.findMany({
       where: { companyId, ...(options?.type && { type: options.type }) },
       orderBy: { generatedAt: 'desc' },

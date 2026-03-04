@@ -29,7 +29,7 @@ type SignatureInfo struct {
 // VerificationResult wraps the full list of signature results for a document.
 type VerificationResult struct {
 	DocumentID  string          `json:"document_id"`
-	Signatures  []SignatureInfo  `json:"signatures"`
+	Signatures  []SignatureInfo `json:"signatures"`
 	AllValid    bool            `json:"all_valid"`
 	SignedCount int             `json:"signed_count"`
 	VerifiedAt  time.Time       `json:"verified_at"`

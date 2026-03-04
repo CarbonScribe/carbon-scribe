@@ -22,6 +22,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
+	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
@@ -137,6 +138,16 @@ func main() {
 	geospatialRepo := geospatial.NewRepository(db)
 	geospatialService := geospatial.NewService(geospatialRepo)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
+	settingsRepo := settings.NewRepository(db)
+	settingsService, err := settings.NewService(settingsRepo, settings.Config{
+		EncryptionKeyHex: cfg.Settings.EncryptionKeyHex,
+		APIKeyPrefix:     cfg.Settings.APIKeyPrefix,
+		ProfileCDNBase:   cfg.Settings.ProfileCDNBase,
+	})
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize settings service: %v", err)
+	}
+	settingsHandler := settings.NewHandler(settingsService)
 
 	// Setup Gin
 	if !cfg.Debug {
@@ -155,7 +166,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings"},
 		})
 	})
 
@@ -174,6 +185,7 @@ func main() {
 				"reports":       "/api/v1/reports/*",
 				"search":        "/api/v1/search/*",
 				"geospatial":    "/api/v1/geospatial/*",
+				"settings":      "/api/v1/settings/*",
 			},
 		})
 	})
@@ -211,6 +223,9 @@ func main() {
 		// Register geospatial routes under v1
 		geospatialHandler.RegisterRoutes(v1)
 
+		// Register settings routes under v1
+		settingsHandler.RegisterRoutes(v1)
+
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong", "timestamp": time.Now().Unix()})
@@ -245,6 +260,7 @@ func main() {
 		fmt.Println("   - Search: /api/v1/search/*")
 		fmt.Println("   - Compliance: /api/v1/compliance/*")
 		fmt.Println("   - Geospatial: /api/v1/geospatial/*")
+		fmt.Println("   - Settings: /api/v1/settings/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
@@ -346,6 +362,14 @@ func runAllMigrations(db *gorm.DB) error {
 		&compliance.AuditLog{},
 		&compliance.RetentionSchedule{},
 		&compliance.LegalHold{},
+
+		// Settings models
+		&settings.UserProfile{},
+		&settings.NotificationPreference{},
+		&settings.APIKey{},
+		&settings.IntegrationConfiguration{},
+		&settings.Subscription{},
+		&settings.Invoice{},
 	)
 
 	if err != nil {

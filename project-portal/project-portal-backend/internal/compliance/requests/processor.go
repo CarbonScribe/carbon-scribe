@@ -15,11 +15,11 @@ type RequestRepository interface {
 
 // Processor handles the lifecycle of privacy data subject requests.
 type Processor struct {
-	repo      interface{}
-	exporter  *Exporter
-	deleter   *Deleter
+	repo       interface{}
+	exporter   *Exporter
+	deleter    *Deleter
 	discoverer *Discoverer
-	verifier  *Verifier
+	verifier   *Verifier
 }
 
 // NewProcessor creates a new request processor with all sub-components.
@@ -80,11 +80,11 @@ type ExportResult struct {
 
 // DeletionResult captures the outcome of a data deletion operation.
 type DeletionResult struct {
-	UserID          string                  `json:"user_id"`
-	DeletedCategories []string              `json:"deleted_categories"`
-	RetainedCategories []string             `json:"retained_categories"`
-	Summary         map[string]CategoryResult `json:"summary"`
-	CompletedAt     time.Time               `json:"completed_at"`
+	UserID             string                    `json:"user_id"`
+	DeletedCategories  []string                  `json:"deleted_categories"`
+	RetainedCategories []string                  `json:"retained_categories"`
+	Summary            map[string]CategoryResult `json:"summary"`
+	CompletedAt        time.Time                 `json:"completed_at"`
 }
 
 // CategoryResult holds the result for a single data category deletion.

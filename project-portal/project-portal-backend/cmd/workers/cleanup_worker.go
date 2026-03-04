@@ -11,8 +11,10 @@ package workers
 // - Purge expired consent records
 // - Release expired legal holds
 // - Clean up orphaned compliance data
+// - Remove expired API keys and stale settings artifacts
 // - Generate cleanup reports for compliance audits
 //
 // This worker should run daily during low-traffic hours.
 //
-// Implementation pending: requires database connection and compliance service setup.
+// Implementation pending: requires database connection and compliance/settings service setup.
+type CleanupWorker struct{}

@@ -248,4 +248,3 @@ func (s *Service) pinToIPFS(ctx context.Context, doc *Document, s3Key string) {
 		fmt.Printf("WARNING: failed to save IPFS CID for document %s: %v\n", doc.ID, err)
 	}
 }
-

@@ -14,6 +14,10 @@ import { ConfigModule } from './config/config.module';
 import { LoggerModule } from './logger/logger.module';
 import { RequestLoggerMiddleware } from './logger/middleware/request-logger.middleware';
 import { SecurityModule } from './security/security.module';
+import { EventBusModule } from './event-bus/event-bus.module';
+import { ApiKeyModule } from './api-key/api-key.module';
+import { PortfolioModule } from './portfolio/portfolio.module';
+
 @Module({
   imports: [
     ConfigModule,
@@ -28,6 +32,9 @@ import { SecurityModule } from './security/security.module';
     CacheModule,
     AuthModule,
     AuctionModule,
+    EventBusModule,
+    ApiKeyModule,
+    PortfolioModule,
   ],
   controllers: [AppController],
   providers: [AppService],

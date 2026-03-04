@@ -2,10 +2,10 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Calendar, 
+import {
+  ArrowLeft,
+  MapPin,
+  Calendar,
   Users,
   Trees,
   Coins,
@@ -20,6 +20,14 @@ import {
 import { useState } from 'react';
 import { useStore } from '@/lib/store/store';
 import DeleteProjectDialog from '@/components/projects/DeleteProjectDialog';
+import TeamMembersList from '@/components/collaboration/TeamMembersList';
+import PendingInvitationsList from '@/components/collaboration/PendingInvitationsList';
+import InviteUserModal from '@/components/collaboration/InviteUserModal';
+import ActivityTimeline from '@/components/collaboration/ActivityTimeline';
+import CommentSection from '@/components/collaboration/CommentSection';
+import TaskBoard from '@/components/collaboration/TaskBoard';
+import ResourceLibrary from '@/components/collaboration/ResourceLibrary';
+import { ROLES_CAN_MANAGE } from '@/lib/store/collaboration/collaboration.types';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -33,6 +41,13 @@ export default function ProjectDetailPage() {
 
   const [activeTab, setActiveTab] = useState('overview');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+
+  const setCurrentProjectId = useStore((s) => s.setCurrentProjectId);
+  const resetCollaborationState = useStore((s) => s.resetCollaborationState);
+  const fetchMembers = useStore((s) => s.fetchMembers);
+  const fetchInvitations = useStore((s) => s.fetchInvitations);
+  const members = useStore((s) => s.members);
 
   // Fetch project on mount
   useEffect(() => {
@@ -40,6 +55,17 @@ export default function ProjectDetailPage() {
       fetchProjectById(projectId);
     }
   }, [projectId, fetchProjectById]);
+
+  // Collaboration: set project context and fetch team data when project is loaded
+  useEffect(() => {
+    if (!projectId || !selectedProject) return;
+    setCurrentProjectId(projectId);
+    fetchMembers(projectId);
+    fetchInvitations(projectId);
+    return () => {
+      resetCollaborationState();
+    };
+  }, [projectId, selectedProject?.id, setCurrentProjectId, resetCollaborationState, fetchMembers, fetchInvitations]);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'N/A';
@@ -197,8 +223,8 @@ export default function ProjectDetailPage() {
 
       {/* Tabs */}
       <div className="bg-white rounded-2xl border border-gray-200">
-        <div className="flex border-b border-gray-200">
-          {['overview', 'monitoring', 'documents', 'financing', 'team'].map((tab) => (
+        <div className="flex border-b border-gray-200 overflow-x-auto">
+          {['overview', 'monitoring', 'documents', 'financing', 'team', 'activity', 'comments', 'tasks', 'resources'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -332,12 +358,35 @@ export default function ProjectDetailPage() {
           )}
 
           {activeTab === 'team' && (
-            <div className="text-center py-12">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Team Members</h3>
-              <p className="text-gray-600">Team collaboration features are coming soon.</p>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900">Team</h3>
+                {members.some((m) => (ROLES_CAN_MANAGE as readonly string[]).includes(m.role)) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteModal(true)}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+                  >
+                    Invite member
+                  </button>
+                )}
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Pending invitations</h4>
+                <PendingInvitationsList projectId={project.id} />
+              </div>
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Members</h4>
+                <TeamMembersList projectId={project.id} canManage={members.some((m) => (ROLES_CAN_MANAGE as readonly string[]).includes(m.role))} />
+              </div>
+              <InviteUserModal projectId={project.id} isOpen={showInviteModal} onClose={() => setShowInviteModal(false)} />
             </div>
           )}
+
+          {activeTab === 'activity' && <ActivityTimeline projectId={project.id} />}
+          {activeTab === 'comments' && <CommentSection projectId={project.id} />}
+          {activeTab === 'tasks' && <TaskBoard projectId={project.id} />}
+          {activeTab === 'resources' && <ResourceLibrary projectId={project.id} />}
         </div>
       </div>
 

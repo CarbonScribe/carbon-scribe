@@ -18,7 +18,7 @@ import (
 
 // IPFSClient wraps the Kubo HTTP API for file pinning and retrieval.
 type IPFSClient struct {
-	nodeURL    string       // e.g. "http://localhost:5001"
+	nodeURL    string // e.g. "http://localhost:5001"
 	httpClient *http.Client
 }
 

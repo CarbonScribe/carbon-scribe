@@ -29,6 +29,7 @@ type Repository interface {
 
 	// Task
 	CreateTask(ctx context.Context, task *Task) error
+	GetTask(ctx context.Context, taskID string) (*Task, error)
 	ListTasks(ctx context.Context, projectID string) ([]Task, error)
 	UpdateTask(ctx context.Context, task *Task) error
 
@@ -129,6 +130,14 @@ func (r *repository) ListComments(ctx context.Context, projectID string) ([]Comm
 
 func (r *repository) CreateTask(ctx context.Context, task *Task) error {
 	return r.db.WithContext(ctx).Create(task).Error
+}
+
+func (r *repository) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	var task Task
+	if err := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+		return nil, err
+	}
+	return &task, nil
 }
 
 func (r *repository) ListTasks(ctx context.Context, projectID string) ([]Task, error) {

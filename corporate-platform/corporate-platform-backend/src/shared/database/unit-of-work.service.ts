@@ -15,7 +15,19 @@ export class UnitOfWorkService {
    * @param fn Function receiving the Prisma transaction client (tx). Use tx.company, tx.user, etc.
    * @returns The value returned by fn.
    */
-  async run<T>(fn: (tx: Omit<PrismaService, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>) => Promise<T>): Promise<T> {
+  async run<T>(
+    fn: (
+      tx: Omit<
+        PrismaService,
+        | '$connect'
+        | '$disconnect'
+        | '$on'
+        | '$transaction'
+        | '$use'
+        | '$extends'
+      >,
+    ) => Promise<T>,
+  ): Promise<T> {
     return this.prisma.$transaction(async (tx) => fn(tx as any));
   }
 }

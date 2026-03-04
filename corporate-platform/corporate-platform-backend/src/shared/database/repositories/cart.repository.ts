@@ -9,15 +9,25 @@ export class CartRepository extends BaseRepository<PrismaService['cart']> {
   }
 
   findById(id: string) {
-    return this.findUnique({ where: { id }, include: { items: { include: { credit: true } } } });
+    return this.findUnique({
+      where: { id },
+      include: { items: { include: { credit: true } } },
+    });
   }
 
   findBySessionId(sessionId: string) {
-    return this.findUnique({ where: { sessionId }, include: { items: { include: { credit: true } } } });
+    return this.findUnique({
+      where: { sessionId },
+      include: { items: { include: { credit: true } } },
+    });
   }
 
   listByCompanyId(companyId: string) {
-    return this.findMany({ where: { companyId }, orderBy: { updatedAt: 'desc' }, include: { items: true } });
+    return this.findMany({
+      where: { companyId },
+      orderBy: { updatedAt: 'desc' },
+      include: { items: true },
+    });
   }
 
   listExpired(expiresBefore: Date) {

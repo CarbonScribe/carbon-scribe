@@ -24,13 +24,13 @@ func NewPreferenceManager(jm *JurisdictionManager) *PreferenceManager {
 // PreferenceDefaults returns default privacy preferences for a given jurisdiction.
 func (pm *PreferenceManager) PreferenceDefaults(jurisdiction string) map[string]bool {
 	defaults := map[string]bool{
-		"marketing_emails":         false,
-		"promotional_emails":       false,
-		"system_notifications":     true,
-		"third_party_sharing":      false,
-		"analytics_tracking":       true,
-		"data_retention_consent":   true,
-		"research_participation":   false,
+		"marketing_emails":          false,
+		"promotional_emails":        false,
+		"system_notifications":      true,
+		"third_party_sharing":       false,
+		"analytics_tracking":        true,
+		"data_retention_consent":    true,
+		"research_participation":    false,
 		"automated_decision_making": false,
 	}
 

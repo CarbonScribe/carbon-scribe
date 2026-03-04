@@ -30,10 +30,6 @@ const repositories = [
 @Global()
 @Module({
   providers: [PrismaService, UnitOfWorkService, ...repositories],
-  exports: [
-    PrismaService,
-    UnitOfWorkService,
-    ...repositories,
-  ],
+  exports: [PrismaService, UnitOfWorkService, ...repositories],
 })
 export class DatabaseModule {}

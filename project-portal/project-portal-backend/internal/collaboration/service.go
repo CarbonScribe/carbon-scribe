@@ -54,7 +54,7 @@ func (s *Service) AddComment(ctx context.Context, comment *Comment) error {
 	if err := s.repo.CreateComment(ctx, comment); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: comment.ProjectID,
@@ -72,7 +72,7 @@ func (s *Service) CreateTask(ctx context.Context, task *Task) error {
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: task.ProjectID,
@@ -85,13 +85,45 @@ func (s *Service) CreateTask(ctx context.Context, task *Task) error {
 	return nil
 }
 
+func (s *Service) ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error) {
+	return s.repo.ListMembers(ctx, projectID)
+}
+
+func (s *Service) RemoveMember(ctx context.Context, projectID, userID string) error {
+	return s.repo.RemoveMember(ctx, projectID, userID)
+}
+
+func (s *Service) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
+	return s.repo.ListInvitations(ctx, projectID)
+}
+
+func (s *Service) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
+	return s.repo.ListComments(ctx, projectID)
+}
+
+func (s *Service) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
+	return s.repo.ListTasks(ctx, projectID)
+}
+
+func (s *Service) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	return s.repo.GetTask(ctx, taskID)
+}
+
+func (s *Service) UpdateTask(ctx context.Context, task *Task) error {
+	return s.repo.UpdateTask(ctx, task)
+}
+
+func (s *Service) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
+	return s.repo.ListResources(ctx, projectID)
+}
+
 func (s *Service) AddResource(ctx context.Context, resource *SharedResource) error {
 	resource.CreatedAt = time.Now()
 	resource.UpdatedAt = time.Now()
 	if err := s.repo.CreateResource(ctx, resource); err != nil {
 		return err
 	}
-	
+
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: resource.ProjectID,

@@ -36,44 +36,44 @@ func (e *Enforcer) EnforceAction(ctx context.Context, action, dataType string, o
 func (e *Enforcer) executeDelete(ctx context.Context, dataType string, olderThan time.Time) (*EnforcementResult, error) {
 	log.Printf("enforcing deletion for %s older than %v", dataType, olderThan)
 	return &EnforcementResult{
-		Action:         "delete",
-		DataType:       dataType,
+		Action:          "delete",
+		DataType:        dataType,
 		RecordsAffected: 0,
-		CompletedAt:    time.Now(),
-		Status:         "completed",
+		CompletedAt:     time.Now(),
+		Status:          "completed",
 	}, nil
 }
 
 func (e *Enforcer) executeAnonymize(ctx context.Context, dataType string, olderThan time.Time) (*EnforcementResult, error) {
 	log.Printf("enforcing anonymization for %s older than %v", dataType, olderThan)
 	return &EnforcementResult{
-		Action:         "anonymize",
-		DataType:       dataType,
+		Action:          "anonymize",
+		DataType:        dataType,
 		RecordsAffected: 0,
-		CompletedAt:    time.Now(),
-		Status:         "completed",
+		CompletedAt:     time.Now(),
+		Status:          "completed",
 	}, nil
 }
 
 func (e *Enforcer) executeArchive(ctx context.Context, dataType string, olderThan time.Time) (*EnforcementResult, error) {
 	log.Printf("enforcing archival for %s older than %v", dataType, olderThan)
 	return &EnforcementResult{
-		Action:         "archive",
-		DataType:       dataType,
+		Action:          "archive",
+		DataType:        dataType,
 		RecordsAffected: 0,
-		CompletedAt:    time.Now(),
-		Status:         "completed",
+		CompletedAt:     time.Now(),
+		Status:          "completed",
 	}, nil
 }
 
 func (e *Enforcer) executeReview(ctx context.Context, dataType string, olderThan time.Time) (*EnforcementResult, error) {
 	log.Printf("flagging %s for review (older than %v)", dataType, olderThan)
 	return &EnforcementResult{
-		Action:         "review",
-		DataType:       dataType,
+		Action:          "review",
+		DataType:        dataType,
 		RecordsAffected: 0,
-		CompletedAt:    time.Now(),
-		Status:         "pending_review",
+		CompletedAt:     time.Now(),
+		Status:          "pending_review",
 	}, nil
 }
 

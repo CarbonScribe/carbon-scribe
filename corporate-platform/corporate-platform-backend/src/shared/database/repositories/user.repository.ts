@@ -13,11 +13,20 @@ export class UserRepository extends BaseRepository<PrismaService['user']> {
   }
 
   findByCompanyAndEmail(companyId: string, email: string) {
-    return this.findUnique({ where: { companyId_email: { companyId, email } } });
+    return this.findUnique({
+      where: { companyId_email: { companyId, email } },
+    });
   }
 
-  listByCompanyId(companyId: string, options?: { take?: number; skip?: number }) {
-    return this.findMany({ where: { companyId }, orderBy: { createdAt: 'desc' }, ...options });
+  listByCompanyId(
+    companyId: string,
+    options?: { take?: number; skip?: number },
+  ) {
+    return this.findMany({
+      where: { companyId },
+      orderBy: { createdAt: 'desc' },
+      ...options,
+    });
   }
 
   countByCompanyId(companyId: string) {
