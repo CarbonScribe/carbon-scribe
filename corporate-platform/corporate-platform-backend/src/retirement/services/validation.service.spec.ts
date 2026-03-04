@@ -37,7 +37,7 @@ describe('ValidationService', () => {
   it('should throw BadRequestException if insufficient balance', async () => {
     mockPrisma.credit.findUnique.mockResolvedValue({
       id: 'cred1',
-      available: 5,
+      availableAmount: 5,
     });
     await expect(
       service.validateRetirement('comp1', 'cred1', 10),
@@ -47,7 +47,7 @@ describe('ValidationService', () => {
   it('should return valid if balance is sufficient', async () => {
     mockPrisma.credit.findUnique.mockResolvedValue({
       id: 'cred1',
-      available: 20,
+      availableAmount: 20,
     });
     const result = await service.validateRetirement('comp1', 'cred1', 10);
     expect(result.valid).toBe(true);

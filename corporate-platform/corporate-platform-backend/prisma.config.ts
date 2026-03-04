@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import 'dotenv/config';
 
 export default {
@@ -7,6 +8,5 @@ export default {
   migrations: {
     seed: 'npx ts-node prisma/seed.ts',
   },
+// eslint-disable-next-line prettier/prettier
 }
-
-  

@@ -22,7 +22,7 @@ export class InstantRetirementService {
       // 2. Decrease availability
       await tx.credit.update({
         where: { id: dto.creditId },
-        data: { available: { decrement: dto.amount } },
+        data: { availableAmount: { decrement: dto.amount } },
       });
 
       // 3. Create retirement record

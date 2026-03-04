@@ -27,7 +27,8 @@ export class PrismaService
       connectionTimeoutMillis: 10000,
     });
     const adapter = new PrismaPg(pool);
-    super({ adapter });
+
+    super({ adapter } as any);
   }
 
   async onModuleInit() {
