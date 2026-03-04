@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { ListingService } from './services/listing.service';
 import { DetailsService } from './services/details.service';
 import { QualityService } from './services/quality.service';
