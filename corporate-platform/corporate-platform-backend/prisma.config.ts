@@ -1,8 +1,12 @@
+/* eslint-disable prettier/prettier */
 import 'dotenv/config';
-import { defineConfig, env } from 'prisma/config';
 
-export default defineConfig({
+export default {
   datasource: {
-    url: env('DATABASE_URL'),
+    url: process.env.DATABASE_URL,
   },
-});
+  migrations: {
+    seed: 'npx ts-node prisma/seed.ts',
+  },
+// eslint-disable-next-line prettier/prettier
+}
