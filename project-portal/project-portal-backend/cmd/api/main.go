@@ -19,6 +19,9 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
+	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
+	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+	notificationws "carbon-scribe/project-portal/project-portal-backend/internal/notifications/websocket"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
@@ -28,6 +31,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -51,6 +56,15 @@ func main() {
 		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 	log.Println("✅ Database connection established")
+
+	// Initialize MongoDB for Notifications
+	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(cfg.MongoDB.URI))
+	if err != nil {
+		log.Printf("⚠️  Failed to connect to MongoDB: %v. Persistent notifications may fail.", err)
+	} else {
+		log.Println("✅ MongoDB connection established")
+	}
+	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
 	// Run all migrations
 	if err := runAllMigrations(db); err != nil {
@@ -150,6 +164,17 @@ func main() {
 	}
 	settingsHandler := settings.NewHandler(settingsService)
 
+	// Initialize Notification Module
+	notificationRepo := notifications.NewRepository(mongoDB)
+	wsManager := notificationws.NewManager(notificationRepo)
+	
+	emailChannel := &channels.EmailChannel{}
+	smsChannel := &channels.SMSChannel{}
+	wsChannel := &channels.WebSocketChannel{Manager: wsManager}
+	
+	notificationService := notifications.NewService(notificationRepo, emailChannel, smsChannel, wsChannel)
+	notificationHandler := notifications.NewHandler(notificationService)
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -187,6 +212,7 @@ func main() {
 				"search":        "/api/v1/search/*",
 				"geospatial":    "/api/v1/geospatial/*",
 				"settings":      "/api/v1/settings/*",
+				"notifications": "/api/v1/notifications/*",
 			},
 		})
 	})
@@ -221,6 +247,10 @@ func main() {
 
 		// Register settings routes under v1
 		settingsHandler.RegisterRoutes(v1)
+
+		// Register notification routes under v1
+		notificationHandler.RegisterRoutes(v1)
+		v1.GET("/ws/notifications", wsManager.HandleConnection)
 
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {

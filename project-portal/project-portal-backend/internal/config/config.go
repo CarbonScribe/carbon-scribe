@@ -19,6 +19,7 @@ type Config struct {
 	Settings      SettingsConfig
 	Auth          AuthConfig
 	Redis         RedisConfig
+	MongoDB       MongoDBConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -74,6 +75,11 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+}
+
+type MongoDBConfig struct {
+	URI      string
+	Database string
 }
 
 // Load loads configuration from environment variables
@@ -162,6 +168,10 @@ func Load() (*Config, error) {
 			Port:     getEnvOrDefault("REDIS_PORT", "6379"),
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDBAbc,
+		},
+		MongoDB: MongoDBConfig{
+			URI:      getEnvOrDefault("MONGODB_URI", "mongodb://localhost:27017"),
+			Database: getEnvOrDefault("MONGODB_DATABASE", "carbon_scribe_notifications"),
 		},
 	}, nil
 }

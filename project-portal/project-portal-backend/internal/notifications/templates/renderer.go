@@ -1,7 +1,16 @@
-//go:build future
-// +build future
+package templates
 
-package notifications
+import (
+	"fmt"
+	"strings"
+)
 
-// This file won't be compiled in normal builds
-// Implementation pending
+// Render substitutes variables in a template string
+func Render(tmpl string, data map[string]interface{}) string {
+	res := tmpl
+	for k, v := range data {
+		placeholder := fmt.Sprintf("{{%s}}", k)
+		res = strings.ReplaceAll(res, placeholder, fmt.Sprintf("%v", v))
+	}
+	return res
+}

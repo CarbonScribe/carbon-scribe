@@ -37,6 +37,15 @@ services:
       - "9200:9200"
       - "9300:9300"
 
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
 volumes:  
   postgres_data:
   elasticsearch_data:
+  mongodb_data:

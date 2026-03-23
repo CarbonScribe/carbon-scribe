@@ -1,7 +1,14 @@
-//go:build future
-// +build future
+package channels
 
-package notifications
+import (
+	"context"
+	"fmt"
+	"log"
+)
 
-// This file won't be compiled in normal builds
-// Implementation pending
+type SMSChannel struct{}
+
+func (c *SMSChannel) Send(ctx context.Context, recipient string, subject string, body string) (string, error) {
+	log.Printf("[MOCK SNS] Sending SMS to %s\nMessage: %s", recipient, body)
+	return fmt.Sprintf("sns-%d", 789012), nil
+}
