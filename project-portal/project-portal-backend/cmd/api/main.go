@@ -53,23 +53,25 @@ func main() {
 	// Initialize database connection
 	db, err := initDatabase(cfg)
 	if err != nil {
-		log.Fatalf("❌ Failed to connect to database: %v", err)
+		log.Printf("⚠️  Failed to connect to PostgreSQL: %v. Relational features will be limited.", err)
+	} else {
+		log.Println("✅ Database connection established")
+		// Run all migrations
+		if err := runAllMigrations(db); err != nil {
+			log.Printf("⚠️ Migration warnings: %v", err)
+		}
 	}
-	log.Println("✅ Database connection established")
 
 	// Initialize MongoDB for Notifications
+	var mongoDB *mongo.Database
 	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI(cfg.MongoDB.URI))
 	if err != nil {
-		log.Printf("⚠️  Failed to connect to MongoDB: %v. Persistent notifications may fail.", err)
+		log.Printf("⚠️  Failed to connect to MongoDB: %v. Using In-Memory fallback.", err)
 	} else {
 		log.Println("✅ MongoDB connection established")
+		mongoDB = mongoClient.Database(cfg.MongoDB.Database)
 	}
-	mongoDB := mongoClient.Database(cfg.MongoDB.Database)
 
-	// Run all migrations
-	if err := runAllMigrations(db); err != nil {
-		log.Printf("⚠️ Migration warnings: %v", err)
-	}
 
 	// Initialize Elasticsearch client
 	esClient, err := elastic.NewClient(elastic.Config{
@@ -165,7 +167,14 @@ func main() {
 	settingsHandler := settings.NewHandler(settingsService)
 
 	// Initialize Notification Module
-	notificationRepo := notifications.NewRepository(mongoDB)
+	var notificationRepo notifications.Repository
+	if mongoDB != nil {
+		notificationRepo = notifications.NewRepository(mongoDB)
+	} else {
+		log.Println("ℹ️  Using In-Memory Notification Repository (Data will NOT be saved after restart)")
+		notificationRepo = notifications.NewInMemRepository()
+	}
+
 	wsManager := notificationws.NewManager(notificationRepo)
 	
 	emailChannel := &channels.EmailChannel{}

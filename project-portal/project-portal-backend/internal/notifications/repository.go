@@ -44,6 +44,139 @@ func NewRepository(db *mongo.Database) Repository {
 	return &mongoRepository{db: db}
 }
 
+func NewInMemRepository() Repository {
+	return &inMemRepository{
+		templates:   make(map[primitive.ObjectID]NotificationTemplate),
+		rules:       make(map[primitive.ObjectID]NotificationRule),
+		prefs:       make(map[string][]UserPreference),
+		connections: make(map[string]WebSocketConnection),
+		logs:        make(map[primitive.ObjectID]DeliveryLog),
+	}
+}
+
+type inMemRepository struct {
+	templates   map[primitive.ObjectID]NotificationTemplate
+	rules       map[primitive.ObjectID]NotificationRule
+	prefs       map[string][]UserPreference
+	connections map[string]WebSocketConnection
+	logs        map[primitive.ObjectID]DeliveryLog
+}
+
+func (r *inMemRepository) CreateTemplate(ctx context.Context, t *NotificationTemplate) error {
+	if t.ID.IsZero() {
+		t.ID = primitive.NewObjectID()
+	}
+	t.CreatedAt = time.Now()
+	r.templates[t.ID] = *t
+	return nil
+}
+
+func (r *inMemRepository) GetTemplate(ctx context.Context, id primitive.ObjectID) (*NotificationTemplate, error) {
+	t, ok := r.templates[id]
+	if !ok {
+		return nil, mongo.ErrNoDocuments
+	}
+	return &t, nil
+}
+
+func (r *inMemRepository) ListTemplates(ctx context.Context) ([]NotificationTemplate, error) {
+	var res []NotificationTemplate
+	for _, t := range r.templates {
+		res = append(res, t)
+	}
+	return res, nil
+}
+
+func (r *inMemRepository) CreateRule(ctx context.Context, rule *NotificationRule) error {
+	if rule.ID.IsZero() {
+		rule.ID = primitive.NewObjectID()
+	}
+	r.rules[rule.ID] = *rule
+	return nil
+}
+
+func (r *inMemRepository) GetRulesByProject(ctx context.Context, projectID string) ([]NotificationRule, error) {
+	var res []NotificationRule
+	for _, rule := range r.rules {
+		if rule.ProjectID == projectID {
+			res = append(res, rule)
+		}
+	}
+	return res, nil
+}
+
+func (r *inMemRepository) UpdateRule(ctx context.Context, rule *NotificationRule) error {
+	r.rules[rule.ID] = *rule
+	return nil
+}
+
+func (r *inMemRepository) UpdatePreference(ctx context.Context, pref *UserPreference) error {
+	pref.UpdatedAt = time.Now()
+	userPrefs := r.prefs[pref.UserID]
+	found := false
+	for i, p := range userPrefs {
+		if p.Category == pref.Category && p.Channel == pref.Channel {
+			userPrefs[i] = *pref
+			found = true
+			break
+		}
+	}
+	if !found {
+		userPrefs = append(userPrefs, *pref)
+	}
+	r.prefs[pref.UserID] = userPrefs
+	return nil
+}
+
+func (r *inMemRepository) GetPreferences(ctx context.Context, userID string) ([]UserPreference, error) {
+	return r.prefs[userID], nil
+}
+
+func (r *inMemRepository) SaveConnection(ctx context.Context, conn *WebSocketConnection) error {
+	r.connections[conn.ID] = *conn
+	return nil
+}
+
+func (r *inMemRepository) DeleteConnection(ctx context.Context, connectionID string) error {
+	delete(r.connections, connectionID)
+	return nil
+}
+
+func (r *inMemRepository) GetConnectionsByUser(ctx context.Context, userID string) ([]WebSocketConnection, error) {
+	var res []WebSocketConnection
+	for _, conn := range r.connections {
+		if conn.UserID == userID {
+			res = append(res, conn)
+		}
+	}
+	return res, nil
+}
+
+func (r *inMemRepository) GetAllConnections(ctx context.Context) ([]WebSocketConnection, error) {
+	var res []WebSocketConnection
+	for _, conn := range r.connections {
+		res = append(res, conn)
+	}
+	return res, nil
+}
+
+func (r *inMemRepository) CreateDeliveryLog(ctx context.Context, log *DeliveryLog) error {
+	if log.ID.IsZero() {
+		log.ID = primitive.NewObjectID()
+	}
+	log.Timestamp = time.Now()
+	r.logs[log.ID] = *log
+	return nil
+}
+
+func (r *inMemRepository) GetDeliveryLog(ctx context.Context, id primitive.ObjectID) (*DeliveryLog, error) {
+	l, ok := r.logs[id]
+	if !ok {
+		return nil, mongo.ErrNoDocuments
+	}
+	return &l, nil
+}
+
 // Templates
 func (r *mongoRepository) CreateTemplate(ctx context.Context, t *NotificationTemplate) error {
 	t.CreatedAt = time.Now()

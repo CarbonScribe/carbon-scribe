@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/templates"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -106,7 +107,7 @@ func (s *notificationService) SendNotification(ctx context.Context, req Notifica
 		TemplateID:        req.TemplateID,
 		Status:            status,
 		ProviderMessageID: providerID,
-		Timestamp:         primitive.NewDateTimeFromTime(primitive.NewObjectID().Timestamp()), // fallback if needed
+		Timestamp:         time.Now(),
 	}
 	if sendErr != nil {
 		logEntry.ProviderResponse = map[string]interface{}{"error": sendErr.Error()}
