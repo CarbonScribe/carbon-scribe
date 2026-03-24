@@ -19,6 +19,7 @@ import { ApiKeyModule } from './api-key/api-key.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { IpfsModule } from './ipfs/ipfs.module';
 import { RbacModule } from './rbac/rbac.module';
+import { CreditModule } from './credit/credit.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { RbacModule } from './rbac/rbac.module';
     ApiKeyModule,
     PortfolioModule,
     IpfsModule,
+    CreditModule,
   ],
   controllers: [AppController],
   providers: [AppService],

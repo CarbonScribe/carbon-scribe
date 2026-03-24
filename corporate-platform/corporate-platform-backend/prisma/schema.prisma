@@ -54,32 +54,73 @@ model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
-  methodology String?
-  standard    String?
-  country     String?
+  // Classification & Metadata
+  type                  String?   // forestry, renewable, agriculture, bluecarbon, cookstoves, methane
+  methodology           String?
+  verificationStandard  String?
+  country               String?
+  region                String?
+
+  // Multi-tenant / ownership
   companyId   String?  // Optional: project can be company-scoped or global
   company     Company? @relation(fields: [companyId], references: [id])
+
+  // Impact
+  totalCredits          Int      @default(0)
+  availableCredits      Int      @default(0)
+  avgScore              Float?   
+  communities           Int?     // People benefited
+  sdgs                  Int[]    @default([])
+
+  // Timeline
+  startDate   DateTime
+  endDate     DateTime?
+  lastVerification DateTime?
+
+  // Metadata
+  status      String    @default("active") // active, completed, pending
+  developer   String?
+  website     String?
+
+  // Relations
   credits     Credit[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([companyId])
+  @@index([country])
+  @@index([type])
+  @@index([status])
   @@map("projects")
 }
 
 model Credit {
   id           String               @id @default(cuid())
-  projectId    String?  // Optional link to Project entity
-  project      Project?             @relation(fields: [projectId], references: [id])
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id])
   projectName  String               // Denormalized for display/search
-  country      String?
-  methodology  String?
-  standard     String?
-  sdgs         String?
-  vintageYear  Int?
-  price        Float                @default(0) // Price per tCO₂
+  // Credit Details
+  pricePerTon  Float  @default(0)
+  availableAmount Int
   totalAmount  Int
-  available    Int
+  status       String   @default("available") // available, reserved, retired, pending
+
+  // Quality Metrics
+  dynamicScore          Int       @default(0)
+  verificationScore     Int       @default(0)
+  additionalityScore    Int       @default(0)
+  permanenceScore       Int       @default(0)
+  leakageScore          Int       @default(0)
+  cobenefitsScore       Int       @default(0)
+  transparencyScore     Int       @default(0)
+
+  // Metadata
+  methodology  String?
+  vintage      Int?
+  verificationStandard  String?
+  lastVerification DateTime?
+  country      String?
+  sdgs         Int[]    @default([])
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
@@ -87,10 +128,15 @@ model Credit {
   auctions     Auction[]
   portfolioHoldings  PortfolioHolding[] @relation("PortfolioHolding")
   portfolioEntries   PortfolioEntry[] @relation("PortfolioEntry")
+
+  // Blockchain
+  assetCode     String?
+  issuer        String?
+  contractId    String?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  // Search optimization
+  // Search & metadata
   searchVector    String?
   featured        Boolean   @default(false)
   featuredUntil   DateTime?
@@ -98,11 +144,11 @@ model Credit {
   purchaseCount   Int       @default(0)
   lastPurchasedAt DateTime?
 
-  @@index([projectId])
-  @@index([searchVector])
-  @@index([featured])
-  @@index([viewCount])
-  @@index([purchaseCount])
+  @@index([status])
+  @@index([country])
+  @@index([methodology])
+  @@index([vintage])
+  @@index([dynamicScore])
 }
 
 model Retirement {

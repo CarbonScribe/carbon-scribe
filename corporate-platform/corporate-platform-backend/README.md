@@ -293,3 +293,19 @@ Designated API key protected endpoints for programmatic reporting:
 - `GET /api/v1/integrations/retirement-analytics/summary`
 
 These endpoints require the API key permission `analytics:read` and automatically scope analytics queries to the key's `companyId`.
+
+## Credit Module: Database Migration
+
+The project includes a new `Credit` and extended `Project` models in `prisma/schema.prisma` used by the `src/credit` module.
+
+After pulling these changes, run the Prisma migration and generator to update your database and client:
+
+```bash
+# generate client
+npx prisma generate
+
+# create and apply migration (interactive)
+npx prisma migrate dev --name add_credit_models
+```
+
+If you manage migrations centrally, prefer creating the migration in your CI or local environment and reviewing it before applying in production.
