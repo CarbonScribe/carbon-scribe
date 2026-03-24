@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -400,6 +401,7 @@ func (r *dynamoRepository) CreateRule(ctx context.Context, rule *NotificationRul
 }
 
 func (r *dynamoRepository) GetRulesByProject(ctx context.Context, projectID string) ([]NotificationRule, error) {
+	var items []map[string]types.AttributeValue
 	result, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.ruleTable),
 		IndexName:              aws.String("ProjectIDIndex"), // Assumed GSI
@@ -408,21 +410,26 @@ func (r *dynamoRepository) GetRulesByProject(ctx context.Context, projectID stri
 			":pid": &types.AttributeValueMemberS{Value: projectID},
 		},
 	})
-	if err != nil {
+
+	if err == nil {
+		items = result.Items
+	} else {
 		// Fallback to scan if index missing or for mock simplicity
-		result, err = r.client.Scan(ctx, &dynamodb.ScanInput{
+		scanRes, scanErr := r.client.Scan(ctx, &dynamodb.ScanInput{
 			TableName:        aws.String(r.ruleTable),
 			FilterExpression: aws.String("projectId = :pid"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":pid": &types.AttributeValueMemberS{Value: projectID},
 			},
 		})
-		if err != nil {
-			return nil, err
+		if scanErr != nil {
+			return nil, scanErr
 		}
+		items = scanRes.Items
 	}
+
 	var rules []NotificationRule
-	err = attributevalue.UnmarshalListOfMaps(result.Items, &rules)
+	err = attributevalue.UnmarshalListOfMaps(items, &rules)
 	return rules, err
 }
 
@@ -448,6 +455,7 @@ func (r *dynamoRepository) UpdatePreference(ctx context.Context, pref *UserPrefe
 }
 
 func (r *dynamoRepository) GetPreferences(ctx context.Context, userID string) ([]UserPreference, error) {
+	var items []map[string]types.AttributeValue
 	result, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.prefTable),
 		IndexName:              aws.String("UserIDIndex"),
@@ -456,21 +464,24 @@ func (r *dynamoRepository) GetPreferences(ctx context.Context, userID string) ([
 			":uid": &types.AttributeValueMemberS{Value: userID},
 		},
 	})
-	if err != nil {
+	if err == nil {
+		items = result.Items
+	} else {
 		// Fallback to scan if index missing
-		result, err = r.client.Scan(ctx, &dynamodb.ScanInput{
+		scanRes, scanErr := r.client.Scan(ctx, &dynamodb.ScanInput{
 			TableName:        aws.String(r.prefTable),
 			FilterExpression: aws.String("userId = :uid"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":uid": &types.AttributeValueMemberS{Value: userID},
 			},
 		})
-		if err != nil {
-			return nil, err
+		if scanErr != nil {
+			return nil, scanErr
 		}
+		items = scanRes.Items
 	}
 	var prefs []UserPreference
-	err = attributevalue.UnmarshalListOfMaps(result.Items, &prefs)
+	err = attributevalue.UnmarshalListOfMaps(items, &prefs)
 	return prefs, err
 }
 
@@ -498,6 +509,7 @@ func (r *dynamoRepository) DeleteConnection(ctx context.Context, connectionID st
 }
 
 func (r *dynamoRepository) GetConnectionsByUser(ctx context.Context, userID string) ([]WebSocketConnection, error) {
+	var items []map[string]types.AttributeValue
 	result, err := r.client.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.connTable),
 		IndexName:              aws.String("UserIDIndex"),
@@ -506,20 +518,23 @@ func (r *dynamoRepository) GetConnectionsByUser(ctx context.Context, userID stri
 			":uid": &types.AttributeValueMemberS{Value: userID},
 		},
 	})
-	if err != nil {
-		result, err = r.client.Scan(ctx, &dynamodb.ScanInput{
+	if err == nil {
+		items = result.Items
+	} else {
+		scanRes, scanErr := r.client.Scan(ctx, &dynamodb.ScanInput{
 			TableName:        aws.String(r.connTable),
 			FilterExpression: aws.String("userId = :uid"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":uid": &types.AttributeValueMemberS{Value: userID},
 			},
 		})
-		if err != nil {
-			return nil, err
+		if scanErr != nil {
+			return nil, scanErr
 		}
+		items = scanRes.Items
 	}
 	var conns []WebSocketConnection
-	err = attributevalue.UnmarshalListOfMaps(result.Items, &conns)
+	err = attributevalue.UnmarshalListOfMaps(items, &conns)
 	return conns, err
 }
 
