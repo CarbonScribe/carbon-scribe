@@ -705,3 +705,24 @@ model ApiKey {
   @@index([companyId])
   @@index([prefix])
 }
+
+model IpfsDocument {
+  id              String   @id @default(cuid())
+  companyId       String
+  documentType    String   // CERTIFICATE, REPORT, AUDIT_LOG, PROOF
+  referenceId     String   // retirementId, reportId, auditId
+  ipfsCid         String   @unique
+  ipfsGateway     String
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  pinned          Boolean  @default(true)
+  pinnedAt        DateTime
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime?
+
+  @@index([companyId])
+  @@index([referenceId])
+}
+

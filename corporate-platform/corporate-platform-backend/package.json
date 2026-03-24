@@ -52,8 +52,11 @@
     "pdfkit": "^0.15.0",
     "pg": "^8.18.0",
     "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "axios": "^1.4.0",
+    "form-data": "^4.0.0"
   },
+ 
   "devDependencies": {
     "prisma": "^7.4.1",
     "@nestjs/cli": "^10.0.0",

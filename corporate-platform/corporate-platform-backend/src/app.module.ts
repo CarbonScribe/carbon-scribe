@@ -17,6 +17,7 @@ import { SecurityModule } from './security/security.module';
 import { EventBusModule } from './event-bus/event-bus.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
+import { IpfsModule } from './ipfs/ipfs.module';
 import { RbacModule } from './rbac/rbac.module';
 
 @Module({
@@ -37,6 +38,7 @@ import { RbacModule } from './rbac/rbac.module';
     EventBusModule,
     ApiKeyModule,
     PortfolioModule,
+    IpfsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
