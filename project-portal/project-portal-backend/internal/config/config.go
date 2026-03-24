@@ -37,6 +37,18 @@ type AWSConfig struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	Endpoint        string // optional: LocalStack / MinIO override
+	Notifications   AWSNotificationConfig
+}
+
+type AWSNotificationConfig struct {
+	Enabled       bool
+	TemplateTable string
+	RuleTable     string
+	PrefTable     string
+	ConnTable     string
+	LogTable      string
+	SESFromEmail  string
+	APIGWEndpoint string
 }
 
 // StorageConfig holds document storage settings.
@@ -136,6 +148,16 @@ func Load() (*Config, error) {
 			AccessKeyID:     os.Getenv("AWS_ACCESS_KEY_ID"),
 			SecretAccessKey: os.Getenv("AWS_SECRET_ACCESS_KEY"),
 			Endpoint:        os.Getenv("AWS_ENDPOINT_URL"), // for LocalStack
+			Notifications: AWSNotificationConfig{
+				Enabled:       os.Getenv("USE_AWS_NOTIFICATIONS") == "true",
+				TemplateTable: getEnvOrDefault("DYNAMODB_TEMPLATE_TABLE", "pp_notifications_templates"),
+				RuleTable:     getEnvOrDefault("DYNAMODB_RULE_TABLE", "pp_notifications_rules"),
+				PrefTable:     getEnvOrDefault("DYNAMODB_PREF_TABLE", "pp_notifications_preferences"),
+				ConnTable:     getEnvOrDefault("DYNAMODB_CONN_TABLE", "pp_notifications_connections"),
+				LogTable:      getEnvOrDefault("DYNAMODB_LOG_TABLE", "pp_notifications_logs"),
+				SESFromEmail:  os.Getenv("AWS_SES_FROM_EMAIL"),
+				APIGWEndpoint: os.Getenv("AWS_APIGW_ENDPOINT"),
+			},
 		},
 		Storage: StorageConfig{
 			S3BucketName:    getEnvOrDefault("S3_BUCKET_NAME", "carbon-scribe-documents"),

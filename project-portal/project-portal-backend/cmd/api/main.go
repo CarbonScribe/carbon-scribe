@@ -28,6 +28,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -168,7 +169,25 @@ func main() {
 
 	// Initialize Notification Module
 	var notificationRepo notifications.Repository
-	if mongoDB != nil {
+	if cfg.AWS.Notifications.Enabled {
+		log.Println("✅ Using AWS DynamoDB for Notifications")
+		ddbClient, ddbErr := aws.NewDynamoDBClient(aws.DynamoDBConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+			Endpoint:        cfg.AWS.Endpoint,
+		})
+		if ddbErr != nil {
+			log.Fatalf("❌ Failed to initialize DynamoDB: %v", ddbErr)
+		}
+		notificationRepo = notifications.NewDynamoRepository(ddbClient.Client, map[string]string{
+			"templates":   cfg.AWS.Notifications.TemplateTable,
+			"rules":       cfg.AWS.Notifications.RuleTable,
+			"preferences": cfg.AWS.Notifications.PrefTable,
+			"connections": cfg.AWS.Notifications.ConnTable,
+			"logs":        cfg.AWS.Notifications.LogTable,
+		})
+	} else if mongoDB != nil {
 		notificationRepo = notifications.NewRepository(mongoDB)
 	} else {
 		log.Println("ℹ️  Using In-Memory Notification Repository (Data will NOT be saved after restart)")
@@ -176,11 +195,40 @@ func main() {
 	}
 
 	wsManager := notificationws.NewManager(notificationRepo)
-	
-	emailChannel := &channels.EmailChannel{}
-	smsChannel := &channels.SMSChannel{}
-	wsChannel := &channels.WebSocketChannel{Manager: wsManager}
-	
+
+	var emailChannel, smsChannel, wsChannel notifications.Channel
+	if cfg.AWS.Notifications.Enabled {
+		log.Println("✅ Using AWSSES/SNS/APIGW for Notifications")
+		sesClient, _ := aws.NewSESClient(aws.SESConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+		})
+		snsClient, _ := aws.NewSNSClient(aws.SNSConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+		})
+		apigwClient, _ := aws.NewAPIGatewayClient(aws.APIGatewayConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+			Endpoint:        cfg.AWS.Notifications.APIGWEndpoint,
+		})
+
+		emailChannel = &channels.EmailChannel{SES: sesClient, From: cfg.AWS.Notifications.SESFromEmail}
+		smsChannel = &channels.SMSChannel{SNS: snsClient}
+		wsChannel = &channels.WebSocketChannel{
+			Manager: wsManager,
+			APIGW:   apigwClient,
+			Repo:    notificationRepo,
+		}
+	} else {
+		emailChannel = &channels.EmailChannel{}
+		smsChannel = &channels.SMSChannel{}
+		wsChannel = &channels.WebSocketChannel{Manager: wsManager}
+	}
+
 	notificationService := notifications.NewService(notificationRepo, emailChannel, smsChannel, wsChannel)
 	notificationHandler := notifications.NewHandler(notificationService)
 

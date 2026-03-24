@@ -181,7 +181,7 @@ func (s *notificationService) EvaluateRules(ctx context.Context, projectID strin
 					Data:       data,
 				})
 			}
-			rule.LastTriggered = primitive.NewObjectID().Timestamp()
+			rule.LastTriggered = time.Now()
 			rule.TriggerCount++
 			_ = s.repo.UpdateRule(ctx, &rule)
 		}
