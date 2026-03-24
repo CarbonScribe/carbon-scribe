@@ -26,10 +26,7 @@ export class IpfsController {
 
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() body: any,
-  ) {
+  async uploadFile(@UploadedFile() file: any, @Body() body: any) {
     return this.upload.upload(file, body || {});
   }
 

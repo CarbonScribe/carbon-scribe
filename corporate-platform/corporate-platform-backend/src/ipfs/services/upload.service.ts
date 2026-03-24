@@ -14,7 +14,7 @@ export class UploadService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async upload(file: Express.Multer.File, metadata: any) {
+  async upload(file: any, metadata: any) {
     if (!file) return { error: 'No file provided' };
     const form = new FormData();
     form.append('file', file.buffer, {

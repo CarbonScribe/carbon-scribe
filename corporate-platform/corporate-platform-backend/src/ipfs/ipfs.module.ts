@@ -1,6 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
-import { ConfigModule } from '@nestjs/config';
 import { IpfsService } from './ipfs.service';
 import { IpfsConfig } from './ipfs.config';
 import { UploadService } from './services/upload.service';
@@ -11,7 +9,7 @@ import { IpfsController } from './ipfs.controller';
 import { DatabaseModule } from '../shared/database/database.module';
 
 @Module({
-  imports: [ConfigModule, HttpModule, DatabaseModule],
+  imports: [DatabaseModule],
   providers: [
     IpfsService,
     IpfsConfig,
