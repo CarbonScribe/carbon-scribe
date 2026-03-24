@@ -54,7 +54,8 @@
     "pdfkit": "^0.15.0",
     "pg": "^8.18.0",
     "reflect-metadata": "^0.2.0",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stellar-sdk": "^13.3.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

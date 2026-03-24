@@ -794,3 +794,37 @@ model MappingRule {
   @@map("mapping_rules")
 }
 
+// ==========================================
+// Webhook Registry & Transaction Monitoring
+// ==========================================
+
+model WebhookDelivery {
+  id              String   @id @default(cuid())
+  eventType       String
+  payload         Json
+  status          String   // PENDING, DELIVERED, FAILED, RETRYING
+  retryCount      Int      @default(0)
+  lastAttemptAt   DateTime
+  nextAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@map("webhook_deliveries")
+}
+
+model TransactionConfirmation {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  companyId       String
+  operationType   String   // TRANSFER, RETIREMENT, MINT
+  status          String   // PENDING, CONFIRMED, FAILED
+  confirmations   Int      @default(0)
+  ledgerSequence  Int?
+  finalizedAt     DateTime?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@map("transaction_confirmations")
+}
+
