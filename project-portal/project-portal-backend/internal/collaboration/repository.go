@@ -17,7 +17,9 @@ type Repository interface {
 	// Invitation
 	CreateInvitation(ctx context.Context, invite *ProjectInvitation) error
 	GetInvitationByToken(ctx context.Context, token string) (*ProjectInvitation, error)
+	GetInvitationByID(ctx context.Context, invitationID string) (*ProjectInvitation, error)
 	ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error)
+	UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error
 
 	// Activity
 	CreateActivity(ctx context.Context, activity *ActivityLog) error
@@ -90,12 +92,24 @@ func (r *repository) GetInvitationByToken(ctx context.Context, token string) (*P
 	return &invite, nil
 }
 
+func (r *repository) GetInvitationByID(ctx context.Context, invitationID string) (*ProjectInvitation, error) {
+	var invite ProjectInvitation
+	if err := r.db.WithContext(ctx).Where("id = ?", invitationID).First(&invite).Error; err != nil {
+		return nil, err
+	}
+	return &invite, nil
+}
+
 func (r *repository) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
 	var invites []ProjectInvitation
 	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&invites).Error; err != nil {
 		return nil, err
 	}
 	return invites, nil
+}
+
+func (r *repository) UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error {
+	return r.db.WithContext(ctx).Save(invite).Error
 }
 
 // Activity

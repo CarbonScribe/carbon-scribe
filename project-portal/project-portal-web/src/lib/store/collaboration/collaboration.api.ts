@@ -82,3 +82,21 @@ export async function createResourceApi(body: CreateResourceRequest): Promise<Sh
   const { data } = await apiClient.post<SharedResource>(`${BASE}/resources`, body);
   return data;
 }
+
+// Invitation lifecycle actions
+export async function resendInvitationApi(invitationId: string): Promise<ProjectInvitation> {
+  const { data } = await apiClient.post<ProjectInvitation>(`${BASE}/invitations/${invitationId}/resend`);
+  return data;
+}
+
+export async function cancelInvitationApi(invitationId: string): Promise<void> {
+  await apiClient.post(`${BASE}/invitations/${invitationId}/cancel`);
+}
+
+export async function acceptInvitationApi(invitationId: string): Promise<void> {
+  await apiClient.post(`${BASE}/invitations/${invitationId}/accept`);
+}
+
+export async function declineInvitationApi(invitationId: string): Promise<void> {
+  await apiClient.post(`${BASE}/invitations/${invitationId}/decline`);
+}

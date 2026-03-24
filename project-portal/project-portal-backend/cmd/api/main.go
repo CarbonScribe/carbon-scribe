@@ -136,6 +136,10 @@ func main() {
 	complianceService := compliance.NewService(complianceRepo)
 	complianceHandler := compliance.NewHandler(complianceService)
 
+	collaborationRepo := collaboration.NewRepository(db)
+	collaborationService := collaboration.NewService(collaborationRepo)
+	collaborationHandler := collaboration.NewHandler(collaborationService)
+
 	geospatialRepo := geospatial.NewRepository(db)
 	geospatialService := geospatial.NewService(geospatialRepo)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
@@ -159,6 +163,9 @@ func main() {
 
 	// Add CORS middleware
 	router.Use(corsMiddleware())
+
+	// Register collaboration routes
+	collaboration.RegisterRoutes(router, collaborationHandler)
 
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {

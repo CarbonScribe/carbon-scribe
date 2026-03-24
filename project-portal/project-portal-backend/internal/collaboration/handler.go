@@ -128,6 +128,48 @@ func (h *Handler) ListInvitations(c *gin.Context) {
 	c.JSON(http.StatusOK, invitations)
 }
 
+// ResendInvitation resends an invitation
+func (h *Handler) ResendInvitation(c *gin.Context) {
+	invitationID := c.Param("id")
+	invite, err := h.service.ResendInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, invite)
+}
+
+// CancelInvitation cancels a pending invitation
+func (h *Handler) CancelInvitation(c *gin.Context) {
+	invitationID := c.Param("id")
+	if err := h.service.CancelInvitation(c.Request.Context(), invitationID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// AcceptInvitation accepts an invitation
+func (h *Handler) AcceptInvitation(c *gin.Context) {
+	invitationID := c.Param("id")
+	member, err := h.service.AcceptInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, member)
+}
+
+// DeclineInvitation declines an invitation
+func (h *Handler) DeclineInvitation(c *gin.Context) {
+	invitationID := c.Param("id")
+	if err := h.service.DeclineInvitation(c.Request.Context(), invitationID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func (h *Handler) ListComments(c *gin.Context) {
 	projectID := c.Param("id")
 	comments, err := h.service.ListComments(c.Request.Context(), projectID)

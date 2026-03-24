@@ -12,15 +12,17 @@ func RegisterRoutes(r *gin.Engine, h *Handler) {
 		// Project invitations
 		v1.POST("/projects/:id/invite", h.InviteUser)
 		v1.GET("/projects/:id/invitations", h.ListInvitations)
+		v1.POST("/invitations/:id/resend", h.ResendInvitation)
+		v1.POST("/invitations/:id/cancel", h.CancelInvitation)
+		v1.POST("/invitations/:id/accept", h.AcceptInvitation)
+		v1.POST("/invitations/:id/decline", h.DeclineInvitation)
 
 		// Activity feed
 		v1.GET("/projects/:id/activities", h.GetActivities)
 
-
 		// Comments
 		v1.GET("/projects/:id/comments", h.ListComments)
 		v1.POST("/comments", h.CreateComment)
-
 
 		// Tasks
 		v1.GET("/projects/:id/tasks", h.ListTasks)

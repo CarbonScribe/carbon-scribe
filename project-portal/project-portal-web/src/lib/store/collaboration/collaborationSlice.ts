@@ -28,6 +28,10 @@ import {
   createTaskApi,
   updateTaskApi,
   createResourceApi,
+  resendInvitationApi,
+  cancelInvitationApi,
+  acceptInvitationApi,
+  declineInvitationApi,
 } from './collaboration.api';
 import { getErrorMessage } from '@/lib/utils/errorMessage';
 
@@ -44,6 +48,10 @@ const initialLoading: CollaborationLoadingState = {
   createTask: false,
   updateTask: false,
   createResource: false,
+  resendInvitation: false,
+  cancelInvitation: false,
+  acceptInvitation: false,
+  declineInvitation: false,
 };
 
 const initialErrors: CollaborationErrorState = {
@@ -59,6 +67,10 @@ const initialErrors: CollaborationErrorState = {
   createTask: null,
   updateTask: null,
   createResource: null,
+  resendInvitation: null,
+  cancelInvitation: null,
+  acceptInvitation: null,
+  declineInvitation: null,
 };
 
 export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, get) => ({
@@ -261,6 +273,84 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
         collaborationErrors: { ...get().collaborationErrors, createResource: getErrorMessage(error) },
       });
       return null;
+    }
+  },
+
+  resendInvitation: async (invitationId: string): Promise<boolean> => {
+    set((s) => ({ collaborationLoading: { ...s.collaborationLoading, resendInvitation: true }, collaborationErrors: { ...s.collaborationErrors, resendInvitation: null } }));
+    try {
+      const updated = await resendInvitationApi(invitationId);
+      set((s) => ({
+        invitations: s.invitations.map((inv) => (inv.id === invitationId ? updated : inv)),
+        collaborationLoading: { ...s.collaborationLoading, resendInvitation: false },
+      }));
+      return true;
+    } catch (error) {
+      set({
+        collaborationLoading: { ...get().collaborationLoading, resendInvitation: false },
+        collaborationErrors: { ...get().collaborationErrors, resendInvitation: getErrorMessage(error) },
+      });
+      return false;
+    }
+  },
+
+  cancelInvitation: async (invitationId: string): Promise<boolean> => {
+    set((s) => ({ collaborationLoading: { ...s.collaborationLoading, cancelInvitation: true }, collaborationErrors: { ...s.collaborationErrors, cancelInvitation: null } }));
+    try {
+      await cancelInvitationApi(invitationId);
+      set((s) => ({
+        invitations: s.invitations.map((inv) =>
+          inv.id === invitationId ? { ...inv, status: 'cancelled' as const } : inv
+        ),
+        collaborationLoading: { ...s.collaborationLoading, cancelInvitation: false },
+      }));
+      return true;
+    } catch (error) {
+      set({
+        collaborationLoading: { ...get().collaborationLoading, cancelInvitation: false },
+        collaborationErrors: { ...get().collaborationErrors, cancelInvitation: getErrorMessage(error) },
+      });
+      return false;
+    }
+  },
+
+  acceptInvitation: async (invitationId: string): Promise<boolean> => {
+    set((s) => ({ collaborationLoading: { ...s.collaborationLoading, acceptInvitation: true }, collaborationErrors: { ...s.collaborationErrors, acceptInvitation: null } }));
+    try {
+      await acceptInvitationApi(invitationId);
+      set((s) => ({
+        invitations: s.invitations.map((inv) =>
+          inv.id === invitationId ? { ...inv, status: 'accepted' as const } : inv
+        ),
+        collaborationLoading: { ...s.collaborationLoading, acceptInvitation: false },
+      }));
+      return true;
+    } catch (error) {
+      set({
+        collaborationLoading: { ...get().collaborationLoading, acceptInvitation: false },
+        collaborationErrors: { ...get().collaborationErrors, acceptInvitation: getErrorMessage(error) },
+      });
+      return false;
+    }
+  },
+
+  declineInvitation: async (invitationId: string): Promise<boolean> => {
+    set((s) => ({ collaborationLoading: { ...s.collaborationLoading, declineInvitation: true }, collaborationErrors: { ...s.collaborationErrors, declineInvitation: null } }));
+    try {
+      await declineInvitationApi(invitationId);
+      set((s) => ({
+        invitations: s.invitations.map((inv) =>
+          inv.id === invitationId ? { ...inv, status: 'declined' as const } : inv
+        ),
+        collaborationLoading: { ...s.collaborationLoading, declineInvitation: false },
+      }));
+      return true;
+    } catch (error) {
+      set({
+        collaborationLoading: { ...get().collaborationLoading, declineInvitation: false },
+        collaborationErrors: { ...get().collaborationErrors, declineInvitation: getErrorMessage(error) },
+      });
+      return false;
     }
   },
 

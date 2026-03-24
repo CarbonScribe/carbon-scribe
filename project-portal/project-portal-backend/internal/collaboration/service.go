@@ -2,6 +2,7 @@ package collaboration
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,14 +20,15 @@ func NewService(repo Repository) *Service {
 func (s *Service) InviteUser(ctx context.Context, projectID, email, role string) (*ProjectInvitation, error) {
 	token := uuid.New().String()
 	invite := &ProjectInvitation{
-		ProjectID: projectID,
-		Email:     email,
-		Role:      role,
-		Token:     token,
-		Status:    "pending",
-		ExpiresAt: time.Now().Add(48 * time.Hour),
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ProjectID:   projectID,
+		Email:       email,
+		Role:        role,
+		Token:       token,
+		Status:      InvitationStatusPending,
+		ExpiresAt:   time.Now().Add(48 * time.Hour),
+		ResentCount: 0,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	if err := s.repo.CreateInvitation(ctx, invite); err != nil {
 		return nil, err
@@ -42,6 +44,164 @@ func (s *Service) InviteUser(ctx context.Context, projectID, email, role string)
 	})
 
 	return invite, nil
+}
+
+// ResendInvitation resends an invitation email
+func (s *Service) ResendInvitation(ctx context.Context, invitationID string) (*ProjectInvitation, error) {
+	invite, err := s.repo.GetInvitationByID(ctx, invitationID)
+	if err != nil {
+		return nil, errors.New("invitation not found")
+	}
+
+	// Validate invitation can be resent
+	if invite.Status != InvitationStatusPending {
+		return nil, errors.New("only pending invitations can be resent")
+	}
+
+	if invite.ResentCount >= MaxInvitationResends {
+		return nil, errors.New("maximum resend limit reached")
+	}
+
+	if time.Now().After(invite.ExpiresAt) {
+		invite.Status = InvitationStatusExpired
+		_ = s.repo.UpdateInvitation(ctx, invite)
+		return nil, errors.New("invitation has expired")
+	}
+
+	// Update resent info
+	now := time.Now()
+	invite.ResentAt = &now
+	invite.ResentCount++
+	invite.UpdatedAt = now
+
+	if err := s.repo.UpdateInvitation(ctx, invite); err != nil {
+		return nil, err
+	}
+
+	// Log activity
+	_ = s.repo.CreateActivity(ctx, &ActivityLog{
+		ProjectID: invite.ProjectID,
+		Type:      "system",
+		Action:    "invitation_resent",
+		Metadata:  map[string]any{"email": invite.Email, "resent_count": invite.ResentCount},
+		CreatedAt: time.Now(),
+	})
+
+	return invite, nil
+}
+
+// CancelInvitation cancels a pending invitation
+func (s *Service) CancelInvitation(ctx context.Context, invitationID string) error {
+	invite, err := s.repo.GetInvitationByID(ctx, invitationID)
+	if err != nil {
+		return errors.New("invitation not found")
+	}
+
+	if invite.Status != InvitationStatusPending {
+		return errors.New("only pending invitations can be cancelled")
+	}
+
+	invite.Status = InvitationStatusCancelled
+	invite.UpdatedAt = time.Now()
+
+	if err := s.repo.UpdateInvitation(ctx, invite); err != nil {
+		return err
+	}
+
+	// Log activity
+	_ = s.repo.CreateActivity(ctx, &ActivityLog{
+		ProjectID: invite.ProjectID,
+		Type:      "system",
+		Action:    "invitation_cancelled",
+		Metadata:  map[string]any{"email": invite.Email},
+		CreatedAt: time.Now(),
+	})
+
+	return nil
+}
+
+// AcceptInvitation accepts an invitation and creates a project member
+func (s *Service) AcceptInvitation(ctx context.Context, invitationID string) (*ProjectMember, error) {
+	invite, err := s.repo.GetInvitationByID(ctx, invitationID)
+	if err != nil {
+		return nil, errors.New("invitation not found")
+	}
+
+	if invite.Status != InvitationStatusPending {
+		return nil, errors.New("only pending invitations can be accepted")
+	}
+
+	if time.Now().After(invite.ExpiresAt) {
+		invite.Status = InvitationStatusExpired
+		_ = s.repo.UpdateInvitation(ctx, invite)
+		return nil, errors.New("invitation has expired")
+	}
+
+	// Create project member
+	member := &ProjectMember{
+		ProjectID: invite.ProjectID,
+		UserID:    invite.Email, // Use email as user ID for now
+		Role:      invite.Role,
+		JoinedAt:  time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := s.repo.AddMember(ctx, member); err != nil {
+		return nil, err
+	}
+
+	// Update invitation status
+	invite.Status = InvitationStatusAccepted
+	invite.UpdatedAt = time.Now()
+	_ = s.repo.UpdateInvitation(ctx, invite)
+
+	// Log activity
+	_ = s.repo.CreateActivity(ctx, &ActivityLog{
+		ProjectID: invite.ProjectID,
+		UserID:    invite.Email,
+		Type:      "system",
+		Action:    "invitation_accepted",
+		Metadata:  map[string]any{"email": invite.Email, "role": invite.Role},
+		CreatedAt: time.Now(),
+	})
+
+	return member, nil
+}
+
+// DeclineInvitation declines an invitation
+func (s *Service) DeclineInvitation(ctx context.Context, invitationID string) error {
+	invite, err := s.repo.GetInvitationByID(ctx, invitationID)
+	if err != nil {
+		return errors.New("invitation not found")
+	}
+
+	if invite.Status != InvitationStatusPending {
+		return errors.New("only pending invitations can be declined")
+	}
+
+	if time.Now().After(invite.ExpiresAt) {
+		invite.Status = InvitationStatusExpired
+		_ = s.repo.UpdateInvitation(ctx, invite)
+		return errors.New("invitation has expired")
+	}
+
+	invite.Status = InvitationStatusDeclined
+	invite.UpdatedAt = time.Now()
+
+	if err := s.repo.UpdateInvitation(ctx, invite); err != nil {
+		return err
+	}
+
+	// Log activity
+	_ = s.repo.CreateActivity(ctx, &ActivityLog{
+		ProjectID: invite.ProjectID,
+		Type:      "system",
+		Action:    "invitation_declined",
+		Metadata:  map[string]any{"email": invite.Email},
+		CreatedAt: time.Now(),
+	})
+
+	return nil
 }
 
 func (s *Service) ListProjectActivities(ctx context.Context, projectID string, limit, offset int) ([]ActivityLog, error) {
