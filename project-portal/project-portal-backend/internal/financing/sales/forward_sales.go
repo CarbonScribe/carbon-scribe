@@ -1,7 +1,17 @@
-//go:build future
-// +build future
+package sales
 
-package financing
+type MilestonePayment struct {
+	Name    string  `json:"name"`
+	Percent float64 `json:"percent"`
+}
 
-// This file won't be compiled in normal builds
-// Implementation pending
+func DefaultSchedule(depositPercent float64) []MilestonePayment {
+	remaining := 100 - depositPercent
+	if remaining < 0 {
+		remaining = 0
+	}
+	return []MilestonePayment{
+		{Name: "deposit", Percent: depositPercent},
+		{Name: "delivery", Percent: remaining},
+	}
+}

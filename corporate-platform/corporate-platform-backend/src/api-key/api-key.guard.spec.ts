@@ -10,6 +10,8 @@ import { ApiKeyStrategy } from './strategies/api-key.strategy';
 import { ApiKeyService } from './api-key.service';
 import { PrismaService } from '../shared/database/prisma.service';
 import { ApiKeyPermissions } from './decorators/api-key-permissions.decorator';
+import { TenantService } from '../multi-tenant/tenant.service';
+import { TenantContextStore } from '../multi-tenant/tenant-context.store';
 
 class TestProtectedController {
   @ApiKeyPermissions('analytics:read')
@@ -39,6 +41,19 @@ describe('ApiKeyGuard (integration)', () => {
     },
   };
 
+  const mockTenantService = {
+    resolveTenantFromApiKey: jest.fn((apiKey) => ({
+      companyId: apiKey.companyId,
+      userId: `api_key:${apiKey.id}`,
+      role: 'service',
+      source: 'api_key',
+    })),
+  };
+
+  const mockTenantContextStore = {
+    setContext: jest.fn(),
+  };
+
   const baseRecord = () => ({
     id: 'api-key-1',
     name: 'Integration Key',
@@ -63,6 +78,12 @@ describe('ApiKeyGuard (integration)', () => {
     jest.clearAllMocks();
     mockPrismaService.apiKey.findFirst.mockResolvedValue(baseRecord());
     mockPrismaService.apiKey.update.mockResolvedValue({});
+    mockTenantService.resolveTenantFromApiKey.mockImplementation((apiKey) => ({
+      companyId: apiKey.companyId,
+      userId: `api_key:${apiKey.id}`,
+      role: 'service',
+      source: 'api_key',
+    }));
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -71,6 +92,8 @@ describe('ApiKeyGuard (integration)', () => {
         ApiKeyStrategy,
         ApiKeyService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: TenantService, useValue: mockTenantService },
+        { provide: TenantContextStore, useValue: mockTenantContextStore },
       ],
     }).compile();
 

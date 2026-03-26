@@ -16,7 +16,7 @@ export class MarketplaceService {
 
     const where: any = {
       id: { not: creditId },
-      available: { gt: 0 },
+      availableAmount: { gt: 0 },
     };
 
     const or: any[] = [];
@@ -26,18 +26,11 @@ export class MarketplaceService {
     if (credit.methodology) {
       or.push({ methodology: credit.methodology });
     }
-    if (credit.vintageYear != null) {
-      or.push({ vintageYear: credit.vintageYear });
+    if (credit.vintage != null) {
+      or.push({ vintage: credit.vintage });
     }
-    if (credit.sdgs) {
-      const parts = credit.sdgs.split(',').map((p) => p.trim());
-      for (const token of parts) {
-        or.push({
-          sdgs: {
-            contains: token,
-          },
-        });
-      }
+    if (credit.sdgs && Array.isArray(credit.sdgs) && credit.sdgs.length) {
+      or.push({ sdgs: { hasSome: credit.sdgs } });
     }
 
     if (or.length > 0) {

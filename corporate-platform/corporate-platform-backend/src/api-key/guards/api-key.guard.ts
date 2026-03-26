@@ -9,12 +9,16 @@ import { Reflector } from '@nestjs/core';
 import { Request, Response } from 'express';
 import { ApiKeyStrategy } from '../strategies/api-key.strategy';
 import { API_KEY_PERMISSIONS_METADATA } from '../decorators/api-key-permissions.decorator';
+import { TenantService } from '../../multi-tenant/tenant.service';
+import { TenantContextStore } from '../../multi-tenant/tenant-context.store';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(
     private readonly apiKeyStrategy: ApiKeyStrategy,
     private readonly reflector: Reflector,
+    private readonly tenantService: TenantService,
+    private readonly tenantContextStore: TenantContextStore,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -65,6 +69,24 @@ export class ApiKeyGuard implements CanActivate {
 
     (request as Request & { apiKey?: unknown }).apiKey = validation.apiKey;
     (request as Request & { user?: unknown }).user = validation.apiKey;
+
+    const resolvedTenant = this.tenantService.resolveTenantFromApiKey(
+      validation.apiKey,
+    );
+    const existingTenant = (
+      request as Request & { tenant?: { companyId?: string } }
+    ).tenant;
+    if (
+      existingTenant?.companyId &&
+      existingTenant.companyId !== resolvedTenant.companyId
+    ) {
+      throw new HttpException(
+        'Cross-tenant API key context is forbidden',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    (request as Request & { tenant?: unknown }).tenant = resolvedTenant;
+    this.tenantContextStore.setContext(resolvedTenant);
 
     response.setHeader('X-RateLimit-Limit', String(validation.rateLimit.limit));
     response.setHeader(

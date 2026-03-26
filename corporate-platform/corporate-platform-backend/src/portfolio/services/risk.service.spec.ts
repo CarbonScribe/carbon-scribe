@@ -111,7 +111,11 @@ describe('RiskService', () => {
           {
             quantity: 100,
             purchasePrice: 10,
-            credit: { projectId: 'proj-1', country: 'Brazil', standard: 'VCS' },
+            credit: {
+              projectId: 'proj-1',
+              country: 'Brazil',
+              verificationStandard: 'VCS',
+            },
           },
           {
             quantity: 100,
@@ -119,13 +123,17 @@ describe('RiskService', () => {
             credit: {
               projectId: 'proj-2',
               country: 'Indonesia',
-              standard: 'Gold Standard',
+              verificationStandard: 'Gold Standard',
             },
           },
           {
             quantity: 100,
             purchasePrice: 10,
-            credit: { projectId: 'proj-3', country: 'Kenya', standard: 'VCS' },
+            credit: {
+              projectId: 'proj-3',
+              country: 'Kenya',
+              verificationStandard: 'VCS',
+            },
           },
           {
             quantity: 100,
@@ -133,7 +141,7 @@ describe('RiskService', () => {
             credit: {
               projectId: 'proj-4',
               country: 'Peru',
-              standard: 'Gold Standard',
+              verificationStandard: 'Gold Standard',
             },
           },
         ],
@@ -171,17 +179,17 @@ describe('RiskService', () => {
           {
             quantity: 100,
             purchasePrice: 10,
-            credit: { projectId: 'proj-1', standard: 'VCS' },
+            credit: { projectId: 'proj-1', verificationStandard: 'VCS' },
           },
           {
             quantity: 100,
             purchasePrice: 10,
-            credit: { projectId: 'proj-2', standard: 'Plan Vivo' },
+            credit: { projectId: 'proj-2', verificationStandard: 'Plan Vivo' },
           },
           {
             quantity: 100,
             purchasePrice: 10,
-            credit: { projectId: 'proj-3', standard: 'Unknown' },
+            credit: { projectId: 'proj-3', verificationStandard: 'Unknown' },
           },
         ],
       };

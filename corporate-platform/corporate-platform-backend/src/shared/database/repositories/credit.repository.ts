@@ -14,8 +14,8 @@ export class CreditRepository extends BaseRepository<PrismaService['credit']> {
 
   listAvailable(limit = 50) {
     return this.findMany({
-      where: { available: { gt: 0 } },
-      orderBy: { available: 'desc' },
+      where: { status: 'available', availableAmount: { gt: 0 } },
+      orderBy: { availableAmount: 'desc' },
       take: limit,
     });
   }
@@ -29,8 +29,8 @@ export class CreditRepository extends BaseRepository<PrismaService['credit']> {
 
   countAvailable() {
     return this.prisma.credit.aggregate({
-      _sum: { available: true },
-      where: { available: { gt: 0 } },
+      _sum: { availableAmount: true },
+      where: { status: 'available', availableAmount: { gt: 0 } },
     });
   }
 }

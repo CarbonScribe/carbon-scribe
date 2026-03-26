@@ -34,17 +34,20 @@ export class StatsService {
 
   async getStats(): Promise<MarketplaceStats> {
     const credits = await this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
+      where: { availableAmount: { gt: 0 } },
       select: {
         totalAmount: true,
-        available: true,
+        availableAmount: true,
         country: true,
         methodology: true,
-        price: true,
+        pricePerTon: true,
       },
     });
 
-    const totalCredits = credits.reduce((sum, c) => sum + c.available, 0);
+    const totalCredits = credits.reduce(
+      (sum, c) => sum + (c.availableAmount || 0),
+      0,
+    );
     const projectCount = credits.length;
 
     const countries = new Set<string>();
@@ -58,8 +61,8 @@ export class StatsService {
       if (c.methodology) {
         methodologies.add(c.methodology);
       }
-      if (c.price != null) {
-        prices.push(c.price);
+      if (c.pricePerTon != null) {
+        prices.push(c.pricePerTon);
       }
     }
 
@@ -95,13 +98,13 @@ export class StatsService {
 
   async getFilters(): Promise<MarketplaceFilters> {
     const credits = await this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
+      where: { availableAmount: { gt: 0 } },
       select: {
         country: true,
         methodology: true,
         sdgs: true,
-        vintageYear: true,
-        price: true,
+        vintage: true,
+        pricePerTon: true,
       },
     });
 
@@ -118,19 +121,18 @@ export class StatsService {
       if (c.methodology) {
         methodologies.add(c.methodology);
       }
-      if (c.sdgs) {
-        const parts = c.sdgs.split(',').map((p) => Number(p.trim()));
-        for (const p of parts) {
-          if (!Number.isNaN(p)) {
+      if (c.sdgs && Array.isArray(c.sdgs)) {
+        for (const p of c.sdgs) {
+          if (typeof p === 'number' && !Number.isNaN(p)) {
             sdgsSet.add(p);
           }
         }
       }
-      if (c.vintageYear != null) {
-        vintageYears.push(c.vintageYear);
+      if (c.vintage != null) {
+        vintageYears.push(c.vintage);
       }
-      if (c.price != null) {
-        prices.push(c.price);
+      if (c.pricePerTon != null) {
+        prices.push(c.pricePerTon);
       }
     }
 

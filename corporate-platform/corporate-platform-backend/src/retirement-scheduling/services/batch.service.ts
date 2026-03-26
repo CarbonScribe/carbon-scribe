@@ -131,7 +131,7 @@ export class BatchService {
           async (tx: any) => {
             await tx.credit.update({
               where: { id: item.creditId },
-              data: { available: { decrement: item.amount } },
+              data: { availableAmount: { decrement: item.amount } },
             });
 
             return tx.retirement.create({

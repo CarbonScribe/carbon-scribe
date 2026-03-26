@@ -19,13 +19,22 @@ import { ApiKeyModule } from './api-key/api-key.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { IpfsModule } from './ipfs/ipfs.module';
 import { RbacModule } from './rbac/rbac.module';
+import { CreditModule } from './credit/credit.module';
+import { FrameworkRegistryModule } from './framework-registry/framework-registry.module';
+import { CsrdModule } from './csrd/csrd.module';
+import { DatabaseModule } from './shared/database/database.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { TenantModule } from './multi-tenant/tenant.module';
+import { TenantMiddleware } from './multi-tenant/middleware/tenant.middleware';
 
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
+    DatabaseModule,
     SecurityModule,
     RbacModule,
+    ScheduleModule.forRoot(),
     RetirementModule,
     ComplianceModule,
     MarketplaceModule,
@@ -39,12 +48,18 @@ import { RbacModule } from './rbac/rbac.module';
     ApiKeyModule,
     PortfolioModule,
     IpfsModule,
+    CreditModule,
+    FrameworkRegistryModule,
+    TenantModule,
+    CsrdModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+    consumer
+      .apply(RequestLoggerMiddleware, TenantMiddleware)
+      .forRoutes('*');
   }
 }

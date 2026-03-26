@@ -73,9 +73,9 @@ export class CartCrudService {
       throw new NotFoundException(`Credit with ID ${dto.creditId} not found`);
     }
 
-    if (credit.available < quantity) {
+    if ((credit.availableAmount ?? 0) < quantity) {
       throw new BadRequestException(
-        `Insufficient credits available. Requested: ${quantity}, Available: ${credit.available}`,
+        `Insufficient credits available. Requested: ${quantity}, Available: ${credit.availableAmount}`,
       );
     }
 
@@ -133,9 +133,9 @@ export class CartCrudService {
     }
 
     // 2. Check credit availability for new quantity
-    if (cartItem.credit.available < dto.quantity) {
+    if ((cartItem.credit.availableAmount ?? 0) < dto.quantity) {
       throw new BadRequestException(
-        `Insufficient credits available. Requested: ${dto.quantity}, Available: ${cartItem.credit.available}`,
+        `Insufficient credits available. Requested: ${dto.quantity}, Available: ${cartItem.credit.availableAmount}`,
       );
     }
 

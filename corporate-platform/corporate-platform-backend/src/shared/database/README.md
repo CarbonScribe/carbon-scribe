@@ -18,7 +18,12 @@ Prisma ORM with PostgreSQL: connection management, migrations, repository patter
 
 ## Multi-tenancy
 
-Relevant entities are scoped by `companyId`. Use `listByCompanyId(companyId)` on repositories and always filter by `companyId` in custom queries.
+Prisma auto-applies tenant scope using request context from the Multi-tenant module:
+
+- Direct tenant models are filtered by `companyId`.
+- Relation-based models (for example `Credit`) are filtered via ownership relations.
+
+You can still use repository helpers like `listByCompanyId(companyId)` for explicit intent and readability.
 
 ## Graceful shutdown
 

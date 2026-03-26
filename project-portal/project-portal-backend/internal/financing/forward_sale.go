@@ -1,7 +1,18 @@
-//go:build future
-// +build future
-
 package financing
 
-// This file won't be compiled in normal builds
-// Implementation pending
+import "strings"
+
+const (
+	ForwardSaleStatusPending   = "pending"
+	ForwardSaleStatusActive    = "active"
+	ForwardSaleStatusCompleted = "completed"
+	ForwardSaleStatusCancelled = "cancelled"
+)
+
+func normalizeCurrency(value string) string {
+	trimmed := strings.ToUpper(strings.TrimSpace(value))
+	if trimmed == "" {
+		return "USD"
+	}
+	return trimmed
+}

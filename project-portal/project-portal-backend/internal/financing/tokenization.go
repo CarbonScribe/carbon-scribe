@@ -1,7 +1,13 @@
-//go:build future
-// +build future
-
 package financing
 
-// This file won't be compiled in normal builds
-// Implementation pending
+const (
+	CreditStatusCalculated = "calculated"
+	CreditStatusVerified   = "verified"
+	CreditStatusMinting    = "minting"
+	CreditStatusMinted     = "minted"
+	CreditStatusRetired    = "retired"
+)
+
+func isMintableStatus(status string) bool {
+	return status == CreditStatusCalculated || status == CreditStatusVerified
+}

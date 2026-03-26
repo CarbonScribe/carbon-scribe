@@ -39,10 +39,9 @@ export class RecommendationService {
           (methodologyScores.get(credit.methodology) || 0) + r.amount,
         );
       }
-      if (credit.sdgs) {
-        const parts = credit.sdgs.split(',').map((p) => Number(p.trim()));
-        for (const s of parts) {
-          if (!Number.isNaN(s)) {
+      if (credit.sdgs && Array.isArray(credit.sdgs)) {
+        for (const s of credit.sdgs) {
+          if (typeof s === 'number' && !Number.isNaN(s)) {
             sdgScores.set(s, (sdgScores.get(s) || 0) + r.amount);
           }
         }
@@ -71,7 +70,7 @@ export class RecommendationService {
         .map(([s]) => s);
 
     const where: any = {
-      available: { gt: 0 },
+      availableAmount: { gt: 0 },
     };
 
     if (preferredCountries.length > 0) {
@@ -83,24 +82,20 @@ export class RecommendationService {
     }
 
     if (options.sdgs && options.sdgs.length > 0) {
-      const tokens = options.sdgs.map((s) => String(s));
+      const tokens = options.sdgs
+        .map((s) => Number(s))
+        .filter((n) => !Number.isNaN(n));
       where.AND = where.AND || [];
       for (const token of tokens) {
-        where.AND.push({
-          sdgs: {
-            contains: token,
-          },
-        });
+        where.AND.push({ sdgs: { has: token } });
       }
     } else if (preferredSdgs.length > 0) {
-      const tokens = preferredSdgs.map((s) => String(s));
+      const tokens = preferredSdgs
+        .map((s) => Number(s))
+        .filter((n) => !Number.isNaN(n));
       where.AND = where.AND || [];
       for (const token of tokens) {
-        where.AND.push({
-          sdgs: {
-            contains: token,
-          },
-        });
+        where.AND.push({ sdgs: { has: token } });
       }
     }
 

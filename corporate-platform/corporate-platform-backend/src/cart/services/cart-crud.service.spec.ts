@@ -111,7 +111,7 @@ describe('CartCrudService', () => {
     it('should throw BadRequestException when insufficient credits', async () => {
       mockPrisma.credit.findUnique.mockResolvedValue({
         id: 'cred1',
-        available: 500,
+        availableAmount: 500,
       });
 
       await expect(
@@ -122,7 +122,7 @@ describe('CartCrudService', () => {
     it('should throw BadRequestException when item already in cart', async () => {
       mockPrisma.credit.findUnique.mockResolvedValue({
         id: 'cred1',
-        available: 5000,
+        availableAmount: 5000,
       });
 
       // Cart exists
@@ -146,7 +146,7 @@ describe('CartCrudService', () => {
     it('should add item to cart successfully', async () => {
       mockPrisma.credit.findUnique.mockResolvedValue({
         id: 'cred1',
-        available: 5000,
+        availableAmount: 5000,
         projectName: 'Solar Farm',
       });
 

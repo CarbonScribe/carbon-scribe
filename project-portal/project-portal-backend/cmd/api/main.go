@@ -16,10 +16,12 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/compliance"
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
@@ -99,6 +101,9 @@ func main() {
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService)
 
+	methodologyRepo := methodology.NewRepository(db)
+	methodologyService := methodology.NewService(methodologyRepo)
+
 	// Initialize document management service
 	var docsHandler *documents.Handler
 	s3Client, s3Err := storage.NewS3Client(storage.S3Config{
@@ -143,6 +148,9 @@ func main() {
 	geospatialRepo := geospatial.NewRepository(db)
 	geospatialService := geospatial.NewService(geospatialRepo)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
+	financingRepo := financing.NewRepository(db)
+	financingService := financing.NewService(financingRepo, methodologyService)
+	financingHandler := financing.NewHandler(financingService)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{
 		EncryptionKeyHex: cfg.Settings.EncryptionKeyHex,
@@ -174,7 +182,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing"},
 		})
 	})
 
@@ -186,7 +194,7 @@ func main() {
 			"endpoints": gin.H{
 				"health":        "/health",
 				"auth":          "/api/v1/auth/*",
-				"collaboration": "/api/collaboration/*",
+				"collaboration": "/api/v1/collaboration/*",
 				"documents":     "/api/v1/documents/*",
 				"compliance":    "/api/v1/compliance/*",
 				"integration":   "/api/integration/*",
@@ -194,6 +202,7 @@ func main() {
 				"search":        "/api/v1/search/*",
 				"geospatial":    "/api/v1/geospatial/*",
 				"settings":      "/api/v1/settings/*",
+				"financing":     "/api/v1/financing/*",
 			},
 		})
 	})
@@ -229,6 +238,12 @@ func main() {
 		// Register settings routes under v1
 		settingsHandler.RegisterRoutes(v1)
 
+		// Register collaboration routes under v1
+		collaboration.RegisterRoutes(v1, collaborationHandler)
+
+		// Register financing routes under v1
+		financingHandler.RegisterRoutes(v1)
+
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong", "timestamp": time.Now().Unix()})
@@ -255,7 +270,7 @@ func main() {
 		fmt.Printf("📊 Health check: http://localhost:%s/health\n", cfg.Port)
 		fmt.Println("🔗 Available endpoints:")
 		fmt.Println("   - Authentication: /api/v1/auth/*")
-		fmt.Println("   - Collaboration: /api/collaboration/*")
+		fmt.Println("   - Collaboration: /api/v1/collaboration/*")
 		fmt.Println("   - System health metrics: /api/v1/health/*")
 		fmt.Println("   - Documents:       /api/v1/documents/*")
 		fmt.Println("   - Integrations: /api/integration/*")
@@ -264,6 +279,7 @@ func main() {
 		fmt.Println("   - Compliance: /api/v1/compliance/*")
 		fmt.Println("   - Geospatial: /api/v1/geospatial/*")
 		fmt.Println("   - Settings: /api/v1/settings/*")
+		fmt.Println("   - Financing: /api/v1/financing/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
@@ -380,6 +396,13 @@ func runAllMigrations(db *gorm.DB) error {
 		&settings.IntegrationConfiguration{},
 		&settings.Subscription{},
 		&settings.Invoice{},
+
+		// Financing models
+		&financing.CarbonCredit{},
+		&financing.ForwardSaleAgreement{},
+		&financing.RevenueDistribution{},
+		&financing.PaymentTransaction{},
+		&financing.CreditPricingModel{},
 	)
 
 	if err != nil {

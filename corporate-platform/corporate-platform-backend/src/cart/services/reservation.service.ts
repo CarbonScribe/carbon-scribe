@@ -45,7 +45,7 @@ export class ReservationService {
         });
 
         const reserved = existing._sum.quantity ?? 0;
-        const effectivelyAvailable = credit.available - reserved;
+        const effectivelyAvailable = (credit.availableAmount ?? 0) - reserved;
 
         if (effectivelyAvailable < item.quantity) {
           throw new ConflictException(

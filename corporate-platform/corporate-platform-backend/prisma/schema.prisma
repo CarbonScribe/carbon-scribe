@@ -30,6 +30,13 @@ model Company {
   reports                 Report[]
   activities              Activity[]
   apiKeys                 ApiKey[]
+  credits                 Credit[]
+  ipfsDocuments           IpfsDocument[]
+  transactionConfirmations TransactionConfirmation[]
+  
+  materialityAssessments MaterialityAssessment[]
+  esrsDisclosures        EsrsDisclosure[]
+  csrdReports            CsrdReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -54,32 +61,75 @@ model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
-  methodology String?
-  standard    String?
-  country     String?
+  // Classification & Metadata
+  type                  String?   // forestry, renewable, agriculture, bluecarbon, cookstoves, methane
+  methodology           String?
+  verificationStandard  String?
+  country               String?
+  region                String?
+
+  // Multi-tenant / ownership
   companyId   String?  // Optional: project can be company-scoped or global
   company     Company? @relation(fields: [companyId], references: [id])
+
+  // Impact
+  totalCredits          Int      @default(0)
+  availableCredits      Int      @default(0)
+  avgScore              Float?   
+  communities           Int?     // People benefited
+  sdgs                  Int[]    @default([])
+
+  // Timeline
+  startDate   DateTime
+  endDate     DateTime?
+  lastVerification DateTime?
+
+  // Metadata
+  status      String    @default("active") // active, completed, pending
+  developer   String?
+  website     String?
+
+  // Relations
   credits     Credit[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([companyId])
+  @@index([country])
+  @@index([type])
+  @@index([status])
   @@map("projects")
 }
 
 model Credit {
   id           String               @id @default(cuid())
-  projectId    String?  // Optional link to Project entity
-  project      Project?             @relation(fields: [projectId], references: [id])
+  companyId    String?
+  company      Company?             @relation(fields: [companyId], references: [id])
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id])
   projectName  String               // Denormalized for display/search
-  country      String?
-  methodology  String?
-  standard     String?
-  sdgs         String?
-  vintageYear  Int?
-  price        Float                @default(0) // Price per tCO₂
+  // Credit Details
+  pricePerTon  Float  @default(0)
+  availableAmount Int
   totalAmount  Int
-  available    Int
+  status       String   @default("available") // available, reserved, retired, pending
+
+  // Quality Metrics
+  dynamicScore          Int       @default(0)
+  verificationScore     Int       @default(0)
+  additionalityScore    Int       @default(0)
+  permanenceScore       Int       @default(0)
+  leakageScore          Int       @default(0)
+  cobenefitsScore       Int       @default(0)
+  transparencyScore     Int       @default(0)
+
+  // Metadata
+  methodology  String?
+  vintage      Int?
+  verificationStandard  String?
+  lastVerification DateTime?
+  country      String?
+  sdgs         Int[]    @default([])
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
@@ -87,10 +137,16 @@ model Credit {
   auctions     Auction[]
   portfolioHoldings  PortfolioHolding[] @relation("PortfolioHolding")
   portfolioEntries   PortfolioEntry[] @relation("PortfolioEntry")
+  availabilityLogs    CreditAvailabilityLog[]
+
+  // Blockchain
+  assetCode     String?
+  issuer        String?
+  contractId    String?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  // Search optimization
+  // Search & metadata
   searchVector    String?
   featured        Boolean   @default(false)
   featuredUntil   DateTime?
@@ -98,11 +154,13 @@ model Credit {
   purchaseCount   Int       @default(0)
   lastPurchasedAt DateTime?
 
-  @@index([projectId])
-  @@index([searchVector])
-  @@index([featured])
-  @@index([viewCount])
-  @@index([purchaseCount])
+  @@index([status])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([country])
+  @@index([methodology])
+  @@index([vintage])
+  @@index([dynamicScore])
 }
 
 model Retirement {
@@ -585,6 +643,23 @@ model PortfolioEntry {
   @@map("portfolio_entries")
 }
 
+model CreditAvailabilityLog {
+  id            String   @id @default(cuid())
+  creditId      String
+  credit        Credit   @relation(fields: [creditId], references: [id])
+  changedBy     String?  // userId or system
+  changeType    String   // decrement, increment, reserve, release, retire
+  amount        Int
+  previousAmount Int
+  newAmount     Int
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([creditId])
+  @@index([createdAt])
+  @@map("credit_availability_logs")
+}
+
 // ==========================================
 // Transaction (purchase history & orders log)
 // ==========================================
@@ -709,6 +784,7 @@ model ApiKey {
 model IpfsDocument {
   id              String   @id @default(cuid())
   companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
   documentType    String   // CERTIFICATE, REPORT, AUDIT_LOG, PROOF
   referenceId     String   // retirementId, reportId, auditId
   ipfsCid         String   @unique
@@ -726,3 +802,162 @@ model IpfsDocument {
   @@index([referenceId])
 }
 
+// ==========================================
+// Framework Registry (methodology-to-framework mapping)
+// ==========================================
+
+model Framework {
+  id              String   @id @default(cuid())
+  code            String   @unique // GHG, CSRD, SBTi, CORSIA, CBAM
+  name            String
+  description     String?
+  requirements    Json?    // List of requirement IDs and their metadata
+  mappings        FrameworkMethodologyMapping[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("frameworks")
+}
+
+model SyncedMethodology {
+  id              String   @id @default(cuid())
+  tokenId         Int      @unique
+  name            String
+  description     String?
+  registry        String?
+  category        String?
+  authority       String?
+  mappings        FrameworkMethodologyMapping[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("synced_methodologies")
+}
+
+model FrameworkMethodologyMapping {
+  id              String   @id @default(cuid())
+  frameworkId     String
+  methodologyId   String   // References SyncedMethodology
+  methodologyTokenId Int      // Original token ID from contract
+  requirementIds  String[] // Which requirements this methodology fulfills
+  mappingType     String   // AUTO, MANUAL, SYSTEM
+  mappedBy        String?  // User ID or "system"
+  mappedAt        DateTime @default(now())
+  isActive        Boolean  @default(true)
+  metadata        Json?    // Additional mapping context
+  
+  framework       Framework @relation(fields: [frameworkId], references: [id])
+  methodology     SyncedMethodology @relation(fields: [methodologyId], references: [id])
+  
+  @@unique([frameworkId, methodologyId])
+  @@index([methodologyTokenId])
+  @@map("framework_methodology_mappings")
+}
+
+model MappingRule {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  conditionType   String   // REGISTRY, METHODOLOGY_TYPE, AUTHORITY, KEYWORD
+  conditionValue  String   // "VERRA", "FORESTRY", etc.
+  targetFramework String   // GHG_PROTOCOL, CSRD, etc.
+  targetRequirements String[] // Requirement IDs to map to
+  priority        Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("mapping_rules")
+}
+
+// ==========================================
+// Webhook Registry & Transaction Monitoring
+// ==========================================
+
+model WebhookDelivery {
+  id              String   @id @default(cuid())
+  eventType       String
+  payload         Json
+  status          String   // PENDING, DELIVERED, FAILED, RETRYING
+  retryCount      Int      @default(0)
+  lastAttemptAt   DateTime
+  nextAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  @@map("webhook_deliveries")
+}
+
+model TransactionConfirmation {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  operationType   String   // TRANSFER, RETIREMENT, MINT
+  status          String   // PENDING, CONFIRMED, FAILED
+  confirmations   Int      @default(0)
+  ledgerSequence  Int?
+  finalizedAt     DateTime?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([companyId])
+  @@map("transaction_confirmations")
+}
+
+// ==========================================
+// CSRD Compliance
+// ==========================================
+
+model MaterialityAssessment {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  assessmentYear  Int
+  status          String   // DRAFT, IN_PROGRESS, COMPLETED
+  completedAt     DateTime?
+  impacts         Json     // Impact materiality results
+  risks           Json     // Financial materiality results
+  doubleMateriality Json   // Combined assessment
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([assessmentYear])
+  @@map("materiality_assessments")
+}
+
+model EsrsDisclosure {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingPeriod String   // e.g., "2024"
+  standard        String   // ESRS E1, ESRS S1, etc.
+  disclosureRequirement String
+  dataPoint       String
+  value           Json
+  assuranceLevel  String?  // LIMITED, REASONABLE
+  assuredAt       DateTime?
+  assuredBy       String?
+
+  @@index([companyId])
+  @@index([reportingPeriod])
+  @@index([standard])
+  @@map("esrs_disclosures")
+}
+
+model CsrdReport {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingYear   Int
+  status          String   // DRAFT, REVIEW, SUBMITTED
+  submittedAt     DateTime?
+  submissionId    String?  // Official submission ID
+  reportUrl       String?  // Generated report location
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([reportingYear])
+  @@map("csrd_reports")
+}

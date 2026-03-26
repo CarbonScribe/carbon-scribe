@@ -3,8 +3,10 @@ package collaboration
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -236,4 +238,27 @@ func (h *Handler) ListResources(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resources)
+}
+
+// authRequired enforces a valid Authorization header and X-User-ID on all
+// collaboration endpoints, matching the pattern used by other API modules.
+func authRequired() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if strings.TrimSpace(c.GetHeader("Authorization")) == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing auth header"})
+			return
+		}
+		userIDHeader := strings.TrimSpace(c.GetHeader("X-User-ID"))
+		if userIDHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing X-User-ID header"})
+			return
+		}
+		uid, err := uuid.Parse(userIDHeader)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid X-User-ID header"})
+			return
+		}
+		c.Set("collaboration_user_id", uid)
+		c.Next()
+	}
 }

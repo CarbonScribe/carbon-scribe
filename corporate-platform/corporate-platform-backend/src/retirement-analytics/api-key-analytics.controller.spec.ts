@@ -6,6 +6,8 @@ import { ApiKeyGuard } from '../api-key/guards/api-key.guard';
 import { ApiKeyStrategy } from '../api-key/strategies/api-key.strategy';
 import { ApiKeyService } from '../api-key/api-key.service';
 import { PrismaService } from '../shared/database/prisma.service';
+import { TenantService } from '../multi-tenant/tenant.service';
+import { TenantContextStore } from '../multi-tenant/tenant-context.store';
 
 describe('ApiKeyRetirementAnalyticsController', () => {
   let controller: ApiKeyRetirementAnalyticsController;
@@ -30,6 +32,18 @@ describe('ApiKeyRetirementAnalyticsController', () => {
         Reflector,
         ApiKeyStrategy,
         ApiKeyService,
+        {
+          provide: TenantService,
+          useValue: {
+            resolveTenantFromApiKey: jest.fn(),
+          },
+        },
+        {
+          provide: TenantContextStore,
+          useValue: {
+            setContext: jest.fn(),
+          },
+        },
         {
           provide: PrismaService,
           useValue: {

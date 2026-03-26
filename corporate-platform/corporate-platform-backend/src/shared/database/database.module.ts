@@ -12,6 +12,7 @@ import { ReportRepository } from './repositories/report.repository';
 import { RetirementRepository } from './repositories/retirement.repository';
 import { TransactionRepository } from './repositories/transaction.repository';
 import { UserRepository } from './repositories/user.repository';
+import { TenantModule } from '../../multi-tenant/tenant.module';
 
 const repositories = [
   ActivityRepository,
@@ -29,6 +30,7 @@ const repositories = [
 
 @Global()
 @Module({
+  imports: [TenantModule],
   providers: [PrismaService, UnitOfWorkService, ...repositories],
   exports: [PrismaService, UnitOfWorkService, ...repositories],
 })

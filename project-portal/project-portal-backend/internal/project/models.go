@@ -18,8 +18,9 @@ type Project struct {
 	Farmers       int       `json:"farmers"`
 	CarbonCredits int       `json:"carbon_credits"`
 	Progress      int       `json:"progress"` // percentage
-	Icon          string    `json:"icon"`
-	Status        string    `json:"status" gorm:"default:'pending'"` // active, pending, completed
+	Icon               string    `json:"icon"`
+	MethodologyTokenID int       `json:"methodology_token_id" gorm:"column:methodology_token_id"`
+	Status             string    `json:"status" gorm:"default:'pending'"` // active, pending, completed
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -41,21 +42,23 @@ type ProjectCreateRequest struct {
 	StartDate     string  `json:"start_date"` // ISO date string
 	Farmers       int     `json:"farmers" binding:"min=0"`
 	CarbonCredits int     `json:"carbon_credits" binding:"min=0"`
-	Progress      int     `json:"progress" binding:"min=0,max=100"`
-	Icon          string  `json:"icon"`
-	Status        string  `json:"status"`
+	Progress           int     `json:"progress" binding:"min=0,max=100"`
+	Icon               string  `json:"icon"`
+	MethodologyTokenID int     `json:"methodology_token_id"`
+	Status             string  `json:"status"`
 }
 
 // ProjectUpdateRequest represents the request to update a project
 type ProjectUpdateRequest struct {
-	Name          *string  `json:"name,omitempty"`
-	Type          *string  `json:"type,omitempty"`
-	Location      *string  `json:"location,omitempty"`
-	Area          *float64 `json:"area,omitempty"`
-	StartDate     *string  `json:"start_date,omitempty"`
-	Farmers       *int     `json:"farmers,omitempty"`
-	CarbonCredits *int     `json:"carbon_credits,omitempty"`
-	Progress      *int     `json:"progress,omitempty"`
-	Icon          *string  `json:"icon,omitempty"`
-	Status        *string  `json:"status,omitempty"`
+	Name               *string  `json:"name,omitempty"`
+	Type               *string  `json:"type,omitempty"`
+	Location           *string  `json:"location,omitempty"`
+	Area               *float64 `json:"area,omitempty"`
+	StartDate          *string  `json:"start_date,omitempty"`
+	Farmers            *int     `json:"farmers,omitempty"`
+	CarbonCredits      *int     `json:"carbon_credits,omitempty"`
+	Progress           *int     `json:"progress,omitempty"`
+	Icon               *string  `json:"icon,omitempty"`
+	MethodologyTokenID *int     `json:"methodology_token_id,omitempty"`
+	Status             *string  `json:"status,omitempty"`
 }

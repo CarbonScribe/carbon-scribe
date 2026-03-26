@@ -2,35 +2,32 @@ package collaboration
 
 import "github.com/gin-gonic/gin"
 
-func RegisterRoutes(r *gin.Engine, h *Handler) {
-	v1 := r.Group("/api/v1/collaboration")
+func RegisterRoutes(v1 *gin.RouterGroup, h *Handler) {
+	collab := v1.Group("/collaboration")
+	collab.Use(authRequired())
 	{
 		// Project members
-		v1.GET("/projects/:id/members", h.ListMembers)
-		v1.DELETE("/projects/:id/members/:userId", h.RemoveMember)
+		collab.GET("/projects/:id/members", h.ListMembers)
+		collab.DELETE("/projects/:id/members/:userId", h.RemoveMember)
 
 		// Project invitations
-		v1.POST("/projects/:id/invite", h.InviteUser)
-		v1.GET("/projects/:id/invitations", h.ListInvitations)
-		v1.POST("/invitations/:id/resend", h.ResendInvitation)
-		v1.POST("/invitations/:id/cancel", h.CancelInvitation)
-		v1.POST("/invitations/:id/accept", h.AcceptInvitation)
-		v1.POST("/invitations/:id/decline", h.DeclineInvitation)
+		collab.POST("/projects/:id/invite", h.InviteUser)
+		collab.GET("/projects/:id/invitations", h.ListInvitations)
 
 		// Activity feed
-		v1.GET("/projects/:id/activities", h.GetActivities)
+		collab.GET("/projects/:id/activities", h.GetActivities)
 
 		// Comments
-		v1.GET("/projects/:id/comments", h.ListComments)
-		v1.POST("/comments", h.CreateComment)
+		collab.GET("/projects/:id/comments", h.ListComments)
+		collab.POST("/comments", h.CreateComment)
 
 		// Tasks
-		v1.GET("/projects/:id/tasks", h.ListTasks)
-		v1.POST("/tasks", h.CreateTask)
-		v1.PATCH("/tasks/:id", h.UpdateTask)
+		collab.GET("/projects/:id/tasks", h.ListTasks)
+		collab.POST("/tasks", h.CreateTask)
+		collab.PATCH("/tasks/:id", h.UpdateTask)
 
 		// Resources
-		v1.GET("/projects/:id/resources", h.ListResources)
-		v1.POST("/resources", h.CreateResource)
+		collab.GET("/projects/:id/resources", h.ListResources)
+		collab.POST("/resources", h.CreateResource)
 	}
 }

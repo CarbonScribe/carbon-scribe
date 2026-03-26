@@ -189,7 +189,7 @@ export class RiskService {
     let lowQuality = 0;
 
     holdings.forEach((holding) => {
-      const standard = holding.credit.standard || '';
+      const standard = holding.credit.verificationStandard || '';
       if (highQualityStandards.some((s) => standard.includes(s))) {
         highQuality += holding.quantity;
       } else if (mediumQualityStandards.some((s) => standard.includes(s))) {
