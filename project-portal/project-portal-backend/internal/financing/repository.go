@@ -21,6 +21,8 @@ type Repository interface {
 	CreateRevenueDistribution(ctx context.Context, payout *RevenueDistribution) error
 	GetRevenueDistribution(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error)
 	GetActivePricingModel(ctx context.Context, methodologyCode, regionCode string, vintageYear int) (*CreditPricingModel, error)
+	GetCreditByTokenID(ctx context.Context, tokenID string) (*CarbonCredit, error)
+	ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error)
 }
 
 type repository struct {
@@ -113,4 +115,23 @@ func (r *repository) GetActivePricingModel(ctx context.Context, methodologyCode,
 		return nil, err
 	}
 	return &model, nil
+}
+
+func (r *repository) GetCreditByTokenID(ctx context.Context, tokenID string) (*CarbonCredit, error) {
+	var credit CarbonCredit
+	err := r.db.WithContext(ctx).
+		Where("token_ids @> ?", "[\""+tokenID+"\"]").
+		First(&credit).Error
+	if err != nil {
+		return nil, err
+	}
+	return &credit, nil
+}
+
+func (r *repository) ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error) {
+	var credits []CarbonCredit
+	err := r.db.WithContext(ctx).
+		Where("project_id = ? AND methodology_token_id = ?", projectID, methodologyID).
+		Find(&credits).Error
+	return credits, err
 }

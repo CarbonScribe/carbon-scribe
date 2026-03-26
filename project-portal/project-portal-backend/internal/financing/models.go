@@ -15,6 +15,7 @@ type CarbonCredit struct {
 	CalculationPeriodStart time.Time         `json:"calculation_period_start" gorm:"type:date;not null"`
 	CalculationPeriodEnd   time.Time         `json:"calculation_period_end" gorm:"type:date;not null"`
 	MethodologyCode        string            `json:"methodology_code" gorm:"size:50;not null;index"`
+	MethodologyTokenID     int               `json:"methodology_token_id" gorm:"column:methodology_token_id"`
 	CalculatedTons         float64           `json:"calculated_tons" gorm:"type:numeric(12,4);not null"`
 	BufferedTons           float64           `json:"buffered_tons" gorm:"type:numeric(12,4);not null"`
 	IssuedTons             float64           `json:"issued_tons" gorm:"type:numeric(12,4)"`
@@ -195,6 +196,16 @@ type MintCreditsRequest struct {
 	CreditID      uuid.UUID `json:"credit_id" binding:"required"`
 	BatchSize     int       `json:"batch_size"`
 	IssuerAccount string    `json:"issuer_account"`
+}
+
+type TraceabilityResponse struct {
+	TokenID            string    `json:"token_id"`
+	ProjectID          uuid.UUID `json:"project_id"`
+	MethodologyCode    string    `json:"methodology_code"`
+	MethodologyTokenID int       `json:"methodology_token_id"`
+	VintageYear        int       `json:"vintage_year"`
+	MintTransaction    string    `json:"mint_transaction"`
+	MintedAt           time.Time `json:"minted_at"`
 }
 
 type CreateForwardSaleRequest struct {

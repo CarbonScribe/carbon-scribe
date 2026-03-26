@@ -1,7 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  ValidationPipe,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as request from 'supertest';
 import { PortfolioModule } from '../src/portfolio/portfolio.module';
+import { RbacModule } from '../src/rbac/rbac.module';
+import { AuthModule } from '../src/auth/auth.module';
+import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { PrismaService } from '../src/shared/database/prisma.service';
 
 describe('Portfolio API Integration Tests', () => {
@@ -10,37 +18,55 @@ describe('Portfolio API Integration Tests', () => {
   const mockCompanyId = 'test-company-id-1';
   const mockAuthToken = 'valid-jwt-token';
 
-  const mockPrismaService = {
-    portfolio: {
-      findUnique: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+  const mockPrismaService = new Proxy({} as any, {
+    get: (target, prop) => {
+      if (typeof prop === 'string' && !target[prop]) {
+        target[prop] = {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({}),
+          update: jest.fn().mockResolvedValue({}),
+          delete: jest.fn().mockResolvedValue({}),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          count: jest.fn().mockResolvedValue(0),
+          upsert: jest.fn().mockResolvedValue({}),
+        };
+      }
+      return target[prop];
     },
-    portfolioHolding: {
-      findMany: jest.fn(),
-      count: jest.fn(),
-    },
-    retirement: {
-      findMany: jest.fn(),
-    },
-    company: {
-      findUnique: jest.fn(),
-    },
-    portfolioSnapshot: {
-      findMany: jest.fn(),
-    },
-  };
+  });
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [PortfolioModule],
+      imports: [PortfolioModule, RbacModule, AuthModule],
     })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          const req = context.switchToHttp().getRequest();
+          if (!req.headers.authorization) {
+            throw new UnauthorizedException();
+          }
+          req.user = {
+            sub: 'user-1',
+            companyId: req.headers['x-company-id'] || mockCompanyId,
+            role: 'admin',
+          };
+          return true;
+        },
+      })
       .overrideProvider(PrismaService)
       .useValue(mockPrismaService)
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
     await app.init();
   });
 
@@ -237,7 +263,7 @@ describe('Portfolio API Integration Tests', () => {
         .set('X-Company-Id', mockCompanyId)
         .expect(400);
 
-      expect(response.body.message).toContain('Invalid');
+      expect(response.body.message[0].toLowerCase()).toContain('date');
     });
   });
 

@@ -33,6 +33,10 @@ func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
 		financing.GET("/payouts/:id", requirePermission("financing:read"), h.getPayoutStatus)
 	}
 
+	// Traceability and Methodology routes (registered on v1 for specific structure)
+	v1.GET("/credits/:tokenId/traceability", authRequired(), requirePermission("financing:read"), h.creditTraceability)
+	v1.GET("/projects/:id/credits/methodology/:methodologyId", authRequired(), requirePermission("financing:read"), h.listCreditsByMethodology)
+
 	// Signed webhook endpoints do not require auth token, only signature verification.
 	financing.POST("/webhooks/stellar", verifyWebhookSignature(), h.stellarWebhook)
 	financing.POST("/webhooks/payment", verifyWebhookSignature(), h.paymentWebhook)
@@ -180,6 +184,39 @@ func (h *Handler) creditStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+func (h *Handler) creditTraceability(c *gin.Context) {
+	tokenID := c.Param("tokenId")
+	if tokenID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing token ID"})
+		return
+	}
+	trace, err := h.service.GetCreditTraceability(c.Request.Context(), tokenID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, trace)
+}
+
+func (h *Handler) listCreditsByMethodology(c *gin.Context) {
+	projectID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	methIDStr := c.Param("methodologyId")
+	methID, err := strconv.Atoi(methIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid methodology ID"})
+		return
+	}
+	credits, err := h.service.ListCreditsByMethodology(c.Request.Context(), projectID, methID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, credits)
 }
 
 func (h *Handler) createForwardSale(c *gin.Context) {

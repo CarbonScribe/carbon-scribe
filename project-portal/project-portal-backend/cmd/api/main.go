@@ -21,6 +21,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
@@ -100,6 +101,9 @@ func main() {
 	projectService := project.NewService(projectRepo)
 	projectHandler := project.NewHandler(projectService)
 
+	methodologyRepo := methodology.NewRepository(db)
+	methodologyService := methodology.NewService(methodologyRepo)
+
 	// Initialize document management service
 	var docsHandler *documents.Handler
 	s3Client, s3Err := storage.NewS3Client(storage.S3Config{
@@ -145,7 +149,7 @@ func main() {
 	geospatialService := geospatial.NewService(geospatialRepo)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
 	financingRepo := financing.NewRepository(db)
-	financingService := financing.NewService(financingRepo)
+	financingService := financing.NewService(financingRepo, methodologyService)
 	financingHandler := financing.NewHandler(financingService)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{

@@ -11,6 +11,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/payments"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/sales"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 
 	"github.com/google/uuid"
 	"gorm.io/datatypes"
@@ -26,6 +27,8 @@ type Service interface {
 	InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (*PaymentTransaction, error)
 	DistributeRevenue(ctx context.Context, req DistributeRevenueRequest) (*RevenueDistribution, error)
 	GetPayoutStatus(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error)
+	GetCreditTraceability(ctx context.Context, tokenID string) (*TraceabilityResponse, error)
+	ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error)
 	HandleStellarWebhook(ctx context.Context, req StellarWebhookRequest) error
 	HandlePaymentWebhook(ctx context.Context, req PaymentWebhookRequest) error
 }
@@ -38,9 +41,10 @@ type service struct {
 	workflow      *tokenization.Workflow
 	processor     payments.Processor
 	distributor   *payments.Distributor
+	methService   methodology.Service
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository, methService methodology.Service) Service {
 	stellarClient := tokenization.NewMockStellarClient()
 	monitor := tokenization.NewMonitor()
 	return &service{
@@ -48,9 +52,10 @@ func NewService(repo Repository) Service {
 		validator:     calculation.NewValidator(),
 		calcEngine:    calculation.NewEngine(),
 		pricingEngine: sales.NewPricingEngine(),
-		workflow:      tokenization.NewWorkflow(stellarClient, monitor),
+		workflow:      tokenization.NewWorkflow(stellarClient, monitor, methService),
 		processor:     payments.NewMockProcessor(),
 		distributor:   payments.NewDistributor(),
+		methService:   methService,
 	}
 }
 
@@ -125,6 +130,7 @@ func (s *service) MintCredits(ctx context.Context, req MintCreditsRequest) (*Car
 
 	assetCode := fmt.Sprintf("CRB%04d", credit.VintageYear%10000)
 	outcome, err := s.workflow.Mint(ctx, tokenization.MintInput{
+		ProjectID:   credit.ProjectID,
 		AssetCode:   assetCode,
 		AssetIssuer: req.IssuerAccount,
 		Amount:      credit.BufferedTons,
@@ -141,6 +147,7 @@ func (s *service) MintCredits(ctx context.Context, req MintCreditsRequest) (*Car
 	credit.MintTransactionHash = outcome.TransactionHash
 	credit.StellarAssetCode = outcome.AssetCode
 	credit.StellarAssetIssuer = outcome.AssetIssuer
+	credit.MethodologyTokenID = outcome.MethodologyTokenID
 	credit.TokenIDs = datatypes.JSON(tokenJSON)
 	credit.IssuedTons = credit.BufferedTons
 	credit.MintedAt = &now
@@ -149,6 +156,32 @@ func (s *service) MintCredits(ctx context.Context, req MintCreditsRequest) (*Car
 		return nil, err
 	}
 	return credit, nil
+}
+
+func (s *service) GetCreditTraceability(ctx context.Context, tokenID string) (*TraceabilityResponse, error) {
+	credit, err := s.repo.GetCreditByTokenID(ctx, tokenID)
+	if err != nil {
+		return nil, fmt.Errorf("credit not found for token %s: %w", tokenID, err)
+	}
+
+	mintedAt := time.Time{}
+	if credit.MintedAt != nil {
+		mintedAt = *credit.MintedAt
+	}
+
+	return &TraceabilityResponse{
+		TokenID:            tokenID,
+		ProjectID:          credit.ProjectID,
+		MethodologyCode:    credit.MethodologyCode,
+		MethodologyTokenID: credit.MethodologyTokenID,
+		VintageYear:        credit.VintageYear,
+		MintTransaction:    credit.MintTransactionHash,
+		MintedAt:           mintedAt,
+	}, nil
+}
+
+func (s *service) ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error) {
+	return s.repo.ListCreditsByMethodology(ctx, projectID, methodologyID)
 }
 
 func (s *service) GetCreditStatus(ctx context.Context, creditID uuid.UUID) (*CreditStatusResponse, error) {
@@ -332,14 +365,15 @@ func (s *service) HandleStellarWebhook(ctx context.Context, req StellarWebhookRe
 		return err
 	}
 	credit.MintTransactionHash = req.TransactionHash
-	if status == "confirmed" || status == "success" || status == "minted" {
+	switch status {
+	case "confirmed", "success", "minted":
 		now := time.Now().UTC()
 		credit.Status = CreditStatusMinted
 		if credit.IssuedTons == 0 {
 			credit.IssuedTons = credit.BufferedTons
 		}
 		credit.MintedAt = &now
-	} else if status == "failed" || status == "error" {
+	case "failed", "error":
 		credit.Status = CreditStatusVerified
 	}
 	return s.repo.UpdateCredit(ctx, credit)

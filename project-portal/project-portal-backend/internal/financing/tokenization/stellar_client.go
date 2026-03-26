@@ -9,10 +9,11 @@ import (
 )
 
 type MintRequest struct {
-	AssetCode   string
-	AssetIssuer string
-	Amount      float64
-	BatchSize   int
+	AssetCode     string
+	AssetIssuer   string
+	Amount        float64
+	BatchSize     int
+	MethodologyID int // Token ID from Methodology Library
 }
 
 type MintResponse struct {
@@ -35,6 +36,9 @@ func NewMockStellarClient() Client {
 func (c *MockStellarClient) Mint(ctx context.Context, req MintRequest) (*MintResponse, error) {
 	if req.Amount <= 0 {
 		return nil, fmt.Errorf("amount must be greater than zero")
+	}
+	if req.MethodologyID <= 0 {
+		return nil, fmt.Errorf("invalid methodology token ID")
 	}
 	if req.BatchSize <= 0 {
 		req.BatchSize = 1

@@ -33,6 +33,10 @@ model Company {
   credits                 Credit[]
   ipfsDocuments           IpfsDocument[]
   transactionConfirmations TransactionConfirmation[]
+  
+  materialityAssessments MaterialityAssessment[]
+  esrsDisclosures        EsrsDisclosure[]
+  csrdReports            CsrdReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -900,4 +904,60 @@ model TransactionConfirmation {
 
   @@index([companyId])
   @@map("transaction_confirmations")
+}
+
+// ==========================================
+// CSRD Compliance
+// ==========================================
+
+model MaterialityAssessment {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  assessmentYear  Int
+  status          String   // DRAFT, IN_PROGRESS, COMPLETED
+  completedAt     DateTime?
+  impacts         Json     // Impact materiality results
+  risks           Json     // Financial materiality results
+  doubleMateriality Json   // Combined assessment
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([assessmentYear])
+  @@map("materiality_assessments")
+}
+
+model EsrsDisclosure {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingPeriod String   // e.g., "2024"
+  standard        String   // ESRS E1, ESRS S1, etc.
+  disclosureRequirement String
+  dataPoint       String
+  value           Json
+  assuranceLevel  String?  // LIMITED, REASONABLE
+  assuredAt       DateTime?
+  assuredBy       String?
+
+  @@index([companyId])
+  @@index([reportingPeriod])
+  @@index([standard])
+  @@map("esrs_disclosures")
+}
+
+model CsrdReport {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingYear   Int
+  status          String   // DRAFT, REVIEW, SUBMITTED
+  submittedAt     DateTime?
+  submissionId    String?  // Official submission ID
+  reportUrl       String?  // Generated report location
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([reportingYear])
+  @@map("csrd_reports")
 }
