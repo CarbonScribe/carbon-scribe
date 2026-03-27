@@ -3,20 +3,16 @@ import { OwnershipHistoryService } from './ownership-history.service';
 import { EventProcessorService } from './event-processor.service';
 import { HistoryQueryService } from './history-query.service';
 import { OwnershipHistoryController } from './ownership-history.controller';
-import { PrismaModule } from '../../shared/database/prisma.module';
+import { DatabaseModule } from '../../shared/database/database.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [DatabaseModule],
   controllers: [OwnershipHistoryController],
   providers: [
     OwnershipHistoryService,
     EventProcessorService,
     HistoryQueryService,
   ],
-  exports: [
-    OwnershipHistoryService,
-    EventProcessorService,
-    HistoryQueryService,
-  ],
+  exports: [OwnershipHistoryService],
 })
 export class OwnershipHistoryModule {}
