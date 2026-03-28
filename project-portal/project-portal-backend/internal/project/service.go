@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
+
 	"github.com/google/uuid"
 )
 
@@ -17,11 +19,12 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
+	repo        Repository
+	methService methodology.Service
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, methService methodology.Service) Service {
+	return &service{repo: repo, methService: methService}
 }
 
 func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) (*Project, error) {
@@ -54,6 +57,17 @@ func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) 
 	err := s.repo.Create(ctx, project)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Methodology != nil && s.methService != nil {
+		if err := s.registerMethodologyDuringOnboarding(ctx, project.ID, req.Methodology); err != nil {
+			_ = s.repo.Delete(ctx, project.ID)
+			return nil, err
+		}
+		project, err = s.repo.GetByID(ctx, project.ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return project, nil
@@ -105,6 +119,12 @@ func (s *service) UpdateProject(ctx context.Context, id uuid.UUID, req *ProjectU
 	}
 	if req.Status != nil {
 		project.Status = *req.Status
+	}
+	if req.MethodologyTokenID != nil {
+		project.MethodologyTokenID = *req.MethodologyTokenID
+	}
+	if req.MethodologyContractID != nil {
+		project.MethodologyContractID = *req.MethodologyContractID
 	}
 	if req.StartDate != nil {
 		startDate, err := time.Parse("2006-01-02", *req.StartDate)

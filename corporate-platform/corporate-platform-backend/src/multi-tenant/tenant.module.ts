@@ -11,6 +11,7 @@ import { TenantContextStore } from './tenant-context.store';
     TenantService,
     TenantContextStore,
     TenantMiddleware,
+    TenantGuard,
     {
       provide: APP_GUARD,
       useClass: TenantGuard,

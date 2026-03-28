@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { RbacModule } from './rbac.module';
 import { RbacService } from './rbac.service';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
+import { PrismaService } from '../shared/database/prisma.service';
 import {
   CREDIT_RETIRE,
   PORTFOLIO_VIEW,
@@ -31,8 +31,20 @@ describe('RBAC integration', () => {
   let reflector: Reflector;
 
   beforeEach(async () => {
+    const prismaMock = {
+      teamMember: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      imports: [RbacModule],
+      providers: [
+        RbacService,
+        RolesGuard,
+        PermissionsGuard,
+        Reflector,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
     }).compile();
     rbacService = module.get<RbacService>(RbacService);
     rolesGuard = module.get<RolesGuard>(RolesGuard);

@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RbacService } from './rbac.service';
+import { PrismaService } from '../shared/database/prisma.service';
 import {
   ALL_PERMISSIONS,
   CREDIT_RETIRE,
@@ -11,8 +12,17 @@ describe('RbacService', () => {
   let service: RbacService;
 
   beforeEach(async () => {
+    const prismaMock = {
+      teamMember: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [RbacService],
+      providers: [
+        RbacService,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
     }).compile();
     service = module.get<RbacService>(RbacService);
   });

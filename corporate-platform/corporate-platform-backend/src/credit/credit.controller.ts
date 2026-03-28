@@ -30,7 +30,11 @@ export class CreditController {
     @Query('limit') limit = '20',
     @Tenant() tenant?: TenantContext,
   ) {
-    return this.service.listAvailable(Number(page), Number(limit), tenant?.companyId);
+    return this.service.listAvailable(
+      Number(page),
+      Number(limit),
+      tenant?.companyId,
+    );
   }
 
   @Get('filters')

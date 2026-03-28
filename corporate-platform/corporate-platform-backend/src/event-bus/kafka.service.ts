@@ -17,11 +17,25 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly configService: ConfigService) {
     const kafkaConfig = this.configService.getKafkaConfig();
-    this.kafkaEnabled = kafkaConfig.brokers.length > 0;
+    const hasBrokers = kafkaConfig.brokers.length > 0;
+    const onlyLocalBrokers =
+      hasBrokers &&
+      kafkaConfig.brokers.every((broker) =>
+        /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(broker),
+      );
+    const forceLocalKafka = process.env.KAFKA_FORCE_LOCAL === 'true';
+
+    this.kafkaEnabled =
+      hasBrokers &&
+      !(
+        process.env.NODE_ENV !== 'production' &&
+        onlyLocalBrokers &&
+        !forceLocalKafka
+      );
 
     if (!this.kafkaEnabled) {
       this.logger.warn(
-        'Kafka is disabled because KAFKA_BROKERS is not configured. Event bus features will be unavailable.',
+        'Kafka is disabled (no brokers configured or local-only brokers in non-production without KAFKA_FORCE_LOCAL=true). Event bus features will be unavailable.',
       );
     }
 
@@ -67,9 +81,16 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('Connecting to Kafka...');
-    await this.producer.connect();
-    await this.admin.connect();
-    this.logger.log('Kafka connected successfully.');
+    try {
+      await this.producer.connect();
+      await this.admin.connect();
+      this.logger.log('Kafka connected successfully.');
+    } catch (error) {
+      this.logger.error(
+        'Kafka connection failed. Continuing startup without active Kafka connectivity.',
+        error as Error,
+      );
+    }
   }
 
   private async disconnect() {
@@ -78,9 +99,15 @@ export class KafkaService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log('Disconnecting from Kafka...');
-    await this.producer.disconnect();
-    await this.admin.disconnect();
-    this.logger.log('Kafka disconnected successfully.');
+    try {
+      await this.producer.disconnect();
+      await this.admin.disconnect();
+      this.logger.log('Kafka disconnected successfully.');
+    } catch (error) {
+      this.logger.warn(
+        `Kafka disconnect encountered an error: ${String(error)}`,
+      );
+    }
   }
 
   isEnabled(): boolean {

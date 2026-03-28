@@ -24,6 +24,7 @@ export const configSchema = Joi.object({
   KAFKA_RETRY_MAX: Joi.number().integer().min(0).default(5),
   STELLAR_NETWORK: Joi.string().default('testnet'),
   HORIZON_URL: Joi.string().uri().allow(''),
+  SOROBAN_RPC_URL: Joi.string().uri().allow(''),
   JWT_SECRET: Joi.string().default('dev-jwt-secret'),
   JWT_EXPIRY: Joi.string().default('15m'),
   LOG_LEVEL: Joi.string()

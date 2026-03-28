@@ -294,6 +294,38 @@ Designated API key protected endpoints for programmatic reporting:
 
 These endpoints require the API key permission `analytics:read` and automatically scope analytics queries to the key's `companyId`.
 
+## Team Management Core Service
+
+The backend now includes a dedicated Team Management module at `src/team-management/` with multi-tenant RBAC-aware operations for members, roles, permissions, and invitations.
+
+Core endpoints:
+
+- `GET /api/v1/team/members`
+- `GET /api/v1/team/members/:id`
+- `POST /api/v1/team/members`
+- `PUT /api/v1/team/members/:id`
+- `DELETE /api/v1/team/members/:id`
+- `POST /api/v1/team/members/:id/reactivate`
+- `POST /api/v1/team/members/:id/role`
+- `GET /api/v1/team/roles`
+- `POST /api/v1/team/roles`
+- `PUT /api/v1/team/roles/:id`
+- `DELETE /api/v1/team/roles/:id`
+- `GET /api/v1/team/permissions`
+- `GET /api/v1/team/permissions/my`
+- `POST /api/v1/team/invitations`
+- `GET /api/v1/team/invitations`
+- `POST /api/v1/team/invitations/:token/accept`
+- `POST /api/v1/team/invitations/:id/resend`
+- `DELETE /api/v1/team/invitations/:id`
+
+Implementation notes:
+
+- Invitation tokens expire after 7 days.
+- System roles (`ADMIN`, `MANAGER`, `ANALYST`, `VIEWER`) are provisioned per company automatically.
+- Audit trail events are recorded in `AuditLog` for member, role, and invitation changes.
+- Permission checks are integrated with the existing `JwtAuthGuard` + `PermissionsGuard` flow through `RbacService`.
+
 ## Credit Module: Database Migration
 
 The project includes a new `Credit` and extended `Project` models in `prisma/schema.prisma` used by the `src/credit` module.

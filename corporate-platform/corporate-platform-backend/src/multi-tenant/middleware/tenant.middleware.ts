@@ -24,7 +24,10 @@ export class TenantMiddleware implements NestMiddleware {
         return;
       }
 
-      if (resolution.allowWithoutTenant || resolution.deferredApiKeyResolution) {
+      if (
+        resolution.allowWithoutTenant ||
+        resolution.deferredApiKeyResolution
+      ) {
         this.tenantContextStore.runWithContext(null, next);
         return;
       }

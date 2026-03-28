@@ -3,10 +3,10 @@ package collaboration
 import (
 	"net/http"
 	"strconv"
-	"strings"
+
+	authctx "carbon-scribe/project-portal/project-portal-backend/internal/auth"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -24,6 +24,12 @@ type InviteUserRequest struct {
 }
 
 func (h *Handler) InviteUser(c *gin.Context) {
+	actorUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	projectID := c.Param("id")
 	var req InviteUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -31,7 +37,7 @@ func (h *Handler) InviteUser(c *gin.Context) {
 		return
 	}
 
-	invite, err := h.service.InviteUser(c.Request.Context(), projectID, req.Email, req.Role)
+	invite, err := h.service.InviteUser(c.Request.Context(), projectID, actorUserID, req.Email, req.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -55,14 +61,20 @@ func (h *Handler) GetActivities(c *gin.Context) {
 }
 
 func (h *Handler) CreateComment(c *gin.Context) {
-	var comment Comment
-	if err := c.ShouldBindJSON(&comment); err != nil {
+	actorUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req CreateCommentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// Assume UserID is set from auth middleware context, but for now take from body
 
-	if err := h.service.AddComment(c.Request.Context(), &comment); err != nil {
+	comment, err := h.service.AddComment(c.Request.Context(), req, actorUserID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -71,13 +83,20 @@ func (h *Handler) CreateComment(c *gin.Context) {
 }
 
 func (h *Handler) CreateTask(c *gin.Context) {
-	var task Task
-	if err := c.ShouldBindJSON(&task); err != nil {
+	actorUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req CreateTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.service.CreateTask(c.Request.Context(), &task); err != nil {
+	task, err := h.service.CreateTask(c.Request.Context(), req, actorUserID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -86,13 +105,20 @@ func (h *Handler) CreateTask(c *gin.Context) {
 }
 
 func (h *Handler) CreateResource(c *gin.Context) {
-	var resource SharedResource
-	if err := c.ShouldBindJSON(&resource); err != nil {
+	actorUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req CreateResourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.service.AddResource(c.Request.Context(), &resource); err != nil {
+	resource, err := h.service.AddResource(c.Request.Context(), req, actorUserID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -238,27 +264,4 @@ func (h *Handler) ListResources(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resources)
-}
-
-// authRequired enforces a valid Authorization header and X-User-ID on all
-// collaboration endpoints, matching the pattern used by other API modules.
-func authRequired() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if strings.TrimSpace(c.GetHeader("Authorization")) == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing auth header"})
-			return
-		}
-		userIDHeader := strings.TrimSpace(c.GetHeader("X-User-ID"))
-		if userIDHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing X-User-ID header"})
-			return
-		}
-		uid, err := uuid.Parse(userIDHeader)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid X-User-ID header"})
-			return
-		}
-		c.Set("collaboration_user_id", uid)
-		c.Next()
-	}
 }

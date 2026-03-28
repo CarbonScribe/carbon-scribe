@@ -14,6 +14,7 @@ import {
   ConfirmResult,
 } from '../interfaces/checkout.interface';
 import { SERVICE_FEE_RATE } from '../interfaces/cart.interface';
+import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
 
 @Injectable()
 export class CheckoutService {
@@ -23,6 +24,7 @@ export class CheckoutService {
     private paymentService: PaymentService,
     private reservationService: ReservationService,
     private auditService: AuditService,
+    private postPurchaseService: PostPurchaseService,
   ) {}
 
   async initiateCheckout(
@@ -266,6 +268,9 @@ export class CheckoutService {
       undefined,
       { paymentId: paymentResult.paymentId },
     );
+
+    // 6. Trigger post-purchase transfers
+    await this.postPurchaseService.handleOrderCompleted(completedOrder.id);
 
     return {
       order: {

@@ -6,6 +6,7 @@ import { ReservationService } from './reservation.service';
 import { AuditService } from './audit.service';
 import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
 
 describe('CheckoutService', () => {
   let service: CheckoutService;
@@ -53,6 +54,10 @@ describe('CheckoutService', () => {
     logOrderEvent: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockPostPurchaseService = {
+    handleOrderCompleted: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -62,6 +67,7 @@ describe('CheckoutService', () => {
         { provide: PaymentService, useValue: mockPaymentService },
         { provide: ReservationService, useValue: mockReservationService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PostPurchaseService, useValue: mockPostPurchaseService },
       ],
     }).compile();
 

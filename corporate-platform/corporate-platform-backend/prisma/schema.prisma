@@ -30,6 +30,9 @@ model Company {
   reports                 Report[]
   activities              Activity[]
   apiKeys                 ApiKey[]
+  teamMembers             TeamMember[]
+  teamRoles               Role[]
+  invitations             Invitation[]
   credits                 Credit[]
   ipfsDocuments           IpfsDocument[]
   transactionConfirmations TransactionConfirmation[]
@@ -243,6 +246,7 @@ model User {
   updatedAt            DateTime @updatedAt
 
   sessions            Session[]
+  teamMembership      TeamMember?
   retirements         Retirement[]
   bids                Bid[]
   wonAuctions         Auction[]
@@ -251,6 +255,69 @@ model User {
   orders              Order[]
 
   @@unique([companyId, email])
+  @@index([email])
+}
+
+model TeamMember {
+  id           String   @id @default(cuid())
+  companyId    String
+  userId       String   @unique
+  email        String
+  firstName    String?
+  lastName     String?
+  roleId       String
+  status       String   // ACTIVE, INACTIVE, PENDING
+  joinedAt     DateTime @default(now())
+  invitedBy    String?
+  invitedAt    DateTime?
+  lastActiveAt DateTime?
+  metadata     Json?
+  department   String?
+  title        String?
+
+  company      Company  @relation(fields: [companyId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+  role         Role     @relation(fields: [roleId], references: [id])
+
+  @@index([companyId, status])
+  @@index([roleId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String   // ADMIN, MANAGER, ANALYST, VIEWER
+  description String?
+  isSystem    Boolean  @default(false) // Cannot modify system roles
+  permissions Json     @default("[]") // Array of permission strings
+  memberCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id])
+  members     TeamMember[]
+  invitations Invitation[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Invitation {
+  id         String   @id @default(cuid())
+  companyId  String
+  email      String
+  roleId     String
+  invitedBy  String
+  token      String   @unique
+  expiresAt  DateTime
+  status     String   // PENDING, ACCEPTED, EXPIRED
+  acceptedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+
+  @@index([companyId, status])
   @@index([email])
 }
 
@@ -960,4 +1027,56 @@ model CsrdReport {
   @@index([companyId])
   @@index([reportingYear])
   @@map("csrd_reports")
+}
+
+model CreditTransfer {
+  id              String   @id @default(cuid())
+  purchaseId      String   @unique
+  companyId       String
+  projectId       String
+  amount          Int
+  transactionHash String?
+  status          String   // PENDING, CONFIRMED, FAILED
+  errorMessage    String?
+  initiatedAt     DateTime @default(now())
+  confirmedAt     DateTime?
+
+  @@index([purchaseId])
+  @@index([companyId])
+  @@index([status])
+}
+
+// ==========================================
+// Ownership History & Audit Trail
+// ==========================================
+
+model CreditOwnershipHistory {
+  id              String   @id @default(cuid())
+  tokenId         Int
+  companyId       String?
+  previousOwner   String
+  newOwner        String
+  eventType       String   // MINT, TRANSFER, RETIREMENT
+  transactionHash String
+  blockNumber     Int
+  ledgerSequence  Int
+  metadata        Json?    // Additional event data
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([tokenId])
+  @@index([newOwner])
+  @@index([transactionHash])
+  @@index([timestamp])
+  @@map("credit_ownership_history")
+}
+
+model CreditCurrentOwner {
+  id              String   @id @default(cuid())
+  tokenId         Int      @unique
+  owner           String
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@map("credit_current_owners")
 }

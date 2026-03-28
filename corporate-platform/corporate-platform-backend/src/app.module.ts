@@ -26,6 +26,9 @@ import { DatabaseModule } from './shared/database/database.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TenantModule } from './multi-tenant/tenant.module';
 import { TenantMiddleware } from './multi-tenant/middleware/tenant.middleware';
+import { OrderModule } from './order/order.module';
+import { TeamManagementModule } from './team-management/team-management.module';
+import { OwnershipHistoryModule } from './audit/ownership-history/ownership-history.module';
 
 @Module({
   imports: [
@@ -52,14 +55,15 @@ import { TenantMiddleware } from './multi-tenant/middleware/tenant.middleware';
     FrameworkRegistryModule,
     TenantModule,
     CsrdModule,
+    OrderModule,
+    TeamManagementModule,
+    OwnershipHistoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RequestLoggerMiddleware, TenantMiddleware)
-      .forRoutes('*');
+    consumer.apply(RequestLoggerMiddleware, TenantMiddleware).forRoutes('*');
   }
 }

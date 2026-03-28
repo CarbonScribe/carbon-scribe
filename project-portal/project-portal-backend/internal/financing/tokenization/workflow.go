@@ -37,10 +37,10 @@ func NewWorkflow(client Client, monitor *Monitor, methService methodology.Servic
 }
 
 func (w *Workflow) Mint(ctx context.Context, input MintInput) (*MintOutcome, error) {
-	// Fetch methodology token ID from project record
-	methodologyID, err := w.methService.GetMethodologyTokenID(ctx, input.ProjectID)
+	// Ensure project has a valid on-chain methodology token before minting credits.
+	methodologyID, err := w.methService.ValidateProjectMethodology(ctx, input.ProjectID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch methodology ID for project %s: %w", input.ProjectID, err)
+		return nil, fmt.Errorf("failed to validate methodology for project %s: %w", input.ProjectID, err)
 	}
 	if methodologyID <= 0 {
 		return nil, fmt.Errorf("project %s has no valid methodology token ID linked", input.ProjectID)

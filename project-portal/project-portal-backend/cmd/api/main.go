@@ -98,11 +98,12 @@ func main() {
 	reportsHandler := reports.NewHandler(reportsService)
 
 	projectRepo := project.NewRepository(db)
-	projectService := project.NewService(projectRepo)
-	projectHandler := project.NewHandler(projectService)
-
 	methodologyRepo := methodology.NewRepository(db)
-	methodologyService := methodology.NewService(methodologyRepo)
+	methodologyService := methodology.NewService(methodologyRepo, methodology.NewContractClientFromEnv())
+	methodologyHandler := methodology.NewHandler(methodologyService)
+
+	projectService := project.NewService(projectRepo, methodologyService)
+	projectHandler := project.NewHandler(projectService)
 
 	// Initialize document management service
 	var docsHandler *documents.Handler
@@ -216,6 +217,7 @@ func main() {
 
 		// Register projects routes under v1
 		projectHandler.RegisterRoutes(v1)
+		methodologyHandler.RegisterRoutes(v1)
 
 		// Register reports routes under v1
 		reportsHandler.RegisterRoutes(v1)
@@ -239,7 +241,7 @@ func main() {
 		settingsHandler.RegisterRoutes(v1)
 
 		// Register collaboration routes under v1
-		collaboration.RegisterRoutes(v1, collaborationHandler)
+		collaboration.RegisterRoutes(v1, collaborationHandler, tokenManager)
 
 		// Register financing routes under v1
 		financingHandler.RegisterRoutes(v1)
@@ -348,6 +350,7 @@ func runAllMigrations(db *gorm.DB) error {
 
 		// Project models
 		&project.Project{},
+		&methodology.MethodologyRegistration{},
 
 		// Collaboration models
 		&collaboration.ProjectMember{},

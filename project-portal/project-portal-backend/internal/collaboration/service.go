@@ -17,7 +17,7 @@ func NewService(repo Repository) *Service {
 }
 
 // InviteUser creates an invitation for a user
-func (s *Service) InviteUser(ctx context.Context, projectID, email, role string) (*ProjectInvitation, error) {
+func (s *Service) InviteUser(ctx context.Context, projectID, invitedByUserID, email, role string) (*ProjectInvitation, error) {
 	token := uuid.New().String()
 	invite := &ProjectInvitation{
 		ProjectID:   projectID,
@@ -37,9 +37,10 @@ func (s *Service) InviteUser(ctx context.Context, projectID, email, role string)
 	// Log activity
 	_ = s.repo.CreateActivity(ctx, &ActivityLog{
 		ProjectID: projectID,
-		Type:      "system",
+		UserID:    invitedByUserID,
+		Type:      "user",
 		Action:    "user_invited",
-		Metadata:  map[string]any{"email": email, "role": role},
+		Metadata:  map[string]any{"email": email, "role": role, "invited_by": invitedByUserID},
 		CreatedAt: time.Now(),
 	})
 
@@ -208,11 +209,21 @@ func (s *Service) ListProjectActivities(ctx context.Context, projectID string, l
 	return s.repo.ListActivities(ctx, projectID, limit, offset)
 }
 
-func (s *Service) AddComment(ctx context.Context, comment *Comment) error {
+func (s *Service) AddComment(ctx context.Context, req CreateCommentRequest, actorUserID string) (*Comment, error) {
+	comment := &Comment{
+		ProjectID:   req.ProjectID,
+		UserID:      actorUserID,
+		ResourceID:  req.ResourceID,
+		ParentID:    req.ParentID,
+		Content:     req.Content,
+		Mentions:    req.Mentions,
+		Attachments: req.Attachments,
+		Location:    req.Location,
+	}
 	comment.CreatedAt = time.Now()
 	comment.UpdatedAt = time.Now()
 	if err := s.repo.CreateComment(ctx, comment); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Log activity
@@ -223,14 +234,24 @@ func (s *Service) AddComment(ctx context.Context, comment *Comment) error {
 		Action:    "comment_added",
 		CreatedAt: time.Now(),
 	})
-	return nil
+	return comment, nil
 }
 
-func (s *Service) CreateTask(ctx context.Context, task *Task) error {
+func (s *Service) CreateTask(ctx context.Context, req CreateTaskRequest, actorUserID string) (*Task, error) {
+	task := &Task{
+		ProjectID:   req.ProjectID,
+		AssignedTo:  req.AssignedTo,
+		CreatedBy:   actorUserID,
+		Title:       req.Title,
+		Description: req.Description,
+		Status:      req.Status,
+		Priority:    req.Priority,
+		DueDate:     req.DueDate,
+	}
 	task.CreatedAt = time.Now()
 	task.UpdatedAt = time.Now()
 	if err := s.repo.CreateTask(ctx, task); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Log activity
@@ -242,7 +263,7 @@ func (s *Service) CreateTask(ctx context.Context, task *Task) error {
 		Metadata:  map[string]any{"task_title": task.Title},
 		CreatedAt: time.Now(),
 	})
-	return nil
+	return task, nil
 }
 
 func (s *Service) ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error) {
@@ -277,11 +298,19 @@ func (s *Service) ListResources(ctx context.Context, projectID string) ([]Shared
 	return s.repo.ListResources(ctx, projectID)
 }
 
-func (s *Service) AddResource(ctx context.Context, resource *SharedResource) error {
+func (s *Service) AddResource(ctx context.Context, req CreateResourceRequest, actorUserID string) (*SharedResource, error) {
+	resource := &SharedResource{
+		ProjectID:  req.ProjectID,
+		Type:       req.Type,
+		Name:       req.Name,
+		URL:        req.URL,
+		Metadata:   req.Metadata,
+		UploadedBy: actorUserID,
+	}
 	resource.CreatedAt = time.Now()
 	resource.UpdatedAt = time.Now()
 	if err := s.repo.CreateResource(ctx, resource); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Log activity
@@ -293,5 +322,5 @@ func (s *Service) AddResource(ctx context.Context, resource *SharedResource) err
 		Metadata:  map[string]any{"resource_name": resource.Name},
 		CreatedAt: time.Now(),
 	})
-	return nil
+	return resource, nil
 }
