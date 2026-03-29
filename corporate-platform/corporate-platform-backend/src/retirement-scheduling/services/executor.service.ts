@@ -220,14 +220,14 @@ export class ExecutorService {
     for (const credit of credits) {
       if (remaining <= 0) break;
 
-      const retireAmount = Math.min(remaining, credit.available);
+      const retireAmount = Math.min(remaining, credit.availableAmount ?? 0);
       if (retireAmount <= 0) continue;
 
       const retirement = await (this.prisma as any).$transaction(
         async (tx: any) => {
           await tx.credit.update({
             where: { id: credit.id },
-            data: { available: { decrement: retireAmount } },
+            data: { availableAmount: { decrement: retireAmount } },
           });
 
           return tx.retirement.create({
@@ -267,15 +267,15 @@ export class ExecutorService {
       return this.prisma.credit.findMany({
         where: {
           id: { in: schedule.creditIds },
-          available: { gt: 0 },
+          availableAmount: { gt: 0 },
         },
-        orderBy: { available: 'desc' },
+        orderBy: { availableAmount: 'desc' },
       });
     }
 
     return this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
-      orderBy: { available: 'desc' },
+      where: { availableAmount: { gt: 0 } },
+      orderBy: { availableAmount: 'desc' },
       take: 20,
     });
   }

@@ -40,6 +40,34 @@ type ProjectInvitation struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
+type CreateCommentRequest struct {
+	ProjectID   string         `json:"project_id" binding:"required"`
+	ResourceID  *string        `json:"resource_id,omitempty"`
+	ParentID    *string        `json:"parent_id,omitempty"`
+	Content     string         `json:"content" binding:"required"`
+	Mentions    []string       `json:"mentions"`
+	Attachments []string       `json:"attachments"`
+	Location    map[string]any `json:"location,omitempty"`
+}
+
+type CreateTaskRequest struct {
+	ProjectID   string     `json:"project_id" binding:"required"`
+	AssignedTo  *string    `json:"assigned_to,omitempty"`
+	Title       string     `json:"title" binding:"required"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	Priority    string     `json:"priority"`
+	DueDate     *time.Time `json:"due_date,omitempty"`
+}
+
+type CreateResourceRequest struct {
+	ProjectID string         `json:"project_id" binding:"required"`
+	Type      string         `json:"type" binding:"required"`
+	Name      string         `json:"name" binding:"required"`
+	URL       string         `json:"url,omitempty"`
+	Metadata  map[string]any `json:"metadata"`
+}
+
 // ActivityLog represents an event in the project
 type ActivityLog struct {
 	ID        string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`

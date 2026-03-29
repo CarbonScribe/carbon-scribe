@@ -1,6 +1,7 @@
 package tokenization
 
 import (
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 	"context"
 	"testing"
 
@@ -16,6 +17,37 @@ type MockMethodologyService struct {
 func (m *MockMethodologyService) GetMethodologyTokenID(ctx context.Context, projectID uuid.UUID) (int, error) {
 	args := m.Called(ctx, projectID)
 	return args.Int(0), args.Error(1)
+}
+
+func (m *MockMethodologyService) ValidateProjectMethodology(ctx context.Context, projectID uuid.UUID) (int, error) {
+	args := m.Called(ctx, projectID)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *MockMethodologyService) RegisterMethodology(ctx context.Context, projectID uuid.UUID, req methodology.RegisterMethodologyRequest) (*methodology.MethodologyRegistrationResponse, error) {
+	args := m.Called(ctx, projectID, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*methodology.MethodologyRegistrationResponse), args.Error(1)
+}
+
+func (m *MockMethodologyService) GetProjectMethodology(ctx context.Context, projectID uuid.UUID) (*methodology.MethodologyRegistrationResponse, error) {
+	args := m.Called(ctx, projectID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*methodology.MethodologyRegistrationResponse), args.Error(1)
+}
+
+func (m *MockMethodologyService) ValidateMethodology(ctx context.Context, tokenID int) (bool, error) {
+	args := m.Called(ctx, tokenID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockMethodologyService) ContractID() string {
+	args := m.Called()
+	return args.String(0)
 }
 
 func TestWorkflow_Mint(t *testing.T) {
@@ -34,7 +66,7 @@ func TestWorkflow_Mint(t *testing.T) {
 		BatchSize:   1,
 	}
 
-	methService.On("GetMethodologyTokenID", mock.Anything, projectID).Return(methID, nil)
+	methService.On("ValidateProjectMethodology", mock.Anything, projectID).Return(methID, nil)
 
 	outcome, err := workflow.Mint(context.Background(), input)
 
@@ -56,7 +88,7 @@ func TestWorkflow_Mint_InvalidMethodology(t *testing.T) {
 		ProjectID: projectID,
 	}
 
-	methService.On("GetMethodologyTokenID", mock.Anything, projectID).Return(0, nil)
+	methService.On("ValidateProjectMethodology", mock.Anything, projectID).Return(0, nil)
 
 	outcome, err := workflow.Mint(context.Background(), input)
 

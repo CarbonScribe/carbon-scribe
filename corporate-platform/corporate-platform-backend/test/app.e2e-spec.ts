@@ -6,7 +6,11 @@ import { AppModule } from './../src/app.module';
 describe('AppController (e2e)', () => {
   let app: INestApplication;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
+    process.env.HORIZON_URL = 'https://horizon-testnet.stellar.org';
+    process.env.DATABASE_URL =
+      'postgresql://username:password@localhost:5432/db';
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

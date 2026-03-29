@@ -98,13 +98,14 @@ export class CompositionService {
     let total = 0;
 
     holdings.forEach((holding) => {
-      if (holding.credit.sdgs) {
-        const sdgs = holding.credit.sdgs.split(',').map((s) => s.trim());
+      if (holding.credit.sdgs && Array.isArray(holding.credit.sdgs)) {
+        const sdgs = holding.credit.sdgs;
         const quantity = holding.quantity / sdgs.length;
 
         sdgs.forEach((sdg) => {
-          const current = sdgMap.get(sdg) || 0;
-          sdgMap.set(sdg, current + quantity);
+          const key = String(sdg);
+          const current = sdgMap.get(key) || 0;
+          sdgMap.set(key, current + quantity);
           total += quantity;
         });
       }
@@ -126,8 +127,8 @@ export class CompositionService {
     let total = 0;
 
     holdings.forEach((holding) => {
-      const vintage = holding.credit.vintageYear
-        ? holding.credit.vintageYear.toString()
+      const vintage = holding.credit.vintage
+        ? String(holding.credit.vintage)
         : 'Unknown';
       const quantity = holding.quantity;
       const current = vintageMap.get(vintage) || 0;
@@ -149,7 +150,7 @@ export class CompositionService {
     let total = 0;
 
     holdings.forEach((holding) => {
-      const projectType = holding.credit.standard || 'Uncertified';
+      const projectType = holding.credit.verificationStandard || 'Uncertified';
       const quantity = holding.quantity;
       const current = typeMap.get(projectType) || 0;
       typeMap.set(projectType, current + quantity);

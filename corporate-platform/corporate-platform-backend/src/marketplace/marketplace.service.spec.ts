@@ -34,8 +34,8 @@ describe('MarketplaceService', () => {
       id: 'base',
       country: 'BR',
       methodology: 'VCS',
-      vintageYear: 2020,
-      sdgs: '7,13',
+      vintage: 2020,
+      sdgs: [7, 13],
     });
     mockPrisma.credit.findMany.mockResolvedValue([{ id: 'other' }]);
 

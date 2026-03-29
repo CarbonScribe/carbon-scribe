@@ -83,8 +83,8 @@ describe('CompositionService', () => {
       const mockPortfolio = {
         id: 'portfolio-1',
         holdings: [
-          { quantity: 100, credit: { sdgs: 'SDG 1, SDG 2' } },
-          { quantity: 100, credit: { sdgs: 'SDG 2, SDG 3' } },
+          { quantity: 100, credit: { sdgs: [1, 2] } },
+          { quantity: 100, credit: { sdgs: [2, 3] } },
           { quantity: 100, credit: { sdgs: null } },
         ],
       };
@@ -104,9 +104,9 @@ describe('CompositionService', () => {
       const mockPortfolio = {
         id: 'portfolio-1',
         holdings: [
-          { quantity: 100, credit: { vintageYear: 2020 } },
-          { quantity: 150, credit: { vintageYear: 2021 } },
-          { quantity: 50, credit: { vintageYear: 2020 } },
+          { quantity: 100, credit: { vintage: 2020 } },
+          { quantity: 150, credit: { vintage: 2021 } },
+          { quantity: 50, credit: { vintage: 2020 } },
         ],
       };
 

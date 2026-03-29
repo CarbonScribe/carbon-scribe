@@ -4,7 +4,9 @@ import { PrismaService } from '../../shared/database/prisma.service';
 import { PaymentService } from './payment.service';
 import { ReservationService } from './reservation.service';
 import { AuditService } from './audit.service';
+import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
 
 describe('CheckoutService', () => {
   let service: CheckoutService;
@@ -39,6 +41,10 @@ describe('CheckoutService', () => {
     processPayment: jest.fn(),
   };
 
+  const mockUnitOfWork = {
+    run: jest.fn((cb) => cb(mockPrisma)),
+  };
+
   const mockReservationService = {
     reserveCredits: jest.fn().mockResolvedValue(undefined),
     releaseReservations: jest.fn().mockResolvedValue(undefined),
@@ -48,14 +54,20 @@ describe('CheckoutService', () => {
     logOrderEvent: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockPostPurchaseService = {
+    handleOrderCompleted: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CheckoutService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: UnitOfWorkService, useValue: mockUnitOfWork },
         { provide: PaymentService, useValue: mockPaymentService },
         { provide: ReservationService, useValue: mockReservationService },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: PostPurchaseService, useValue: mockPostPurchaseService },
       ],
     }).compile();
 
@@ -96,7 +108,7 @@ describe('CheckoutService', () => {
             creditId: 'cred1',
             quantity: 1000,
             price: 10,
-            credit: { available: 500, projectName: 'Solar Farm' },
+            credit: { availableAmount: 500, projectName: 'Solar Farm' },
           },
         ],
       });
@@ -114,7 +126,7 @@ describe('CheckoutService', () => {
             creditId: 'cred1',
             quantity: 1000,
             price: 10,
-            credit: { available: 5000, projectName: 'Solar Farm' },
+            credit: { availableAmount: 5000, projectName: 'Solar Farm' },
           },
         ],
       });
@@ -173,7 +185,7 @@ describe('CheckoutService', () => {
             quantity: 1000,
             price: 10,
             subtotal: 10000,
-            credit: { available: 5000, projectName: 'Solar Farm' },
+            credit: { availableAmount: 5000, projectName: 'Solar Farm' },
           },
         ],
       });
@@ -235,7 +247,7 @@ describe('CheckoutService', () => {
             creditId: 'cred1',
             quantity: 1000,
             price: 10,
-            credit: { available: 5000, projectName: 'Solar Farm' },
+            credit: { availableAmount: 5000, projectName: 'Solar Farm' },
           },
         ],
       });

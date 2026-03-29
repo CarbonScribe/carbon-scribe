@@ -22,7 +22,7 @@ export class SearchService {
     const skip = (page - 1) * limit;
 
     const where: any = {
-      available: {
+      availableAmount: {
         gt: 0,
       },
     };
@@ -58,49 +58,48 @@ export class SearchService {
     }
 
     if (query.standard) {
-      where.standard = {
+      where.verificationStandard = {
         equals: query.standard,
         mode: 'insensitive',
       };
     }
 
     if (query.vintageFrom || query.vintageTo) {
-      where.vintageYear = {};
+      where.vintage = {};
       if (query.vintageFrom) {
-        where.vintageYear.gte = query.vintageFrom;
+        where.vintage.gte = query.vintageFrom;
       }
       if (query.vintageTo) {
-        where.vintageYear.lte = query.vintageTo;
+        where.vintage.lte = query.vintageTo;
       }
     }
 
     if (query.priceMin || query.priceMax) {
-      where.price = {};
+      where.pricePerTon = {};
       if (query.priceMin != null) {
-        where.price.gte = query.priceMin;
+        where.pricePerTon.gte = query.priceMin;
       }
       if (query.priceMax != null) {
-        where.price.lte = query.priceMax;
+        where.pricePerTon.lte = query.priceMax;
       }
     }
 
     if (query.sdgs && query.sdgs.length > 0) {
-      const tokens = query.sdgs.map((s) => String(s));
+      // sdgs is an array of numbers; use `has` for each token
+      const tokens = query.sdgs
+        .map((s) => Number(s))
+        .filter((n) => !Number.isNaN(n));
       where.AND = where.AND || [];
       for (const token of tokens) {
-        where.AND.push({
-          sdgs: {
-            contains: token,
-          },
-        });
+        where.AND.push({ sdgs: { has: token } });
       }
     }
 
     const orderBy: any[] = [];
     if (query.sortBy === 'price') {
-      orderBy.push({ price: query.sortOrder || 'asc' });
+      orderBy.push({ pricePerTon: query.sortOrder || 'asc' });
     } else if (query.sortBy === 'vintage') {
-      orderBy.push({ vintageYear: query.sortOrder || 'desc' });
+      orderBy.push({ vintage: query.sortOrder || 'desc' });
     } else if (query.sortBy === 'popularity') {
       orderBy.push({ viewCount: 'desc' }, { purchaseCount: 'desc' });
     } else if (query.sortBy === 'createdAt') {
@@ -149,10 +148,10 @@ export class SearchService {
       select: {
         country: true,
         methodology: true,
-        standard: true,
+        verificationStandard: true,
         sdgs: true,
-        vintageYear: true,
-        price: true,
+        vintage: true,
+        pricePerTon: true,
       },
     });
 
@@ -171,10 +170,9 @@ export class SearchService {
 
     const sdgValues: number[] = [];
     for (const c of credits) {
-      if (c.sdgs) {
-        const parts = c.sdgs.split(',').map((p) => Number(p.trim()));
-        for (const p of parts) {
-          if (!Number.isNaN(p)) {
+      if (c.sdgs && Array.isArray(c.sdgs)) {
+        for (const p of c.sdgs) {
+          if (typeof p === 'number' && !Number.isNaN(p)) {
             sdgValues.push(p);
           }
         }
@@ -182,7 +180,7 @@ export class SearchService {
     }
 
     const prices = credits
-      .map((c) => c.price)
+      .map((c) => c.pricePerTon)
       .filter((p): p is number => p != null)
       .sort((a, b) => a - b);
 
@@ -204,12 +202,12 @@ export class SearchService {
       methodologies: countValues(
         credits.map((c) => c.methodology || undefined),
       ),
-      standards: countValues(credits.map((c) => c.standard || undefined)),
+      standards: countValues(
+        credits.map((c) => c.verificationStandard || undefined),
+      ),
       sdgs: countValues(sdgValues),
       vintageYears: countValues(
-        credits.map((c) =>
-          c.vintageYear != null ? Number(c.vintageYear) : undefined,
-        ),
+        credits.map((c) => (c.vintage != null ? Number(c.vintage) : undefined)),
       ),
       priceRange: priceStats,
     };

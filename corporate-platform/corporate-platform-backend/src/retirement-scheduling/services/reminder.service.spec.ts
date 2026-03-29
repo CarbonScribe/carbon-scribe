@@ -27,7 +27,9 @@ describe('ReminderService', () => {
         creditIds: [],
       },
     ]);
-    prisma.credit.aggregate.mockResolvedValue({ _sum: { available: 200 } });
+    prisma.credit.aggregate.mockResolvedValue({
+      _sum: { availableAmount: 200 },
+    });
 
     const result = await service.sendDueReminders(
       new Date('2026-02-26T10:00:00.000Z'),

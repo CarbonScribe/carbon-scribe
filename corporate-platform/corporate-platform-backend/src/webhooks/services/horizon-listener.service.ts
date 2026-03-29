@@ -13,7 +13,7 @@ import { Horizon } from 'stellar-sdk';
 @Injectable()
 export class HorizonListenerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(HorizonListenerService.name);
-  private server: Horizon.Server;
+  private server?: Horizon.Server;
   private closeStream?: () => void;
 
   constructor(
@@ -22,6 +22,13 @@ export class HorizonListenerService implements OnModuleInit, OnModuleDestroy {
     private readonly dispatcherService: WebhookDispatcherService,
   ) {
     const stellarConfig = this.configService.getStellarConfig();
+    if (!stellarConfig.horizonUrl) {
+      this.logger.warn(
+        'HORIZON_URL is not configured. Horizon transaction listener is disabled.',
+      );
+      return;
+    }
+
     this.server = new Horizon.Server(stellarConfig.horizonUrl);
   }
 
@@ -36,6 +43,10 @@ export class HorizonListenerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private startListening() {
+    if (!this.server) {
+      return;
+    }
+
     this.logger.log('Starting Horizon transaction listener...');
 
     try {

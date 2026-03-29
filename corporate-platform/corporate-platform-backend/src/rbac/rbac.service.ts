@@ -6,6 +6,7 @@ import {
   ROLE_PERMISSIONS,
   ROLES,
 } from './constants/permissions.constants';
+import { PrismaService } from '../shared/database/prisma.service';
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -22,17 +23,22 @@ interface CacheEntry {
 export class RbacService {
   private readonly permissionCache = new Map<string, CacheEntry>();
 
+  constructor(private readonly prisma: PrismaService) {}
+
   /**
    * Returns the full list of permissions for a user based on their role.
    * Uses in-memory cache keyed by role; pass companyId for future multi-tenant overrides.
    */
   async getUserPermissions(
-    _userId: string,
+    userId: string,
     role: string,
-    _companyId?: string, // reserved for per-company overrides
+    companyId?: string,
   ): Promise<Permission[]> {
-    void _userId;
-    void _companyId;
+    const dbPermissions = await this.getDbRolePermissions(userId, companyId);
+    if (dbPermissions) {
+      return dbPermissions;
+    }
+
     const normalizedRole = this.normalizeRole(role);
     const cacheKey = `role:${normalizedRole}`;
     const cached = this.getCached(cacheKey);
@@ -42,6 +48,42 @@ export class RbacService {
     const permissions = this.getPermissionsForRole(normalizedRole);
     this.setCache(cacheKey, permissions);
     return permissions;
+  }
+
+  private async getDbRolePermissions(
+    userId: string,
+    companyId?: string,
+  ): Promise<Permission[] | null> {
+    if (!companyId) {
+      return null;
+    }
+
+    const membership = await (this.prisma as any).teamMember.findFirst({
+      where: {
+        userId,
+        companyId,
+        status: 'ACTIVE',
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    if (
+      !membership?.role?.permissions ||
+      !Array.isArray(membership.role.permissions)
+    ) {
+      return null;
+    }
+
+    return membership.role.permissions.filter(
+      (entry: unknown): entry is Permission => {
+        return (
+          typeof entry === 'string' &&
+          ALL_PERMISSIONS.includes(entry as Permission)
+        );
+      },
+    );
   }
 
   /**

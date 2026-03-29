@@ -25,7 +25,7 @@ export class DiscoveryService {
 
   async getTrending(limit = 20): Promise<Credit[]> {
     return this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
+      where: { availableAmount: { gt: 0 } },
       orderBy: [{ viewCount: 'desc' }, { purchaseCount: 'desc' }] as any,
       take: limit,
     });
@@ -33,7 +33,7 @@ export class DiscoveryService {
 
   async getNewest(limit = 20): Promise<Credit[]> {
     return this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
+      where: { availableAmount: { gt: 0 } },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
@@ -41,16 +41,16 @@ export class DiscoveryService {
 
   async getHighestQuality(limit = 20): Promise<Credit[]> {
     return this.prisma.credit.findMany({
-      where: { available: { gt: 0 }, price: { not: null } } as any,
-      orderBy: { price: 'desc' } as any,
+      where: { availableAmount: { gt: 0 }, pricePerTon: { not: null } } as any,
+      orderBy: { pricePerTon: 'desc' } as any,
       take: limit,
     });
   }
 
   async getBestValue(limit = 20): Promise<Credit[]> {
     return this.prisma.credit.findMany({
-      where: { available: { gt: 0 }, price: { not: null } } as any,
-      orderBy: { price: 'asc' } as any,
+      where: { availableAmount: { gt: 0 }, pricePerTon: { not: null } } as any,
+      orderBy: { pricePerTon: 'asc' } as any,
       take: limit,
     });
   }
@@ -59,7 +59,7 @@ export class DiscoveryService {
     limitPerRegion = 5,
   ): Promise<DiscoverySection<Credit>[]> {
     const credits = await this.prisma.credit.findMany({
-      where: { available: { gt: 0 } },
+      where: { availableAmount: { gt: 0 } },
       orderBy: [{ viewCount: 'desc' }, { purchaseCount: 'desc' }] as any,
     });
 

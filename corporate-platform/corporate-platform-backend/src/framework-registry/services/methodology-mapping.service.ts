@@ -143,12 +143,12 @@ export class MethodologyMappingService {
           break;
         case 'METHODOLOGY_TYPE':
           isMatch =
-            methodology.category?.toLowerCase() ===
+            this.inferMethodologyType(methodology).toLowerCase() ===
             rule.conditionValue.toLowerCase();
           break;
         case 'AUTHORITY':
           isMatch =
-            methodology.authority?.toLowerCase() ===
+            methodology.issuingAuthority?.toLowerCase() ===
             rule.conditionValue.toLowerCase();
           break;
         case 'KEYWORD':
@@ -156,7 +156,7 @@ export class MethodologyMappingService {
             methodology.name
               .toLowerCase()
               .includes(rule.conditionValue.toLowerCase()) ||
-            methodology.description
+            methodology.version
               ?.toLowerCase()
               .includes(rule.conditionValue.toLowerCase());
           break;
@@ -218,5 +218,30 @@ export class MethodologyMappingService {
     } catch (error) {
       this.logger.error('Failed to log audit event', error);
     }
+  }
+
+  private inferMethodologyType(methodology: {
+    name: string;
+    version: string;
+  }): string {
+    const basis = `${methodology.name} ${methodology.version}`.toLowerCase();
+
+    if (basis.includes('forest')) {
+      return 'FORESTRY';
+    }
+
+    if (basis.includes('renewable') || basis.includes('solar')) {
+      return 'RENEWABLE_ENERGY';
+    }
+
+    if (basis.includes('cookstove')) {
+      return 'COOKSTOVES';
+    }
+
+    if (basis.includes('methane')) {
+      return 'METHANE';
+    }
+
+    return 'GENERAL';
   }
 }

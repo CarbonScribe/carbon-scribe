@@ -66,16 +66,16 @@ export class ReminderService {
     ) {
       const credits = await this.prisma.credit.findMany({
         where: { id: { in: schedule.creditIds } },
-        select: { available: true },
+        select: { availableAmount: true },
       });
-      return credits.reduce((sum, c) => sum + c.available, 0);
+      return credits.reduce((sum, c) => sum + (c.availableAmount || 0), 0);
     }
 
     const aggregate = await this.prisma.credit.aggregate({
-      _sum: { available: true },
-      where: { available: { gt: 0 } },
+      _sum: { availableAmount: true },
+      where: { availableAmount: { gt: 0 } },
     });
 
-    return aggregate._sum.available || 0;
+    return aggregate._sum.availableAmount || 0;
   }
 }

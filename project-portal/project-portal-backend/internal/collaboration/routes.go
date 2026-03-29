@@ -1,10 +1,14 @@
 package collaboration
 
-import "github.com/gin-gonic/gin"
+import (
+	"carbon-scribe/project-portal/project-portal-backend/internal/auth"
 
-func RegisterRoutes(v1 *gin.RouterGroup, h *Handler) {
+	"github.com/gin-gonic/gin"
+)
+
+func RegisterRoutes(v1 *gin.RouterGroup, h *Handler, tokenManager *auth.TokenManager) {
 	collab := v1.Group("/collaboration")
-	collab.Use(authRequired())
+	collab.Use(auth.AuthMiddleware(tokenManager))
 	{
 		// Project members
 		collab.GET("/projects/:id/members", h.ListMembers)

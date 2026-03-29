@@ -33,6 +33,19 @@ model Company {
   collaborationMetrics    CollaborationMetric[]
   memberEngagements       MemberEngagement[]
   apiKeys                 ApiKey[]
+  teamMembers             TeamMember[]
+  teamRoles               Role[]
+  invitations             Invitation[]
+  credits                 Credit[]
+  ipfsDocuments           IpfsDocument[]
+  transactionConfirmations TransactionConfirmation[]
+  
+  materialityAssessments MaterialityAssessment[]
+  esrsDisclosures        EsrsDisclosure[]
+  csrdReports            CsrdReport[]
+  flightRecords          FlightRecord[]
+  corsiaComplianceYears  CorsiaComplianceYear[]
+  corsiaEligibleCredits  CorsiaEligibleCredit[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -57,32 +70,75 @@ model Project {
   id          String   @id @default(cuid())
   name        String
   description String?
-  methodology String?
-  standard    String?
-  country     String?
+  // Classification & Metadata
+  type                  String?   // forestry, renewable, agriculture, bluecarbon, cookstoves, methane
+  methodology           String?
+  verificationStandard  String?
+  country               String?
+  region                String?
+
+  // Multi-tenant / ownership
   companyId   String?  // Optional: project can be company-scoped or global
   company     Company? @relation(fields: [companyId], references: [id])
+
+  // Impact
+  totalCredits          Int      @default(0)
+  availableCredits      Int      @default(0)
+  avgScore              Float?   
+  communities           Int?     // People benefited
+  sdgs                  Int[]    @default([])
+
+  // Timeline
+  startDate   DateTime
+  endDate     DateTime?
+  lastVerification DateTime?
+
+  // Metadata
+  status      String    @default("active") // active, completed, pending
+  developer   String?
+  website     String?
+
+  // Relations
   credits     Credit[]
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@index([companyId])
+  @@index([country])
+  @@index([type])
+  @@index([status])
   @@map("projects")
 }
 
 model Credit {
   id           String               @id @default(cuid())
-  projectId    String?  // Optional link to Project entity
-  project      Project?             @relation(fields: [projectId], references: [id])
+  companyId    String?
+  company      Company?             @relation(fields: [companyId], references: [id])
+  projectId    String
+  project      Project             @relation(fields: [projectId], references: [id])
   projectName  String               // Denormalized for display/search
-  country      String?
-  methodology  String?
-  standard     String?
-  sdgs         String?
-  vintageYear  Int?
-  price        Float                @default(0) // Price per tCO₂
+  // Credit Details
+  pricePerTon  Float  @default(0)
+  availableAmount Int
   totalAmount  Int
-  available    Int
+  status       String   @default("available") // available, reserved, retired, pending
+
+  // Quality Metrics
+  dynamicScore          Int       @default(0)
+  verificationScore     Int       @default(0)
+  additionalityScore    Int       @default(0)
+  permanenceScore       Int       @default(0)
+  leakageScore          Int       @default(0)
+  cobenefitsScore       Int       @default(0)
+  transparencyScore     Int       @default(0)
+
+  // Metadata
+  methodology  String?
+  vintage      Int?
+  verificationStandard  String?
+  lastVerification DateTime?
+  country      String?
+  sdgs         Int[]    @default([])
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
@@ -90,10 +146,16 @@ model Credit {
   auctions     Auction[]
   portfolioHoldings  PortfolioHolding[] @relation("PortfolioHolding")
   portfolioEntries   PortfolioEntry[] @relation("PortfolioEntry")
+  availabilityLogs    CreditAvailabilityLog[]
+
+  // Blockchain
+  assetCode     String?
+  issuer        String?
+  contractId    String?
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  // Search optimization
+  // Search & metadata
   searchVector    String?
   featured        Boolean   @default(false)
   featuredUntil   DateTime?
@@ -101,11 +163,13 @@ model Credit {
   purchaseCount   Int       @default(0)
   lastPurchasedAt DateTime?
 
-  @@index([projectId])
-  @@index([searchVector])
-  @@index([featured])
-  @@index([viewCount])
-  @@index([purchaseCount])
+  @@index([status])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([country])
+  @@index([methodology])
+  @@index([vintage])
+  @@index([dynamicScore])
 }
 
 model Retirement {
@@ -140,12 +204,85 @@ model Retirement {
   
   // Relations
   certificate       RetirementCertificate?
+  corsiaEligibleCredit CorsiaEligibleCredit?
 
   @@index([companyId])
   @@index([userId])
   @@index([creditId])
   @@index([purpose])
   @@index([retiredAt])
+}
+
+// ==========================================
+// CORSIA Compliance
+// ==========================================
+
+model FlightRecord {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  flightNumber    String
+  departureICAO   String   // Airport code
+  arrivalICAO     String
+  departureDate   DateTime
+  aircraftType    String
+  fuelBurn        Float    // In tonnes
+  fuelType        String   // JET_A, SAF, etc.
+  distance        Float    // Great circle distance in km
+  passengerLoad   Float?   // Load factor
+  cargoLoad       Float?   // Cargo in tonnes
+  co2Emissions    Float    // Calculated emissions in tonnes CO2
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, departureDate])
+  @@index([flightNumber])
+  @@map("flight_records")
+}
+
+model CorsiaComplianceYear {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id])
+  year              Int
+  baselineEmissions Float?   // 2019 baseline for growth calculation
+  totalEmissions    Float    @default(0)
+  offsetRequirement Float    @default(0) // Emissions requiring offsets
+  offsetsRetired    Float    @default(0) // CORSIA-eligible credits retired
+  complianceStatus  String   @default("PENDING") // COMPLIANT, NON_COMPLIANT, PENDING
+  reportSubmitted   DateTime?
+  verificationId    String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyId, year])
+  @@index([companyId])
+  @@index([year])
+  @@map("corsia_compliance_years")
+}
+
+model CorsiaEligibleCredit {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  retirementId    String   @unique // Link to Retirement Service
+  retirement      Retirement @relation(fields: [retirementId], references: [id])
+  program         String   // VERRA, GOLD_STANDARD, etc.
+  creditType      String   // Must meet CORSIA criteria
+  vintageYear     Int
+  eligible        Boolean  // Verified against CORSIA criteria
+  eligibilityMemo String?  // Explanation if not eligible
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, eligible])
+  @@index([vintageYear])
+  @@map("corsia_eligible_credits")
 }
 
 model RetirementCertificate {
@@ -188,6 +325,7 @@ model User {
   updatedAt            DateTime @updatedAt
 
   sessions            Session[]
+  teamMembership      TeamMember?
   retirements         Retirement[]
   bids                Bid[]
   wonAuctions         Auction[]
@@ -198,6 +336,69 @@ model User {
   memberEngagements   MemberEngagement[]
 
   @@unique([companyId, email])
+  @@index([email])
+}
+
+model TeamMember {
+  id           String   @id @default(cuid())
+  companyId    String
+  userId       String   @unique
+  email        String
+  firstName    String?
+  lastName     String?
+  roleId       String
+  status       String   // ACTIVE, INACTIVE, PENDING
+  joinedAt     DateTime @default(now())
+  invitedBy    String?
+  invitedAt    DateTime?
+  lastActiveAt DateTime?
+  metadata     Json?
+  department   String?
+  title        String?
+
+  company      Company  @relation(fields: [companyId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+  role         Role     @relation(fields: [roleId], references: [id])
+
+  @@index([companyId, status])
+  @@index([roleId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String   // ADMIN, MANAGER, ANALYST, VIEWER
+  description String?
+  isSystem    Boolean  @default(false) // Cannot modify system roles
+  permissions Json     @default("[]") // Array of permission strings
+  memberCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company      @relation(fields: [companyId], references: [id])
+  members     TeamMember[]
+  invitations Invitation[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Invitation {
+  id         String   @id @default(cuid())
+  companyId  String
+  email      String
+  roleId     String
+  invitedBy  String
+  token      String   @unique
+  expiresAt  DateTime
+  status     String   // PENDING, ACCEPTED, EXPIRED
+  acceptedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id])
+  role       Role     @relation(fields: [roleId], references: [id])
+
+  @@index([companyId, status])
   @@index([email])
 }
 
@@ -590,6 +791,23 @@ model PortfolioEntry {
   @@map("portfolio_entries")
 }
 
+model CreditAvailabilityLog {
+  id            String   @id @default(cuid())
+  creditId      String
+  credit        Credit   @relation(fields: [creditId], references: [id])
+  changedBy     String?  // userId or system
+  changeType    String   // decrement, increment, reserve, release, retire
+  amount        Int
+  previousAmount Int
+  newAmount     Int
+  reason        String?
+  createdAt     DateTime @default(now())
+
+  @@index([creditId])
+  @@index([createdAt])
+  @@map("credit_availability_logs")
+}
+
 // ==========================================
 // Transaction (purchase history & orders log)
 // ==========================================
@@ -776,6 +994,7 @@ model ApiKey {
 model IpfsDocument {
   id              String   @id @default(cuid())
   companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
   documentType    String   // CERTIFICATE, REPORT, AUDIT_LOG, PROOF
   referenceId     String   // retirementId, reportId, auditId
   ipfsCid         String   @unique
@@ -814,10 +1033,14 @@ model SyncedMethodology {
   id              String   @id @default(cuid())
   tokenId         Int      @unique
   name            String
-  description     String?
-  registry        String?
-  category        String?
-  authority       String?
+  version         String
+  registry        String
+  registryLink    String
+  issuingAuthority String
+  ipfsCid         String?
+  isActive        Boolean  @default(true)
+  lastSyncedAt    DateTime @default(now())
+  syncedFromBlock Int
   mappings        FrameworkMethodologyMapping[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -884,6 +1107,7 @@ model TransactionConfirmation {
   id              String   @id @default(cuid())
   transactionHash String   @unique
   companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
   operationType   String   // TRANSFER, RETIREMENT, MINT
   status          String   // PENDING, CONFIRMED, FAILED
   confirmations   Int      @default(0)
@@ -892,6 +1116,114 @@ model TransactionConfirmation {
   metadata        Json?
   createdAt       DateTime @default(now())
 
+  @@index([companyId])
   @@map("transaction_confirmations")
 }
 
+// ==========================================
+// CSRD Compliance
+// ==========================================
+
+model MaterialityAssessment {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  assessmentYear  Int
+  status          String   // DRAFT, IN_PROGRESS, COMPLETED
+  completedAt     DateTime?
+  impacts         Json     // Impact materiality results
+  risks           Json     // Financial materiality results
+  doubleMateriality Json   // Combined assessment
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([assessmentYear])
+  @@map("materiality_assessments")
+}
+
+model EsrsDisclosure {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingPeriod String   // e.g., "2024"
+  standard        String   // ESRS E1, ESRS S1, etc.
+  disclosureRequirement String
+  dataPoint       String
+  value           Json
+  assuranceLevel  String?  // LIMITED, REASONABLE
+  assuredAt       DateTime?
+  assuredBy       String?
+
+  @@index([companyId])
+  @@index([reportingPeriod])
+  @@index([standard])
+  @@map("esrs_disclosures")
+}
+
+model CsrdReport {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  reportingYear   Int
+  status          String   // DRAFT, REVIEW, SUBMITTED
+  submittedAt     DateTime?
+  submissionId    String?  // Official submission ID
+  reportUrl       String?  // Generated report location
+  metadata        Json?
+
+  @@index([companyId])
+  @@index([reportingYear])
+  @@map("csrd_reports")
+}
+
+model CreditTransfer {
+  id              String   @id @default(cuid())
+  purchaseId      String   @unique
+  companyId       String
+  projectId       String
+  amount          Int
+  transactionHash String?
+  status          String   // PENDING, CONFIRMED, FAILED
+  errorMessage    String?
+  initiatedAt     DateTime @default(now())
+  confirmedAt     DateTime?
+
+  @@index([purchaseId])
+  @@index([companyId])
+  @@index([status])
+}
+
+// ==========================================
+// Ownership History & Audit Trail
+// ==========================================
+
+model CreditOwnershipHistory {
+  id              String   @id @default(cuid())
+  tokenId         Int
+  companyId       String?
+  previousOwner   String
+  newOwner        String
+  eventType       String   // MINT, TRANSFER, RETIREMENT
+  transactionHash String
+  blockNumber     Int
+  ledgerSequence  Int
+  metadata        Json?    // Additional event data
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([tokenId])
+  @@index([newOwner])
+  @@index([transactionHash])
+  @@index([timestamp])
+  @@map("credit_ownership_history")
+}
+
+model CreditCurrentOwner {
+  id              String   @id @default(cuid())
+  tokenId         Int      @unique
+  owner           String
+  lastUpdated     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@map("credit_current_owners")
+}

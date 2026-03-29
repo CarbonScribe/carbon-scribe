@@ -326,3 +326,24 @@ All core features are implemented and integrated. The system is ready for:
 - Load testing against performance requirements
 - Security audit
 - Production deployment preparation
+
+---
+
+## Methodology Supply Cap Enforcement Update
+
+The project now includes methodology-driven supply cap enforcement during minting with the following additions:
+
+- Database migration: `internal/database/migrations/020_methodology_caps.up.sql`
+- Cap enforcement domain: `internal/project/methodology/cap-enforcement.service.go`, `internal/project/methodology/cap-repository.go`
+- Cap models and audit entities in `internal/project/methodology/models.go`
+- Methodology cap query client: `internal/integration/stellar/methodology-client.go`
+- Mint-time cap hooks:
+   - `internal/financing/service.go`
+   - `internal/financing/tokenization/minting/service.go`
+- Cap admin/monitoring endpoints in `internal/project/methodology/handler.go`
+
+Additional tests were added for cap and contract-cap extraction flows:
+
+- `internal/project/methodology/cap_enforcement_service_test.go`
+- `internal/integration/stellar/methodology-client_test.go`
+- `internal/financing/tokenization/stellar_client_test.go`

@@ -150,6 +150,7 @@ export class ConfigService {
     const stellar: StellarConfig = {
       network: value.STELLAR_NETWORK,
       horizonUrl: value.HORIZON_URL || undefined,
+      sorobanRpcUrl: value.SOROBAN_RPC_URL || undefined,
     };
 
     const auth: AuthConfig = {

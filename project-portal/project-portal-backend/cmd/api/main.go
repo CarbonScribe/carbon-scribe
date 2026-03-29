@@ -17,9 +17,11 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/config"
 	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization/minting"
 	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
+	integrationstellar "carbon-scribe/project-portal/project-portal-backend/internal/integration/stellar"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
@@ -98,11 +100,19 @@ func main() {
 	reportsHandler := reports.NewHandler(reportsService)
 
 	projectRepo := project.NewRepository(db)
-	projectService := project.NewService(projectRepo)
-	projectHandler := project.NewHandler(projectService)
-
 	methodologyRepo := methodology.NewRepository(db)
-	methodologyService := methodology.NewService(methodologyRepo)
+	methodologyCapRepo := methodology.NewCapRepository(db)
+	methodologyService := methodology.NewService(methodologyRepo, methodology.NewContractClientFromEnv())
+	methodologyCapClient := integrationstellar.NewMethodologyClientFromEnv()
+	methodologyCapService := methodology.NewCapEnforcementService(methodologyCapRepo, methodologyRepo, methodologyCapClient)
+	methodologyHandler := methodology.NewHandler(methodologyService, methodologyCapService)
+
+	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
+	mintingService := minting.NewService(db, nil, mintingCapValidator)
+	mintingHandler := minting.NewHandler(mintingService)
+
+	projectService := project.NewService(projectRepo, methodologyService, mintingService)
+	projectHandler := project.NewHandler(projectService)
 
 	// Initialize document management service
 	var docsHandler *documents.Handler
@@ -149,7 +159,7 @@ func main() {
 	geospatialService := geospatial.NewService(geospatialRepo)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
 	financingRepo := financing.NewRepository(db)
-	financingService := financing.NewService(financingRepo, methodologyService)
+	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService)
 	financingHandler := financing.NewHandler(financingService)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{
@@ -213,6 +223,7 @@ func main() {
 
 		// Register projects routes under v1
 		projectHandler.RegisterRoutes(v1)
+		methodologyHandler.RegisterRoutes(v1)
 
 		// Register reports routes under v1
 		reportsHandler.RegisterRoutes(v1)
@@ -236,10 +247,11 @@ func main() {
 		settingsHandler.RegisterRoutes(v1)
 
 		// Register collaboration routes under v1
-		collaboration.RegisterRoutes(v1, collaborationHandler)
+		collaboration.RegisterRoutes(v1, collaborationHandler, tokenManager)
 
 		// Register financing routes under v1
 		financingHandler.RegisterRoutes(v1)
+		mintingHandler.RegisterRoutes(v1)
 
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
@@ -345,6 +357,7 @@ func runAllMigrations(db *gorm.DB) error {
 
 		// Project models
 		&project.Project{},
+		&methodology.MethodologyRegistration{},
 
 		// Collaboration models
 		&collaboration.ProjectMember{},
@@ -400,6 +413,9 @@ func runAllMigrations(db *gorm.DB) error {
 		&financing.RevenueDistribution{},
 		&financing.PaymentTransaction{},
 		&financing.CreditPricingModel{},
+		&methodology.MethodologyCap{},
+		&methodology.MintingAttempt{},
+		&methodology.CapConfigurationSource{},
 	)
 
 	if err != nil {

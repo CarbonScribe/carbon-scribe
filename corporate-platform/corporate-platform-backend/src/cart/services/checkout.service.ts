@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
+import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
 import { PaymentService } from './payment.service';
 import { ReservationService } from './reservation.service';
 import { AuditService } from './audit.service';
@@ -13,14 +14,17 @@ import {
   ConfirmResult,
 } from '../interfaces/checkout.interface';
 import { SERVICE_FEE_RATE } from '../interfaces/cart.interface';
+import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
 
 @Injectable()
 export class CheckoutService {
   constructor(
     private prisma: PrismaService,
+    private unitOfWork: UnitOfWorkService,
     private paymentService: PaymentService,
     private reservationService: ReservationService,
     private auditService: AuditService,
+    private postPurchaseService: PostPurchaseService,
   ) {}
 
   async initiateCheckout(
@@ -49,10 +53,10 @@ export class CheckoutService {
 
     // 2. Validate all items are still available
     for (const item of cart.items) {
-      if (item.credit.available < item.quantity) {
+      if ((item.credit.availableAmount ?? 0) < item.quantity) {
         throw new BadRequestException(
           `Insufficient credits for "${item.credit.projectName}". ` +
-            `Requested: ${item.quantity}, Available: ${item.credit.available}`,
+            `Requested: ${item.quantity}, Available: ${item.credit.availableAmount}`,
         );
       }
     }
@@ -63,8 +67,8 @@ export class CheckoutService {
       cart.items.map((i) => ({ creditId: i.creditId, quantity: i.quantity })),
     );
 
-    // 4. Create order in a transaction
-    const order = await (this.prisma as any).$transaction(async (tx: any) => {
+    // 4. Create order in a transaction using UnitOfWorkService
+    const order = await this.unitOfWork.run(async (tx: any) => {
       // Generate order number
       const orderNumber = await this.generateOrderNumber(tx);
 
@@ -152,7 +156,7 @@ export class CheckoutService {
 
     // 2. Re-validate credit availability (double-check, reservation handles concurrency)
     for (const item of order.items) {
-      if (item.credit.available < item.quantity) {
+      if ((item.credit.availableAmount ?? 0) < item.quantity) {
         // Release reservations and mark order as failed
         if (order.cartId) {
           await this.reservationService.releaseReservations(order.cartId);
@@ -208,54 +212,52 @@ export class CheckoutService {
     }
 
     // 4. Complete the purchase in a transaction
-    const completedOrder = await (this.prisma as any).$transaction(
-      async (tx: any) => {
-        // Decrease credit availability for each item
-        for (const item of order.items) {
-          await tx.credit.update({
-            where: { id: item.creditId },
-            data: { available: { decrement: item.quantity } },
-          });
-        }
+    const completedOrder = await this.unitOfWork.run(async (tx: any) => {
+      // Decrease credit availability for each item
+      for (const item of order.items) {
+        await tx.credit.update({
+          where: { id: item.creditId },
+          data: { availableAmount: { decrement: item.quantity } },
+        });
+      }
 
-        // Update order status
-        const updated = await tx.order.update({
-          where: { id: orderId },
-          data: {
-            status: 'completed',
-            paymentId: paymentResult.paymentId,
-            transactionHash: paymentResult.transactionHash,
-            paidAt: new Date(),
-            completedAt: new Date(),
+      // Update order status
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'completed',
+          paymentId: paymentResult.paymentId,
+          transactionHash: paymentResult.transactionHash,
+          paidAt: new Date(),
+          completedAt: new Date(),
+        },
+        include: {
+          items: {
+            include: { credit: true },
           },
-          include: {
-            items: {
-              include: { credit: true },
-            },
+        },
+      });
+
+      // Clear the cart and its reservations
+      if (order.cartId) {
+        await tx.creditReservation.deleteMany({
+          where: { cartId: order.cartId },
+        });
+        await tx.cartItem.deleteMany({
+          where: { cartId: order.cartId },
+        });
+        await tx.cart.update({
+          where: { id: order.cartId },
+          data: {
+            subtotal: 0,
+            serviceFee: 0,
+            total: 0,
           },
         });
+      }
 
-        // Clear the cart and its reservations
-        if (order.cartId) {
-          await tx.creditReservation.deleteMany({
-            where: { cartId: order.cartId },
-          });
-          await tx.cartItem.deleteMany({
-            where: { cartId: order.cartId },
-          });
-          await tx.cart.update({
-            where: { id: order.cartId },
-            data: {
-              subtotal: 0,
-              serviceFee: 0,
-              total: 0,
-            },
-          });
-        }
-
-        return updated;
-      },
-    );
+      return updated;
+    });
 
     // 5. Write audit event
     await this.auditService.logOrderEvent(
@@ -266,6 +268,9 @@ export class CheckoutService {
       undefined,
       { paymentId: paymentResult.paymentId },
     );
+
+    // 6. Trigger post-purchase transfers
+    await this.postPurchaseService.handleOrderCompleted(completedOrder.id);
 
     return {
       order: {

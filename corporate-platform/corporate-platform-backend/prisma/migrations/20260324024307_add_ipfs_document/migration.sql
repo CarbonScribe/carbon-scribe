@@ -15,45 +15,45 @@
 
 */
 -- DropForeignKey
-ALTER TABLE "CartItem" DROP CONSTRAINT "CartItem_cartId_fkey";
+ALTER TABLE "CartItem" DROP CONSTRAINT IF EXISTS "CartItem_cartId_fkey";
 
 -- DropForeignKey
-ALTER TABLE "OrderItem" DROP CONSTRAINT "OrderItem_orderId_fkey";
+ALTER TABLE "OrderItem" DROP CONSTRAINT IF EXISTS "OrderItem_orderId_fkey";
 
 -- DropIndex
-DROP INDEX "BatchRetirement_status_idx";
+DROP INDEX IF EXISTS "BatchRetirement_status_idx";
 
 -- DropIndex
-DROP INDEX "Cart_sessionId_idx";
+DROP INDEX IF EXISTS "Cart_sessionId_idx";
 
 -- DropIndex
-DROP INDEX "Cart_sessionId_key";
+DROP INDEX IF EXISTS "Cart_sessionId_key";
 
 -- DropIndex
-DROP INDEX "Order_cartId_key";
+DROP INDEX IF EXISTS "Order_cartId_key";
 
 -- DropIndex
-DROP INDEX "Order_orderNumber_idx";
+DROP INDEX IF EXISTS "Order_orderNumber_idx";
 
 -- DropIndex
-DROP INDEX "RetirementSchedule_frequency_idx";
+DROP INDEX IF EXISTS "RetirementSchedule_frequency_idx";
 
 -- DropIndex
-DROP INDEX "RetirementSchedule_isActive_idx";
+DROP INDEX IF EXISTS "RetirementSchedule_isActive_idx";
 
 -- DropIndex
-DROP INDEX "RetirementSchedule_nextRunDate_idx";
+DROP INDEX IF EXISTS "RetirementSchedule_nextRunDate_idx";
 
 -- DropIndex
-DROP INDEX "ScheduleExecution_scheduledDate_idx";
+DROP INDEX IF EXISTS "ScheduleExecution_scheduledDate_idx";
 
 -- DropIndex
-DROP INDEX "portfolios_asOfDate_idx";
+DROP INDEX IF EXISTS "portfolios_asOfDate_idx";
 
 -- AlterTable
-ALTER TABLE "BatchRetirement" DROP COLUMN "updatedAt",
-ADD COLUMN     "executionId" TEXT,
-ADD COLUMN     "scheduleId" TEXT,
+ALTER TABLE "BatchRetirement" DROP COLUMN IF EXISTS "updatedAt",
+ADD COLUMN IF NOT EXISTS     "executionId" TEXT,
+ADD COLUMN IF NOT EXISTS     "scheduleId" TEXT,
 ALTER COLUMN "retirementIds" DROP DEFAULT;
 
 -- AlterTable
@@ -63,37 +63,37 @@ ALTER TABLE "CartItem" ALTER COLUMN "quantity" DROP DEFAULT;
 ALTER TABLE "Order" ALTER COLUMN "paymentMethod" SET NOT NULL;
 
 -- AlterTable
-ALTER TABLE "RetirementSchedule" DROP COLUMN "createdBy",
-ADD COLUMN     "timezone" TEXT,
-ADD COLUMN     "userId" TEXT NOT NULL,
+ALTER TABLE "RetirementSchedule" DROP COLUMN IF EXISTS "createdBy",
+ADD COLUMN IF NOT EXISTS     "timezone" TEXT,
+ADD COLUMN IF NOT EXISTS     "userId" TEXT NOT NULL,
 ALTER COLUMN "creditIds" DROP DEFAULT;
 
 -- AlterTable
-ALTER TABLE "ScheduleExecution" DROP COLUMN "updatedAt",
-ADD COLUMN     "completedAt" TIMESTAMP(3),
-ADD COLUMN     "error" TEXT,
-ADD COLUMN     "runAt" TIMESTAMP(3) NOT NULL,
+ALTER TABLE "ScheduleExecution" DROP COLUMN IF EXISTS "updatedAt",
+ADD COLUMN IF NOT EXISTS     "completedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS     "error" TEXT,
+ADD COLUMN IF NOT EXISTS     "runAt" TIMESTAMP(3) NOT NULL,
 ALTER COLUMN "scheduledDate" DROP NOT NULL,
 ALTER COLUMN "retirementIds" DROP DEFAULT;
 
 -- AlterTable
-ALTER TABLE "portfolios" DROP COLUMN "asOfDate",
-DROP COLUMN "name",
-DROP COLUMN "totalCredits",
-ADD COLUMN     "avgPricePerTon" DOUBLE PRECISION NOT NULL DEFAULT 0,
-ADD COLUMN     "avgVintage" DOUBLE PRECISION,
-ADD COLUMN     "currentBalance" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "diversificationScore" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN     "netZeroProgress" DOUBLE PRECISION NOT NULL DEFAULT 0,
-ADD COLUMN     "netZeroTarget" INTEGER,
-ADD COLUMN     "riskRating" TEXT NOT NULL DEFAULT 'Low',
-ADD COLUMN     "scope3Coverage" DOUBLE PRECISION NOT NULL DEFAULT 0,
-ADD COLUMN     "totalValue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ALTER TABLE "portfolios" DROP COLUMN IF EXISTS "asOfDate",
+DROP COLUMN IF EXISTS "name",
+DROP COLUMN IF EXISTS "totalCredits",
+ADD COLUMN IF NOT EXISTS     "avgPricePerTon" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "avgVintage" DOUBLE PRECISION,
+ADD COLUMN IF NOT EXISTS     "currentBalance" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "diversificationScore" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "netZeroProgress" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "netZeroTarget" INTEGER,
+ADD COLUMN IF NOT EXISTS     "riskRating" TEXT NOT NULL DEFAULT 'Low',
+ADD COLUMN IF NOT EXISTS     "scope3Coverage" DOUBLE PRECISION NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS     "totalValue" DOUBLE PRECISION NOT NULL DEFAULT 0,
 ALTER COLUMN "totalRetired" SET DEFAULT 0,
 ALTER COLUMN "totalRetired" SET DATA TYPE INTEGER;
 
 -- CreateTable
-CREATE TABLE "retirement_targets" (
+CREATE TABLE IF NOT EXISTS "retirement_targets" (
     "id" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "year" INTEGER NOT NULL,
@@ -104,7 +104,7 @@ CREATE TABLE "retirement_targets" (
 );
 
 -- CreateTable
-CREATE TABLE "IpWhitelist" (
+CREATE TABLE IF NOT EXISTS "IpWhitelist" (
     "id" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "cidr" TEXT NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE "IpWhitelist" (
 );
 
 -- CreateTable
-CREATE TABLE "AuditLog" (
+CREATE TABLE IF NOT EXISTS "AuditLog" (
     "id" TEXT NOT NULL,
     "companyId" TEXT,
     "userId" TEXT,
@@ -139,7 +139,7 @@ CREATE TABLE "AuditLog" (
 );
 
 -- CreateTable
-CREATE TABLE "Auction" (
+CREATE TABLE IF NOT EXISTS "Auction" (
     "id" TEXT NOT NULL,
     "creditId" TEXT NOT NULL,
     "quantity" INTEGER NOT NULL,
@@ -162,7 +162,7 @@ CREATE TABLE "Auction" (
 );
 
 -- CreateTable
-CREATE TABLE "Bid" (
+CREATE TABLE IF NOT EXISTS "Bid" (
     "id" TEXT NOT NULL,
     "auctionId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -176,7 +176,7 @@ CREATE TABLE "Bid" (
 );
 
 -- CreateTable
-CREATE TABLE "OrderAuditLog" (
+CREATE TABLE IF NOT EXISTS "OrderAuditLog" (
     "id" TEXT NOT NULL,
     "orderId" TEXT NOT NULL,
     "event" TEXT NOT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE "OrderAuditLog" (
 );
 
 -- CreateTable
-CREATE TABLE "CreditReservation" (
+CREATE TABLE IF NOT EXISTS "CreditReservation" (
     "id" TEXT NOT NULL,
     "cartId" TEXT NOT NULL,
     "creditId" TEXT NOT NULL,
@@ -201,7 +201,7 @@ CREATE TABLE "CreditReservation" (
 );
 
 -- CreateTable
-CREATE TABLE "portfolio_holdings" (
+CREATE TABLE IF NOT EXISTS "portfolio_holdings" (
     "id" TEXT NOT NULL,
     "portfolioId" TEXT NOT NULL,
     "creditId" TEXT NOT NULL,
@@ -216,7 +216,7 @@ CREATE TABLE "portfolio_holdings" (
 );
 
 -- CreateTable
-CREATE TABLE "portfolio_snapshots" (
+CREATE TABLE IF NOT EXISTS "portfolio_snapshots" (
     "id" TEXT NOT NULL,
     "portfolioId" TEXT NOT NULL,
     "totalValue" DOUBLE PRECISION NOT NULL,
@@ -231,7 +231,7 @@ CREATE TABLE "portfolio_snapshots" (
 );
 
 -- CreateTable
-CREATE TABLE "IpfsDocument" (
+CREATE TABLE IF NOT EXISTS "IpfsDocument" (
     "id" TEXT NOT NULL,
     "companyId" TEXT NOT NULL,
     "documentType" TEXT NOT NULL,
@@ -251,121 +251,121 @@ CREATE TABLE "IpfsDocument" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "retirement_targets_companyId_year_month_key" ON "retirement_targets"("companyId", "year", "month");
+CREATE UNIQUE INDEX IF NOT EXISTS "retirement_targets_companyId_year_month_key" ON "retirement_targets"("companyId", "year", "month");
 
 -- CreateIndex
-CREATE INDEX "IpWhitelist_companyId_idx" ON "IpWhitelist"("companyId");
+CREATE INDEX IF NOT EXISTS "IpWhitelist_companyId_idx" ON "IpWhitelist"("companyId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "IpWhitelist_companyId_cidr_key" ON "IpWhitelist"("companyId", "cidr");
+CREATE UNIQUE INDEX IF NOT EXISTS "IpWhitelist_companyId_cidr_key" ON "IpWhitelist"("companyId", "cidr");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_companyId_idx" ON "AuditLog"("companyId");
+CREATE INDEX IF NOT EXISTS "AuditLog_companyId_idx" ON "AuditLog"("companyId");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_userId_idx" ON "AuditLog"("userId");
+CREATE INDEX IF NOT EXISTS "AuditLog_userId_idx" ON "AuditLog"("userId");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_eventType_idx" ON "AuditLog"("eventType");
+CREATE INDEX IF NOT EXISTS "AuditLog_eventType_idx" ON "AuditLog"("eventType");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_timestamp_idx" ON "AuditLog"("timestamp");
+CREATE INDEX IF NOT EXISTS "AuditLog_timestamp_idx" ON "AuditLog"("timestamp");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_severity_idx" ON "AuditLog"("severity");
+CREATE INDEX IF NOT EXISTS "AuditLog_severity_idx" ON "AuditLog"("severity");
 
 -- CreateIndex
-CREATE INDEX "Auction_creditId_idx" ON "Auction"("creditId");
+CREATE INDEX IF NOT EXISTS "Auction_creditId_idx" ON "Auction"("creditId");
 
 -- CreateIndex
-CREATE INDEX "Auction_status_idx" ON "Auction"("status");
+CREATE INDEX IF NOT EXISTS "Auction_status_idx" ON "Auction"("status");
 
 -- CreateIndex
-CREATE INDEX "Bid_auctionId_idx" ON "Bid"("auctionId");
+CREATE INDEX IF NOT EXISTS "Bid_auctionId_idx" ON "Bid"("auctionId");
 
 -- CreateIndex
-CREATE INDEX "Bid_companyId_idx" ON "Bid"("companyId");
+CREATE INDEX IF NOT EXISTS "Bid_companyId_idx" ON "Bid"("companyId");
 
 -- CreateIndex
-CREATE INDEX "Bid_userId_idx" ON "Bid"("userId");
+CREATE INDEX IF NOT EXISTS "Bid_userId_idx" ON "Bid"("userId");
 
 -- CreateIndex
-CREATE INDEX "OrderAuditLog_orderId_idx" ON "OrderAuditLog"("orderId");
+CREATE INDEX IF NOT EXISTS "OrderAuditLog_orderId_idx" ON "OrderAuditLog"("orderId");
 
 -- CreateIndex
-CREATE INDEX "OrderAuditLog_createdAt_idx" ON "OrderAuditLog"("createdAt");
+CREATE INDEX IF NOT EXISTS "OrderAuditLog_createdAt_idx" ON "OrderAuditLog"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "CreditReservation_creditId_idx" ON "CreditReservation"("creditId");
+CREATE INDEX IF NOT EXISTS "CreditReservation_creditId_idx" ON "CreditReservation"("creditId");
 
 -- CreateIndex
-CREATE INDEX "CreditReservation_expiresAt_idx" ON "CreditReservation"("expiresAt");
+CREATE INDEX IF NOT EXISTS "CreditReservation_expiresAt_idx" ON "CreditReservation"("expiresAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "CreditReservation_cartId_creditId_key" ON "CreditReservation"("cartId", "creditId");
+CREATE UNIQUE INDEX IF NOT EXISTS "CreditReservation_cartId_creditId_key" ON "CreditReservation"("cartId", "creditId");
 
 -- CreateIndex
-CREATE INDEX "portfolio_holdings_portfolioId_idx" ON "portfolio_holdings"("portfolioId");
+CREATE INDEX IF NOT EXISTS "portfolio_holdings_portfolioId_idx" ON "portfolio_holdings"("portfolioId");
 
 -- CreateIndex
-CREATE INDEX "portfolio_holdings_creditId_idx" ON "portfolio_holdings"("creditId");
+CREATE INDEX IF NOT EXISTS "portfolio_holdings_creditId_idx" ON "portfolio_holdings"("creditId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "portfolio_holdings_portfolioId_creditId_key" ON "portfolio_holdings"("portfolioId", "creditId");
+CREATE UNIQUE INDEX IF NOT EXISTS "portfolio_holdings_portfolioId_creditId_key" ON "portfolio_holdings"("portfolioId", "creditId");
 
 -- CreateIndex
-CREATE INDEX "portfolio_snapshots_portfolioId_snapshotDate_idx" ON "portfolio_snapshots"("portfolioId", "snapshotDate");
+CREATE INDEX IF NOT EXISTS "portfolio_snapshots_portfolioId_snapshotDate_idx" ON "portfolio_snapshots"("portfolioId", "snapshotDate");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "IpfsDocument_ipfsCid_key" ON "IpfsDocument"("ipfsCid");
+CREATE UNIQUE INDEX IF NOT EXISTS "IpfsDocument_ipfsCid_key" ON "IpfsDocument"("ipfsCid");
 
 -- CreateIndex
-CREATE INDEX "IpfsDocument_companyId_idx" ON "IpfsDocument"("companyId");
+CREATE INDEX IF NOT EXISTS "IpfsDocument_companyId_idx" ON "IpfsDocument"("companyId");
 
 -- CreateIndex
-CREATE INDEX "IpfsDocument_referenceId_idx" ON "IpfsDocument"("referenceId");
+CREATE INDEX IF NOT EXISTS "IpfsDocument_referenceId_idx" ON "IpfsDocument"("referenceId");
 
 -- CreateIndex
-CREATE INDEX "BatchRetirement_scheduleId_idx" ON "BatchRetirement"("scheduleId");
+CREATE INDEX IF NOT EXISTS "BatchRetirement_scheduleId_idx" ON "BatchRetirement"("scheduleId");
 
 -- CreateIndex
-CREATE INDEX "BatchRetirement_executionId_idx" ON "BatchRetirement"("executionId");
+CREATE INDEX IF NOT EXISTS "BatchRetirement_executionId_idx" ON "BatchRetirement"("executionId");
 
 -- CreateIndex
-CREATE INDEX "CartItem_creditId_idx" ON "CartItem"("creditId");
+CREATE INDEX IF NOT EXISTS "CartItem_creditId_idx" ON "CartItem"("creditId");
 
 -- CreateIndex
-CREATE INDEX "Credit_searchVector_idx" ON "Credit"("searchVector");
+CREATE INDEX IF NOT EXISTS "Credit_searchVector_idx" ON "Credit"("searchVector");
 
 -- CreateIndex
-CREATE INDEX "Credit_featured_idx" ON "Credit"("featured");
+CREATE INDEX IF NOT EXISTS "Credit_featured_idx" ON "Credit"("featured");
 
 -- CreateIndex
-CREATE INDEX "Credit_viewCount_idx" ON "Credit"("viewCount");
+CREATE INDEX IF NOT EXISTS "Credit_viewCount_idx" ON "Credit"("viewCount");
 
 -- CreateIndex
-CREATE INDEX "Credit_purchaseCount_idx" ON "Credit"("purchaseCount");
+CREATE INDEX IF NOT EXISTS "Credit_purchaseCount_idx" ON "Credit"("purchaseCount");
 
 -- CreateIndex
-CREATE INDEX "Order_userId_idx" ON "Order"("userId");
+CREATE INDEX IF NOT EXISTS "Order_userId_idx" ON "Order"("userId");
 
 -- CreateIndex
-CREATE INDEX "OrderItem_creditId_idx" ON "OrderItem"("creditId");
+CREATE INDEX IF NOT EXISTS "OrderItem_creditId_idx" ON "OrderItem"("creditId");
 
 -- CreateIndex
-CREATE INDEX "Retirement_userId_idx" ON "Retirement"("userId");
+CREATE INDEX IF NOT EXISTS "Retirement_userId_idx" ON "Retirement"("userId");
 
 -- CreateIndex
-CREATE INDEX "RetirementSchedule_userId_idx" ON "RetirementSchedule"("userId");
+CREATE INDEX IF NOT EXISTS "RetirementSchedule_userId_idx" ON "RetirementSchedule"("userId");
 
 -- CreateIndex
-CREATE INDEX "RetirementSchedule_isActive_nextRunDate_idx" ON "RetirementSchedule"("isActive", "nextRunDate");
+CREATE INDEX IF NOT EXISTS "RetirementSchedule_isActive_nextRunDate_idx" ON "RetirementSchedule"("isActive", "nextRunDate");
 
 -- CreateIndex
-CREATE INDEX "ScheduleExecution_runAt_idx" ON "ScheduleExecution"("runAt");
+CREATE INDEX IF NOT EXISTS "ScheduleExecution_runAt_idx" ON "ScheduleExecution"("runAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "portfolios_companyId_key" ON "portfolios"("companyId");
+CREATE UNIQUE INDEX IF NOT EXISTS "portfolios_companyId_key" ON "portfolios"("companyId");
 
 -- AddForeignKey
 ALTER TABLE "retirement_targets" ADD CONSTRAINT "retirement_targets_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
