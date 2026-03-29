@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 generator client {
@@ -36,6 +36,8 @@ model Company {
   credits                 Credit[]
   ipfsDocuments           IpfsDocument[]
   transactionConfirmations TransactionConfirmation[]
+  corporateWallet         CorporateWallet?
+  walletTransactions      WalletTransaction[]
   
   materialityAssessments MaterialityAssessment[]
   esrsDisclosures        EsrsDisclosure[]
@@ -80,7 +82,7 @@ model Project {
   availableCredits      Int      @default(0)
   avgScore              Float?   
   communities           Int?     // People benefited
-  sdgs                  Int[]    @default([])
+  sdgs                  Json?    @default("[]")
 
   // Timeline
   startDate   DateTime
@@ -132,7 +134,7 @@ model Credit {
   verificationStandard  String?
   lastVerification DateTime?
   country      String?
-  sdgs         Int[]    @default([])
+  sdgs         Json?    @default("[]")
   retirements  Retirement[]
   cartItems    CartItem[]
   orderItems   OrderItem[]
@@ -433,7 +435,7 @@ model RetirementSchedule {
   purpose          String
   amount           Int
   creditSelection  String
-  creditIds        String[]
+  creditIds        Json?    @default("[]")
   frequency        String
   interval         Int?
   startDate        DateTime
@@ -468,7 +470,7 @@ model ScheduleExecution {
   scheduledDate DateTime?
   executedDate  DateTime?
   amountRetired Int?
-  retirementIds String[]
+  retirementIds Json?    @default("[]")
   errorMessage  String?
   retryCount    Int      @default(0)
   nextRetryDate DateTime?
@@ -491,7 +493,7 @@ model BatchRetirement {
   totalItems     Int
   completedItems Int
   failedItems    Int
-  retirementIds  String[]
+  retirementIds  Json?    @default("[]")
   errorLog       Json?
   createdAt      DateTime @default(now())
   completedAt    DateTime?
@@ -827,14 +829,14 @@ model ApiKey {
   company       Company   @relation(fields: [companyId], references: [id])
   createdBy     String
 
-  permissions   String[]  @default([])
+  permissions   Json?    @default("[]")
 
   lastUsedAt    DateTime?
   requestCount  Int       @default(0)
 
   expiresAt     DateTime?
   rateLimit     Int       @default(100)
-  ipWhitelist   String[]  @default([])
+  ipWhitelist   Json?    @default("[]")
 
   isActive      Boolean   @default(true)
   revokedAt     DateTime?
@@ -906,7 +908,7 @@ model FrameworkMethodologyMapping {
   frameworkId     String
   methodologyId   String   // References SyncedMethodology
   methodologyTokenId Int      // Original token ID from contract
-  requirementIds  String[] // Which requirements this methodology fulfills
+  requirementIds  Json?    @default("[]") // Which requirements this methodology fulfills
   mappingType     String   // AUTO, MANUAL, SYSTEM
   mappedBy        String?  // User ID or "system"
   mappedAt        DateTime @default(now())
@@ -928,7 +930,7 @@ model MappingRule {
   conditionType   String   // REGISTRY, METHODOLOGY_TYPE, AUTHORITY, KEYWORD
   conditionValue  String   // "VERRA", "FORESTRY", etc.
   targetFramework String   // GHG_PROTOCOL, CSRD, etc.
-  targetRequirements String[] // Requirement IDs to map to
+  targetRequirements Json?    @default("[]") // Requirement IDs to map to
   priority        Int      @default(0)
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
@@ -1079,4 +1081,48 @@ model CreditCurrentOwner {
   createdAt       DateTime @default(now())
 
   @@map("credit_current_owners")
+}
+
+// ==========================================
+// Corporate Stellar Wallet Management
+// ==========================================
+
+model CorporateWallet {
+  id              String   @id @default(cuid())
+  companyId       String   @unique
+  company         Company  @relation(fields: [companyId], references: [id])
+  publicKey       String   @unique
+  encryptedSecret String   // Encrypted private key
+  status          String   @default("ACTIVE") // ACTIVE, PENDING, LOCKED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions    WalletTransaction[]
+
+  @@index([companyId])
+  @@index([publicKey])
+  @@map("corporate_wallets")
+}
+
+model WalletTransaction {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  walletId        String
+  wallet          CorporateWallet @relation(fields: [walletId], references: [id])
+  transactionHash String   @unique
+  operationType   String   // TRANSFER, RETIREMENT, APPROVE
+  status          String   // PENDING, SUCCESS, FAILED
+  amount          Int
+  tokenIds        Json?    @default("[]")    // List of carbon credit token IDs
+  metadata        Json?
+  submittedAt     DateTime @default(now())
+  confirmedAt     DateTime?
+
+  @@index([companyId])
+  @@index([walletId])
+  @@index([transactionHash])
+  @@index([status])
+  @@index([submittedAt])
+  @@map("wallet_transactions")
 }

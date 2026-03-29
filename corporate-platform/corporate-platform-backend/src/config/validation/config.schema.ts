@@ -25,6 +25,9 @@ export const configSchema = Joi.object({
   STELLAR_NETWORK: Joi.string().default('testnet'),
   HORIZON_URL: Joi.string().uri().allow(''),
   SOROBAN_RPC_URL: Joi.string().uri().allow(''),
+  STELLAR_NETWORK_PASSPHRASE: Joi.string().allow(''),
+  STELLAR_CARBON_ASSET_CONTRACT_ID: Joi.string().allow(''),
+  ENCRYPTION_KEY: Joi.string().allow(''),
   JWT_SECRET: Joi.string().default('dev-jwt-secret'),
   JWT_EXPIRY: Joi.string().default('15m'),
   LOG_LEVEL: Joi.string()
