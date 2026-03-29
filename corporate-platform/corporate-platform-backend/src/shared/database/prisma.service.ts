@@ -17,6 +17,9 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  declare teamActivity: any;
+  declare collaborationMetric: any;
+  declare memberEngagement: any;
 
   constructor() {
     const connectionString = process.env.DATABASE_URL;

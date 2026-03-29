@@ -29,6 +29,9 @@ model Company {
   compliances             Compliance[]
   reports                 Report[]
   activities              Activity[]
+  teamActivities          TeamActivity[]
+  collaborationMetrics    CollaborationMetric[]
+  memberEngagements       MemberEngagement[]
   apiKeys                 ApiKey[]
 
   createdAt DateTime @default(now())
@@ -191,6 +194,8 @@ model User {
   retirementSchedules RetirementSchedule[]
   auditLogs           AuditLog[]
   orders              Order[]
+  teamActivities      TeamActivity[]
+  memberEngagements   MemberEngagement[]
 
   @@unique([companyId, email])
   @@index([email])
@@ -673,6 +678,68 @@ model Activity {
   @@index([action])
   @@index([createdAt])
   @@map("activities")
+}
+
+// ==========================================
+// Team Collaboration & Analytics
+// ==========================================
+
+model TeamActivity {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  activityType String   // LOGIN, RETIREMENT_CREATED, REPORT_GENERATED, etc.
+  entityType   String?  // Retirement, Report, Target
+  entityId     String?
+  metadata     Json
+  ipAddress    String?
+  userAgent    String?
+  timestamp    DateTime @default(now())
+
+  @@index([companyId, timestamp])
+  @@index([userId, timestamp])
+  @@index([companyId, activityType, timestamp])
+  @@map("team_activities")
+}
+
+model CollaborationMetric {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  periodStart     DateTime
+  periodEnd       DateTime
+  metricType      String   // WEEKLY_SCORE, MONTHLY_SCORE
+  overallScore    Float    // 0-100 composite
+  components      Json     // Individual factor scores
+  topContributors Json     // Most engaged members
+  insights        String[] // Key observations
+
+  @@index([companyId, periodStart, periodEnd])
+  @@index([companyId, metricType, periodStart])
+  @@map("collaboration_metrics")
+}
+
+model MemberEngagement {
+  id                 String   @id @default(cuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id])
+  userId             String
+  user               User     @relation(fields: [userId], references: [id])
+  periodStart        DateTime
+  periodEnd          DateTime
+  actionsCount       Int
+  uniqueDays         Int
+  contributions      Json     // Breakdown by action type
+  collaborationScore Float    // Peer interaction score
+  responseTimeAvg    Float?
+  lastUpdated        DateTime @updatedAt
+
+  @@unique([companyId, userId, periodStart, periodEnd])
+  @@index([companyId, periodStart, periodEnd])
+  @@index([companyId, userId, periodStart])
+  @@map("member_engagement")
 }
 
 model ApiKey {

@@ -21,6 +21,7 @@ import { IpfsModule } from './ipfs/ipfs.module';
 import { RbacModule } from './rbac/rbac.module';
 import { FrameworkRegistryModule } from './framework-registry/framework-registry.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     PortfolioModule,
     IpfsModule,
     FrameworkRegistryModule,
+    TeamCollaborationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
