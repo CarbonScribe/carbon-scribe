@@ -38,7 +38,12 @@ describe('EventProcessorService', () => {
     const ledger = 1001;
     const timestamp = 1711517000;
 
-    const result = service.processTransferEvent(event, txHash, ledger, timestamp);
+    const result = service.processTransferEvent(
+      event,
+      txHash,
+      ledger,
+      timestamp,
+    );
 
     expect(result.tokenId).toBe(42);
     expect(result.previousOwner).toBe('GABC...');

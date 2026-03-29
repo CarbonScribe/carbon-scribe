@@ -10,16 +10,23 @@ export class SorobanService {
   constructor(private readonly configService: ConfigService) {
     const stellarConfig = this.configService.getStellarConfig();
     // Assuming a Soroban RPC URL is available in config
-    this.rpc = new StellarSdk.rpc.Server(stellarConfig.sorobanRpcUrl || 'https://soroban-testnet.stellar.org');
+    this.rpc = new StellarSdk.rpc.Server(
+      stellarConfig.sorobanRpcUrl || 'https://soroban-testnet.stellar.org',
+    );
   }
 
   /**
    * Fetches events for a specific contract from a given start ledger
    */
-  async getContractEvents(contractId: string, startLedger: number): Promise<any[]> {
+  async getContractEvents(
+    contractId: string,
+    startLedger: number,
+  ): Promise<any[]> {
     try {
-      this.logger.debug(`Fetching events for contract ${contractId} from ledger ${startLedger}`);
-      
+      this.logger.debug(
+        `Fetching events for contract ${contractId} from ledger ${startLedger}`,
+      );
+
       const response = await this.rpc.getEvents({
         startLedger,
         filters: [

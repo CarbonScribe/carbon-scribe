@@ -43,6 +43,9 @@ export class PrismaService
     'Invitation',
     'IpfsDocument',
     'TransactionConfirmation',
+    'FlightRecord',
+    'CorsiaComplianceYear',
+    'CorsiaEligibleCredit',
   ]);
 
   private readonly scopedModelsByRelation = new Set<string>([

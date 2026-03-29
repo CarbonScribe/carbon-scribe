@@ -1,4 +1,10 @@
-import { Controller, Get, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { HistoryQueryService } from './history-query.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -21,7 +27,10 @@ export class OwnershipHistoryController {
   @Get('company')
   async getCompanyTokens(@CurrentUser() user: any) {
     // We expect user to have an associated companyAddress if authenticated
-    return this.queryService.getCompanyTokens(user.companyId, user.walletAddress);
+    return this.queryService.getCompanyTokens(
+      user.companyId,
+      user.walletAddress,
+    );
   }
 
   @Get('company/history')
@@ -30,7 +39,9 @@ export class OwnershipHistoryController {
   }
 
   @Get('verify/:tokenId')
-  async verifyOwnershipLineage(@Param('tokenId', ParseIntPipe) tokenId: number) {
+  async verifyOwnershipLineage(
+    @Param('tokenId', ParseIntPipe) tokenId: number,
+  ) {
     return this.queryService.verifyOwnershipLineage(tokenId);
   }
 }

@@ -29,6 +29,7 @@ import { TenantMiddleware } from './multi-tenant/middleware/tenant.middleware';
 import { OrderModule } from './order/order.module';
 import { TeamManagementModule } from './team-management/team-management.module';
 import { OwnershipHistoryModule } from './audit/ownership-history/ownership-history.module';
+import { CorsiaModule } from './corsia/corsia.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { OwnershipHistoryModule } from './audit/ownership-history/ownership-hist
     OrderModule,
     TeamManagementModule,
     OwnershipHistoryModule,
+    CorsiaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

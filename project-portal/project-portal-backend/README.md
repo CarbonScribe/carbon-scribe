@@ -278,6 +278,46 @@ METHODOLOGY_MOCK_START_TOKEN=1000
 
 The deployed contract only allows whitelisted authority accounts to mint methodologies, so live testnet registration requires a funded authority secret key already approved by the contract admin.
 
+## Methodology Supply Cap Enforcement
+
+Methodology cap enforcement is now integrated at mint time. Before any credit minting transaction is submitted, the backend validates methodology-level supply limits and records the mint attempt outcome for auditability.
+
+Core capabilities:
+- Methodology-wide max supply checks
+- Optional per-project and per-vintage cap checks
+- Minting attempt logging (approved/rejected with reason)
+- Automatic cap bootstrap from Methodology Library metadata and IPFS-linked cap payloads
+- Near-limit monitoring endpoints
+
+Cap management and monitoring endpoints:
+- `GET /api/v1/methodologies/:tokenId/cap`
+- `POST /api/v1/methodologies/:tokenId/cap`
+- `GET /api/v1/methodologies/:tokenId/supply`
+- `GET /api/v1/methodologies/:tokenId/minting-history`
+- `GET /api/v1/projects/:id/minting-validations`
+- `GET /api/v1/methodologies/caps/near-limit`
+
+Required/important environment variables for real on-chain behavior:
+```bash
+# Shared Stellar network config
+STELLAR_RPC_URL=https://soroban-testnet.stellar.org:443
+STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
+
+# Methodology Library contract cap loading
+METHODOLOGY_LIBRARY_CONTRACT_ID=CDQXMVTNCAN4KKPFOAMAAKU4B7LNNQI7F6EX2XIGKVNPJPKGWGM35BTP
+METHODOLOGY_QUERY_ADDRESS=G...
+IPFS_GATEWAY_URL=https://ipfs.io/ipfs/
+METHODOLOGY_CAP_USE_MOCK=false
+
+# Carbon Asset minting contract
+CARBON_ASSET_CONTRACT_ID=CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM
+CARBON_ASSET_AUTHORITY_SECRET_KEY=S...
+CARBON_ASSET_DEFAULT_PROJECT_OWNER=G...
+CARBON_ASSET_USE_MOCK=false
+```
+
+For mainnet deployment, set `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` to public-network values and provide funded, whitelisted operational keys.
+
 ## Collaboration API Authentication Update
 
 Collaboration write operations now enforce JWT authentication and derive actor identity from token context. This removes impersonation risk from client-provided identity fields and ensures audit/activity attribution is server-controlled.

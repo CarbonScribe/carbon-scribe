@@ -13,6 +13,6 @@ import { DatabaseModule } from '../../shared/database/database.module';
     EventProcessorService,
     HistoryQueryService,
   ],
-  exports: [OwnershipHistoryService],
+  exports: [OwnershipHistoryService, EventProcessorService],
 })
 export class OwnershipHistoryModule {}

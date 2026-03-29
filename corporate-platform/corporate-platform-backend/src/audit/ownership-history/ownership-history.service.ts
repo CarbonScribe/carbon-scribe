@@ -10,7 +10,7 @@ export class OwnershipHistoryService {
 
   /**
    * Adds an ownership history record and updates the current owner
-   * 
+   *
    * @time O(1) - optimized via targeted primary key and unique updates
    * @space O(1) - incremental growth per ownership event
    */
@@ -38,7 +38,7 @@ export class OwnershipHistoryService {
         // For now, based on requirements, we track owner field
         await tx.creditCurrentOwner.upsert({
           where: { tokenId: record.tokenId },
-          update: { 
+          update: {
             owner: record.newOwner,
             lastUpdated: record.timestamp,
           },
@@ -50,9 +50,14 @@ export class OwnershipHistoryService {
         });
       });
 
-      this.logger.debug(`Recorded ${record.eventType} for token ${record.tokenId}: ${record.previousOwner} -> ${record.newOwner}`);
+      this.logger.debug(
+        `Recorded ${record.eventType} for token ${record.tokenId}: ${record.previousOwner} -> ${record.newOwner}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to record ownership change for token ${record.tokenId}`, error.stack);
+      this.logger.error(
+        `Failed to record ownership change for token ${record.tokenId}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -60,12 +65,14 @@ export class OwnershipHistoryService {
   /**
    * Batch upserts current owners during historical sync
    */
-  async batchUpdateCurrentOwners(records: { tokenId: number; owner: string; timestamp: Date }[]): Promise<void> {
+  async batchUpdateCurrentOwners(
+    records: { tokenId: number; owner: string; timestamp: Date }[],
+  ): Promise<void> {
     // Optimization to avoid multiple transactions during heavy backfill
     for (const record of records) {
       await this.prisma.creditCurrentOwner.upsert({
         where: { tokenId: record.tokenId },
-        update: { 
+        update: {
           owner: record.owner,
           lastUpdated: record.timestamp,
         },

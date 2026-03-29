@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization/minting"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 
 	"github.com/google/uuid"
@@ -21,10 +22,15 @@ type Service interface {
 type service struct {
 	repo        Repository
 	methService methodology.Service
+	mintService minting.Service
 }
 
-func NewService(repo Repository, methService methodology.Service) Service {
-	return &service{repo: repo, methService: methService}
+func NewService(repo Repository, methService methodology.Service, mintService minting.Service) Service {
+	return &service{
+		repo:        repo,
+		methService: methService,
+		mintService: mintService,
+	}
 }
 
 func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) (*Project, error) {
@@ -139,6 +145,11 @@ func (s *service) UpdateProject(ctx context.Context, id uuid.UUID, req *ProjectU
 	err = s.repo.Update(ctx, project)
 	if err != nil {
 		return nil, err
+	}
+
+	// Trigger verification completion if status changed to "completed"
+	if req.Status != nil && *req.Status == "completed" {
+		_ = CompleteVerification(ctx, project.ID, nil, s.mintService)
 	}
 
 	return project, nil

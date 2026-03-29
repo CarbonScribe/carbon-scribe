@@ -24,6 +24,10 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
+func NewCapRepository(db *gorm.DB) CapRepository {
+	return &repository{db: db}
+}
+
 func (r *repository) GetMethodologyIDForProject(ctx context.Context, projectID uuid.UUID) (int, error) {
 	var result struct {
 		MethodologyTokenID int

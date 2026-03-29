@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IOwnershipHistoryRecord, OwnershipEventType } from './interfaces/ownership.interface';
+import {
+  IOwnershipHistoryRecord,
+  OwnershipEventType,
+} from './interfaces/ownership.interface';
 
 @Injectable()
 export class EventProcessorService {
@@ -8,7 +11,12 @@ export class EventProcessorService {
   /**
    * Process a Mint event from Soroban contract
    */
-  processMintEvent(event: any, txHash: string, ledger: number, timestamp: number): IOwnershipHistoryRecord {
+  processMintEvent(
+    event: any,
+    txHash: string,
+    ledger: number,
+    timestamp: number,
+  ): IOwnershipHistoryRecord {
     const tokenId = event.token_id;
     const owner = event.owner;
 
@@ -33,7 +41,12 @@ export class EventProcessorService {
   /**
    * Process a Transfer event from Soroban contract
    */
-  processTransferEvent(event: any, txHash: string, ledger: number, timestamp: number): IOwnershipHistoryRecord {
+  processTransferEvent(
+    event: any,
+    txHash: string,
+    ledger: number,
+    timestamp: number,
+  ): IOwnershipHistoryRecord {
     return {
       tokenId: event.token_id,
       companyId: null,
@@ -51,7 +64,12 @@ export class EventProcessorService {
   /**
    * Process a Burn event from Soroban contract
    */
-  processBurnEvent(event: any, txHash: string, ledger: number, timestamp: number): IOwnershipHistoryRecord {
+  processBurnEvent(
+    event: any,
+    txHash: string,
+    ledger: number,
+    timestamp: number,
+  ): IOwnershipHistoryRecord {
     return {
       tokenId: 0, // Resolve tokenId from lookup for balanced-based events or special mapping
       companyId: null,
@@ -71,7 +89,12 @@ export class EventProcessorService {
   /**
    * Process an amount-based Transfer event (SEP-41)
    */
-  processSep41TransferEvent(event: any, txHash: string, ledger: number, timestamp: number): IOwnershipHistoryRecord {
+  processSep41TransferEvent(
+    event: any,
+    txHash: string,
+    ledger: number,
+    timestamp: number,
+  ): IOwnershipHistoryRecord {
     return {
       tokenId: 0, // Maps to balance, might need special handling
       companyId: null,

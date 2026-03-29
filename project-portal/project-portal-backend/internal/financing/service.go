@@ -42,10 +42,11 @@ type service struct {
 	processor     payments.Processor
 	distributor   *payments.Distributor
 	methService   methodology.Service
+	capService    methodology.CapEnforcementService
 }
 
-func NewService(repo Repository, methService methodology.Service) Service {
-	stellarClient := tokenization.NewMockStellarClient()
+func NewService(repo Repository, methService methodology.Service, capService methodology.CapEnforcementService) Service {
+	stellarClient := tokenization.NewClientFromEnv()
 	monitor := tokenization.NewMonitor()
 	return &service{
 		repo:          repo,
@@ -56,6 +57,7 @@ func NewService(repo Repository, methService methodology.Service) Service {
 		processor:     payments.NewMockProcessor(),
 		distributor:   payments.NewDistributor(),
 		methService:   methService,
+		capService:    capService,
 	}
 }
 
@@ -129,13 +131,41 @@ func (s *service) MintCredits(ctx context.Context, req MintCreditsRequest) (*Car
 	}
 
 	assetCode := fmt.Sprintf("CRB%04d", credit.VintageYear%10000)
-	outcome, err := s.workflow.Mint(ctx, tokenization.MintInput{
+	methodologyTokenID, err := s.methService.ValidateProjectMethodology(ctx, credit.ProjectID)
+	if err != nil {
+		credit.Status = CreditStatusVerified
+		_ = s.repo.UpdateCredit(ctx, credit)
+		return nil, err
+	}
+
+	mintRequest := tokenization.MintInput{
 		ProjectID:   credit.ProjectID,
 		AssetCode:   assetCode,
 		AssetIssuer: req.IssuerAccount,
 		Amount:      credit.BufferedTons,
 		BatchSize:   req.BatchSize,
-	})
+	}
+
+	var outcome *tokenization.MintOutcome
+	mintFn := func(mintCtx context.Context) error {
+		result, mintErr := s.workflow.Mint(mintCtx, mintRequest)
+		if mintErr != nil {
+			return mintErr
+		}
+		outcome = result
+		return nil
+	}
+
+	if s.capService != nil {
+		_, err = s.capService.ValidateAndExecuteMint(ctx, methodology.MintValidationInput{
+			MethodologyTokenID: methodologyTokenID,
+			ProjectID:          credit.ProjectID,
+			VintageYear:        &credit.VintageYear,
+			RequestedAmount:    methodology.CreditsToCapUnits(credit.BufferedTons),
+		}, mintFn)
+	} else {
+		err = mintFn(ctx)
+	}
 	if err != nil {
 		credit.Status = CreditStatusVerified
 		_ = s.repo.UpdateCredit(ctx, credit)

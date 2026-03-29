@@ -4,6 +4,7 @@ import { TransferService } from './transfer.service';
 import { StellarController } from './stellar.controller';
 import { SorobanService } from './soroban.service';
 import { OwnershipEventListener } from './soroban/events/ownership-event.listener';
+import { MethodologyLibraryService } from './soroban/contracts/methodology-library.service';
 import { OwnershipHistoryModule } from '../audit/ownership-history/ownership-history.module';
 import { KeyManagementService } from './services/key-management.service';
 import { WalletService } from './services/wallet.service';
@@ -28,6 +29,7 @@ import { DatabaseModule } from '../shared/database/database.module';
     WalletService,
     BalanceService,
     StellarAuthGuard,
+    MethodologyLibraryService,
   ],
   exports: [
     StellarService,
@@ -38,6 +40,7 @@ import { DatabaseModule } from '../shared/database/database.module';
     WalletService,
     BalanceService,
     StellarAuthGuard,
+    MethodologyLibraryService,
   ],
 })
 export class StellarModule {}

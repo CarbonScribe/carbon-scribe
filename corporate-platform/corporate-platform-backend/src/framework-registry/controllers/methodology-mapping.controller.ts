@@ -49,11 +49,6 @@ export class MethodologyMappingController {
     return this.mappingService.getMappingsForMethodology(tokenId);
   }
 
-  @Get('frameworks/:code/methodologies')
-  async getMethodologiesForFramework(@Param('code') code: string) {
-    return this.mappingService.getMethodologiesForFramework(code);
-  }
-
   @Put('frameworks/mappings/:id')
   @Roles('admin')
   async updateMapping(

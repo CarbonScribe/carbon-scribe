@@ -1,6 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
-import { IOwnershipHistoryRecord, IOwnershipVerification } from './interfaces/ownership.interface';
+import {
+  IOwnershipHistoryRecord,
+  IOwnershipVerification,
+} from './interfaces/ownership.interface';
 
 @Injectable()
 export class HistoryQueryService {
@@ -35,7 +38,9 @@ export class HistoryQueryService {
     });
 
     if (!owner) {
-      throw new NotFoundException(`Current owner not tracked for token ID ${tokenId}`);
+      throw new NotFoundException(
+        `Current owner not tracked for token ID ${tokenId}`,
+      );
     }
 
     return owner;
@@ -45,7 +50,10 @@ export class HistoryQueryService {
    * Retrieves all tokens currently owned by a company
    * @time O(M) where M is company holdings
    */
-  async getCompanyTokens(companyId: string, companyAddress: string): Promise<any> {
+  async getCompanyTokens(
+    companyId: string,
+    companyAddress: string,
+  ): Promise<any> {
     // Note: companies are identified by their on-chain Addresses
     return this.prisma.creditCurrentOwner.findMany({
       where: { owner: companyAddress },
@@ -58,10 +66,7 @@ export class HistoryQueryService {
   async getCompanyHistory(companyAddress: string): Promise<any[]> {
     return this.prisma.creditOwnershipHistory.findMany({
       where: {
-        OR: [
-          { previousOwner: companyAddress },
-          { newOwner: companyAddress },
-        ],
+        OR: [{ previousOwner: companyAddress }, { newOwner: companyAddress }],
       },
       orderBy: { timestamp: 'desc' },
     });
@@ -70,7 +75,9 @@ export class HistoryQueryService {
   /**
    * Verifies ownership lineage for compliance
    */
-  async verifyOwnershipLineage(tokenId: number): Promise<IOwnershipVerification> {
+  async verifyOwnershipLineage(
+    tokenId: number,
+  ): Promise<IOwnershipVerification> {
     const history = await this.prisma.creditOwnershipHistory.findMany({
       where: { tokenId },
       orderBy: { timestamp: 'asc' },
@@ -89,9 +96,11 @@ export class HistoryQueryService {
     // e.g., ensure each subsequent previousOwner matches prior newOwner
     let isVerified = true;
     for (let i = 1; i < history.length; i++) {
-      if (history[i].previousOwner !== history[i-1].newOwner) {
+      if (history[i].previousOwner !== history[i - 1].newOwner) {
         isVerified = false;
-        this.logger.warn(`Gap detected in lineage for token ${tokenId} between record ${i-1} and ${i}`);
+        this.logger.warn(
+          `Gap detected in lineage for token ${tokenId} between record ${i - 1} and ${i}`,
+        );
         break;
       }
     }
