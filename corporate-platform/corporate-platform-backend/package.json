@@ -35,7 +35,9 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.0.0",
     "@nestjs/schedule": "^6.1.1",
+    "@nestjs/websockets": "^10.0.0",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
     "@stellar/stellar-sdk": "^14.6.1",
@@ -56,6 +58,7 @@
     "pg": "^8.18.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
     "stellar-sdk": "^13.3.0"
   },
   "devDependencies": {

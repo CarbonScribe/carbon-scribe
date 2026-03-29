@@ -19,23 +19,14 @@ import { ApiKeyModule } from './api-key/api-key.module';
 import { PortfolioModule } from './portfolio/portfolio.module';
 import { IpfsModule } from './ipfs/ipfs.module';
 import { RbacModule } from './rbac/rbac.module';
-import { CreditModule } from './credit/credit.module';
 import { FrameworkRegistryModule } from './framework-registry/framework-registry.module';
-import { CsrdModule } from './csrd/csrd.module';
-import { DatabaseModule } from './shared/database/database.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { TenantModule } from './multi-tenant/tenant.module';
-import { TenantMiddleware } from './multi-tenant/middleware/tenant.middleware';
-import { OrderModule } from './order/order.module';
-import { TeamManagementModule } from './team-management/team-management.module';
-import { OwnershipHistoryModule } from './audit/ownership-history/ownership-history.module';
-import { CorsiaModule } from './corsia/corsia.module';
+import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
-    DatabaseModule,
     SecurityModule,
     RbacModule,
     ScheduleModule.forRoot(),
@@ -52,20 +43,14 @@ import { CorsiaModule } from './corsia/corsia.module';
     ApiKeyModule,
     PortfolioModule,
     IpfsModule,
-    CreditModule,
     FrameworkRegistryModule,
-    TenantModule,
-    CsrdModule,
-    OrderModule,
-    TeamManagementModule,
-    OwnershipHistoryModule,
-    CorsiaModule,
+    TeamCollaborationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RequestLoggerMiddleware, TenantMiddleware).forRoutes('*');
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
   }
 }
