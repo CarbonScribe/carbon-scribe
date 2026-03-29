@@ -1,11 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BalanceService } from './balance.service';
-import { ConfigService } from '../../config/config.service';
 import { WalletService } from './wallet.service';
 
 describe('BalanceService', () => {
   let service: BalanceService;
-  let configService: jest.Mocked<ConfigService>;
   let walletService: jest.Mocked<WalletService>;
 
   beforeEach(async () => {
@@ -20,16 +18,12 @@ describe('BalanceService', () => {
     };
 
     const mockWallet = {
-      getPublicKey: jest.fn().mockResolvedValue('GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7'),
+      getPublicKey: jest.fn().mockResolvedValue('GCKPKAV5V6VNZLZJ7U3DBYTG7P7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BalanceService,
-        {
-          provide: ConfigService,
-          useValue: mockConfig,
-        },
         {
           provide: WalletService,
           useValue: mockWallet,
@@ -38,7 +32,6 @@ describe('BalanceService', () => {
     }).compile();
 
     service = module.get<BalanceService>(BalanceService);
-    configService = module.get(ConfigService) as jest.Mocked<ConfigService>;
     walletService = module.get(WalletService) as jest.Mocked<WalletService>;
   });
 
