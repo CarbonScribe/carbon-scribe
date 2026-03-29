@@ -38,7 +38,7 @@ export class CrossComplianceService {
 
     const frameworkRequirements = (framework.requirements as any[]) || [];
     const allRequirementIds = frameworkRequirements.map((r) => r.id);
-    const mappedRequirementIds = mapping?.requirementIds || [];
+    const mappedRequirementIds = (mapping?.requirementIds as string[]) || [];
     const missingRequirementIds = allRequirementIds.filter(
       (id) => !mappedRequirementIds.includes(id),
     );
@@ -121,7 +121,7 @@ export class CrossComplianceService {
 
       const mappedRequirementIds = new Set<string>();
       f.mappings.forEach((m) => {
-        m.requirementIds.forEach((rid) => mappedRequirementIds.add(rid));
+        (m.requirementIds as string[]).forEach((rid) => mappedRequirementIds.add(rid));
       });
 
       const coveragePercentage =

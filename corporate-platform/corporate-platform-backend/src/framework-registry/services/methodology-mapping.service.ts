@@ -175,7 +175,7 @@ export class MethodologyMappingService {
                 frameworkId: framework.id,
                 methodologyId: methodology.id,
                 methodologyTokenId: methodology.tokenId,
-                requirementIds: rule.targetRequirements,
+                requirementIds: rule.targetRequirements as string[],
                 mappingType: 'AUTO',
                 metadata: { ruleId: rule.id, ruleName: rule.name },
               },

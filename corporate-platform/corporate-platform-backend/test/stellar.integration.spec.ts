@@ -5,7 +5,7 @@ import { StellarModule } from '../src/stellar/stellar.module';
 import { ConfigModule } from '../src/config/config.module';
 import { DatabaseModule } from '../src/shared/database/database.module';
 import { StellarService } from '../src/stellar/stellar.service';
-import { WalletStatus, TransactionStatus } from '../src/stellar/interfaces/stellar.interface';
+import { WalletStatus, TransactionStatus, OperationType } from '../src/stellar/interfaces/stellar.interface';
 
 describe('Stellar Integration (Testnet)', () => {
   let app: INestApplication;
@@ -121,7 +121,7 @@ describe('Stellar Integration (Testnet)', () => {
         companyId: testCompanyId,
         walletId: wallet.id,
         transactionHash: 'test-tx-hash-' + Date.now(),
-        operationType: 'TRANSFER',
+        operationType: OperationType.TRANSFER,
         amount: 100,
         tokenIds: [1, 2, 3],
         metadata: { test: true },

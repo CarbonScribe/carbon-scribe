@@ -52,7 +52,7 @@ export class MethodologyMapperService {
           },
         },
         update: {
-          requirementIds: [...new Set(rule.targetRequirements)],
+          requirementIds: [...new Set(rule.targetRequirements as string[])],
           methodologyTokenId: methodology.tokenId,
           mappedBy,
           mappedAt: new Date(),
@@ -68,7 +68,7 @@ export class MethodologyMapperService {
           frameworkId,
           methodologyId,
           methodologyTokenId: methodology.tokenId,
-          requirementIds: [...new Set(rule.targetRequirements)],
+          requirementIds: [...new Set(rule.targetRequirements as string[])],
           mappedBy,
           mappingType: 'SYSTEM',
           isActive: true,
