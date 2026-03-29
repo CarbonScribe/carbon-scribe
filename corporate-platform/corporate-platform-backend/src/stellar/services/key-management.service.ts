@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '../../config/config.service';
 import * as crypto from 'crypto';
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { IKeyPairEncrypted, IStellarKeypair } from '../interfaces/stellar.interface';
+import {
+  IKeyPairEncrypted,
+  IStellarKeypair,
+} from '../interfaces/stellar.interface';
 
 @Injectable()
 export class KeyManagementService {
@@ -69,7 +72,7 @@ export class KeyManagementService {
     try {
       StellarSdk.Keypair.fromPublicKey(publicKey);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -81,7 +84,7 @@ export class KeyManagementService {
     try {
       StellarSdk.Keypair.fromSecret(secret);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -96,7 +99,9 @@ export class KeyManagementService {
     if (keyBase64) {
       const key = Buffer.from(keyBase64, 'base64');
       if (key.length !== this.keyLength) {
-        throw new Error(`Encryption key must be ${this.keyLength} bytes when decoded from base64`);
+        throw new Error(
+          `Encryption key must be ${this.keyLength} bytes when decoded from base64`,
+        );
       }
       return key;
     }
@@ -107,8 +112,10 @@ export class KeyManagementService {
       .createHash('sha256')
       .update(authConfig.jwtSecret)
       .digest();
-    
-    this.logger.warn('Using fallback encryption key derived from JWT secret. Set ENCRYPTION_KEY for production!');
+
+    this.logger.warn(
+      'Using fallback encryption key derived from JWT secret. Set ENCRYPTION_KEY for production!',
+    );
     return fallbackKey;
   }
 

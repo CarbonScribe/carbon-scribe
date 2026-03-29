@@ -121,7 +121,9 @@ export class CrossComplianceService {
 
       const mappedRequirementIds = new Set<string>();
       f.mappings.forEach((m) => {
-        (m.requirementIds as string[]).forEach((rid) => mappedRequirementIds.add(rid));
+        (m.requirementIds as string[]).forEach((rid) =>
+          mappedRequirementIds.add(rid),
+        );
       });
 
       const coveragePercentage =

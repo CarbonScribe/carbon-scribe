@@ -1,14 +1,18 @@
-import { Injectable, Logger, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { KeyManagementService } from './key-management.service';
-import { 
-  IWalletCreate, 
-  IWalletResponse, 
+import {
+  IWalletResponse,
   WalletStatus,
   ITransactionSubmit,
   ITransactionResponse,
   TransactionStatus,
-  OperationType 
+  OperationType,
 } from '../interfaces/stellar.interface';
 import { CreateWalletDto } from '../dto/wallet.dto';
 
@@ -33,14 +37,18 @@ export class WalletService {
     });
 
     if (existingWallet) {
-      throw new ConflictException(`Wallet already exists for company ${companyId}`);
+      throw new ConflictException(
+        `Wallet already exists for company ${companyId}`,
+      );
     }
 
     // Generate new Stellar keypair
     const keypair = this.keyManagementService.generateKeypair();
 
     // Encrypt the private key
-    const encryptedSecret = this.keyManagementService.encryptPrivateKey(keypair.secret);
+    const encryptedSecret = this.keyManagementService.encryptPrivateKey(
+      keypair.secret,
+    );
 
     // Create wallet in database
     const wallet = await this.prisma.corporateWallet.create({
@@ -52,7 +60,9 @@ export class WalletService {
       },
     });
 
-    this.logger.log(`Created wallet for company ${companyId} with public key ${keypair.publicKey}`);
+    this.logger.log(
+      `Created wallet for company ${companyId} with public key ${keypair.publicKey}`,
+    );
 
     return this.mapToWalletResponse(wallet);
   }
@@ -81,7 +91,9 @@ export class WalletService {
     });
 
     if (!wallet) {
-      throw new NotFoundException(`Wallet not found for public key ${publicKey}`);
+      throw new NotFoundException(
+        `Wallet not found for public key ${publicKey}`,
+      );
     }
 
     return this.mapToWalletResponse(wallet);
@@ -90,13 +102,18 @@ export class WalletService {
   /**
    * Update wallet status
    */
-  async updateWalletStatus(companyId: string, status: WalletStatus): Promise<IWalletResponse> {
+  async updateWalletStatus(
+    companyId: string,
+    status: WalletStatus,
+  ): Promise<IWalletResponse> {
     const wallet = await this.prisma.corporateWallet.update({
       where: { companyId },
       data: { status },
     });
 
-    this.logger.log(`Updated wallet status for company ${companyId} to ${status}`);
+    this.logger.log(
+      `Updated wallet status for company ${companyId} to ${status}`,
+    );
 
     return this.mapToWalletResponse(wallet);
   }
@@ -126,7 +143,9 @@ export class WalletService {
     }
 
     if (wallet.status !== WalletStatus.ACTIVE) {
-      throw new ConflictException(`Wallet is not active (status: ${wallet.status})`);
+      throw new ConflictException(
+        `Wallet is not active (status: ${wallet.status})`,
+      );
     }
 
     const encryptedData = JSON.parse(wallet.encryptedSecret);
@@ -152,7 +171,9 @@ export class WalletService {
   /**
    * Record a wallet transaction
    */
-  async recordTransaction(data: ITransactionSubmit): Promise<ITransactionResponse> {
+  async recordTransaction(
+    data: ITransactionSubmit,
+  ): Promise<ITransactionResponse> {
     const transaction = await this.prisma.walletTransaction.create({
       data: {
         companyId: data.companyId,
@@ -166,7 +187,9 @@ export class WalletService {
       },
     });
 
-    this.logger.log(`Recorded transaction ${data.transactionHash} for company ${data.companyId}`);
+    this.logger.log(
+      `Recorded transaction ${data.transactionHash} for company ${data.companyId}`,
+    );
 
     return this.mapToTransactionResponse(transaction);
   }
@@ -175,7 +198,7 @@ export class WalletService {
    * Update transaction status
    */
   async updateTransactionStatus(
-    transactionHash: string, 
+    transactionHash: string,
     status: TransactionStatus,
     confirmedAt?: Date,
   ): Promise<ITransactionResponse> {
@@ -187,7 +210,9 @@ export class WalletService {
       },
     });
 
-    this.logger.log(`Updated transaction ${transactionHash} status to ${status}`);
+    this.logger.log(
+      `Updated transaction ${transactionHash} status to ${status}`,
+    );
 
     return this.mapToTransactionResponse(transaction);
   }
@@ -201,7 +226,7 @@ export class WalletService {
       orderBy: { submittedAt: 'desc' },
     });
 
-    return transactions.map(t => this.mapToTransactionResponse(t));
+    return transactions.map((t) => this.mapToTransactionResponse(t));
   }
 
   /**

@@ -1,5 +1,16 @@
-import { IsString, IsNotEmpty, IsEnum, IsOptional, IsArray, IsNumber, IsObject } from 'class-validator';
-import { TransactionStatus, OperationType } from '../interfaces/stellar.interface';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsArray,
+  IsNumber,
+  IsObject,
+} from 'class-validator';
+import {
+  TransactionStatus,
+  OperationType,
+} from '../interfaces/stellar.interface';
 
 export class TransactionSubmitDto {
   @IsString()

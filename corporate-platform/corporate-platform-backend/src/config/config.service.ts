@@ -152,7 +152,8 @@ export class ConfigService {
       horizonUrl: value.HORIZON_URL || undefined,
       sorobanRpcUrl: value.SOROBAN_RPC_URL || undefined,
       networkPassphrase: value.STELLAR_NETWORK_PASSPHRASE || undefined,
-      carbonAssetContractId: value.STELLAR_CARBON_ASSET_CONTRACT_ID || undefined,
+      carbonAssetContractId:
+        value.STELLAR_CARBON_ASSET_CONTRACT_ID || undefined,
       encryptionKey: value.ENCRYPTION_KEY || undefined,
     };
 

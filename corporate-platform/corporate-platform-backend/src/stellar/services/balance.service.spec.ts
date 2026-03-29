@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BalanceService } from './balance.service';
 import { WalletService } from './wallet.service';
+import { ConfigService } from '../../config/config.service';
 
 describe('BalanceService', () => {
   let service: BalanceService;
@@ -18,7 +19,11 @@ describe('BalanceService', () => {
     };
 
     const mockWallet = {
-      getPublicKey: jest.fn().mockResolvedValue('GCKPKAV5V6VNZLZJ7U3DBYTG7P7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7'),
+      getPublicKey: jest
+        .fn()
+        .mockResolvedValue(
+          'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7',
+        ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +32,10 @@ describe('BalanceService', () => {
         {
           provide: WalletService,
           useValue: mockWallet,
+        },
+        {
+          provide: ConfigService,
+          useValue: mockConfig,
         },
       ],
     }).compile();
@@ -43,9 +52,7 @@ describe('BalanceService', () => {
     it('should return XLM balance', async () => {
       // Mock the Horizon server call
       const mockLoadAccount = jest.fn().mockResolvedValue({
-        balances: [
-          { asset_type: 'native', balance: '1000.0000000' },
-        ],
+        balances: [{ asset_type: 'native', balance: '1000.0000000' }],
       });
       (service as any).horizon = { loadAccount: mockLoadAccount };
 
@@ -70,14 +77,14 @@ describe('BalanceService', () => {
   describe('getBalances', () => {
     it('should return XLM and carbon credit balances', async () => {
       const mockLoadAccount = jest.fn().mockResolvedValue({
-        balances: [
-          { asset_type: 'native', balance: '1000.0000000' },
-        ],
+        balances: [{ asset_type: 'native', balance: '1000.0000000' }],
       });
       (service as any).horizon = { loadAccount: mockLoadAccount };
 
       // Mock getCarbonCreditBalances to return empty array
-      jest.spyOn(service as any, 'getCarbonCreditBalances').mockResolvedValue([]);
+      jest
+        .spyOn(service as any, 'getCarbonCreditBalances')
+        .mockResolvedValue([]);
 
       const result = await service.getBalances('company-1');
 
@@ -114,7 +121,9 @@ describe('BalanceService', () => {
     });
 
     it('should return unhealthy status on error', async () => {
-      const mockRoot = jest.fn().mockRejectedValue(new Error('Connection failed'));
+      const mockRoot = jest
+        .fn()
+        .mockRejectedValue(new Error('Connection failed'));
       (service as any).horizon = { root: mockRoot };
 
       const result = await service.healthCheck();

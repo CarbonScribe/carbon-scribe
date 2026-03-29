@@ -3,7 +3,11 @@ import { WalletService } from './wallet.service';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { KeyManagementService } from './key-management.service';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { WalletStatus, TransactionStatus, OperationType } from '../interfaces/stellar.interface';
+import {
+  WalletStatus,
+  TransactionStatus,
+  OperationType,
+} from '../interfaces/stellar.interface';
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -48,7 +52,11 @@ describe('WalletService', () => {
         authTag: 'authTag',
         iv: 'iv',
       }),
-      decryptPrivateKey: jest.fn().mockReturnValue('SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH'),
+      decryptPrivateKey: jest
+        .fn()
+        .mockReturnValue(
+          'SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH',
+        ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -81,15 +89,18 @@ describe('WalletService', () => {
 
       expect(result).toHaveProperty('id');
       expect(result.companyId).toBe('company-1');
-      expect(result.publicKey).toBe('GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7');
+      expect(result.publicKey).toBe(
+        'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7',
+      );
       expect(result.status).toBe(WalletStatus.ACTIVE);
     });
 
     it('should throw ConflictException if wallet already exists', async () => {
       prismaService.corporateWallet.findUnique.mockResolvedValue(mockWallet);
 
-      await expect(service.createWallet({ companyId: 'company-1' }))
-        .rejects.toThrow(ConflictException);
+      await expect(
+        service.createWallet({ companyId: 'company-1' }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
@@ -106,8 +117,9 @@ describe('WalletService', () => {
     it('should throw NotFoundException if wallet not found', async () => {
       prismaService.corporateWallet.findUnique.mockResolvedValue(null);
 
-      await expect(service.getWalletByCompanyId('unknown-company'))
-        .rejects.toThrow(NotFoundException);
+      await expect(
+        service.getWalletByCompanyId('unknown-company'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -116,7 +128,10 @@ describe('WalletService', () => {
       const updatedWallet = { ...mockWallet, status: WalletStatus.LOCKED };
       prismaService.corporateWallet.update.mockResolvedValue(updatedWallet);
 
-      const result = await service.updateWalletStatus('company-1', WalletStatus.LOCKED);
+      const result = await service.updateWalletStatus(
+        'company-1',
+        WalletStatus.LOCKED,
+      );
 
       expect(result.status).toBe(WalletStatus.LOCKED);
     });
@@ -157,7 +172,9 @@ describe('WalletService', () => {
 
       const result = await service.getSecretKey('company-1');
 
-      expect(result).toBe('SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH');
+      expect(result).toBe(
+        'SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH',
+      );
     });
 
     it('should throw ConflictException for non-active wallet', async () => {
@@ -166,8 +183,9 @@ describe('WalletService', () => {
         status: WalletStatus.LOCKED,
       });
 
-      await expect(service.getSecretKey('company-1'))
-        .rejects.toThrow(ConflictException);
+      await expect(service.getSecretKey('company-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -177,7 +195,9 @@ describe('WalletService', () => {
 
       const result = await service.getPublicKey('company-1');
 
-      expect(result).toBe('GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7');
+      expect(result).toBe(
+        'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7',
+      );
     });
   });
 

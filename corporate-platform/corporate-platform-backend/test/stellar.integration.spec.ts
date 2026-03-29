@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
 import { StellarModule } from '../src/stellar/stellar.module';
 import { ConfigModule } from '../src/config/config.module';
 import { DatabaseModule } from '../src/shared/database/database.module';
 import { StellarService } from '../src/stellar/stellar.service';
-import { WalletStatus, TransactionStatus, OperationType } from '../src/stellar/interfaces/stellar.interface';
+import {
+  WalletStatus,
+  TransactionStatus,
+  OperationType,
+} from '../src/stellar/interfaces/stellar.interface';
 
 describe('Stellar Integration (Testnet)', () => {
   let app: INestApplication;
@@ -14,11 +17,7 @@ describe('Stellar Integration (Testnet)', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [
-        ConfigModule,
-        DatabaseModule,
-        StellarModule,
-      ],
+      imports: [ConfigModule, DatabaseModule, StellarModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
@@ -48,8 +47,8 @@ describe('Stellar Integration (Testnet)', () => {
         await stellarService.getWallet(testCompanyId);
         // Wallet exists, skip creation or handle accordingly
         return;
-      } catch (e) {
-        // Wallet doesn't exist, proceed with creation
+      } catch {
+        // Wall_et doesn't exist, proceed with creation
       }
 
       const wallet = await stellarService.createWallet(testCompanyId);
@@ -61,9 +60,9 @@ describe('Stellar Integration (Testnet)', () => {
     });
 
     it('should not allow duplicate wallet creation', async () => {
-      await expect(stellarService.createWallet(testCompanyId))
-        .rejects
-        .toThrow();
+      await expect(
+        stellarService.createWallet(testCompanyId),
+      ).rejects.toThrow();
     });
   });
 
@@ -96,17 +95,20 @@ describe('Stellar Integration (Testnet)', () => {
 
     it('should update wallet status', async () => {
       // This test modifies state, so we restore it after
-      const originalWallet = await stellarService.getWallet(testCompanyId);
-
-      // Update to locked
       const walletService = (stellarService as any).walletService;
-      await walletService.updateWalletStatus(testCompanyId, WalletStatus.LOCKED);
+      await walletService.updateWalletStatus(
+        testCompanyId,
+        WalletStatus.LOCKED,
+      );
 
       let isActive = await stellarService.isWalletActive(testCompanyId);
       expect(isActive).toBe(false);
 
       // Restore to active
-      await walletService.updateWalletStatus(testCompanyId, WalletStatus.ACTIVE);
+      await walletService.updateWalletStatus(
+        testCompanyId,
+        WalletStatus.ACTIVE,
+      );
 
       isActive = await stellarService.isWalletActive(testCompanyId);
       expect(isActive).toBe(true);
@@ -142,8 +144,9 @@ describe('Stellar Integration (Testnet)', () => {
 
   describe('Address Validation', () => {
     it('should validate correct Stellar addresses', () => {
-      const validAddress = 'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7';
-      
+      const validAddress =
+        'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7';
+
       expect(stellarService.validateAddress(validAddress)).toBe(true);
     });
 

@@ -1,4 +1,13 @@
-import { Controller, Post, Get, Body, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { TransferService } from './transfer.service';
 import { StellarService } from './stellar.service';
 import { InitiateTransferDto, BatchTransferDto } from './dto/transfer.dto';
@@ -15,14 +24,14 @@ export class StellarController {
   ) {}
 
   // ========== Health Check ==========
-  
+
   @Get('stellar/health')
   async healthCheck() {
     return this.stellarService.healthCheck();
   }
 
   // ========== Wallet Management ==========
-  
+
   @Post('wallets')
   @HttpCode(HttpStatus.CREATED)
   async createWallet(@Body() dto: CreateWalletDto): Promise<WalletResponseDto> {
@@ -31,24 +40,30 @@ export class StellarController {
 
   @Get('companies/:companyId/wallet')
   @UseGuards(StellarAuthGuard)
-  async getWallet(@Param('companyId') companyId: string): Promise<WalletResponseDto> {
+  async getWallet(
+    @Param('companyId') companyId: string,
+  ): Promise<WalletResponseDto> {
     return this.stellarService.getWallet(companyId);
   }
 
   @Get('companies/:companyId/wallet/balances')
   @UseGuards(StellarAuthGuard)
-  async getBalances(@Param('companyId') companyId: string): Promise<BalanceResponseDto> {
+  async getBalances(
+    @Param('companyId') companyId: string,
+  ): Promise<BalanceResponseDto> {
     return this.stellarService.getBalances(companyId);
   }
 
   @Get('companies/:companyId/wallet/transactions')
   @UseGuards(StellarAuthGuard)
-  async getTransactions(@Param('companyId') companyId: string): Promise<TransactionResponseDto[]> {
+  async getTransactions(
+    @Param('companyId') companyId: string,
+  ): Promise<TransactionResponseDto[]> {
     return this.stellarService.getTransactions(companyId);
   }
 
   // ========== Transfer Operations ==========
-  
+
   @Post('stellar/transfers')
   async initiateTransfer(@Body() dto: InitiateTransferDto) {
     return this.transferService.initiateTransfer(dto);

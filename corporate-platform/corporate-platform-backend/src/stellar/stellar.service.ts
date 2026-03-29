@@ -4,7 +4,7 @@ import { WalletService } from './services/wallet.service';
 import { BalanceService } from './services/balance.service';
 import { KeyManagementService } from './services/key-management.service';
 import * as StellarSdk from '@stellar/stellar-sdk';
-import { 
+import {
   IHealthCheckResponse,
   IWalletResponse,
   IBalanceResponse,
@@ -25,7 +25,9 @@ export class StellarService {
     private readonly keyManagementService: KeyManagementService,
   ) {
     const stellarConfig = this.configService.getStellarConfig();
-    this.networkPassphrase = stellarConfig.networkPassphrase || this.getDefaultNetworkPassphrase(stellarConfig.network);
+    this.networkPassphrase =
+      stellarConfig.networkPassphrase ||
+      this.getDefaultNetworkPassphrase(stellarConfig.network);
   }
 
   /**
@@ -101,7 +103,9 @@ export class StellarService {
   /**
    * Record a transaction
    */
-  async recordTransaction(data: ITransactionSubmit): Promise<ITransactionResponse> {
+  async recordTransaction(
+    data: ITransactionSubmit,
+  ): Promise<ITransactionResponse> {
     return this.walletService.recordTransaction(data);
   }
 
@@ -120,7 +124,11 @@ export class StellarService {
     status: TransactionStatus,
     confirmedAt?: Date,
   ): Promise<ITransactionResponse> {
-    return this.walletService.updateTransactionStatus(transactionHash, status, confirmedAt);
+    return this.walletService.updateTransactionStatus(
+      transactionHash,
+      status,
+      confirmedAt,
+    );
   }
 
   /**

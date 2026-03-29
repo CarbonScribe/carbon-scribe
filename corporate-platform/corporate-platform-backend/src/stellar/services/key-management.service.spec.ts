@@ -1,13 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { KeyManagementService } from './key-management.service';
 import { ConfigService } from '../../config/config.service';
-import { IKeyPairEncrypted, IStellarKeypair } from '../interfaces/stellar.interface';
-
-// Mock Stellar SDK
-const mockKeypair = {
-  publicKey: jest.fn(),
-  secret: jest.fn(),
-};
 
 let keypairCallCount = 0;
 
@@ -16,8 +9,16 @@ jest.mock('@stellar/stellar-sdk', () => ({
     random: jest.fn().mockImplementation(() => {
       keypairCallCount++;
       return {
-        publicKey: jest.fn().mockReturnValue(`GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK${keypairCallCount}`),
-        secret: jest.fn().mockReturnValue(`SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMV${keypairCallCount}`),
+        publicKey: jest
+          .fn()
+          .mockReturnValue(
+            `GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK${keypairCallCount}`,
+          ),
+        secret: jest
+          .fn()
+          .mockReturnValue(
+            `SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMV${keypairCallCount}`,
+          ),
       };
     }),
     fromPublicKey: jest.fn().mockImplementation((publicKey: string) => {
@@ -28,7 +29,10 @@ jest.mock('@stellar/stellar-sdk', () => ({
     }),
     fromSecret: jest.fn().mockImplementation((secret: string) => {
       if (secret.startsWith('S') && secret.length === 56) {
-        return { publicKey: () => 'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7' };
+        return {
+          publicKey: () =>
+            'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7',
+        };
       }
       throw new Error('Invalid secret key');
     }),
@@ -37,7 +41,6 @@ jest.mock('@stellar/stellar-sdk', () => ({
 
 describe('KeyManagementService', () => {
   let service: KeyManagementService;
-  let configService: jest.Mocked<ConfigService>;
 
   beforeEach(async () => {
     const mockConfigService = {
@@ -60,7 +63,6 @@ describe('KeyManagementService', () => {
     }).compile();
 
     service = module.get<KeyManagementService>(KeyManagementService);
-    configService = module.get(ConfigService) as jest.Mocked<ConfigService>;
   });
 
   it('should be defined', () => {
@@ -119,7 +121,8 @@ describe('KeyManagementService', () => {
 
   describe('validatePublicKey', () => {
     it('should return true for valid public key', () => {
-      const validPublicKey = 'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7';
+      const validPublicKey =
+        'GCKPKAV5V6VNZLZJ7U3DBYTG7P7P2DZFKDDI7IMVYXEX3H5HNYP3WBK7';
       expect(service.validatePublicKey(validPublicKey)).toBe(true);
     });
 
@@ -132,7 +135,8 @@ describe('KeyManagementService', () => {
 
   describe('validateSecretKey', () => {
     it('should return true for valid secret key', () => {
-      const validSecret = 'SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH';
+      const validSecret =
+        'SBJGKHLIKSSTPTQCTQBKW5LZSWYOIRMXKCVB7JABHQWDGKWYV3PTJMVH';
       expect(service.validateSecretKey(validSecret)).toBe(true);
     });
 
