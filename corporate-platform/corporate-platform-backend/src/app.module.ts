@@ -32,6 +32,7 @@ import { OwnershipHistoryModule } from './audit/ownership-history/ownership-hist
 import { CorsiaModule } from './corsia/corsia.module';
 import { AuditTrailModule } from './audit-trail/audit-trail.module';
 import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
+import { CbamModule } from './cbam/cbam.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { TeamCollaborationModule } from './team-collaboration/team-collaboration
     CorsiaModule,
     AuditTrailModule,
     TeamCollaborationModule,
+    CbamModule,
   ],
   controllers: [AppController],
   providers: [AppService],

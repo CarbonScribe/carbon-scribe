@@ -49,6 +49,9 @@ model Company {
   teamActivities         TeamActivity[]
   collaborationMetrics   CollaborationMetric[]
   memberEngagements      MemberEngagement[]
+  cbamGoods              CbamGoods[]
+  importDeclarations     ImportDeclaration[]
+  cbamReports            CbamQuarterlyReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1298,45 +1301,70 @@ model CreditCurrentOwner {
 }
 
 // ==========================================
-// Corporate Stellar Wallet Management
+// CBAM (Carbon Border Adjustment Mechanism)
 // ==========================================
 
-model CorporateWallet {
+model CbamGoods {
   id              String   @id @default(cuid())
-  companyId       String   @unique
+  companyId       String
+  cnCode          String   // Combined Nomenclature code
+  goodsName       String
+  sector          String   // Cement, Iron & Steel, Aluminium, Fertilizers, Electricity, Hydrogen
+  defaultValue    Float?   // Default embedded emissions if no actual data
+  unit            String
   company         Company  @relation(fields: [companyId], references: [id])
-  publicKey       String   @unique
-  encryptedSecret String   // Encrypted private key
-  status          String   @default("ACTIVE") // ACTIVE, PENDING, LOCKED
+  importDeclarations ImportDeclaration[]
+
+  @@index([companyId])
+  @@index([sector])
+  @@index([cnCode])
+  @@map("cbam_goods")
+}
+
+model ImportDeclaration {
+  id              String   @id @default(cuid())
+  companyId       String
+  goodsId         String
+  goods           CbamGoods @relation(fields: [goodsId], references: [id])
+  importDate      DateTime
+  quantity        Float
+  quantityUnit    String
+  countryOfOrigin String
+  installationId  String?  // EU CBAM installation ID
+  actualEmissions Float?    // Actual embedded emissions (if reported)
+  defaultEmissions Float    // Default emissions used
+  totalEmissions  Float     // Calculated total
+  certificateCost Float?    // CBAM certificate cost
+  metadata        Json?
+  company         Company  @relation(fields: [companyId], references: [id])
+  cbamReports     CbamQuarterlyReport[] @relation("ReportDeclarations")
+
+  @@index([companyId])
+  @@index([importDate])
+  @@index([goodsId])
+  @@map("import_declarations")
+}
+
+model CbamQuarterlyReport {
+  id              String   @id @default(cuid())
+  companyId       String
+  year            Int
+  quarter         Int      // 1, 2, 3, 4
+  status          String   // DRAFT, SUBMITTED, ACCEPTED
+  submittedAt     DateTime?
+  submissionId    String?
+  totalEmissions  Float
+  certificatesRequired Int
+  certificatesPurchased Int?
+  reportData      Json     // Full report structure
+  company         Company  @relation(fields: [companyId], references: [id])
+  declarations    ImportDeclaration[] @relation("ReportDeclarations")
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  transactions    WalletTransaction[]
-
+  @@unique([companyId, year, quarter])
   @@index([companyId])
-  @@index([publicKey])
-  @@map("corporate_wallets")
-}
-
-model WalletTransaction {
-  id              String   @id @default(cuid())
-  companyId       String
-  company         Company  @relation(fields: [companyId], references: [id])
-  walletId        String
-  wallet          CorporateWallet @relation(fields: [walletId], references: [id])
-  transactionHash String   @unique
-  operationType   String   // TRANSFER, RETIREMENT, APPROVE
-  status          String   // PENDING, SUCCESS, FAILED
-  amount          Int
-  tokenIds        Json?    @default("[]")    // List of carbon credit token IDs
-  metadata        Json?
-  submittedAt     DateTime @default(now())
-  confirmedAt     DateTime?
-
-  @@index([companyId])
-  @@index([walletId])
-  @@index([transactionHash])
   @@index([status])
-  @@index([submittedAt])
-  @@map("wallet_transactions")
+  @@map("cbam_quarterly_reports")
 }
