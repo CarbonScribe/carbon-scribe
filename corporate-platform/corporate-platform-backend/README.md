@@ -341,3 +341,38 @@ npx prisma migrate dev --name add_credit_models
 ```
 
 If you manage migrations centrally, prefer creating the migration in your CI or local environment and reviewing it before applying in production.
+
+## Audit Trail Service Module
+
+The backend now includes an immutable audit trail module at `src/audit-trail/` for compliance-relevant activity tracking with tamper-evident hash chaining and optional Stellar anchoring.
+
+Core endpoints:
+
+- `GET /api/v1/audit-trail/events`
+- `GET /api/v1/audit-trail/events/:id`
+- `GET /api/v1/audit-trail/entity/:entityType/:entityId`
+- `GET /api/v1/audit-trail/verify/:id`
+- `POST /api/v1/audit-trail/verify/batch`
+- `GET /api/v1/audit-trail/chain/integrity`
+- `POST /api/v1/audit-trail/anchor`
+- `GET /api/v1/audit-trail/export`
+
+Optional manual creation endpoint (JWT scoped):
+
+- `POST /api/v1/audit-trail/events`
+
+Query filters for `GET /events` and `GET /export`:
+
+- `userId`, `eventType`, `action`, `entityType`, `entityId`, `from`, `to`, `page`, `limit`
+- Export format via `format=csv|json` (default: `csv`)
+
+Environment variables:
+
+- `AUDIT_TRAIL_RETENTION_DAYS` (default `3650`)
+- `AUDIT_STELLAR_ANCHOR_ENABLED` (`true|false`, default `false`)
+
+Decorator usage summary:
+
+- Use `@AuditLog({...})` on service methods.
+- Provide `entityType` and `entityId` mapping from args/result.
+- Expose `auditTrailService` on the class and ensure user context (`companyId`, `sub`/`userId`) is accessible via class state or method args.

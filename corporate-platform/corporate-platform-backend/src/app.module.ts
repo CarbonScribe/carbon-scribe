@@ -30,6 +30,8 @@ import { OrderModule } from './order/order.module';
 import { TeamManagementModule } from './team-management/team-management.module';
 import { OwnershipHistoryModule } from './audit/ownership-history/ownership-history.module';
 import { CorsiaModule } from './corsia/corsia.module';
+import { AuditTrailModule } from './audit-trail/audit-trail.module';
+import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 
 @Module({
   imports: [
@@ -60,6 +62,8 @@ import { CorsiaModule } from './corsia/corsia.module';
     TeamManagementModule,
     OwnershipHistoryModule,
     CorsiaModule,
+    AuditTrailModule,
+    TeamCollaborationModule,
   ],
   controllers: [AppController],
   providers: [AppService],

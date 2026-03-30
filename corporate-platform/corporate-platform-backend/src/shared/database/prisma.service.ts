@@ -26,6 +26,7 @@ export class PrismaService
     'User',
     'IpWhitelist',
     'AuditLog',
+    'AuditEvent',
     'Bid',
     'RetirementSchedule',
     'BatchRetirement',
