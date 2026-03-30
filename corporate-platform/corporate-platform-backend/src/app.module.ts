@@ -31,6 +31,7 @@ import { TeamManagementModule } from './team-management/team-management.module';
 import { OwnershipHistoryModule } from './audit/ownership-history/ownership-history.module';
 import { CorsiaModule } from './corsia/corsia.module';
 import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
+import { SbtiModule } from './sbti/sbti.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { TeamCollaborationModule } from './team-collaboration/team-collaboration
     OwnershipHistoryModule,
     CorsiaModule,
     TeamCollaborationModule,
+    SbtiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

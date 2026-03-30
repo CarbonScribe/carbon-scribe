@@ -46,6 +46,7 @@ export class PrismaService
     'FlightRecord',
     'CorsiaComplianceYear',
     'CorsiaEligibleCredit',
+    'SbtiTarget',
   ]);
 
   private readonly scopedModelsByRelation = new Set<string>([
@@ -61,6 +62,7 @@ export class PrismaService
     'PortfolioSnapshot',
     'PortfolioEntry',
     'CreditAvailabilityLog',
+    'TargetProgress',
   ]);
 
   constructor(private readonly tenantContextStore: TenantContextStore) {

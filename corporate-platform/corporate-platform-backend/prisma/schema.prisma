@@ -46,6 +46,7 @@ model Company {
   teamActivities         TeamActivity[]
   collaborationMetrics   CollaborationMetric[]
   memberEngagements      MemberEngagement[]
+  sbtiTargets            SbtiTarget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1261,4 +1262,48 @@ model CreditCurrentOwner {
   createdAt       DateTime @default(now())
 
   @@map("credit_current_owners")
+}
+
+// ==========================================
+// SBTi (Science Based Targets initiative)
+// ==========================================
+
+model SbtiTarget {
+  id                  String           @id @default(cuid())
+  companyId           String
+  company             Company          @relation(fields: [companyId], references: [id])
+  targetType          String           // NEAR_TERM, LONG_TERM, NET_ZERO
+  scope               String           // SCOPE1, SCOPE2, SCOPE3, ALL
+  baseYear            Int
+  baseYearEmissions   Float
+  targetYear          Int
+  reductionPercentage Float
+  status              String           // DRAFT, SUBMITTED, VALIDATED, APPROVED
+  validationId        String?
+  validatedAt         DateTime?
+  progress            TargetProgress[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([targetType])
+  @@map("sbti_targets")
+}
+
+model TargetProgress {
+  id              String     @id @default(cuid())
+  targetId        String
+  target          SbtiTarget @relation(fields: [targetId], references: [id])
+  reportingYear   Int
+  emissions       Float
+  targetEmissions Float
+  variance        Float
+  onTrack         Boolean
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([targetId, reportingYear])
+  @@index([targetId])
+  @@map("target_progress")
 }
