@@ -25,6 +25,8 @@ model Company {
   bids                    Bid[]
   projects                Project[]
   portfolios              Portfolio[]
+  corporateWallet         CorporateWallet?
+  walletTransactions      WalletTransaction[]
   transactions            Transaction[]
   compliances             Compliance[]
   reports                 Report[]
@@ -1228,7 +1230,7 @@ model CollaborationMetric {
   overallScore    Float    // 0-100 composite
   components      Json     // Individual factor scores
   topContributors Json     // Most engaged members
-  insights        String[] // Key observations
+  insights        Json     // Key observations as JSON array
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   
