@@ -14,7 +14,8 @@ describe('BalanceService', () => {
         horizonUrl: 'https://horizon-testnet.stellar.org',
         sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
         networkPassphrase: 'Test SDF Network ; September 2015',
-        carbonAssetContractId: 'CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM',
+        carbonAssetContractId:
+          'CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM',
       }),
     };
 

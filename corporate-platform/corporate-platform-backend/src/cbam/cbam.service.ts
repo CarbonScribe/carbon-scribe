@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
 import { SecurityService } from '../security/security.service';
 import { GoodsClassificationService } from './services/goods-classification.service';
@@ -9,7 +6,11 @@ import { EmbeddedEmissionsService } from './services/embedded-emissions.service'
 import { QuarterlyReportService } from './services/quarterly-report.service';
 import { CertificateTrackingService } from './services/certificate-tracking.service';
 import { ImportDeclarationDto } from './dto/import-declaration.dto';
-import { GenerateReportDto, SubmitReportDto, CalculateEmissionsDto } from './dto/report-submission.dto';
+import {
+  GenerateReportDto,
+  SubmitReportDto,
+  CalculateEmissionsDto,
+} from './dto/report-submission.dto';
 
 @Injectable()
 export class CbamService {
@@ -43,25 +44,30 @@ export class CbamService {
     );
 
     // Validate installation ID if provided
-    if (dto.installationId && !this.embeddedEmissionsService.validateInstallationId(dto.installationId)) {
+    if (
+      dto.installationId &&
+      !this.embeddedEmissionsService.validateInstallationId(dto.installationId)
+    ) {
       throw new BadRequestException('Invalid EU installation ID format');
     }
 
     // Calculate emissions
-    const calculation = this.embeddedEmissionsService.calculateEmbeddedEmissions({
-      companyId,
-      goodsId: good.sector,
-      quantity: dto.quantity,
-      quantityUnit: dto.quantityUnit,
-      countryOfOrigin: dto.countryOfOrigin,
-      actualEmissions: dto.actualEmissions,
-      installationId: dto.installationId,
-    });
+    const calculation =
+      this.embeddedEmissionsService.calculateEmbeddedEmissions({
+        companyId,
+        goodsId: good.sector,
+        quantity: dto.quantity,
+        quantityUnit: dto.quantityUnit,
+        countryOfOrigin: dto.countryOfOrigin,
+        actualEmissions: dto.actualEmissions,
+        installationId: dto.installationId,
+      });
 
     // Calculate certificate cost
-    const certificateCost = this.embeddedEmissionsService.calculateCertificateCost(
-      calculation.totalEmissions,
-    );
+    const certificateCost =
+      this.embeddedEmissionsService.calculateCertificateCost(
+        calculation.totalEmissions,
+      );
 
     const declaration = await this.prisma.importDeclaration.create({
       data: {
@@ -123,19 +129,21 @@ export class CbamService {
       companyId,
     );
 
-    const calculation = this.embeddedEmissionsService.calculateEmbeddedEmissions({
-      companyId,
-      goodsId: good.sector,
-      quantity: dto.quantity,
-      quantityUnit: dto.quantityUnit,
-      countryOfOrigin: dto.countryOfOrigin,
-      actualEmissions: dto.actualEmissions,
-      installationId: dto.installationId,
-    });
+    const calculation =
+      this.embeddedEmissionsService.calculateEmbeddedEmissions({
+        companyId,
+        goodsId: good.sector,
+        quantity: dto.quantity,
+        quantityUnit: dto.quantityUnit,
+        countryOfOrigin: dto.countryOfOrigin,
+        actualEmissions: dto.actualEmissions,
+        installationId: dto.installationId,
+      });
 
-    const certificateCost = this.embeddedEmissionsService.calculateCertificateCost(
-      calculation.totalEmissions,
-    );
+    const certificateCost =
+      this.embeddedEmissionsService.calculateCertificateCost(
+        calculation.totalEmissions,
+      );
 
     return {
       ...calculation,
@@ -207,7 +215,10 @@ export class CbamService {
   }
 
   async getCertificateHistory(companyId: string, year?: number) {
-    return this.certificateTrackingService.getCertificateHistory(companyId, year);
+    return this.certificateTrackingService.getCertificateHistory(
+      companyId,
+      year,
+    );
   }
 
   async recordCertificatePurchase(

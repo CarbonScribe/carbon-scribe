@@ -113,7 +113,7 @@ describe('CbamService', () => {
     it('should return all CBAM sectors', async () => {
       const sectors = await service.getCbamSectors();
       expect(sectors.length).toBe(6);
-      expect(sectors.map(s => s.code)).toEqual([
+      expect(sectors.map((s) => s.code)).toEqual([
         'CEMENT',
         'IRON_STEEL',
         'ALUMINIUM',

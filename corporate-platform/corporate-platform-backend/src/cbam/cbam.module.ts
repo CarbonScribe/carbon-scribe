@@ -10,11 +10,7 @@ import { SecurityModule } from '../security/security.module';
 import { FrameworkRegistryModule } from '../framework-registry/framework-registry.module';
 
 @Module({
-  imports: [
-    DatabaseModule,
-    SecurityModule,
-    FrameworkRegistryModule,
-  ],
+  imports: [DatabaseModule, SecurityModule, FrameworkRegistryModule],
   controllers: [CbamController],
   providers: [
     CbamService,

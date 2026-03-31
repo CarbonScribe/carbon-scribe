@@ -14,7 +14,7 @@ export interface CbamGood {
   unit: string;
 }
 
-export type CbamSectorType = 
+export type CbamSectorType =
   | 'CEMENT'
   | 'IRON_STEEL'
   | 'ALUMINIUM'
