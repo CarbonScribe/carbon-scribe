@@ -19,7 +19,7 @@ import (
 func TestCollaborationRoutes_MountedReturnNon404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	handler := NewHandler(NewService(repo))
 
 	router := gin.New()
@@ -96,7 +96,7 @@ func TestCollaborationRoutes_NotMountedReturn404(t *testing.T) {
 func TestCollaborationRoutes_PathPatternsMatchExpected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	handler := NewHandler(NewService(repo))
 
 	router := gin.New()

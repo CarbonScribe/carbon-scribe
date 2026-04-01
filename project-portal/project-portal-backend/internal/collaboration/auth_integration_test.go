@@ -2,9 +2,7 @@ package collaboration
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,97 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type fakeCollaborationRepo struct {
-	createdInvitation *ProjectInvitation
-	createdComment    *Comment
-	createdTask       *Task
-	createdResource   *SharedResource
-	activities        []ActivityLog
-}
-
-func (f *fakeCollaborationRepo) AddMember(ctx context.Context, member *ProjectMember) error {
-	return nil
-}
-
-func (f *fakeCollaborationRepo) GetMember(ctx context.Context, projectID, userID string) (*ProjectMember, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (f *fakeCollaborationRepo) ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error) {
-	return []ProjectMember{}, nil
-}
-
-func (f *fakeCollaborationRepo) UpdateMember(ctx context.Context, member *ProjectMember) error {
-	return nil
-}
-
-func (f *fakeCollaborationRepo) RemoveMember(ctx context.Context, projectID, userID string) error {
-	return nil
-}
-
-func (f *fakeCollaborationRepo) CreateInvitation(ctx context.Context, invite *ProjectInvitation) error {
-	clone := *invite
-	f.createdInvitation = &clone
-	return nil
-}
-
-func (f *fakeCollaborationRepo) GetInvitationByToken(ctx context.Context, token string) (*ProjectInvitation, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (f *fakeCollaborationRepo) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
-	return []ProjectInvitation{}, nil
-}
-
-func (f *fakeCollaborationRepo) CreateActivity(ctx context.Context, activity *ActivityLog) error {
-	clone := *activity
-	f.activities = append(f.activities, clone)
-	return nil
-}
-
-func (f *fakeCollaborationRepo) ListActivities(ctx context.Context, projectID string, limit, offset int) ([]ActivityLog, error) {
-	return []ActivityLog{}, nil
-}
-
-func (f *fakeCollaborationRepo) CreateComment(ctx context.Context, comment *Comment) error {
-	clone := *comment
-	f.createdComment = &clone
-	return nil
-}
-
-func (f *fakeCollaborationRepo) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
-	return []Comment{}, nil
-}
-
-func (f *fakeCollaborationRepo) CreateTask(ctx context.Context, task *Task) error {
-	clone := *task
-	f.createdTask = &clone
-	return nil
-}
-
-func (f *fakeCollaborationRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (f *fakeCollaborationRepo) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
-	return []Task{}, nil
-}
-
-func (f *fakeCollaborationRepo) UpdateTask(ctx context.Context, task *Task) error {
-	return nil
-}
-
-func (f *fakeCollaborationRepo) CreateResource(ctx context.Context, resource *SharedResource) error {
-	clone := *resource
-	f.createdResource = &clone
-	return nil
-}
-
-func (f *fakeCollaborationRepo) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
-	return []SharedResource{}, nil
-}
-
-func newCollaborationTestRouter(repo *fakeCollaborationRepo, tokenManager *auth.TokenManager) *gin.Engine {
+func newCollaborationTestRouter(repo *FakeCollaborationRepo, tokenManager *auth.TokenManager) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	v1 := r.Group("/api/v1")
@@ -126,7 +34,7 @@ func bearerTokenForUser(t *testing.T, tokenManager *auth.TokenManager, userID st
 
 func TestCollaborationWriteEndpointsRequireAuth(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {
@@ -161,7 +69,7 @@ func TestCollaborationWriteEndpointsRequireAuth(t *testing.T) {
 
 func TestCreateCommentUsesJWTUserIDNotBodyUserID(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	token := bearerTokenForUser(t, tokenManager, "jwt-user-123")
@@ -184,17 +92,17 @@ func TestCreateCommentUsesJWTUserIDNotBodyUserID(t *testing.T) {
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d, body=%s", resp.Code, resp.Body.String())
 	}
-	if repo.createdComment == nil {
+	if repo.CreatedComment == nil {
 		t.Fatalf("expected comment to be created")
 	}
-	if repo.createdComment.UserID != "jwt-user-123" {
-		t.Fatalf("expected user id from token, got %q", repo.createdComment.UserID)
+	if repo.CreatedComment.UserID != "jwt-user-123" {
+		t.Fatalf("expected user id from token, got %q", repo.CreatedComment.UserID)
 	}
 }
 
 func TestInviteUserActivityUsesJWTActorID(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	token := bearerTokenForUser(t, tokenManager, "inviter-1")
@@ -216,10 +124,10 @@ func TestInviteUserActivityUsesJWTActorID(t *testing.T) {
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d, body=%s", resp.Code, resp.Body.String())
 	}
-	if len(repo.activities) == 0 {
+	if len(repo.Activities) == 0 {
 		t.Fatalf("expected invite activity log")
 	}
-	lastActivity := repo.activities[len(repo.activities)-1]
+	lastActivity := repo.Activities[len(repo.Activities)-1]
 	if lastActivity.UserID != "inviter-1" {
 		t.Fatalf("expected actor user id from token, got %q", lastActivity.UserID)
 	}

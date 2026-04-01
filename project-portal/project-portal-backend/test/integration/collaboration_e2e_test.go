@@ -44,9 +44,9 @@ func TestCollaborationE2E_ErrorHandling(t *testing.T) {
 
 	t.Run("missing required fields returns 400", func(t *testing.T) {
 		tests := []struct {
-			name   string
-			path   string
-			body   map[string]any
+			name string
+			path string
+			body map[string]any
 		}{
 			{
 				name: "create comment missing project_id",
@@ -130,9 +130,9 @@ func TestCollaborationE2E_ErrorHandling(t *testing.T) {
 
 	t.Run("invalid field types return 400", func(t *testing.T) {
 		tests := []struct {
-			name   string
-			path   string
-			body   map[string]any
+			name string
+			path string
+			body map[string]any
 		}{
 			{
 				name: "comment with numeric content",
@@ -435,8 +435,8 @@ func TestCollaborationE2E_EdgeCases(t *testing.T) {
 
 	t.Run("empty strings in optional fields", func(t *testing.T) {
 		body := map[string]interface{}{
-			"project_id": "p1",
-			"title":      "Task with empty description",
+			"project_id":  "p1",
+			"title":       "Task with empty description",
 			"description": "",
 			"priority":    "",
 		}
@@ -579,7 +579,7 @@ func TestCollaborationE2E_CrossProjectIsolation(t *testing.T) {
 		reqList1.Header.Set("Authorization", "Bearer "+token)
 
 		respList1 := httptest.NewRecorder()
-		router.ServeHTTP(reqList1, reqList1)
+		router.ServeHTTP(respList1, reqList1)
 
 		assert.Equal(t, http.StatusOK, respList1.Code)
 

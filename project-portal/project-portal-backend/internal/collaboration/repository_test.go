@@ -2,6 +2,7 @@ package collaboration
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -11,6 +12,14 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// Skip repository tests on Windows due to CGO issues
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping repository tests on Windows due to CGO/SQLite dependency issues")
+	}
+}
 
 // setupTestDB creates an in-memory SQLite database for testing
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -37,6 +46,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 }
 
 func TestRepository_AddMember_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -67,6 +77,7 @@ func TestRepository_AddMember_Success(t *testing.T) {
 }
 
 func TestRepository_GetMember_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -96,6 +107,7 @@ func TestRepository_GetMember_Success(t *testing.T) {
 }
 
 func TestRepository_GetMember_NotFound(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -111,6 +123,7 @@ func TestRepository_GetMember_NotFound(t *testing.T) {
 }
 
 func TestRepository_ListMembers_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -147,6 +160,7 @@ func TestRepository_ListMembers_Success(t *testing.T) {
 }
 
 func TestRepository_ListMembers_Empty(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -161,6 +175,7 @@ func TestRepository_ListMembers_Empty(t *testing.T) {
 }
 
 func TestRepository_UpdateMember_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -195,6 +210,7 @@ func TestRepository_UpdateMember_Success(t *testing.T) {
 }
 
 func TestRepository_RemoveMember_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -223,6 +239,7 @@ func TestRepository_RemoveMember_Success(t *testing.T) {
 }
 
 func TestRepository_CreateInvitation_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -255,6 +272,7 @@ func TestRepository_CreateInvitation_Success(t *testing.T) {
 }
 
 func TestRepository_GetInvitationByToken_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -284,6 +302,7 @@ func TestRepository_GetInvitationByToken_Success(t *testing.T) {
 }
 
 func TestRepository_ListInvitations_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -318,6 +337,7 @@ func TestRepository_ListInvitations_Success(t *testing.T) {
 }
 
 func TestRepository_CreateActivity_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -349,6 +369,7 @@ func TestRepository_CreateActivity_Success(t *testing.T) {
 }
 
 func TestRepository_ListActivities_Success_WithPagination(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -402,6 +423,7 @@ func TestRepository_ListActivities_Success_WithPagination(t *testing.T) {
 }
 
 func TestRepository_CreateComment_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -433,6 +455,7 @@ func TestRepository_CreateComment_Success(t *testing.T) {
 }
 
 func TestRepository_ListComments_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -465,6 +488,7 @@ func TestRepository_ListComments_Success(t *testing.T) {
 }
 
 func TestRepository_CreateTask_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -500,6 +524,7 @@ func TestRepository_CreateTask_Success(t *testing.T) {
 }
 
 func TestRepository_GetTask_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -526,6 +551,7 @@ func TestRepository_GetTask_Success(t *testing.T) {
 }
 
 func TestRepository_UpdateTask_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -559,6 +585,7 @@ func TestRepository_UpdateTask_Success(t *testing.T) {
 }
 
 func TestRepository_CreateResource_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)
@@ -594,6 +621,7 @@ func TestRepository_CreateResource_Success(t *testing.T) {
 }
 
 func TestRepository_ListResources_Success(t *testing.T) {
+	skipOnWindows(t)
 	// Arrange
 	db := setupTestDB(t)
 	repo := NewRepository(db)

@@ -413,12 +413,12 @@ func TestInvitationLifecycle_ExpirationTiming(t *testing.T) {
 		},
 		{
 			name:          "just expired - invalid",
-			hoursToExpire: 49,
+			hoursToExpire: -1,
 			shouldBeValid: false,
 		},
 		{
 			name:          "long expired - invalid",
-			hoursToExpire: 72,
+			hoursToExpire: -24,
 			shouldBeValid: false,
 		},
 	}
@@ -450,7 +450,7 @@ func TestInvitationLifecycle_ExpirationTiming(t *testing.T) {
 
 			// Assert expiration status
 			isExpired := time.Now().After(invitation.ExpiresAt)
-			assert.Equal(t, !tt.shouldBeValid, isExpired,
+			assert.Equal(t, tt.shouldBeValid, !isExpired,
 				"Invitation with %d hours to expire should be valid: %v", tt.hoursToExpire, tt.shouldBeValid)
 		})
 	}

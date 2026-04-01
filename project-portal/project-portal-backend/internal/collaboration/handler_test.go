@@ -16,7 +16,7 @@ import (
 
 func TestCollaborationHandler_ListMembers_ResponseContract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	token := bearerTokenForUser(t, tokenManager, "member-user-1")
@@ -34,7 +34,7 @@ func TestCollaborationHandler_ListMembers_ResponseContract(t *testing.T) {
 
 func TestCollaborationHandler_UnauthenticatedRequestsReturn401(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {
@@ -70,7 +70,7 @@ func TestCollaborationHandler_UnauthenticatedRequestsReturn401(t *testing.T) {
 
 func TestCollaborationHandler_InvalidTokenReturns401(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/collaboration/projects/p1/members", nil)
@@ -83,7 +83,7 @@ func TestCollaborationHandler_InvalidTokenReturns401(t *testing.T) {
 
 func TestCollaborationHandler_CreateComment_Contract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	validToken := bearerTokenForUser(t, tokenManager, "comment-user")
@@ -154,7 +154,7 @@ func TestCollaborationHandler_CreateComment_Contract(t *testing.T) {
 
 func TestCollaborationHandler_CreateTask_Contract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	validToken := bearerTokenForUser(t, tokenManager, "task-user")
@@ -225,7 +225,7 @@ func TestCollaborationHandler_CreateTask_Contract(t *testing.T) {
 
 func TestCollaborationHandler_InviteUser_Contract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	validToken := bearerTokenForUser(t, tokenManager, "inviter-user")
@@ -296,7 +296,7 @@ func TestCollaborationHandler_InviteUser_Contract(t *testing.T) {
 
 func TestCollaborationHandler_ListMembers_Permissions(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {
@@ -341,7 +341,7 @@ func TestCollaborationHandler_ListMembers_Permissions(t *testing.T) {
 
 func TestCollaborationHandler_RemoveMember_Permissions(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {
@@ -386,7 +386,7 @@ func TestCollaborationHandler_RemoveMember_Permissions(t *testing.T) {
 
 func TestCollaborationHandler_ListInvitations_Permissions(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {
@@ -431,7 +431,12 @@ func TestCollaborationHandler_ListInvitations_Permissions(t *testing.T) {
 
 func TestCollaborationHandler_GetActivities_Pagination(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{
+		Activities: []ActivityLog{
+			{ID: "1", ProjectID: "p1", UserID: "user1", Type: "user", Action: "created_task", Metadata: map[string]any{"task_id": "task1"}, CreatedAt: time.Now()},
+			{ID: "2", ProjectID: "p1", UserID: "user2", Type: "user", Action: "updated_comment", Metadata: map[string]any{"comment_id": "comment1"}, CreatedAt: time.Now()},
+		},
+	}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	token := bearerTokenForUser(t, tokenManager, "member-user-1")
@@ -498,7 +503,18 @@ func TestCollaborationHandler_GetActivities_Pagination(t *testing.T) {
 
 func TestCollaborationHandler_UpdateTask_Contract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{
+		ExistingTask: &Task{
+			ID:          "existing-task",
+			ProjectID:   "p1",
+			Title:       "Test Task",
+			Description: "Test Description",
+			Status:      "todo",
+			Priority:    "medium",
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+		},
+	}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	validToken := bearerTokenForUser(t, tokenManager, "task-user")
@@ -575,7 +591,7 @@ func TestCollaborationHandler_UpdateTask_Contract(t *testing.T) {
 
 func TestCollaborationHandler_CreateResource_Contract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	validToken := bearerTokenForUser(t, tokenManager, "resource-user")

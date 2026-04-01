@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,7 +23,17 @@ func TestCollaborationAuth_PermissionMatrix(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &collaboration.FakeCollaborationRepo{}
+	repo := &collaboration.FakeCollaborationRepo{
+		ExistingTask: &collaboration.Task{
+			ID:        "task123",
+			ProjectID: "p1",
+			Title:     "Test Task",
+			Status:    "todo",
+			CreatedBy: "test-user",
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		},
+	}
 	handler := collaboration.NewHandler(collaboration.NewService(repo))
 
 	router := gin.New()
@@ -102,21 +113,27 @@ func TestCollaborationAuth_PermissionMatrix(t *testing.T) {
 				switch {
 				case endpoint == "POST /api/v1/collaboration/projects/p1/invite":
 					body, _ = json.Marshal(map[string]string{"email": "test@example.com", "role": "Contributor"})
-					req = httptest.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+					req = httptest.NewRequest("POST", "/api/v1/collaboration/projects/p1/invite", bytes.NewBuffer(body))
 				case endpoint == "POST /api/v1/collaboration/comments":
 					body, _ = json.Marshal(map[string]string{"project_id": "p1", "content": "Test comment"})
-					req = httptest.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+					req = httptest.NewRequest("POST", "/api/v1/collaboration/comments", bytes.NewBuffer(body))
 				case endpoint == "POST /api/v1/collaboration/tasks":
 					body, _ = json.Marshal(map[string]string{"project_id": "p1", "title": "Test task"})
-					req = httptest.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+					req = httptest.NewRequest("POST", "/api/v1/collaboration/tasks", bytes.NewBuffer(body))
 				case endpoint == "PATCH /api/v1/collaboration/tasks/task123":
 					body, _ = json.Marshal(map[string]string{"status": "done"})
-					req = httptest.NewRequest("PATCH", endpoint, bytes.NewBuffer(body))
+					req = httptest.NewRequest("PATCH", "/api/v1/collaboration/tasks/task123", bytes.NewBuffer(body))
 				case endpoint == "POST /api/v1/collaboration/resources":
 					body, _ = json.Marshal(map[string]string{"project_id": "p1", "type": "document", "name": "Test resource"})
-					req = httptest.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+					req = httptest.NewRequest("POST", "/api/v1/collaboration/resources", bytes.NewBuffer(body))
 				default:
-					req = httptest.NewRequest("GET", endpoint, nil)
+					// Parse method and path for GET requests
+					parts := strings.SplitN(endpoint, " ", 2)
+					if len(parts) == 2 {
+						req = httptest.NewRequest(parts[0], parts[1], nil)
+					} else {
+						req = httptest.NewRequest("GET", endpoint, nil)
+					}
 				}
 
 				req.Header.Set("Content-Type", "application/json")
@@ -125,8 +142,8 @@ func TestCollaborationAuth_PermissionMatrix(t *testing.T) {
 				resp := httptest.NewRecorder()
 				router.ServeHTTP(resp, req)
 
-				assert.Equal(t, expectedStatus, resp.Code, 
-					"Expected %d for %s, got %d. Body: %s", 
+				assert.Equal(t, expectedStatus, resp.Code,
+					"Expected %d for %s, got %d. Body: %s",
 					expectedStatus, role, resp.Code, resp.Body.String())
 			})
 		}
@@ -241,12 +258,12 @@ func TestCollaborationPagination_LargeDataset(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	
+
 	// Create a repository that returns a large dataset
 	repo := &collaboration.FakeCollaborationRepo{
 		Activities: make([]collaboration.ActivityLog, 0),
 	}
-	
+
 	// Generate 100 activities
 	for i := 0; i < 100; i++ {
 		repo.Activities = append(repo.Activities, collaboration.ActivityLog{
@@ -266,10 +283,10 @@ func TestCollaborationPagination_LargeDataset(t *testing.T) {
 	token := bearerTokenForUser(t, tokenManager, "test-user")
 
 	tests := []struct {
-		name           string
-		limit          int
-		offset         int
-		expectedCount  int
+		name          string
+		limit         int
+		offset        int
+		expectedCount int
 	}{
 		{
 			name:          "first page 20 items",
@@ -394,7 +411,7 @@ func TestCollaborationE2E_InvitationWorkflow(t *testing.T) {
 
 	t.Run("non-manager cannot create invitation", func(t *testing.T) {
 		contributorToken := bearerTokenForUser(t, tokenManager, "contributor-user")
-		
+
 		body := map[string]string{
 			"email": "another-user@example.com",
 			"role":  "Contributor",
@@ -458,7 +475,7 @@ func TestCollaborationE2E_MemberManagementWorkflow(t *testing.T) {
 
 	t.Run("non-manager cannot remove member", func(t *testing.T) {
 		contributorToken := bearerTokenForUser(t, tokenManager, "contributor-user")
-		
+
 		req := httptest.NewRequest("DELETE", "/api/v1/collaboration/projects/project-1/members/another-user", nil)
 		req.Header.Set("Authorization", "Bearer "+contributorToken)
 
@@ -543,7 +560,7 @@ func TestCollaborationE2E_ActivityLogging(t *testing.T) {
 
 	t.Run("invite user logs activity", func(t *testing.T) {
 		managerToken := bearerTokenForUser(t, tokenManager, "manager-user")
-		
+
 		body := map[string]string{
 			"email": "invitee@example.com",
 			"role":  "Contributor",

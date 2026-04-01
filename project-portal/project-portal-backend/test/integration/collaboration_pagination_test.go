@@ -22,12 +22,12 @@ func TestCollaborationPagination_FilteringAndSorting(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	
+
 	// Create a repository with diverse activities for testing
 	repo := &collaboration.FakeCollaborationRepo{
 		Activities: make([]collaboration.ActivityLog, 0),
 	}
-	
+
 	// Generate activities with different types and timestamps
 	activityTypes := []string{"user", "system", "automated", "alert"}
 	for i := 0; i < 50; i++ {
@@ -63,10 +63,10 @@ func TestCollaborationPagination_FilteringAndSorting(t *testing.T) {
 			validateFunc: func(t *testing.T, body []map[string]any) {
 				// Should be in descending order by created_at
 				for i := 1; i < len(body); i++ {
-					prevTime := time.Parse(time.RFC3339, body[i-1]["created_at"].(string))
-					currTime := time.Parse(time.RFC3339, body[i]["created_at"].(string))
-					require.NoError(t, prevTime)
-					require.NoError(t, currTime)
+					prevTime, err := time.Parse(time.RFC3339, body[i-1]["created_at"].(string))
+					require.NoError(t, err)
+					currTime, err := time.Parse(time.RFC3339, body[i]["created_at"].(string))
+					require.NoError(t, err)
 					assert.True(t, prevTime.After(currTime) || prevTime.Equal(currTime))
 				}
 			},
@@ -79,10 +79,10 @@ func TestCollaborationPagination_FilteringAndSorting(t *testing.T) {
 				assert.Len(t, body, 5)
 				// Items should still be in descending order
 				for i := 1; i < len(body); i++ {
-					prevTime := time.Parse(time.RFC3339, body[i-1]["created_at"].(string))
-					currTime := time.Parse(time.RFC3339, body[i]["created_at"].(string))
-					require.NoError(t, prevTime)
-					require.NoError(t, currTime)
+					prevTime, err := time.Parse(time.RFC3339, body[i-1]["created_at"].(string))
+					require.NoError(t, err)
+					currTime, err := time.Parse(time.RFC3339, body[i]["created_at"].(string))
+					require.NoError(t, err)
 					assert.True(t, prevTime.After(currTime) || prevTime.Equal(currTime))
 				}
 			},
@@ -125,12 +125,12 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 	// Setup
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	
+
 	// Create a repository with a very large dataset
 	repo := &collaboration.FakeCollaborationRepo{
 		Activities: make([]collaboration.ActivityLog, 0),
 	}
-	
+
 	// Generate 1000 activities
 	for i := 0; i < 1000; i++ {
 		repo.Activities = append(repo.Activities, collaboration.ActivityLog{
@@ -150,10 +150,10 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 	token := bearerTokenForUser(t, tokenManager, "test-user")
 
 	tests := []struct {
-		name           string
-		limit          int
-		offset         int
-		maxDuration    time.Duration
+		name        string
+		limit       int
+		offset      int
+		maxDuration time.Duration
 	}{
 		{
 			name:        "small page size fast",
@@ -186,7 +186,7 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 			path := fmt.Sprintf("/api/v1/collaboration/projects/p1/activities?limit=%d&offset=%d", tt.limit, tt.offset)
 
 			start := time.Now()
-			
+
 			req := httptest.NewRequest("GET", path, nil)
 			req.Header.Set("Authorization", "Bearer "+token)
 
@@ -196,7 +196,7 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 			duration := time.Since(start)
 
 			assert.Equal(t, http.StatusOK, resp.Code)
-			assert.Less(t, duration, tt.maxDuration, 
+			assert.Less(t, duration, tt.maxDuration,
 				"Pagination request took %v, expected less than %v", duration, tt.maxDuration)
 
 			var body []map[string]any
@@ -278,8 +278,8 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 	t.Run("step 3: manager creates task", func(t *testing.T) {
 		body := map[string]string{
-			"project_id": projectID,
-			"title":      "Set up project infrastructure",
+			"project_id":  projectID,
+			"title":       "Set up project infrastructure",
 			"description": "Initialize repository and set up CI/CD",
 			"priority":    "high",
 		}
@@ -369,10 +369,10 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 		// Verify all expected actions are present
 		expectedActions := map[string]bool{
-			"user_invited":    false,
-			"comment_added":   false,
-			"task_created":    false,
-			"resource_added":  false,
+			"user_invited":   false,
+			"comment_added":  false,
+			"task_created":   false,
+			"resource_added": false,
 		}
 
 		for _, activity := range activities {
