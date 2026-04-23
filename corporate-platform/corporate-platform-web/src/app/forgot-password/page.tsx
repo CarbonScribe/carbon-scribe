@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { RegisterForm } from '@/components/auth/register-form';
+import { ForgotPasswordForm } from '@/components/auth/forgot-password-form';
 
-export default function RegisterPage() {
+export default function ForgotPasswordPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 px-4">
       <div className="w-full">
-        <RegisterForm />
+        <ForgotPasswordForm />
       </div>
     </div>
   );

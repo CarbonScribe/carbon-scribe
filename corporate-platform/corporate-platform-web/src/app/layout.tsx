@@ -5,7 +5,7 @@ import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import CorporateNavbar from '@/components/layout/CorporateNavbar'
 import CorporateSidebar from '@/components/layout/CorporateSidebar'
 import { CorporateProvider } from '@/contexts/CorporateContext'
-import { AuthProvider } from '@/contexts/AuthContext'
+import { AuthProvider } from '@/components/auth/auth-provider'
 
 const inter = Inter({ subsets: ['latin'] })
 
