@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Param,
+  Query,
   UseGuards,
   BadRequestException,
 } from '@nestjs/common';
@@ -30,10 +31,6 @@ export class ComplianceController {
     private securityService: SecurityService,
   ) {}
 
-  /**
-   * Run compliance checks on a transaction or credit
-   * POST /api/v1/compliance/check
-   */
   @Post('check')
   @Permissions(COMPLIANCE_SUBMIT)
   async checkCompliance(
@@ -73,10 +70,6 @@ export class ComplianceController {
     };
   }
 
-  /**
-   * Get compliance status for an entity
-   * GET /api/v1/compliance/status/:entityId
-   */
   @Get('status/:entityId')
   @Permissions(COMPLIANCE_VIEW)
   async getComplianceStatus(
@@ -109,10 +102,6 @@ export class ComplianceController {
     };
   }
 
-  /**
-   * Generate or retrieve compliance report for an entity
-   * GET /api/v1/compliance/report/:entityId
-   */
   @Get('report/:entityId')
   @Permissions(COMPLIANCE_VIEW)
   async getComplianceReport(
@@ -147,5 +136,91 @@ export class ComplianceController {
       data: result,
       timestamp: new Date(),
     };
+  }
+
+  // ========== RETIREMENT HISTORY QUERYING (Issue #234) ==========
+
+  @Get('retirements')
+  @Permissions(COMPLIANCE_VIEW)
+  async queryRetirements(
+    @CurrentUser() user: JwtPayload,
+    @Query('entity') entity?: string,
+    @Query('tokenId') tokenId?: string,
+    @Query('framework') framework?: string,
+    @Query('startYear') startYear?: string,
+    @Query('endYear') endYear?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.complianceService.queryRetirements(user.companyId, {
+      entity,
+      tokenId,
+      framework,
+      startYear: startYear ? parseInt(startYear) : undefined,
+      endYear: endYear ? parseInt(endYear) : undefined,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 20,
+    });
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId: user.companyId,
+      userId: user.sub,
+      resource: `/api/v1/compliance/retirements`,
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
+    });
+
+    return result;
+  }
+
+  @Get('retirements/:tokenId')
+  @Permissions(COMPLIANCE_VIEW)
+  async getRetirementByTokenId(
+    @CurrentUser() user: JwtPayload,
+    @Param('tokenId') tokenId: string,
+  ) {
+    const result = await this.complianceService.getRetirementByTokenId(user.companyId, tokenId);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId: user.companyId,
+      userId: user.sub,
+      resource: `/api/v1/compliance/retirements/${tokenId}`,
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
+    });
+
+    return result;
+  }
+
+  @Get('retirements/entity/:address')
+  @Permissions(COMPLIANCE_VIEW)
+  async getRetirementsByEntity(
+    @CurrentUser() user: JwtPayload,
+    @Param('address') address: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const result = await this.complianceService.getRetirementsByEntity(
+      user.companyId,
+      address,
+      page ? parseInt(page) : 1,
+      limit ? parseInt(limit) : 20,
+    );
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId: user.companyId,
+      userId: user.sub,
+      resource: `/api/v1/compliance/retirements/entity/${address}`,
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
+    });
+
+    return result;
   }
 }
