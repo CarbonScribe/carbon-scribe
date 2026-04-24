@@ -34,6 +34,7 @@ import { AuditTrailModule } from './audit-trail/audit-trail.module';
 import { GhgProtocolModule } from './ghg-protocol/ghg-protocol.module';
 import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 import { CbamModule } from './cbam/cbam.module';
+import { SbtiModule } from './sbti/sbti.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { CbamModule } from './cbam/cbam.module';
     GhgProtocolModule,
     TeamCollaborationModule,
     CbamModule,
+    SbtiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

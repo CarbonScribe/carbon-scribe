@@ -53,6 +53,9 @@ model Company {
   importDeclarations     ImportDeclaration[]
   cbamReports            CbamQuarterlyReport[]
 
+  // SBTi
+  sbtiTargets            SbtiTarget[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -509,6 +512,45 @@ model IpWhitelist {
 
   @@unique([companyId, cidr])
   @@index([companyId])
+}
+
+// ==========================================
+// SBTi Module
+// ==========================================
+
+model SbtiTarget {
+  id                   String   @id @default(cuid())
+  companyId            String
+  targetType           String   // NEAR_TERM, LONG_TERM, NET_ZERO
+  scope                String   // SCOPE1, SCOPE2, SCOPE3, ALL
+  baseYear             Int
+  baseYearEmissions    Float
+  targetYear           Int
+  reductionPercentage  Float
+  status               String   // DRAFT, SUBMITTED, VALIDATED, APPROVED
+  validationId         String?
+  validatedAt          DateTime?
+
+  company              Company  @relation(fields: [companyId], references: [id])
+  progresses           TargetProgress[]
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model TargetProgress {
+  id               String   @id @default(cuid())
+  targetId         String
+  reportingYear    Int
+  emissions        Float
+  targetEmissions  Float
+  variance         Float
+  onTrack          Boolean
+
+  target           SbtiTarget @relation(fields: [targetId], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model AuditLog {
