@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { AnalyticsService } from './analytics.service';
 import { DashboardService } from './services/dashboard.service';
 import { PredictiveService } from './services/predictive.service';
 import { CreditQualityService } from './services/credit-quality.service';
@@ -26,6 +27,7 @@ import { ChartDataDto } from './dto/analytics-query.dto';
 @Controller('api/v1/analytics')
 export class AnalyticsController {
   constructor(
+    private analyticsService: AnalyticsService,
     private dashboardService: DashboardService,
     private predictiveService: PredictiveService,
     private creditQualityService: CreditQualityService,
@@ -35,10 +37,6 @@ export class AnalyticsController {
     private teamPerformanceService: TeamPerformanceService,
     private timelineService: TimelineService,
   ) {}
-
-  // ========================
-  // Dashboard Analytics
-  // ========================
 
   @Get('dashboard/overview')
   @HttpCode(HttpStatus.OK)
@@ -55,10 +53,6 @@ export class AnalyticsController {
     return this.dashboardService.getInsights(user.companyId);
   }
 
-  // ========================
-  // Predictive Analytics
-  // ========================
-
   @Get('predictive/retirements')
   @HttpCode(HttpStatus.OK)
   async predictRetirements(
@@ -69,10 +63,7 @@ export class AnalyticsController {
     if (monthsNum <= 0 || monthsNum > 120) {
       throw new BadRequestException('Months must be between 1 and 120');
     }
-    return this.predictiveService.forecastRetirements(
-      user.companyId,
-      monthsNum,
-    );
+    return this.predictiveService.forecastRetirements(user.companyId, monthsNum);
   }
 
   @Get('predictive/impact')
@@ -93,10 +84,6 @@ export class AnalyticsController {
   async detectTrends(@CurrentUser() user: JwtPayload) {
     return this.predictiveService.detectTrends(user.companyId);
   }
-
-  // ========================
-  // Credit Quality Analytics
-  // ========================
 
   @Get('quality/radar/:projectId')
   @HttpCode(HttpStatus.OK)
@@ -121,10 +108,6 @@ export class AnalyticsController {
   ) {
     return this.creditQualityService.getBenchmarks(industry, region);
   }
-
-  // ========================
-  // Performance Analytics
-  // ========================
 
   @Get('performance/over-time')
   @HttpCode(HttpStatus.OK)
@@ -151,11 +134,7 @@ export class AnalyticsController {
     @Query('metric') metric: string = 'retirement_volume',
     @Query('dimension') dimension: string = 'projectType',
   ) {
-    return this.performanceService.getMetricBreakdown(
-      user.companyId,
-      metric,
-      dimension,
-    );
+    return this.performanceService.getMetricBreakdown(user.companyId, metric, dimension);
   }
 
   @Get('performance/rankings')
@@ -165,16 +144,8 @@ export class AnalyticsController {
     @Query('metric') metric: string = 'quality',
     @Query('period') period: string = 'MONTHLY',
   ) {
-    return this.performanceService.getPerformanceRankings(
-      user.companyId,
-      metric,
-      period,
-    );
+    return this.performanceService.getPerformanceRankings(user.companyId, metric, period);
   }
-
-  // ========================
-  // Project Comparison
-  // ========================
 
   @Get('projects/compare')
   @HttpCode(HttpStatus.OK)
@@ -200,10 +171,7 @@ export class AnalyticsController {
     if (limitNum <= 0 || limitNum > 50) {
       throw new BadRequestException('Limit must be between 1 and 50');
     }
-    return this.projectComparisonService.findSimilarProjects(
-      projectId,
-      limitNum,
-    );
+    return this.projectComparisonService.findSimilarProjects(projectId, limitNum);
   }
 
   @Get('projects/outliers')
@@ -214,16 +182,10 @@ export class AnalyticsController {
   ) {
     const validMetrics = ['quality', 'volume', 'availability'];
     if (!validMetrics.includes(metric)) {
-      throw new BadRequestException(
-        `Metric must be one of: ${validMetrics.join(', ')}`,
-      );
+      throw new BadRequestException(`Metric must be one of: ${validMetrics.join(', ')}`);
     }
     return this.projectComparisonService.findOutliers(user.companyId, metric);
   }
-
-  // ========================
-  // Regional Analytics
-  // ========================
 
   @Get('regional/breakdown')
   @HttpCode(HttpStatus.OK)
@@ -250,10 +212,6 @@ export class AnalyticsController {
     return this.regionalService.getRegionalTrends(user.companyId, monthsNum);
   }
 
-  // ========================
-  // Team Analytics
-  // ========================
-
   @Get('team/performance')
   @HttpCode(HttpStatus.OK)
   async getTeamPerformance(@CurrentUser() user: JwtPayload) {
@@ -275,15 +233,8 @@ export class AnalyticsController {
     @CurrentUser() user: JwtPayload,
     @Query('developerId') developerId?: string,
   ) {
-    return this.teamPerformanceService.getTeamPortfolio(
-      user.companyId,
-      developerId,
-    );
+    return this.teamPerformanceService.getTeamPortfolio(user.companyId, developerId);
   }
-
-  // ========================
-  // Carbon Timeline
-  // ========================
 
   @Get('timeline/reduction')
   @HttpCode(HttpStatus.OK)
@@ -295,10 +246,7 @@ export class AnalyticsController {
     if (monthsNum <= 0 || monthsNum > 360) {
       throw new BadRequestException('Months must be between 1 and 360');
     }
-    return this.timelineService.getCarbonReductionTimeline(
-      user.companyId,
-      monthsNum,
-    );
+    return this.timelineService.getCarbonReductionTimeline(user.companyId, monthsNum);
   }
 
   @Get('timeline/projections')
@@ -311,15 +259,49 @@ export class AnalyticsController {
     if (monthsNum <= 0 || monthsNum > 120) {
       throw new BadRequestException('Months must be between 1 and 120');
     }
-    return this.timelineService.getReductionProjections(
-      user.companyId,
-      monthsNum,
-    );
+    return this.timelineService.getReductionProjections(user.companyId, monthsNum);
   }
 
   @Get('timeline/milestones')
   @HttpCode(HttpStatus.OK)
   async getMilestones(@CurrentUser() user: JwtPayload) {
     return this.timelineService.getMilestones(user.companyId);
+  }
+
+  // ========== RETIREMENT ANALYTICS (Issue #237) ==========
+
+  @Get('retirements/summary')
+  @HttpCode(HttpStatus.OK)
+  async getRetirementSummary(
+    @CurrentUser() user: JwtPayload,
+    @Query('period') period: string = 'MONTHLY',
+  ) {
+    return this.analyticsService.getRetirementSummary(user.companyId, period);
+  }
+
+  @Get('retirements/trends')
+  @HttpCode(HttpStatus.OK)
+  async getRetirementTrends(
+    @CurrentUser() user: JwtPayload,
+    @Query('months') months: string = '12',
+  ) {
+    const monthsNum = parseInt(months, 10);
+    if (monthsNum <= 0 || monthsNum > 60) {
+      throw new BadRequestException('Months must be between 1 and 60');
+    }
+    return this.analyticsService.getRetirementTrends(user.companyId, monthsNum);
+  }
+
+  @Get('retirements/breakdown')
+  @HttpCode(HttpStatus.OK)
+  async getRetirementBreakdown(
+    @CurrentUser() user: JwtPayload,
+    @Query('dimension') dimension: string = 'entity',
+  ) {
+    const validDimensions = ['entity', 'assetType', 'monthly'];
+    if (!validDimensions.includes(dimension)) {
+      throw new BadRequestException(`Dimension must be one of: ${validDimensions.join(', ')}`);
+    }
+    return this.analyticsService.getRetirementBreakdown(user.companyId, dimension);
   }
 }
