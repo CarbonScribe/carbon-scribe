@@ -395,6 +395,8 @@ Core endpoints:
 - `GET /api/v1/audit-trail/chain/integrity`
 - `POST /api/v1/audit-trail/anchor`
 - `GET /api/v1/audit-trail/export`
+- `POST /api/v1/audit/anchor-hash` - Anchor an audit hash to a retirement record
+- `GET /api/v1/audit/verify-hash/:tokenId` - Verify the audit hash for a given retirement record
 
 Optional manual creation endpoint (JWT scoped):
 
