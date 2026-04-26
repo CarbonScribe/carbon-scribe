@@ -170,7 +170,96 @@ export class StellarController {
       query,
     );
   }
+  // ========== RETIREMENT TRACKER ENDPOINTS (Issue #232) ==========
 
+  @Post('retirements/record')
+  @UseGuards(ContractAuthGuard)
+  async recordRetirement(
+    @CurrentUser() user: JwtPayload,
+    @Body()
+    body: {
+      tokenId?: string;
+      amount?: string;
+      entityAddress: string;
+      reason?: string;
+      batch?: {
+        tokenIds: string[];
+        amounts: string[];
+      };
+    },
+  ) {
+    try {
+      let result;
+
+      if (body.batch) {
+        result = await this.retirementTrackerService.batchRetire(
+          body.batch.tokenIds,
+          body.batch.amounts,
+          body.entityAddress,
+          body.reason || '',
+        );
+      } else {
+        if (!body.tokenId || !body.amount) {
+          throw new Error('tokenId and amount are required for single retirement');
+        }
+        result = await this.retirementTrackerService.retire(
+          body.tokenId,
+          body.amount,
+          body.entityAddress,
+          body.reason || '',
+        );
+      }
+
+      await this.transactionHistoryService.record({
+        companyId: user.companyId,
+        type: 'RETIREMENT',
+        transactionHash: result.hash,
+        status: 'CONFIRMED',
+        metadata: {
+          tokenId: body.tokenId,
+          entityAddress: body.entityAddress,
+          isBatch: !!body.batch,
+        },
+      });
+
+      return {
+        success: true,
+        transactionHash: result.hash,
+        data: result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  @Get('retirements/:tokenId')
+  async getRetirementRecord(@Param('tokenId') tokenId: string) {
+    const result = await this.retirementTrackerService.getRetirementRecord(tokenId);
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  @Get('retirements/entity/:address')
+  async getRetirementsByEntity(
+    @Param('address') address: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
+  ) {
+    const result = await this.retirementTrackerService.getRetirementsByEntity(
+      address,
+      parseInt(page),
+      parseInt(limit),
+    );
+    return {
+      success: true,
+      data: result,
+    };
+  }
   @Get('stellar/transactions/:hash')
   async getTransactionDetails(
     @CurrentUser() user: JwtPayload,
