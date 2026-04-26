@@ -64,6 +64,10 @@ describe('CollaborationSlice', () => {
         createTask: false,
         updateTask: false,
         createResource: false,
+        resendInvitation: false,
+        cancelInvitation: false,
+        acceptInvitation: false,
+        declineInvitation: false,
       });
       expect(slice.collaborationErrors).toEqual({
         members: null,
@@ -78,6 +82,10 @@ describe('CollaborationSlice', () => {
         createTask: null,
         updateTask: null,
         createResource: null,
+        resendInvitation: null,
+        cancelInvitation: null,
+        acceptInvitation: null,
+        declineInvitation: null,
       });
     });
   });
@@ -423,6 +431,10 @@ describe('CollaborationSlice', () => {
         createTask: null,
         updateTask: null,
         createResource: null,
+        resendInvitation: null,
+        cancelInvitation: null,
+        acceptInvitation: null,
+        declineInvitation: null,
       });
     });
   });
