@@ -43,6 +43,10 @@ type SupplyCapConfig struct {
 
 type MethodologyClient interface {
 	GetSupplyCapConfiguration(ctx context.Context, methodologyTokenID int) (*projectmethodology.CapConfigEnvelope, error)
+	GetMethodologyMeta(ctx context.Context, tokenID uint32) (map[string]any, error)
+	IsValidMethodology(ctx context.Context, tokenID uint32) (bool, error)
+	GetMethodologyOwner(ctx context.Context, tokenID uint32) (string, error)
+	ValidateMethodology(ctx context.Context, tokenID uint32, expectedName, expectedVersion string) error
 }
 
 type realMethodologyClient struct {
@@ -151,6 +155,25 @@ func (m *mockMethodologyClient) GetSupplyCapConfiguration(ctx context.Context, m
 	}, nil
 }
 
+func (m *mockMethodologyClient) GetMethodologyMeta(ctx context.Context, tokenID uint32) (map[string]any, error) {
+	return map[string]any{
+		"name":    "Mock Methodology",
+		"version": "1.0.0",
+	}, nil
+}
+
+func (m *mockMethodologyClient) IsValidMethodology(ctx context.Context, tokenID uint32) (bool, error) {
+	return true, nil
+}
+
+func (m *mockMethodologyClient) GetMethodologyOwner(ctx context.Context, tokenID uint32) (string, error) {
+	return "GA7QYNF7SOWQ3GLR2BGMZEHXAVIRZA4KVWLTJJFC7MGXUA7P7UJKB", nil
+}
+
+func (m *mockMethodologyClient) ValidateMethodology(ctx context.Context, tokenID uint32, expectedName, expectedVersion string) error {
+	return nil
+}
+
 func (c *realMethodologyClient) GetSupplyCapConfiguration(ctx context.Context, methodologyTokenID int) (*projectmethodology.CapConfigEnvelope, error) {
 	if methodologyTokenID <= 0 {
 		return nil, fmt.Errorf("invalid methodology token id")
@@ -190,6 +213,97 @@ func (c *realMethodologyClient) GetSupplyCapConfiguration(ctx context.Context, m
 	cfg.SourceType = projectmethodology.CapSourceContract
 	cfg.SourceReference = fmt.Sprintf("%s%s", c.ipfsGateway, meta.IPFSCID)
 	return cfg, nil
+}
+
+func (c *realMethodologyClient) GetMethodologyMeta(ctx context.Context, tokenID uint32) (map[string]any, error) {
+	response, err := c.simulateCall(ctx, "get_methodology_meta", []xdr.ScVal{u32Val(tokenID)})
+	if err != nil {
+		return nil, fmt.Errorf("get_methodology_meta failed: %w", err)
+	}
+	if response.ReturnValueXDR == nil {
+		return nil, fmt.Errorf("get_methodology_meta returned no value")
+	}
+
+	var returnVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(*response.ReturnValueXDR, &returnVal); err != nil {
+		return nil, fmt.Errorf("decode get_methodology_meta result: %w", err)
+	}
+
+	raw := scValToAny(returnVal)
+	asMap, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("unexpected return type from get_methodology_meta")
+	}
+	return asMap, nil
+}
+
+func (c *realMethodologyClient) IsValidMethodology(ctx context.Context, tokenID uint32) (bool, error) {
+	response, err := c.simulateCall(ctx, "is_valid_methodology", []xdr.ScVal{u32Val(tokenID)})
+	if err != nil {
+		return false, fmt.Errorf("is_valid_methodology failed: %w", err)
+	}
+	if response.ReturnValueXDR == nil {
+		return false, fmt.Errorf("is_valid_methodology returned no value")
+	}
+
+	var returnVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(*response.ReturnValueXDR, &returnVal); err != nil {
+		return false, fmt.Errorf("decode is_valid_methodology result: %w", err)
+	}
+
+	if returnVal.Type == xdr.ScValTypeScvBool {
+		return returnVal.MustB(), nil
+	}
+	return false, nil
+}
+
+func (c *realMethodologyClient) GetMethodologyOwner(ctx context.Context, tokenID uint32) (string, error) {
+	response, err := c.simulateCall(ctx, "owner_of", []xdr.ScVal{u32Val(tokenID)})
+	if err != nil {
+		return "", fmt.Errorf("owner_of failed: %w", err)
+	}
+	if response.ReturnValueXDR == nil {
+		return "", fmt.Errorf("owner_of returned no value")
+	}
+
+	var returnVal xdr.ScVal
+	if err := xdr.SafeUnmarshalBase64(*response.ReturnValueXDR, &returnVal); err != nil {
+		return "", fmt.Errorf("decode owner_of result: %w", err)
+	}
+
+	raw := scValToAny(returnVal)
+	if str, ok := raw.(string); ok {
+		return str, nil
+	}
+	return "", nil
+}
+
+func (c *realMethodologyClient) ValidateMethodology(ctx context.Context, tokenID uint32, expectedName, expectedVersion string) error {
+	meta, err := c.GetMethodologyMeta(ctx, tokenID)
+	if err != nil {
+		return fmt.Errorf("methodology token %d not found: %w", tokenID, err)
+	}
+
+	valid, err := c.IsValidMethodology(ctx, tokenID)
+	if err != nil {
+		return fmt.Errorf("authority validation failed: %w", err)
+	}
+	if !valid {
+		return fmt.Errorf("methodology token %d is not from a recognized authority", tokenID)
+	}
+
+	if expectedName != "" {
+		if name, ok := meta["name"].(string); ok && name != expectedName {
+			return fmt.Errorf("metadata mismatch: expected name '%s', got '%s'", expectedName, name)
+		}
+	}
+	if expectedVersion != "" {
+		if version, ok := meta["version"].(string); ok && version != expectedVersion {
+			return fmt.Errorf("metadata mismatch: expected version '%s', got '%s'", expectedVersion, version)
+		}
+	}
+
+	return nil
 }
 
 func (c *realMethodologyClient) getMethodologyMetadata(ctx context.Context, methodologyTokenID int) (MethodologyMetadata, map[string]any, error) {
