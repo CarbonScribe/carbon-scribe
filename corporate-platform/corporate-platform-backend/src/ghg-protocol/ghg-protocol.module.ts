@@ -3,6 +3,7 @@ import { AuditTrailModule } from '../audit-trail/audit-trail.module';
 import { FrameworkRegistryModule } from '../framework-registry/framework-registry.module';
 import { SecurityModule } from '../security/security.module';
 import { DatabaseModule } from '../shared/database/database.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 import { GhgProtocolController } from './ghg-protocol.controller';
 import { GhgProtocolService } from './ghg-protocol.service';
 import { EmissionFactorsService } from './services/emission-factors.service';
@@ -17,6 +18,7 @@ import { Scope3Service } from './services/scope3.service';
     FrameworkRegistryModule,
     AuditTrailModule,
     SecurityModule,
+    ComplianceModule,
   ],
   controllers: [GhgProtocolController],
   providers: [

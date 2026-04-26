@@ -1,4 +1,3 @@
-
 # Project Portal Web: Developer Onboarding & Monitoring UI
 
 ![Next.js 15](https://img.shields.io/badge/Next.js-15-black)
@@ -12,6 +11,7 @@ The **Project Portal Web** is the developer-facing frontend for onboarding, moni
 ---
 
 ## 📚 Table of Contents
+
 - [Overview](#-overview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
@@ -23,13 +23,16 @@ The **Project Portal Web** is the developer-facing frontend for onboarding, moni
 ---
 
 ## 🌱 Overview
+
 Project Portal Web enables:
+
 - Project onboarding with AI-assisted forms
 - Real-time NDVI and satellite monitoring
 - Forward sale and tokenization workflows
 - Developer dashboards and analytics
 
 ## ✨ Features
+
 - Interactive project mapping (Mapbox, TimeLapse)
 - NDVI timelines and alert dashboards
 - Financing and tokenization wizards
@@ -37,6 +40,7 @@ Project Portal Web enables:
 - Responsive UI with dark/light mode
 
 ## 🛠️ Tech Stack
+
 - **Next.js 15** (App Router)
 - **TypeScript**
 - **Tailwind CSS**
@@ -100,32 +104,41 @@ src/
 ---
 
 ## ⚡ Quick Start
+
 1. Install dependencies:
-	```bash
+   `bash
 	npm install
 	# or
 yarn
-	```
+	`
 2. Copy `.env.example` to `.env.local` and set API URLs as needed.
 3. Run the development server:
-	```bash
+   `bash
 	npm run dev
 	# or
 yarn dev
-	```
+	`
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
 ## 🔗 API Integration
+
 - Set `NEXT_PUBLIC_REPORTS_API_URL` in `.env.local` to point to your backend.
 - Ensure [project-portal-backend](../project-portal-backend) is running for full functionality.
 
 ---
 
+### Geospatial API
+
+- **POST** `/api/v1/geospatial/projects/:id/geometry`: Upload GeoJSON geometry.
+- **GET** `/api/v1/geospatial/projects/:id/geometry`: Retrieve project bounds.
+- **POST** `/api/v1/geospatial/geofences`: Create a new monitoring geofence.
+
 ## 🤝 Contributing
+
 Pull requests welcome! See root CONTRIBUTING.md for guidelines.
 
 ---
 
-*Part of the CarbonScribe 7-Layer Architecture. See project-portal/README.md for full context.*
+_Part of the CarbonScribe 7-Layer Architecture. See project-portal/README.md for full context._

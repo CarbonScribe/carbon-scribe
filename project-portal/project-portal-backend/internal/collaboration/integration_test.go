@@ -37,6 +37,21 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		require.NotNil(t, repo.CreatedInvitation)
 		assert.Equal(t, "project-1", repo.CreatedInvitation.ProjectID)
 		assert.Equal(t, "new-user@example.com", repo.CreatedInvitation.Email)
+
+		// Simulate the invited user as a member for the list_members test
+		repo.Members = append(repo.Members, EnrichedProjectMember{
+			UserID:      "new-user-id",
+			ProjectID:   "project-1",
+			Role:        "Contributor",
+			DisplayName: "New User",
+			Email:       "new-user@example.com",
+			AvatarURL:   "https://example.com/avatar.png",
+			Phone:       "",
+			Location:    "",
+			Title:       "",
+			Bio:         "",
+			JoinedAt:    time.Now(),
+		})
 	})
 
 	t.Run("create comment", func(t *testing.T) {

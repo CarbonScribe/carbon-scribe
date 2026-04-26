@@ -1,6 +1,8 @@
+// ...existing code...
 package collaboration
 
 import (
+	"carbon-scribe/project-portal/project-portal-backend/internal/collaboration/dto"
 	"context"
 	"errors"
 	"testing"
@@ -16,6 +18,14 @@ type MockRepository struct {
 	mock.Mock
 }
 
+func (m *MockRepository) GetEnrichedMember(ctx context.Context, projectID, userID string) (*EnrichedProjectMember, error) {
+	args := m.Called(ctx, projectID, userID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*EnrichedProjectMember), args.Error(1)
+}
+
 func (m *MockRepository) AddMember(ctx context.Context, member *ProjectMember) error {
 	args := m.Called(ctx, member)
 	return args.Error(0)
@@ -29,12 +39,12 @@ func (m *MockRepository) GetMember(ctx context.Context, projectID, userID string
 	return args.Get(0).(*ProjectMember), args.Error(1)
 }
 
-func (m *MockRepository) ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error) {
+func (m *MockRepository) ListMembers(ctx context.Context, projectID string) ([]EnrichedProjectMember, error) {
 	args := m.Called(ctx, projectID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]ProjectMember), args.Error(1)
+	return args.Get(0).([]EnrichedProjectMember), args.Error(1)
 }
 
 func (m *MockRepository) UpdateMember(ctx context.Context, member *ProjectMember) error {
@@ -52,6 +62,14 @@ func (m *MockRepository) CreateInvitation(ctx context.Context, invite *ProjectIn
 	return args.Error(0)
 }
 
+func (m *MockRepository) GetInvitation(ctx context.Context, invitationID string) (*ProjectInvitation, error) {
+	args := m.Called(ctx, invitationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*ProjectInvitation), args.Error(1)
+}
+
 func (m *MockRepository) GetInvitationByToken(ctx context.Context, token string) (*ProjectInvitation, error) {
 	args := m.Called(ctx, token)
 	if args.Get(0) == nil {
@@ -66,6 +84,11 @@ func (m *MockRepository) ListInvitations(ctx context.Context, projectID string) 
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]ProjectInvitation), args.Error(1)
+}
+
+func (m *MockRepository) UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error {
+	args := m.Called(ctx, invite)
+	return args.Error(0)
 }
 
 func (m *MockRepository) CreateActivity(ctx context.Context, activity *ActivityLog) error {
@@ -350,21 +373,37 @@ func TestCollaborationService_ListMembers_Success(t *testing.T) {
 	ctx := context.Background()
 	projectID := "project-123"
 
-	expectedMembers := []ProjectMember{
-		{ID: "1", ProjectID: projectID, UserID: "user-1", Role: "Owner"},
-		{ID: "2", ProjectID: projectID, UserID: "user-2", Role: "Contributor"},
-	}
+	       expectedMembers := []EnrichedProjectMember{
+		       {ID: "1", ProjectID: projectID, UserID: "user-1", Role: "Owner"},
+		       {ID: "2", ProjectID: projectID, UserID: "user-2", Role: "Contributor"},
+	       }
 
-	mockRepo.On("ListMembers", ctx, projectID).Return(expectedMembers, nil)
+	       mockRepo.On("ListMembers", ctx, projectID).Return(expectedMembers, nil)
 
-	// Act
-	members, err := service.ListMembers(ctx, projectID)
+	       // Act
+	       members, err := service.ListMembers(ctx, projectID)
 
-	// Assert
-	require.NoError(t, err)
-	assert.Equal(t, expectedMembers, members)
+	       // Assert
+	       require.NoError(t, err)
+	       // The service.ListMembers returns []dto.EnrichedProjectMemberResponse, so map expectedMembers for comparison
+	       var expectedResp []dto.EnrichedProjectMemberResponse
+	       for _, m := range expectedMembers {
+		       expectedResp = append(expectedResp, dto.EnrichedProjectMemberResponse{
+			       UserID:      m.UserID,
+			       DisplayName: m.DisplayName,
+			       Email:       m.Email,
+			       AvatarURL:   m.AvatarURL,
+			       Phone:       m.Phone,
+			       Location:    m.Location,
+			       Title:       m.Title,
+			       Bio:         m.Bio,
+			       Role:        m.Role,
+			       JoinedAt:    m.JoinedAt,
+		       })
+	       }
+	       assert.Equal(t, expectedResp, members)
 
-	mockRepo.AssertExpectations(t)
+	       mockRepo.AssertExpectations(t)
 }
 
 func TestCollaborationService_ListMembers_RepositoryError(t *testing.T) {

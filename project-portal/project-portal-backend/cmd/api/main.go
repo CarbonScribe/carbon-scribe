@@ -25,6 +25,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/quality"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
@@ -56,6 +57,11 @@ func main() {
 		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 	log.Println("✅ Database connection established")
+
+	// --- Quality Scoring ---
+	qualityRepo := quality.NewRepository(db)
+	qualityService := quality.NewService(qualityRepo)
+	qualityHandler := quality.NewHandler(qualityService)
 
 	// Run all migrations
 	if err := runAllMigrations(db); err != nil {
@@ -106,7 +112,6 @@ func main() {
 	methodologyService := methodology.NewService(methodologyRepo, methodology.NewContractClientFromEnv())
 	methodologyCapClient := integrationstellar.NewMethodologyClientFromEnv()
 	methodologyCapService := methodology.NewCapEnforcementService(methodologyCapRepo, methodologyRepo, methodologyCapClient)
-	methodologyHandler := methodology.NewHandler(methodologyService, methodologyCapService)
 
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
 	mintingService := minting.NewService(db, nil, mintingCapValidator)
@@ -231,9 +236,8 @@ func main() {
 		authGroup := v1.Group("/auth")
 		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager)
 
-		// Register projects routes under v1
-		projectHandler.RegisterRoutes(v1)
-		methodologyHandler.RegisterRoutes(v1)
+		// Register all project and quality routes (no duplicates)
+		project.RegisterRoutes(router, projectHandler, qualityHandler)
 
 		// Register inventory routes under v1 (on-chain credit queries)
 		inventoryHandler.RegisterRoutes(v1)

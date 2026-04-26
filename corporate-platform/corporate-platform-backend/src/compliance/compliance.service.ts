@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
@@ -27,12 +28,21 @@ import {
   IComplianceValidator,
   ValidationResult,
 } from './interfaces/compliance-validator.interface';
+import { RetirementVerificationService } from './services/retirement-verification.service';
+import {
+  VerifyRetirementDto,
+  RetirementVerificationResponse,
+  RetirementStatusResult,
+} from './dto/retirement-verification.dto';
 
 @Injectable()
 export class ComplianceService implements IComplianceValidator {
+  private readonly logger = new Logger(ComplianceService.name);
+
   constructor(
     private prisma: PrismaService,
     private securityService: SecurityService,
+    private retirementVerificationService: RetirementVerificationService,
   ) {}
 
   /**
@@ -148,6 +158,133 @@ export class ComplianceService implements IComplianceValidator {
     });
 
     return report;
+  }
+
+  async verifyRetirementsForCompliance(
+    companyId: string,
+    dto: VerifyRetirementDto,
+  ): Promise<RetirementVerificationResponse> {
+    this.logger.log(
+      `Verifying retirements for company ${companyId}, framework: ${dto.framework}`,
+    );
+    return this.retirementVerificationService.verifyRetirements(companyId, dto);
+  }
+
+  async getRetirementStatus(
+    companyId: string,
+    tokenId: string,
+    framework?: ComplianceFramework,
+  ): Promise<RetirementStatusResult> {
+    return this.retirementVerificationService.getRetirementStatus(
+      companyId,
+      tokenId,
+      framework,
+    );
+  }
+
+  async validateTokensForCompliance(
+    companyId: string,
+    tokenIds: string[],
+    framework: ComplianceFramework,
+    requiredAmounts?: Record<string, number>,
+  ): Promise<{
+    valid: boolean;
+    results: Array<{ tokenId: string; valid: boolean; message: string }>;
+  }> {
+    const results = await Promise.all(
+      tokenIds.map(async (tokenId) => {
+        const verification =
+          await this.retirementVerificationService.verifyTokenForCompliance(
+            companyId,
+            tokenId,
+            framework,
+            requiredAmounts?.[tokenId],
+          );
+        return {
+          tokenId,
+          valid: verification.valid,
+          message: verification.message,
+        };
+      }),
+    );
+
+    const allValid = results.every((r) => r.valid);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId,
+      details: {
+        framework,
+        totalTokens: tokenIds.length,
+        validTokens: results.filter((r) => r.valid).length,
+      },
+      status: allValid ? 'success' : 'warning',
+    });
+
+    return {
+      valid: allValid,
+      results,
+    };
+  }
+
+  async checkDoubleClaimRisk(
+    companyId: string,
+    tokenIds: string[],
+    framework: ComplianceFramework,
+  ): Promise<{
+    riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    atRiskTokens: string[];
+    message: string;
+  }> {
+    const results = await Promise.all(
+      tokenIds.map(async (tokenId) => {
+        const status =
+          await this.retirementVerificationService.getRetirementStatus(
+            companyId,
+            tokenId,
+            framework,
+          );
+        return status.claims.length > 0 ? tokenId : null;
+      }),
+    );
+
+    const atRiskTokens = results.filter((id) => id !== null) as string[];
+    const riskPercentage = (atRiskTokens.length / tokenIds.length) * 100;
+
+    let riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+    let message: string;
+
+    if (riskPercentage === 0) {
+      riskLevel = 'LOW';
+      message = 'No double-claim risk detected. All tokens are available.';
+    } else if (riskPercentage < 50) {
+      riskLevel = 'MEDIUM';
+      message = `Moderate double-claim risk. ${atRiskTokens.length} tokens may have been claimed previously.`;
+    } else {
+      riskLevel = 'HIGH';
+      message = `High double-claim risk. ${atRiskTokens.length} tokens have been claimed. Consider using different tokens.`;
+    }
+
+    return {
+      riskLevel,
+      atRiskTokens,
+      message,
+    };
+  }
+
+  async getVerificationHistory(
+    companyId: string,
+    options?: {
+      tokenId?: string;
+      framework?: ComplianceFramework;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
+    return this.retirementVerificationService.getVerificationHistory(
+      companyId,
+      options,
+    );
   }
 
   /**

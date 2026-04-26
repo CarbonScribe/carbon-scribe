@@ -2,12 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ComplianceService } from './compliance.service';
 import { PrismaService } from '../shared/database/prisma.service';
 import { SecurityService } from '../security/security.service';
+import { RetirementVerificationService } from './services/retirement-verification.service';
 import {
   CheckComplianceDto,
   ComplianceFramework,
   EntityType,
 } from './dto/check-compliance.dto';
 import { ComplianceStatus } from './dto/compliance-status.dto';
+import {
+  VerifyRetirementDto,
+  OffsetClaimStatus,
+  RetirementVerificationResponse,
+} from './dto/retirement-verification.dto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 
 describe('ComplianceService', () => {
@@ -36,17 +42,21 @@ describe('ComplianceService', () => {
     logEvent: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockRetirementVerificationService = {
+    verifyRetirements: jest.fn(),
+    getRetirementStatus: jest.fn(),
+    verifyTokenForCompliance: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ComplianceService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: SecurityService, useValue: mockSecurityService },
         {
-          provide: PrismaService,
-          useValue: mockPrismaService,
-        },
-        {
-          provide: SecurityService,
-          useValue: mockSecurityService,
+          provide: RetirementVerificationService,
+          useValue: mockRetirementVerificationService,
         },
       ],
     }).compile();
@@ -370,6 +380,190 @@ describe('ComplianceService', () => {
           status: 'success',
         }),
       );
+    });
+  });
+
+  describe('Retirement Verification Methods', () => {
+    describe('verifyRetirementsForCompliance', () => {
+      it('should verify retirements for compliance', async () => {
+        const companyId = 'company-123';
+        const dto: VerifyRetirementDto = {
+          tokens: [{ tokenId: 'token-1' }],
+          framework: ComplianceFramework.CORSIA,
+        };
+
+        const mockResponse: RetirementVerificationResponse = {
+          verified: true,
+          totalTokens: 1,
+          verifiedTokens: 1,
+          claimedTokens: 0,
+          notRetiredTokens: 0,
+          results: [
+            {
+              tokenId: 'token-1',
+              status: OffsetClaimStatus.VERIFIED,
+              message: 'Token verified',
+              onChainVerified: true,
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        };
+
+        mockRetirementVerificationService.verifyRetirements.mockResolvedValue(
+          mockResponse,
+        );
+
+        const result = await service.verifyRetirementsForCompliance(
+          companyId,
+          dto,
+        );
+
+        expect(result).toBeDefined();
+        expect(result.verified).toBe(true);
+        expect(
+          mockRetirementVerificationService.verifyRetirements,
+        ).toHaveBeenCalledWith(companyId, dto);
+      });
+    });
+
+    describe('validateTokensForCompliance', () => {
+      it('should validate multiple tokens for compliance', async () => {
+        const companyId = 'company-123';
+        const tokenIds = ['token-1', 'token-2'];
+        const framework = ComplianceFramework.GHG;
+
+        mockRetirementVerificationService.verifyTokenForCompliance
+          .mockResolvedValueOnce({ valid: true, message: 'Valid' })
+          .mockResolvedValueOnce({ valid: false, message: 'Already claimed' });
+
+        const result = await service.validateTokensForCompliance(
+          companyId,
+          tokenIds,
+          framework,
+        );
+
+        expect(result).toBeDefined();
+        expect(result.valid).toBe(false);
+        expect(result.results).toHaveLength(2);
+        expect(result.results[0].valid).toBe(true);
+        expect(result.results[1].valid).toBe(false);
+      });
+
+      it('should validate with required amounts', async () => {
+        const companyId = 'company-123';
+        const tokenIds = ['token-1'];
+        const framework = ComplianceFramework.CORSIA;
+        const requiredAmounts = { 'token-1': 50 };
+
+        mockRetirementVerificationService.verifyTokenForCompliance.mockResolvedValue(
+          {
+            valid: true,
+            message: 'Valid',
+          },
+        );
+
+        await service.validateTokensForCompliance(
+          companyId,
+          tokenIds,
+          framework,
+          requiredAmounts,
+        );
+
+        expect(
+          mockRetirementVerificationService.verifyTokenForCompliance,
+        ).toHaveBeenCalledWith(companyId, 'token-1', framework, 50);
+      });
+    });
+
+    describe('checkDoubleClaimRisk', () => {
+      it('should return LOW risk when no tokens are at risk', async () => {
+        const companyId = 'company-123';
+        const tokenIds = ['token-1', 'token-2'];
+        const framework = ComplianceFramework.CORSIA;
+
+        mockRetirementVerificationService.getRetirementStatus
+          .mockResolvedValueOnce({
+            tokenId: 'token-1',
+            isRetired: true,
+            totalAmount: 100,
+            claimedAmount: 0,
+            remainingAmount: 100,
+            retirementVerified: true,
+            blockchainStatus: 'CONFIRMED',
+            claims: [],
+            auditTrail: [],
+          })
+          .mockResolvedValueOnce({
+            tokenId: 'token-2',
+            isRetired: true,
+            totalAmount: 200,
+            claimedAmount: 0,
+            remainingAmount: 200,
+            retirementVerified: true,
+            blockchainStatus: 'CONFIRMED',
+            claims: [],
+            auditTrail: [],
+          });
+
+        const result = await service.checkDoubleClaimRisk(
+          companyId,
+          tokenIds,
+          framework,
+        );
+
+        expect(result.riskLevel).toBe('LOW');
+        expect(result.atRiskTokens).toHaveLength(0);
+      });
+
+      it('should return HIGH risk when most tokens are at risk', async () => {
+        const companyId = 'company-123';
+        const tokenIds = ['token-1', 'token-2', 'token-3'];
+        const framework = ComplianceFramework.CORSIA;
+
+        mockRetirementVerificationService.getRetirementStatus
+          .mockResolvedValueOnce({
+            tokenId: 'token-1',
+            claims: [
+              {
+                framework: ComplianceFramework.CORSIA,
+                companyId: 'other',
+                claimedAt: '',
+                amount: 100,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            tokenId: 'token-2',
+            claims: [
+              {
+                framework: ComplianceFramework.CORSIA,
+                companyId: 'other',
+                claimedAt: '',
+                amount: 200,
+              },
+            ],
+          })
+          .mockResolvedValueOnce({
+            tokenId: 'token-3',
+            claims: [
+              {
+                framework: ComplianceFramework.CORSIA,
+                companyId: 'other',
+                claimedAt: '',
+                amount: 300,
+              },
+            ],
+          });
+
+        const result = await service.checkDoubleClaimRisk(
+          companyId,
+          tokenIds,
+          framework,
+        );
+
+        expect(result.riskLevel).toBe('HIGH');
+        expect(result.atRiskTokens).toHaveLength(3);
+      });
     });
   });
 });

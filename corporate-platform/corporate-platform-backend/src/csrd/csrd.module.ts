@@ -8,9 +8,15 @@ import { AssuranceService } from './services/assurance.service';
 import { FrameworkRegistryModule } from '../framework-registry/framework-registry.module';
 import { DatabaseModule } from '../shared/database/database.module';
 import { SecurityModule } from '../security/security.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 
 @Module({
-  imports: [FrameworkRegistryModule, DatabaseModule, SecurityModule],
+  imports: [
+    FrameworkRegistryModule,
+    DatabaseModule,
+    SecurityModule,
+    ComplianceModule,
+  ],
   controllers: [CsrdController],
   providers: [
     CsrdService,

@@ -17,6 +17,20 @@ import (
 func TestCollaborationHandler_ListMembers_ResponseContract(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
 	repo := &FakeCollaborationRepo{}
+	// Add a member so the response is non-nil and non-empty
+	repo.Members = append(repo.Members, EnrichedProjectMember{
+		UserID:      "member-user-1",
+		ProjectID:   "p1",
+		Role:        "Contributor",
+		DisplayName: "Test User",
+		Email:       "test@example.com",
+		AvatarURL:   "https://example.com/avatar.png",
+		Phone:       "",
+		Location:    "",
+		Title:       "",
+		Bio:         "",
+		JoinedAt:    time.Now(),
+	})
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	token := bearerTokenForUser(t, tokenManager, "member-user-1")

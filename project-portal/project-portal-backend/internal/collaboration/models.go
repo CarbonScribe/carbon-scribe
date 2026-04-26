@@ -28,16 +28,18 @@ type ProjectMember struct {
 
 // ProjectInvitation represents a pending invitation
 type ProjectInvitation struct {
-	ID        string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID string         `gorm:"index;not null" json:"project_id"`
-	Email     string         `gorm:"index;not null" json:"email"`
-	Role      string         `gorm:"not null" json:"role"`
-	Token     string         `gorm:"uniqueIndex;not null" json:"-"`
-	Status    string         `gorm:"default:'pending'" json:"status"` // pending, accepted, expired
-	ExpiresAt time.Time      `json:"expires_at"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	ID         string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	ProjectID  string         `gorm:"index;not null" json:"project_id"`
+	Email      string         `gorm:"index;not null" json:"email"`
+	Role       string         `gorm:"not null" json:"role"`
+	Token      string         `gorm:"uniqueIndex;not null" json:"-"`
+	Status     string         `gorm:"default:'pending';index" json:"status"` // pending, accepted, declined, cancelled, expired
+	ExpiresAt  time.Time      `json:"expires_at"`
+	ResentAt   *time.Time     `json:"resent_at,omitempty"`
+	ResentCount int           `gorm:"default:0" json:"resent_count"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 type CreateCommentRequest struct {

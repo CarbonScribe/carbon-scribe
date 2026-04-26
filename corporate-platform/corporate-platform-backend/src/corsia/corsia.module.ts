@@ -10,6 +10,7 @@ import { FrameworkRegistryModule } from '../framework-registry/framework-registr
 import { RetirementModule } from '../retirement/retirement.module';
 import { DatabaseModule } from '../shared/database/database.module';
 import { SecurityModule } from '../security/security.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SecurityModule } from '../security/security.module';
     RetirementModule,
     DatabaseModule,
     SecurityModule,
+    ComplianceModule,
   ],
   controllers: [CorsiaController],
   providers: [

@@ -134,8 +134,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
         reportsLoading: false,
         reportsError: null,
       });
-    } catch {
-      set({ reportsLoading: false, reportsError: null });
+    } catch (e) {
+      set({ reportsLoading: false, reportsError: (e as Error).message });
     }
   },
 
@@ -144,8 +144,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     try {
       const report = await api.apiGetReport(id);
       set({ currentReport: report });
-    } catch {
-      set({ currentReport: null });
+    } catch (e) {
+      set({ currentReport: null, reportsError: (e as Error).message });
     }
   },
 
@@ -186,8 +186,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     try {
       const templates = await api.apiListTemplates();
       set({ templates, templatesLoading: false, templatesError: null });
-    } catch {
-      set({ templatesLoading: false, templatesError: null });
+    } catch (e) {
+      set({ templatesLoading: false, templatesError: (e as Error).message });
     }
   },
 
@@ -201,8 +201,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
         executionsLoading: false,
         executionsError: null,
       });
-    } catch {
-      set({ executionsLoading: false, executionsError: null });
+    } catch (e) {
+      set({ executionsLoading: false, executionsError: (e as Error).message });
     }
   },
 
@@ -250,8 +250,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
         schedulesLoading: false,
         schedulesError: null,
       });
-    } catch {
-      set({ schedulesLoading: false, schedulesError: null });
+    } catch (e) {
+      set({ schedulesLoading: false, schedulesError: (e as Error).message });
     }
   },
 
@@ -297,8 +297,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
         dashboardSummaryError: null,
         dashboardSummaryCachedAt: Date.now(),
       });
-    } catch {
-      set({ dashboardSummaryLoading: false, dashboardSummaryError: null });
+    } catch (e) {
+      set({ dashboardSummaryLoading: false, dashboardSummaryError: (e as Error).message });
     }
   },
 
@@ -307,8 +307,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     try {
       const widgets = await api.apiGetWidgets(section);
       set({ widgets, widgetsLoading: false, widgetsError: null });
-    } catch {
-      set({ widgetsLoading: false, widgetsError: null });
+    } catch (e) {
+      set({ widgetsLoading: false, widgetsError: (e as Error).message });
     }
   },
 
@@ -335,8 +335,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     try {
       const datasets = await api.apiGetDatasets();
       set({ datasets, datasetsLoading: false, datasetsError: null });
-    } catch {
-      set({ datasetsLoading: false, datasetsError: null });
+    } catch (e) {
+      set({ datasetsLoading: false, datasetsError: (e as Error).message });
     }
   },
 
@@ -345,8 +345,8 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     try {
       const result = await api.apiBenchmarkComparison(body);
       set({ benchmarkResult: result, benchmarkLoading: false, benchmarkError: null });
-    } catch {
-      set({ benchmarkLoading: false, benchmarkError: null });
+    } catch (e) {
+      set({ benchmarkLoading: false, benchmarkError: (e as Error).message });
     }
   },
 

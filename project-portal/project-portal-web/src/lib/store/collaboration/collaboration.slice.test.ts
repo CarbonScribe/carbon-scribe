@@ -64,6 +64,10 @@ describe('CollaborationSlice', () => {
         createTask: false,
         updateTask: false,
         createResource: false,
+        resendInvitation: false,
+        cancelInvitation: false,
+        acceptInvitation: false,
+        declineInvitation: false,
       });
       expect(slice.collaborationErrors).toEqual({
         members: null,
@@ -78,6 +82,10 @@ describe('CollaborationSlice', () => {
         createTask: null,
         updateTask: null,
         createResource: null,
+        resendInvitation: null,
+        cancelInvitation: null,
+        acceptInvitation: null,
+        declineInvitation: null,
       });
     });
   });
@@ -110,7 +118,7 @@ describe('CollaborationSlice', () => {
   describe('fetchInvitations', () => {
     it('should fetch invitations successfully', async () => {
       const mockInvitations: ProjectInvitation[] = [
-        { id: '1', project_id: 'p1', email: 'test@example.com', role: 'Contributor', status: 'pending', expires_at: '2023-01-01T00:00:00Z', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' },
+        { id: '1', project_id: 'p1', email: 'test@example.com', role: 'Contributor', status: 'pending', expires_at: '2023-01-01T00:00:00Z', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z', resent_count: 0 },
       ];
       mockApi.fetchInvitationsApi.mockResolvedValue(mockInvitations);
 
@@ -167,7 +175,7 @@ describe('CollaborationSlice', () => {
 
   describe('inviteUser', () => {
     it('should invite user successfully', async () => {
-      const mockInvitation = { id: '1', project_id: 'p1', email: 'test@example.com', role: 'Contributor', status: 'pending' as const, expires_at: '2023-01-01T00:00:00Z', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
+      const mockInvitation = { id: '1', project_id: 'p1', email: 'test@example.com', role: 'Contributor', status: 'pending' as const, expires_at: '2023-01-01T00:00:00Z', created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z', resent_count: 0 };
       mockApi.inviteUserApi.mockResolvedValue(mockInvitation);
 
       const result = await slice.inviteUser('p1', { email: 'test@example.com', role: 'Contributor' });
@@ -423,6 +431,10 @@ describe('CollaborationSlice', () => {
         createTask: null,
         updateTask: null,
         createResource: null,
+        resendInvitation: null,
+        cancelInvitation: null,
+        acceptInvitation: null,
+        declineInvitation: null,
       });
     });
   });

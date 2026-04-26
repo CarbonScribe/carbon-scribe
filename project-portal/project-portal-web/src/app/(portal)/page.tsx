@@ -48,7 +48,7 @@ export default function ProjectPortalHome() {
         {/* Right Column - Insights & Actions */}
         <div className="space-y-6">
           <SatelliteInsights />
-          <TokenizationStatus />
+          <TokenizationStatus projectId="demo-project-1" />
           <QuickActionsPanel />
         </div>
       </div>

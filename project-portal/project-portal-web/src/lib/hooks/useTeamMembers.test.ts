@@ -30,7 +30,7 @@ const mockMembers = [
 ];
 
 const mockInvitations = [
-  { id: 'i1', project_id: 'proj-1', email: 'pending@example.com', role: 'Viewer', status: 'pending', expires_at: '2024-12-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z' },
+  { id: 'i1', project_id: 'proj-1', email: 'pending@example.com', role: 'Viewer', status: 'pending', expires_at: '2024-12-01T00:00:00Z', created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z', resent_count: 0 },
 ];
 
 describe('useTeamMembers', () => {

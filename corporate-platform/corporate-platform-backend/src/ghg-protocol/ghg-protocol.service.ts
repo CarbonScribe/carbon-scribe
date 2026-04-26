@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -28,9 +29,16 @@ import { Scope1Service } from './services/scope1.service';
 import { Scope2Service } from './services/scope2.service';
 import { Scope3Service } from './services/scope3.service';
 import { FrameworkValidationSummary } from './interfaces/inventory.interface';
+import { RetirementVerificationService } from '../compliance/services/retirement-verification.service';
+import {
+  ComplianceFramework,
+  OffsetClaimStatus,
+} from '../compliance/dto/retirement-verification.dto';
 
 @Injectable()
 export class GhgProtocolService {
+  private readonly logger = new Logger(GhgProtocolService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope1Service: Scope1Service,
@@ -39,6 +47,7 @@ export class GhgProtocolService {
     private readonly emissionFactorsService: EmissionFactorsService,
     private readonly inventoryService: InventoryService,
     private readonly auditTrailService: AuditTrailService,
+    private readonly retirementVerificationService: RetirementVerificationService,
   ) {}
 
   async createSource(
@@ -213,6 +222,41 @@ export class GhgProtocolService {
     return {
       companyId,
       trends: await this.inventoryService.getTrends(companyId, query),
+    };
+  }
+
+  async verifyOffsetsForCompliance(
+    companyId: string,
+    tokenIds: string[],
+  ): Promise<{
+    valid: boolean;
+    results: Array<{ tokenId: string; valid: boolean; message: string }>;
+    totalValid: number;
+    totalTokens: number;
+  }> {
+    const verification =
+      await this.retirementVerificationService.verifyRetirements(companyId, {
+        tokens: tokenIds.map((id) => ({ tokenId: id })),
+        framework: ComplianceFramework.GHG,
+      });
+
+    const results = verification.results.map((r) => ({
+      tokenId: r.tokenId,
+      valid: r.status === OffsetClaimStatus.VERIFIED,
+      message: r.message,
+    }));
+
+    const totalValid = results.filter((r) => r.valid).length;
+
+    this.logger.log(
+      `GHG offset verification: ${totalValid}/${tokenIds.length} tokens valid for company ${companyId}`,
+    );
+
+    return {
+      valid: totalValid === tokenIds.length,
+      results,
+      totalValid,
+      totalTokens: tokenIds.length,
     };
   }
 

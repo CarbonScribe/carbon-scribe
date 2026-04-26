@@ -9,6 +9,11 @@ import {
   RecordDisclosureDto,
 } from './dto/disclosure-query.dto';
 import { SecurityService } from '../security/security.service';
+import { RetirementVerificationService } from '../compliance/services/retirement-verification.service';
+import {
+  ComplianceFramework,
+  OffsetClaimStatus,
+} from '../compliance/dto/retirement-verification.dto';
 
 @Injectable()
 export class CsrdService {
@@ -20,6 +25,7 @@ export class CsrdService {
     private readonly disclosureService: EsrsDisclosureService,
     private readonly reportService: ReportGeneratorService,
     private readonly securityService: SecurityService,
+    private readonly retirementVerificationService: RetirementVerificationService,
   ) {}
 
   async assessMateriality(
@@ -84,6 +90,41 @@ export class CsrdService {
       where: { companyId },
       orderBy: { reportingYear: 'desc' },
     });
+  }
+
+  async verifyOffsetsForCompliance(
+    companyId: string,
+    tokenIds: string[],
+  ): Promise<{
+    valid: boolean;
+    results: Array<{ tokenId: string; valid: boolean; message: string }>;
+    totalValid: number;
+    totalTokens: number;
+  }> {
+    const verification =
+      await this.retirementVerificationService.verifyRetirements(companyId, {
+        tokens: tokenIds.map((id) => ({ tokenId: id })),
+        framework: ComplianceFramework.CSRD,
+      });
+
+    const results = verification.results.map((r) => ({
+      tokenId: r.tokenId,
+      valid: r.status === OffsetClaimStatus.VERIFIED,
+      message: r.message,
+    }));
+
+    const totalValid = results.filter((r) => r.valid).length;
+
+    this.logger.log(
+      `CSRD offset verification: ${totalValid}/${tokenIds.length} tokens valid for company ${companyId}`,
+    );
+
+    return {
+      valid: totalValid === tokenIds.length,
+      results,
+      totalValid,
+      totalTokens: tokenIds.length,
+    };
   }
 
   async getReadinessScorecard(companyId: string) {

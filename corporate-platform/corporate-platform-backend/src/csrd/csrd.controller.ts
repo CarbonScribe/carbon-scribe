@@ -1,4 +1,10 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CsrdService } from './csrd.service';
 import { CreateMaterialityAssessmentDto } from './dto/assessment.dto';
 import {
@@ -12,9 +18,12 @@ import { Permissions } from '../rbac/decorators/permissions.decorator';
 import {
   COMPLIANCE_VIEW,
   COMPLIANCE_SUBMIT,
+  COMPLIANCE_VERIFY_RETIREMENT,
 } from '../rbac/constants/permissions.constants';
 import { CompanyId } from '../shared/decorators/company-id.decorator';
 
+@ApiTags('CSRD - EU Corporate Sustainability Reporting')
+@ApiBearerAuth()
 @Controller('api/v1/csrd')
 @UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 export class CsrdController {
@@ -78,5 +87,24 @@ export class CsrdController {
   @Permissions(COMPLIANCE_VIEW)
   async getReadiness(@CompanyId() companyId: string) {
     return this.csrdService.getReadinessScorecard(companyId);
+  }
+
+  @Post('verify-offsets')
+  @Permissions(COMPLIANCE_VERIFY_RETIREMENT)
+  @ApiOperation({
+    summary: 'Verify carbon offsets for CSRD compliance',
+    description:
+      'Validates that the specified tokens are properly retired on-chain and available for CSRD offset claims. Prevents double-counting by checking claim history across frameworks.',
+  })
+  @ApiResponse({ status: 200, description: 'Offset verification completed' })
+  @ApiResponse({ status: 400, description: 'No tokens provided' })
+  async verifyOffsets(
+    @CompanyId() companyId: string,
+    @Body('tokenIds') tokenIds: string[],
+  ) {
+    return this.csrdService.verifyOffsetsForCompliance(
+      companyId,
+      tokenIds || [],
+    );
   }
 }

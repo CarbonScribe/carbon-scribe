@@ -9,14 +9,15 @@ import {
 import { Type } from 'class-transformer';
 
 export enum ComplianceFramework {
-  CBAM = 'CBAM',
+  GHG = 'GHG',
+  CSRD = 'CSRD',
   CORSIA = 'CORSIA',
-  ARTICLE_6 = 'ARTICLE_6',
+  CBAM = 'CBAM',
   SBTi = 'SBTi',
   CDP = 'CDP',
   GRI = 'GRI',
-  CSRD = 'CSRD',
   TCFD = 'TCFD',
+  ARTICLE_6 = 'ARTICLE_6',
 }
 
 export enum EntityType {

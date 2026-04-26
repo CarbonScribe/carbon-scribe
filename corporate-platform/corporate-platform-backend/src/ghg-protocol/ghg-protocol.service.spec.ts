@@ -3,6 +3,10 @@ import {
   AuditAction,
   AuditEventType,
 } from '../audit-trail/interfaces/audit-event.interface';
+import {
+  ComplianceFramework,
+  OffsetClaimStatus,
+} from '../compliance/dto/retirement-verification.dto';
 
 describe('GhgProtocolService', () => {
   let service: GhgProtocolService;
@@ -20,6 +24,7 @@ describe('GhgProtocolService', () => {
     getTrends: jest.Mock;
   };
   let auditTrailService: { createAuditEvent: jest.Mock };
+  let retirementVerificationService: { verifyRetirements: jest.Mock };
 
   beforeEach(() => {
     prisma = {
@@ -53,6 +58,9 @@ describe('GhgProtocolService', () => {
     auditTrailService = {
       createAuditEvent: jest.fn(),
     };
+    retirementVerificationService = {
+      verifyRetirements: jest.fn(),
+    };
 
     service = new GhgProtocolService(
       prisma,
@@ -62,6 +70,7 @@ describe('GhgProtocolService', () => {
       emissionFactorsService as any,
       inventoryService as any,
       auditTrailService as any,
+      retirementVerificationService as any,
     );
   });
 
@@ -132,5 +141,121 @@ describe('GhgProtocolService', () => {
         entityType: 'EmissionRecord',
       }),
     );
+  });
+
+  describe('verifyOffsetsForCompliance', () => {
+    it('should return valid result when all offsets are verified', async () => {
+      const companyId = 'company-123';
+      const tokenIds = ['token-1', 'token-2'];
+
+      retirementVerificationService.verifyRetirements.mockResolvedValue({
+        verified: true,
+        totalTokens: 2,
+        verifiedTokens: 2,
+        claimedTokens: 0,
+        notRetiredTokens: 0,
+        results: [
+          {
+            tokenId: 'token-1',
+            status: OffsetClaimStatus.VERIFIED,
+            message: 'Token verified',
+            onChainVerified: true,
+          },
+          {
+            tokenId: 'token-2',
+            status: OffsetClaimStatus.VERIFIED,
+            message: 'Token verified',
+            onChainVerified: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      });
+
+      const result = await service.verifyOffsetsForCompliance(
+        companyId,
+        tokenIds,
+      );
+
+      expect(result.valid).toBe(true);
+      expect(result.totalValid).toBe(2);
+      expect(result.totalTokens).toBe(2);
+      expect(result.results[0].valid).toBe(true);
+      expect(result.results[1].valid).toBe(true);
+      expect(
+        retirementVerificationService.verifyRetirements,
+      ).toHaveBeenCalledWith(companyId, {
+        tokens: tokenIds.map((id) => ({ tokenId: id })),
+        framework: ComplianceFramework.GHG,
+      });
+    });
+
+    it('should return invalid result when some offsets are already claimed', async () => {
+      const companyId = 'company-123';
+      const tokenIds = ['token-1', 'token-2'];
+
+      retirementVerificationService.verifyRetirements.mockResolvedValue({
+        verified: false,
+        totalTokens: 2,
+        verifiedTokens: 1,
+        claimedTokens: 1,
+        notRetiredTokens: 0,
+        results: [
+          {
+            tokenId: 'token-1',
+            status: OffsetClaimStatus.VERIFIED,
+            message: 'Token verified',
+            onChainVerified: true,
+          },
+          {
+            tokenId: 'token-2',
+            status: OffsetClaimStatus.ALREADY_CLAIMED,
+            message: 'Already claimed',
+            onChainVerified: true,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      });
+
+      const result = await service.verifyOffsetsForCompliance(
+        companyId,
+        tokenIds,
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.totalValid).toBe(1);
+      expect(result.results[0].valid).toBe(true);
+      expect(result.results[1].valid).toBe(false);
+    });
+
+    it('should return invalid result when offsets are not retired', async () => {
+      const companyId = 'company-123';
+      const tokenIds = ['token-1'];
+
+      retirementVerificationService.verifyRetirements.mockResolvedValue({
+        verified: false,
+        totalTokens: 1,
+        verifiedTokens: 0,
+        claimedTokens: 0,
+        notRetiredTokens: 1,
+        results: [
+          {
+            tokenId: 'token-1',
+            status: OffsetClaimStatus.NOT_RETIRED,
+            message: 'Not retired',
+            onChainVerified: false,
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      });
+
+      const result = await service.verifyOffsetsForCompliance(
+        companyId,
+        tokenIds,
+      );
+
+      expect(result.valid).toBe(false);
+      expect(result.totalValid).toBe(0);
+      expect(result.results[0].valid).toBe(false);
+    });
   });
 });

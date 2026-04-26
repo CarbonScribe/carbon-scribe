@@ -444,20 +444,21 @@ func TestCollaborationE2E_MemberManagementWorkflow(t *testing.T) {
 
 	managerToken := bearerTokenForUser(t, tokenManager, "manager-user")
 
-	t.Run("list initial members", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/v1/collaboration/projects/project-1/members", nil)
-		req.Header.Set("Authorization", "Bearer "+managerToken)
+	       t.Run("list initial members", func(t *testing.T) {
+		       repo.Members = nil // Ensure empty for this test
+		       req := httptest.NewRequest("GET", "/api/v1/collaboration/projects/project-1/members", nil)
+		       req.Header.Set("Authorization", "Bearer "+managerToken)
 
-		resp := httptest.NewRecorder()
-		router.ServeHTTP(resp, req)
+		       resp := httptest.NewRecorder()
+		       router.ServeHTTP(resp, req)
 
-		assert.Equal(t, http.StatusOK, resp.Code)
+		       assert.Equal(t, http.StatusOK, resp.Code)
 
-		var members []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &members))
-		// Should be empty initially
-		assert.Empty(t, members)
-	})
+		       var members []map[string]any
+		       require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &members))
+		       // Should be empty initially
+		       assert.Empty(t, members)
+	       })
 
 	t.Run("remove member as manager", func(t *testing.T) {
 		req := httptest.NewRequest("DELETE", "/api/v1/collaboration/projects/project-1/members/user-to-remove", nil)

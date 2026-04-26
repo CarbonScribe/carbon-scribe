@@ -8,6 +8,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -27,11 +33,14 @@ import { Permissions } from '../rbac/decorators/permissions.decorator';
 import {
   COMPLIANCE_SUBMIT,
   COMPLIANCE_VIEW,
+  COMPLIANCE_VERIFY_RETIREMENT,
 } from '../rbac/constants/permissions.constants';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
 import { CompanyId } from '../shared/decorators/company-id.decorator';
 
+@ApiTags('GHG Protocol - Emissions & Offset Verification')
+@ApiBearerAuth()
 @Controller('api/v1/ghg')
 @UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 export class GhgProtocolController {
@@ -104,5 +113,24 @@ export class GhgProtocolController {
     @Body() dto: CalculateEmissionDto,
   ) {
     return this.ghgProtocolService.calculate(companyId, dto, user);
+  }
+
+  @Post('verify-offsets')
+  @Permissions(COMPLIANCE_VERIFY_RETIREMENT)
+  @ApiOperation({
+    summary: 'Verify carbon offsets for GHG Protocol compliance',
+    description:
+      'Validates that the specified tokens are properly retired on-chain and available for GHG Protocol offset claims. Prevents double-counting by checking claim history.',
+  })
+  @ApiResponse({ status: 200, description: 'Offset verification completed' })
+  @ApiResponse({ status: 400, description: 'No tokens provided' })
+  verifyOffsets(
+    @CompanyId() companyId: string,
+    @Body('tokenIds') tokenIds: string[],
+  ) {
+    return this.ghgProtocolService.verifyOffsetsForCompliance(
+      companyId,
+      tokenIds || [],
+    );
   }
 }

@@ -125,6 +125,7 @@ describe('TeamSlice', () => {
           expires_at: '2023-01-15T00:00:00Z',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
+          resent_count: 0,
         },
         {
           id: 'inv-2',
@@ -135,6 +136,7 @@ describe('TeamSlice', () => {
           expires_at: '2023-01-10T00:00:00Z',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-02T00:00:00Z',
+          resent_count: 0,
         },
       ];
       mockApi.fetchInvitationsApi.mockResolvedValue(mockInvitations);
@@ -159,6 +161,7 @@ describe('TeamSlice', () => {
         expires_at: '2023-01-15T00:00:00Z',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
+        resent_count: 0,
       };
       mockApi.inviteUserApi.mockResolvedValue(mockInvitation);
 
@@ -187,6 +190,7 @@ describe('TeamSlice', () => {
           expires_at: '2023-01-15T00:00:00Z',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
+          resent_count: 0,
         };
         mockApi.inviteUserApi.mockResolvedValue(mockInvitation);
 
@@ -597,7 +601,7 @@ describe('TeamSlice', () => {
       mockSet({
         currentProjectId: 'team-project-1',
         members: [{ id: '1', user_id: 'user1', role: 'Owner' } as any],
-        invitations: [{ id: '1', email: 'test@example.com', role: 'Contributor', status: 'pending' } as any],
+        invitations: [{ id: '1', email: 'test@example.com', role: 'Contributor', status: 'pending', resent_count: 0 } as any],
         collaborationErrors: {
           members: 'Some error',
           invitations: null,
@@ -639,6 +643,10 @@ describe('TeamSlice', () => {
         createTask: false,
         updateTask: false,
         createResource: false,
+        resendInvitation: false,
+        cancelInvitation: false,
+        acceptInvitation: false,
+        declineInvitation: false,
       });
       expect(slice.collaborationErrors).toEqual({
         members: null,
@@ -653,6 +661,10 @@ describe('TeamSlice', () => {
         createTask: null,
         updateTask: null,
         createResource: null,
+        resendInvitation: null,
+        cancelInvitation: null,
+        acceptInvitation: null,
+        declineInvitation: null,
       });
     });
   });
@@ -683,7 +695,7 @@ describe('TeamSlice', () => {
 
     it('should handle concurrent team operations', async () => {
       const mockMembers = [{ id: '1', user_id: 'user1', role: 'Owner' } as any];
-      const mockInvitations = [{ id: '1', email: 'test@example.com', role: 'Contributor', status: 'pending' } as any];
+      const mockInvitations = [{ id: '1', email: 'test@example.com', role: 'Contributor', status: 'pending', resent_count: 0 } as any];
       
       mockApi.fetchMembersApi.mockResolvedValue(mockMembers);
       mockApi.fetchInvitationsApi.mockResolvedValue(mockInvitations);
