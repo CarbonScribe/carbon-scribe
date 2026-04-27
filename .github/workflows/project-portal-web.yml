@@ -11,10 +11,6 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
-concurrency:
-  group: project-portal-web-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   NODE_VERSION: '20'
 
@@ -41,12 +37,10 @@ jobs:
         run: |
           if [ -f pnpm-lock.yaml ]; then
             echo "manager=pnpm" >> $GITHUB_OUTPUT
-          elif [ -f yarn.lock ]; then
-            echo "manager=yarn" >> $GITHUB_OUTPUT
           elif [ -f package-lock.json ]; then
             echo "manager=npm" >> $GITHUB_OUTPUT
           else
-            echo "No lockfile found. CI requires a lockfile (pnpm-lock.yaml, yarn.lock, or package-lock.json)."
+            echo "No lockfile found. Exiting."
             exit 1
           fi
 
@@ -60,7 +54,6 @@ jobs:
           cache: ${{ steps.detect.outputs.manager }}
           cache-dependency-path: |
             project-portal/project-portal-web/pnpm-lock.yaml
-            project-portal/project-portal-web/yarn.lock
             project-portal/project-portal-web/package-lock.json
 
       # ----------------------------------
@@ -79,10 +72,6 @@ jobs:
         if: steps.detect.outputs.manager == 'pnpm'
         run: pnpm install --frozen-lockfile
 
-      - name: Install dependencies (yarn)
-        if: steps.detect.outputs.manager == 'yarn'
-        run: yarn install --frozen-lockfile
-
       - name: Install dependencies (npm)
         if: steps.detect.outputs.manager == 'npm'
         run: npm ci
@@ -94,8 +83,6 @@ jobs:
         run: |
           if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
             pnpm exec tsc --noEmit
-          elif [ "${{ steps.detect.outputs.manager }}" = "yarn" ]; then
-            yarn tsc --noEmit
           else
             npx tsc --noEmit
           fi
@@ -107,8 +94,6 @@ jobs:
         run: |
           if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
             pnpm run test --if-present
-          elif [ "${{ steps.detect.outputs.manager }}" = "yarn" ]; then
-            yarn test --if-present 2>/dev/null || true
           else
             npm run test --if-present
           fi
@@ -120,8 +105,6 @@ jobs:
         run: |
           if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
             pnpm run build
-          elif [ "${{ steps.detect.outputs.manager }}" = "yarn" ]; then
-            yarn build
           else
             npm run build
           fi
