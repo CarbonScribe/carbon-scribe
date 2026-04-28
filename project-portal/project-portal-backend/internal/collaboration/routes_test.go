@@ -19,7 +19,7 @@ import (
 func TestCollaborationRoutes_MountedReturnNon404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	handler := NewHandler(NewService(repo))
 
 	router := gin.New()
@@ -44,6 +44,10 @@ func TestCollaborationRoutes_MountedReturnNon404(t *testing.T) {
 		{name: "update task", method: http.MethodPatch, path: "/api/v1/collaboration/tasks/t1", body: map[string]any{"status": "done"}},
 		{name: "list resources", method: http.MethodGet, path: "/api/v1/collaboration/projects/p1/resources"},
 		{name: "create resource", method: http.MethodPost, path: "/api/v1/collaboration/resources", body: map[string]any{"project_id": "p1", "type": "document", "name": "Spec"}},
+		{name: "resend invitation", method: http.MethodPost, path: "/api/v1/collaboration/invitations/inv1/resend"},
+		{name: "cancel invitation", method: http.MethodPost, path: "/api/v1/collaboration/invitations/inv1/cancel"},
+		{name: "accept invitation", method: http.MethodPost, path: "/api/v1/collaboration/invitations/inv1/accept"},
+		{name: "decline invitation", method: http.MethodPost, path: "/api/v1/collaboration/invitations/inv1/decline"},
 	}
 
 	for _, tt := range tests {
@@ -96,7 +100,7 @@ func TestCollaborationRoutes_NotMountedReturn404(t *testing.T) {
 func TestCollaborationRoutes_PathPatternsMatchExpected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	handler := NewHandler(NewService(repo))
 
 	router := gin.New()
@@ -113,6 +117,7 @@ func TestCollaborationRoutes_PathPatternsMatchExpected(t *testing.T) {
 
 	expected := []string{
 		http.MethodGet + " /api/v1/collaboration/projects/:id/members",
+		http.MethodGet + " /api/v1/collaboration/projects/:id/members/:userId",
 		http.MethodDelete + " /api/v1/collaboration/projects/:id/members/:userId",
 		http.MethodPost + " /api/v1/collaboration/projects/:id/invite",
 		http.MethodGet + " /api/v1/collaboration/projects/:id/invitations",
@@ -124,6 +129,10 @@ func TestCollaborationRoutes_PathPatternsMatchExpected(t *testing.T) {
 		http.MethodPatch + " /api/v1/collaboration/tasks/:id",
 		http.MethodGet + " /api/v1/collaboration/projects/:id/resources",
 		http.MethodPost + " /api/v1/collaboration/resources",
+		http.MethodPost + " /api/v1/collaboration/invitations/:invitationId/resend",
+		http.MethodPost + " /api/v1/collaboration/invitations/:invitationId/cancel",
+		http.MethodPost + " /api/v1/collaboration/invitations/:invitationId/accept",
+		http.MethodPost + " /api/v1/collaboration/invitations/:invitationId/decline",
 	}
 
 	for _, route := range expected {

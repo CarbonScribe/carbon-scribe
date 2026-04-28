@@ -5,6 +5,7 @@ import { useReportsStore } from '@/store/store';
 import ReportSharing from './ReportSharing';
 import { FileText, Play, Copy, Trash2, Loader2, Edit, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
+import EmptyState from '@/components/ui/EmptyState';
 
 interface ReportsListProps {
   onSelectReport?: (id: string) => void;
@@ -71,10 +72,11 @@ export default function ReportsList({
 
   if (reports.length === 0) {
     return (
-      <div className="py-12 text-center text-gray-500 bg-gray-50 rounded-xl border border-gray-200">
-        <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-        <p>No reports yet. Create one with the Report Builder.</p>
-      </div>
+      <EmptyState
+        icon={<FileText className="w-8 h-8" />}
+        title="No reports yet"
+        description="Create your first report using the Report Builder."
+      />
     );
   }
 

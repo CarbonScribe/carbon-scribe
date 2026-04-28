@@ -26,7 +26,11 @@ export class PerformanceMetricsService {
       includeBenchmarks = true,
     } = query;
 
-    const metrics = await this.calculateMetrics(companyId, periodStart, periodEnd);
+    const metrics = await this.calculateMetrics(
+      companyId,
+      periodStart,
+      periodEnd,
+    );
     const memberMetrics = includeMembers
       ? await this.getMemberMetrics(companyId, periodStart, periodEnd)
       : [];
@@ -86,12 +90,13 @@ export class PerformanceMetricsService {
 
     const activityTypeCount: Record<string, number> = {};
     activities.forEach((a: any) => {
-      activityTypeCount[a.activityType] = (activityTypeCount[a.activityType] || 0) + 1;
+      activityTypeCount[a.activityType] =
+        (activityTypeCount[a.activityType] || 0) + 1;
     });
 
-    const topActivityType = Object.entries(activityTypeCount).sort(
-      ([, a], [, b]) => b - a,
-    )[0]?.[0] || 'UNKNOWN';
+    const topActivityType =
+      Object.entries(activityTypeCount).sort(([, a], [, b]) => b - a)[0]?.[0] ||
+      'UNKNOWN';
 
     return {
       userId,
@@ -128,7 +133,8 @@ export class PerformanceMetricsService {
     ).size;
 
     const totalActions = activities.length;
-    const actionsPerMember = uniqueMembers > 0 ? totalActions / uniqueMembers : 0;
+    const actionsPerMember =
+      uniqueMembers > 0 ? totalActions / uniqueMembers : 0;
 
     return {
       totalActions,
@@ -136,8 +142,16 @@ export class PerformanceMetricsService {
       activeDays: uniqueDays,
       completionRate: this.calculateCompletionRate(activities),
       avgResponseTime: 0, // Would need mention/response tracking
-      goalProgress: await this.calculateGoalProgress(companyId, startDate, endDate),
-      engagementScore: this.calculateEngagementScore(activities, uniqueMembers, uniqueDays),
+      goalProgress: await this.calculateGoalProgress(
+        companyId,
+        startDate,
+        endDate,
+      ),
+      engagementScore: this.calculateEngagementScore(
+        activities,
+        uniqueMembers,
+        uniqueDays,
+      ),
     };
   }
 
@@ -181,7 +195,7 @@ export class PerformanceMetricsService {
   ): Promise<PerformanceTrends> {
     // Group activities by week
     const weeks = this.getWeeksBetween(startDate, endDate);
-    
+
     const actionsTrend: TrendData[] = [];
     const engagementTrend: TrendData[] = [];
     const completionTrend: TrendData[] = [];
@@ -201,7 +215,7 @@ export class PerformanceMetricsService {
       });
 
       const uniqueMembers = new Set(activities.map((a: any) => a.userId)).size;
-      
+
       actionsTrend.push({
         period: `Week of ${weekStart.toLocaleDateString()}`,
         value: activities.length,
@@ -229,9 +243,8 @@ export class PerformanceMetricsService {
     memberMetrics: MemberPerformance[],
   ): PerformanceBenchmarks {
     const scores = memberMetrics.map((m) => m.actionsCount);
-    const avgScore = scores.length > 0 
-      ? scores.reduce((a, b) => a + b, 0) / scores.length 
-      : 0;
+    const avgScore =
+      scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
     return {
       industryAverage: 65, // Would come from industry data
@@ -251,7 +264,11 @@ export class PerformanceMetricsService {
     const consistencyScore = Math.min(uniqueDays / 5, 30); // Max 30 points
     const participationScore = Math.min(uniqueMembers * 10, 30); // Max 30 points
 
-    return Math.round((activityScore + consistencyScore + participationScore) * 100) / 100;
+    return (
+      Math.round(
+        (activityScore + consistencyScore + participationScore) * 100,
+      ) / 100
+    );
   }
 
   private calculateCompletionRate(activities: any[]): number {
@@ -293,14 +310,20 @@ export class PerformanceMetricsService {
       },
     });
 
-    const targetTotal = targets.reduce((sum: number, t: any) => sum + t.target, 0);
-    
+    const targetTotal = targets.reduce(
+      (sum: number, t: any) => sum + t.target,
+      0,
+    );
+
     return targetTotal > 0
       ? Math.round((retirements / targetTotal) * 100 * 100) / 100
       : 0;
   }
 
-  private getWeeksBetween(start: Date, end: Date): Array<{ start: Date; end: Date }> {
+  private getWeeksBetween(
+    start: Date,
+    end: Date,
+  ): Array<{ start: Date; end: Date }> {
     const weeks: Array<{ start: Date; end: Date }> = [];
     const current = new Date(start);
 

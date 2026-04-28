@@ -34,7 +34,10 @@ export class MemberDetailsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async getMemberProfile(companyId: string, memberId: string): Promise<MemberProfile> {
+  async getMemberProfile(
+    companyId: string,
+    memberId: string,
+  ): Promise<MemberProfile> {
     const member = await (this.prisma as any).teamMember.findFirst({
       where: { id: memberId, companyId },
       include: {
@@ -122,7 +125,8 @@ export class MemberDetailsService {
     const heatmap: ContributionHeatmap = { weeks: [] };
 
     activities.forEach((activity: any) => {
-      breakdown[activity.activityType] = (breakdown[activity.activityType] || 0) + 1;
+      breakdown[activity.activityType] =
+        (breakdown[activity.activityType] || 0) + 1;
     });
 
     // Generate heatmap data
@@ -224,7 +228,8 @@ export class MemberDetailsService {
 
     const activityTypeCount: Record<string, number> = {};
     allActivities.forEach((a: any) => {
-      activityTypeCount[a.activityType] = (activityTypeCount[a.activityType] || 0) + 1;
+      activityTypeCount[a.activityType] =
+        (activityTypeCount[a.activityType] || 0) + 1;
     });
 
     const topActivityTypes = Object.entries(activityTypeCount)
@@ -238,7 +243,9 @@ export class MemberDetailsService {
       actionsThisMonth: monthActivities.length,
       uniqueDaysActive: uniqueDays,
       averageActionsPerDay:
-        uniqueDays > 0 ? Math.round((allActivities.length / uniqueDays) * 100) / 100 : 0,
+        uniqueDays > 0
+          ? Math.round((allActivities.length / uniqueDays) * 100) / 100
+          : 0,
       topActivityTypes,
     };
   }
@@ -259,7 +266,7 @@ export class MemberDetailsService {
     };
 
     const areas = new Set<string>();
-    
+
     topActivityTypes.forEach(({ type }) => {
       const area = expertiseMap[type];
       if (area) {

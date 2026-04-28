@@ -104,11 +104,18 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
+        role="presentation"
+        aria-hidden="true"
       />
 
       {/* Modal */}
@@ -116,29 +123,31 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
         {/* Header */}
         <div className="sticky top-0 bg-white rounded-t-2xl px-6 py-4 border-b border-gray-200 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-100">
+            <div className="p-2 rounded-xl bg-emerald-100" aria-hidden="true">
               <Plus className="w-5 h-5 text-emerald-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 id="modal-title" className="text-xl font-bold text-gray-900">
               Create New Project
             </h2>
           </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
+            aria-label="Close dialog"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5" aria-label="Create new project form">
           {/* Project Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Project Name <span className="text-red-500">*</span>
+            <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">
+              Project Name <span aria-hidden="true" className="text-red-500">*</span>
             </label>
             <input
+              id="project-name"
               type="text"
               value={formData.name}
               onChange={(e) => updateField('name', e.target.value)}
@@ -146,9 +155,12 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
               className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors ${
                 validationErrors.name ? 'border-red-300' : 'border-gray-300'
               }`}
+              aria-required="true"
+              aria-invalid={!!validationErrors.name}
+              aria-describedby={validationErrors.name ? 'project-name-error' : undefined}
             />
             {validationErrors.name && (
-              <p className="text-sm text-red-500 mt-1">
+              <p id="project-name-error" className="text-sm text-red-500 mt-1" role="alert">
                 {validationErrors.name}
               </p>
             )}
@@ -157,13 +169,15 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
           {/* Type & Icon */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Project Type <span className="text-red-500">*</span>
+              <label htmlFor="project-type" className="block text-sm font-medium text-gray-700 mb-1">
+                Project Type <span aria-hidden="true" className="text-red-500">*</span>
               </label>
               <select
+                id="project-type"
                 value={formData.type}
                 onChange={(e) => updateField('type', e.target.value)}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                aria-required="true"
               >
                 {PROJECT_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -173,34 +187,39 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Icon
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {PROJECT_ICONS.map((icon) => (
-                  <button
-                    key={icon}
-                    type="button"
-                    onClick={() => updateField('icon', icon)}
-                    className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-colors ${
-                      formData.icon === icon
-                        ? 'bg-emerald-100 ring-2 ring-emerald-500'
-                        : 'bg-gray-100 hover:bg-gray-200'
-                    }`}
-                  >
-                    {icon}
-                  </button>
-                ))}
-              </div>
+              <fieldset>
+                <legend className="block text-sm font-medium text-gray-700 mb-1">
+                  Icon
+                </legend>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Select project icon">
+                  {PROJECT_ICONS.map((icon) => (
+                    <button
+                      key={icon}
+                      type="button"
+                      onClick={() => updateField('icon', icon)}
+                      className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-colors ${
+                        formData.icon === icon
+                          ? 'bg-emerald-100 ring-2 ring-emerald-500'
+                          : 'bg-gray-100 hover:bg-gray-200'
+                      }`}
+                      aria-label={`Select ${icon} icon`}
+                      aria-pressed={formData.icon === icon}
+                    >
+                      <span aria-hidden="true">{icon}</span>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
             </div>
           </div>
 
           {/* Location */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Location <span className="text-red-500">*</span>
+            <label htmlFor="project-location" className="block text-sm font-medium text-gray-700 mb-1">
+              Location <span aria-hidden="true" className="text-red-500">*</span>
             </label>
             <input
+              id="project-location"
               type="text"
               value={formData.location}
               onChange={(e) => updateField('location', e.target.value)}
@@ -210,9 +229,12 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
                   ? 'border-red-300'
                   : 'border-gray-300'
               }`}
+              aria-required="true"
+              aria-invalid={!!validationErrors.location}
+              aria-describedby={validationErrors.location ? 'project-location-error' : undefined}
             />
             {validationErrors.location && (
-              <p className="text-sm text-red-500 mt-1">
+              <p id="project-location-error" className="text-sm text-red-500 mt-1" role="alert">
                 {validationErrors.location}
               </p>
             )}
@@ -221,10 +243,11 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
           {/* Area & Start Date */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Area (hectares) <span className="text-red-500">*</span>
+              <label htmlFor="project-area" className="block text-sm font-medium text-gray-700 mb-1">
+                Area (hectares) <span aria-hidden="true" className="text-red-500">*</span>
               </label>
               <input
+                id="project-area"
                 type="number"
                 step="0.1"
                 min="0"
@@ -236,18 +259,22 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
                 className={`w-full px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors ${
                   validationErrors.area ? 'border-red-300' : 'border-gray-300'
                 }`}
+                aria-required="true"
+                aria-invalid={!!validationErrors.area}
+                aria-describedby={validationErrors.area ? 'project-area-error' : undefined}
               />
               {validationErrors.area && (
-                <p className="text-sm text-red-500 mt-1">
+                <p id="project-area-error" className="text-sm text-red-500 mt-1" role="alert">
                   {validationErrors.area}
                 </p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-start-date" className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date
               </label>
               <input
+                id="project-start-date"
                 type="date"
                 value={formData.start_date || ''}
                 onChange={(e) => updateField('start_date', e.target.value)}
@@ -259,10 +286,11 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
           {/* Farmers & Status */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-farmers" className="block text-sm font-medium text-gray-700 mb-1">
                 Number of Farmers
               </label>
               <input
+                id="project-farmers"
                 type="number"
                 min="0"
                 value={formData.farmers || ''}
@@ -274,10 +302,11 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="project-status" className="block text-sm font-medium text-gray-700 mb-1">
                 Status
               </label>
               <select
+                id="project-status"
                 value={formData.status || 'pending'}
                 onChange={(e) => updateField('status', e.target.value)}
                 className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
@@ -303,16 +332,17 @@ const CreateProjectModal = ({ isOpen, onClose }: CreateProjectModalProps) => {
               type="submit"
               disabled={isCreating}
               className="flex-1 py-2.5 px-4 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+              aria-busy={isCreating}
             >
               {isCreating ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Creating...
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  <span>Creating...</span>
                 </>
               ) : (
                 <>
-                  <Plus className="w-4 h-4" />
-                  Create Project
+                  <Plus className="w-4 h-4" aria-hidden="true" />
+                  <span>Create Project</span>
                 </>
               )}
             </button>

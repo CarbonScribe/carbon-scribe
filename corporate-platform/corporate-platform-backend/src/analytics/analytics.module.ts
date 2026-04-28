@@ -10,9 +10,10 @@ import { RegionalService } from './services/regional.service';
 import { TeamPerformanceService } from './services/team-performance.service';
 import { TimelineService } from './services/timeline.service';
 import { PrismaService } from '../shared/database/prisma.service';
-import { CacheService } from '../cache/cache.service';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
+  imports: [CacheModule],
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,
@@ -25,7 +26,6 @@ import { CacheService } from '../cache/cache.service';
     TeamPerformanceService,
     TimelineService,
     PrismaService,
-    CacheService,
   ],
   exports: [AnalyticsService],
 })

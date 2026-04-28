@@ -32,6 +32,61 @@ import UptimeChart from '@/components/monitoring/reports/UptimeChart';
 import SLATracker from '@/components/monitoring/reports/SLATracker';
 import MaintenanceCalendar from '@/components/monitoring/reports/MaintenanceCalendar';
 
+/** Reusable skeleton block */
+function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      className={`bg-gray-200 animate-pulse rounded-xl ${className ?? ''}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+/** Skeleton for a stats-card row */
+function StatsCardsSkeleton() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-xl p-4 border shadow-sm animate-pulse">
+          <Skeleton className="h-4 w-24 mb-3" />
+          <Skeleton className="h-8 w-16 mb-2" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton for a generic card section */
+function SectionSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="bg-white rounded-xl p-4 border shadow-sm animate-pulse space-y-3" aria-hidden="true">
+      <Skeleton className="h-5 w-40 mb-4" />
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className="h-10 w-full" />
+      ))}
+    </div>
+  );
+}
+
+/** Skeleton for the chart area */
+function ChartSkeleton() {
+  return (
+    <div className="bg-white rounded-xl p-4 border shadow-sm animate-pulse" aria-hidden="true">
+      <Skeleton className="h-5 w-40 mb-6" />
+      <div className="h-48 flex items-end gap-1">
+        {Array.from({ length: 14 }).map((_, i) => (
+          <div
+            key={i}
+            className="flex-1 bg-gray-200 rounded-t-sm"
+            style={{ height: `${30 + (i % 5) * 12}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SystemHealthDashboard() {
   const fetchDetailedStatus = useStore(state => state.fetchDetailedStatus);
   const fetchServices = useStore(state => state.fetchServices);
@@ -42,9 +97,16 @@ export default function SystemHealthDashboard() {
   const clearHealthData = useStore(state => state.clearHealthData);
   const isAuthenticated = useStore(state => state.isAuthenticated);
 
+  // Derive loading state from health store slice
+  const statusLoading = useStore(state => state.healthLoading?.isFetchingStatus ?? false);
+  const servicesLoading = useStore(state => state.healthLoading?.isFetchingServices ?? false);
+  const alertsLoading = useStore(state => state.healthLoading?.isFetchingAlerts ?? false);
+  const metricsLoading = useStore(state => state.healthLoading?.isFetchingMetrics ?? false);
+
+  const isLoading = statusLoading || servicesLoading || alertsLoading || metricsLoading;
+
   useEffect(() => {
     if (isAuthenticated) {
-      // Fetch initial data
       fetchDetailedStatus();
       fetchServices();
       fetchAlerts();
@@ -54,7 +116,6 @@ export default function SystemHealthDashboard() {
     }
 
     return () => {
-      // Clear data on unmount (or simulate logout clear)
       clearHealthData();
     };
   }, [isAuthenticated, fetchDetailedStatus, fetchServices, fetchAlerts, fetchMetrics, fetchDependencies, fetchUptimeStats, clearHealthData]);
@@ -87,63 +148,77 @@ export default function SystemHealthDashboard() {
         </div>
       </div>
 
-      <SystemStatusBanner />
-      <UptimeStatsCards />
+      {/* Status Banner */}
+      {statusLoading ? <Skeleton className="h-14 w-full" /> : <SystemStatusBanner />}
+
+      {/* Uptime Stats */}
+      {statusLoading ? <StatsCardsSkeleton /> : <UptimeStatsCards />}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
-          <section>
+          <section aria-label="Service Fleet Status" aria-busy={servicesLoading}>
             <h2 className="text-lg font-bold text-gray-800 mb-3 ml-1">Service Fleet Status</h2>
-            <ComponentStatusGrid />
+            {servicesLoading ? <SectionSkeleton rows={3} /> : <ComponentStatusGrid />}
           </section>
 
-          <section>
+          <section aria-label="Detailed Services List" aria-busy={servicesLoading}>
             <h2 className="text-lg font-bold text-gray-800 mb-3 ml-1">Detailed Services List</h2>
-            <ServiceHealthTable />
+            {servicesLoading ? <SectionSkeleton rows={5} /> : <ServiceHealthTable />}
           </section>
 
-          <section className="bg-white p-4 border rounded-xl shadow-sm">
+          <section className="bg-white p-4 border rounded-xl shadow-sm" aria-label="System Metrics" aria-busy={metricsLoading}>
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
               <h2 className="text-lg font-bold text-gray-800">System Metrics</h2>
-              <div className="flex flex-wrap items-center gap-3">
-                <MetricSelector />
-                <ChartControls />
-                <ChartExport />
-              </div>
+              {!metricsLoading && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <MetricSelector />
+                  <ChartControls />
+                  <ChartExport />
+                </div>
+              )}
             </div>
-            <MetricsTimeSeries />
+            {metricsLoading ? <ChartSkeleton /> : <MetricsTimeSeries />}
           </section>
 
-          <section>
-            <h2 className="text-lg font-bold text-gray-800 mb-3 ml-1">Service Topology & Dependencies</h2>
-            <DependencyGraph />
+          <section aria-label="Service Topology" aria-busy={servicesLoading}>
+            <h2 className="text-lg font-bold text-gray-800 mb-3 ml-1">Service Topology &amp; Dependencies</h2>
+            {servicesLoading ? <SectionSkeleton rows={4} /> : <DependencyGraph />}
           </section>
         </div>
 
         <div className="space-y-6">
-          <section className="h-[350px]">
-            <ActiveAlertsWidget />
+          <section className="h-[350px]" aria-label="Active Alerts" aria-busy={alertsLoading}>
+            {alertsLoading ? <SectionSkeleton rows={4} /> : <ActiveAlertsWidget />}
           </section>
 
-          <section>
-            <AlertsList />
+          <section aria-label="Alerts List" aria-busy={alertsLoading}>
+            {alertsLoading ? <SectionSkeleton rows={3} /> : <AlertsList />}
           </section>
 
-          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-6">
-            <SLATracker />
-            <UptimeChart />
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-6" aria-busy={isLoading}>
+            {isLoading ? (
+              <>
+                <SectionSkeleton rows={3} />
+                <SectionSkeleton rows={3} />
+              </>
+            ) : (
+              <>
+                <SLATracker />
+                <UptimeChart />
+              </>
+            )}
           </section>
 
-          <section>
-            <HealthCheckConfigurator />
+          <section aria-busy={servicesLoading}>
+            {servicesLoading ? <SectionSkeleton rows={3} /> : <HealthCheckConfigurator />}
           </section>
 
-          <section className="h-[300px]">
-            <DailyReportViewer />
+          <section className="h-[300px]" aria-busy={isLoading}>
+            {isLoading ? <SectionSkeleton rows={4} /> : <DailyReportViewer />}
           </section>
 
-          <section>
-            <MaintenanceCalendar />
+          <section aria-busy={isLoading}>
+            {isLoading ? <SectionSkeleton rows={3} /> : <MaintenanceCalendar />}
           </section>
         </div>
       </div>

@@ -37,6 +37,7 @@
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/platform-socket.io": "^10.0.0",
     "@nestjs/schedule": "^3.0.0",
+    "@nestjs/swagger": "^7.0.0",
     "@nestjs/websockets": "^10.0.0",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
@@ -100,6 +101,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "setupFilesAfterEnv": [
+      "<rootDir>/test/jest.setup.ts"
+    ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],

@@ -199,64 +199,103 @@ JWT_EXPIRY=15m
 ```
 corporate-platform-backend/
 ├── src/
-│   ├── retirement/                 # Retirement module
-│   │   ├── dto/                    # Data transfer objects
-│   │   │   ├── retire-credits.dto.ts
-│   │   │   └── retirement-query.dto.ts
-│   │   ├── services/               
-│   │   │   ├── instant-retirement.service.ts
-│   │   │   ├── validation.service.ts
-│   │   │   ├── certificate.service.ts
-│   │   │   └── history.service.ts
-│   │   ├── retirement.controller.ts
-│   │   ├── retirement.service.ts
-│   │   └── retirement.module.ts
-│   ├── compliance/                  # Compliance module
-│   │   ├── compliance.controller.ts
-│   │   ├── reporting-engine.service.ts
-│   │   └── compliance.module.ts
-│   ├── marketplace/                 # Marketplace module
-│   │   ├── marketplace.controller.ts
-│   │   ├── discovery-engine.service.ts
-│   │   └── marketplace.module.ts
-│   ├── stellar/                     # Blockchain integration
-│   │   ├── stellar.service.ts
-│   │   ├── soroban.service.ts
-│   │   └── stellar.module.ts
-│   ├── webhooks/                     # Webhook handlers
-│   │   ├── webhooks.controller.ts
-│   │   ├── stellar-webhook.service.ts
-│   │   └── webhooks.module.ts
-│   ├── analytics/                     # Analytics module
-│   │   ├── analytics.controller.ts
-│   │   ├── impact-dashboard.service.ts
-│   │   └── analytics.module.ts
-│   ├── shared/                        # Shared resources
-│   │   ├── database/
-│   │   │   ├── database.module.ts
-│   │   │   └── prisma.service.ts      # Prisma client service
-│   │   ├── cache/
-│   │   │   └── redis.service.ts       # Redis cache
-│   │   ├── ipfs/
-│   │   │   └── ipfs.service.ts        # IPFS storage
-│   │   ├── guards/                     # Auth guards
-│   │   └── interceptors/               # HTTP interceptors
-│   ├── app.module.ts
+│   ├── analytics/
+│   ├── api-key/
+│   ├── app.controller.spec.ts
 │   ├── app.controller.ts
-│   └── main.ts
+│   ├── app.module.ts
+│   ├── app.service.ts
+│   ├── auction/
+│   ├── audit/
+│   ├── audit-trail/
+│   ├── auth/
+│   ├── cache/
+│   ├── cart/
+│   ├── cbam/
+│   ├── compliance/
+│   ├── config/
+│   ├── corsia/
+│   ├── credit/
+│   ├── csrd/
+│   ├── event-bus/
+│   ├── framework-registry/
+│   ├── ghg-protocol/
+│   ├── ipfs/
+│   ├── logger/
+│   ├── main.ts
+│   ├── marketplace/
+│   ├── multi-tenant/
+│   ├── order/
+│   ├── portfolio/
+│   ├── rbac/
+│   ├── retirement/
+│   ├── retirement-analytics/
+│   ├── retirement-scheduling/
+│   ├── security/
+│   ├── shared/
+│   ├── shims.d.ts
+│   ├── stellar/
+│   ├── team-collaboration/
+│   ├── team-management/
+│   ├── types/
+│   └── webhooks/
 ├── prisma/
-│   ├── schema.prisma                   # Database schema
-│   └── migrations/                      # Migration files
+│   ├── schema.prisma
+│   └── migrations/
 ├── test/
+│   ├── api-key-integration.e2e-spec.ts
+│   ├── app.e2e-spec.ts
+│   ├── compliance.e2e-spec.ts
+│   ├── jest-e2e.json
+│   ├── marketplace.e2e-spec.ts
+│   ├── portfolio.e2e-spec.ts
 │   ├── retirement.e2e-spec.ts
-│   └── compliance.e2e-spec.ts
+│   └── team-collaboration.e2e-spec.ts
 ├── .env.example
 ├── .eslintrc.js
 ├── .prettierrc
 ├── nest-cli.json
 ├── package.json
-├── prisma.config.js                     # Prisma 7+ config
+├── prisma.config.js
 ├── tsconfig.json
+
+## Stellar Transfer API (Frontend Integration)
+
+The backend exposes transfer endpoints used by the corporate web client:
+
+- `POST /api/v1/stellar/transfers`
+- `POST /api/v1/stellar/transfers/batch`
+- `GET /api/v1/stellar/purchases/:id/transfer-status`
+
+Compatibility note:
+
+- `GET /api/v1/purchases/:id/transfer-status` remains available for legacy clients.
+
+Single transfer request body:
+
+- `purchaseId`: string
+- `companyId`: string
+- `projectId`: string
+- `amount`: number (minimum `1`)
+- `contractId`: string
+- `fromAddress`: string
+- `toAddress`: string
+
+Batch request body:
+
+- `transfers`: `InitiateTransferDto[]`
+
+Transfer status response fields can include:
+
+- `id`
+- `purchaseId`
+- `companyId`
+- `projectId`
+- `amount`
+- `status` (`PENDING`, `CONFIRMED`, `FAILED`)
+- `transactionHash`
+- `errorMessage`
+- `confirmedAt`
 └── README.md
 ```
 ---
@@ -341,3 +380,139 @@ npx prisma migrate dev --name add_credit_models
 ```
 
 If you manage migrations centrally, prefer creating the migration in your CI or local environment and reviewing it before applying in production.
+
+## Audit Trail Service Module
+
+The backend now includes an immutable audit trail module at `src/audit-trail/` for compliance-relevant activity tracking with tamper-evident hash chaining and optional Stellar anchoring.
+
+Core endpoints:
+
+- `GET /api/v1/audit-trail/events`
+- `GET /api/v1/audit-trail/events/:id`
+- `GET /api/v1/audit-trail/entity/:entityType/:entityId`
+- `GET /api/v1/audit-trail/verify/:id`
+- `POST /api/v1/audit-trail/verify/batch`
+- `GET /api/v1/audit-trail/chain/integrity`
+- `POST /api/v1/audit-trail/anchor`
+- `GET /api/v1/audit-trail/export`
+- `POST /api/v1/audit/anchor-hash` - Anchor an audit hash to a retirement record
+- `GET /api/v1/audit/verify-hash/:tokenId` - Verify the audit hash for a given retirement record
+
+Optional manual creation endpoint (JWT scoped):
+
+- `POST /api/v1/audit-trail/events`
+
+Query filters for `GET /events` and `GET /export`:
+
+- `userId`, `eventType`, `action`, `entityType`, `entityId`, `from`, `to`, `page`, `limit`
+- Export format via `format=csv|json` (default: `csv`)
+
+Environment variables:
+
+- `AUDIT_TRAIL_RETENTION_DAYS` (default `3650`)
+- `AUDIT_STELLAR_ANCHOR_ENABLED` (`true|false`, default `false`)
+
+Decorator usage summary:
+
+- Use `@AuditLog({...})` on service methods.
+- Provide `entityType` and `entityId` mapping from args/result.
+- Expose `auditTrailService` on the class and ensure user context (`companyId`, `sub`/`userId`) is accessible via class state or method args.
+
+
+## SBTi Service API (Science Based Targets initiative)
+
+The backend provides a full SBTi (Science Based Targets initiative) service module for managing, validating, and tracking corporate climate targets in line with SBTi v5.0 criteria.
+
+### Base Path
+`/api/v1/sbti`
+
+### Endpoints
+
+#### Create SBTi Target
+- **POST** `/api/v1/sbti/targets`
+  - **Body:** `CreateTargetDto` (targetType, baseYear, targetYear, reductionPercent, companyId, etc.)
+  - **Returns:** Created target object
+
+#### List Company Targets
+- **GET** `/api/v1/sbti/targets?companyId=...`
+  - **Query:** `companyId` (string, required)
+  - **Returns:** Array of SBTi targets for the company
+
+#### Get Target Progress
+- **GET** `/api/v1/sbti/targets/:id/progress`
+  - **Params:** `id` (UUID, required)
+  - **Returns:** Progress breakdown for the target (current emissions, reduction achieved, % complete)
+
+#### Validate Target (SBTi v5.0)
+- **POST** `/api/v1/sbti/targets/:id/validate`
+  - **Params:** `id` (UUID, required)
+  - **Returns:** Validation result (criteria met, errors, recommendations)
+
+#### SBTi Progress Dashboard
+- **GET** `/api/v1/sbti/dashboard?companyId=...`
+  - **Query:** `companyId` (string, required)
+  - **Returns:** Company-wide SBTi dashboard (targets, progress, gaps)
+
+#### Calculate Retirement Gap
+- **GET** `/api/v1/sbti/retirement-gap?companyId=...`
+  - **Query:** `companyId` (string, required)
+  - **Returns:** Amount of additional retirements needed to meet SBTi targets
+
+### Authentication
+All endpoints require JWT authentication. Some may require company admin or compliance roles.
+
+### Example: Create Target
+```json
+POST /api/v1/sbti/targets
+{
+  "companyId": "uuid",
+  "targetType": "ABSOLUTE",
+  "baseYear": 2020,
+  "targetYear": 2030,
+  "reductionPercent": 42
+}
+```
+
+### Example: Validate Target
+```json
+POST /api/v1/sbti/targets/uuid/validate
+Response:
+{
+  "isValid": true,
+  "criteria": ["Scope 1+2 reduction >= 42% by 2030"],
+  "errors": []
+}
+```
+
+---
+## GHG Protocol Service Module
+
+The backend now includes a dedicated GHG Protocol module at `src/ghg-protocol/` for Scope 1, 2, and 3 accounting backed by Prisma models, seeded emission factors, and audit-trail events.
+
+Core endpoints:
+
+- `POST /api/v1/ghg/emissions/record`
+- `GET /api/v1/ghg/emissions/sources`
+- `POST /api/v1/ghg/emissions/sources`
+- `GET /api/v1/ghg/emissions/inventory`
+- `GET /api/v1/ghg/emissions/inventory/year/:year`
+- `GET /api/v1/ghg/emissions/trends`
+- `GET /api/v1/ghg/factors`
+- `POST /api/v1/ghg/calculate`
+
+Implementation notes:
+
+- Scope 1 uses direct activity × factor calculation for owned or controlled sources.
+- Scope 2 supports both `LOCATION_BASED` and `MARKET_BASED` methodologies.
+- Scope 3 supports category-based calculations for value-chain sources such as travel and purchased goods.
+- Emission factors are seeded from EPA/DEFRA examples in `prisma/seed.ts` and cached in the service layer for repeated lookups.
+- Annual inventory responses include verified vs unverified totals and framework-requirement coverage based on the `GHG` framework record.
+- Every source creation, dry-run calculation, and persisted emission record creates an immutable audit event through `AuditTrailService`.
+
+Database setup after pulling the change:
+
+```bash
+npx prisma generate
+npx prisma migrate deploy
+npx prisma db seed
+```

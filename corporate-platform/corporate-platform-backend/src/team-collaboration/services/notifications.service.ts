@@ -62,7 +62,10 @@ export class NotificationsService {
     return teamNotification;
   }
 
-  async getUnreadNotifications(companyId: string, userId?: string): Promise<TeamNotification[]> {
+  async getUnreadNotifications(
+    companyId: string,
+    userId?: string,
+  ): Promise<TeamNotification[]> {
     const key = userId
       ? `notifications:${companyId}:${userId}:unread`
       : `notifications:${companyId}:unread`;
@@ -71,10 +74,14 @@ export class NotificationsService {
     return data ? JSON.parse(data) : [];
   }
 
-  async markAsRead(notificationId: string, companyId: string, userId: string): Promise<void> {
+  async markAsRead(
+    notificationId: string,
+    companyId: string,
+    userId: string,
+  ): Promise<void> {
     const key = `notifications:${companyId}:${userId}:unread`;
     const notifications = await this.getUnreadNotifications(companyId, userId);
-    
+
     const updated = notifications.filter((n) => n.id !== notificationId);
     await this.redis.getClient().set(key, JSON.stringify(updated));
 
@@ -82,11 +89,13 @@ export class NotificationsService {
     const readKey = `notifications:${companyId}:${userId}:read`;
     const readNotifications = await this.redis.getClient().get(readKey);
     const readList = readNotifications ? JSON.parse(readNotifications) : [];
-    
+
     const notification = notifications.find((n) => n.id === notificationId);
     if (notification) {
       readList.push({ ...notification, read: true });
-      await this.redis.getClient().set(readKey, JSON.stringify(readList.slice(-50))); // Keep last 50
+      await this.redis
+        .getClient()
+        .set(readKey, JSON.stringify(readList.slice(-50))); // Keep last 50
     }
   }
 
@@ -148,7 +157,9 @@ export class NotificationsService {
     });
   }
 
-  private async storeNotification(notification: TeamNotification): Promise<void> {
+  private async storeNotification(
+    notification: TeamNotification,
+  ): Promise<void> {
     try {
       const key = notification.userId
         ? `notifications:${notification.companyId}:${notification.userId}:unread`
@@ -156,7 +167,7 @@ export class NotificationsService {
 
       const existing = await this.redis.getClient().get(key);
       const list = existing ? JSON.parse(existing) : [];
-      
+
       list.push(notification);
       await this.redis.getClient().set(key, JSON.stringify(list.slice(-100))); // Keep last 100
     } catch (error) {
@@ -164,7 +175,9 @@ export class NotificationsService {
     }
   }
 
-  private async emitNotification(notification: TeamNotification): Promise<void> {
+  private async emitNotification(
+    notification: TeamNotification,
+  ): Promise<void> {
     try {
       await this.redis.getClient().publish(
         'notifications:stream',

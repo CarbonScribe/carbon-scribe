@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Calendar, Target, Users, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { MapPin, Calendar, Target, Users, ArrowUpRight, AlertCircle, FolderOpen } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
 import ProjectLoadingSkeleton from './ProjectLoadingSkeleton';
 import CreateProjectModal from './CreateProjectModal';
 import DeleteProjectDialog from './DeleteProjectDialog';
+import EmptyState from '@/components/ui/EmptyState';
+import Button from '@/components/ui/Button';
 
 const ActiveProjectsGrid = () => {
   const projects = useStore((state) => state.projects);
@@ -65,26 +67,19 @@ const ActiveProjectsGrid = () => {
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-gray-900">Active Projects</h2>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 bg-linear-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-medium hover:opacity-90 transition-opacity flex items-center"
-          >
-            <span>New Project</span>
-            <ArrowUpRight className="w-4 h-4 ml-2" />
-          </button>
+          <Button onClick={() => setShowCreateModal(true)} variant="primary">
+            New Project
+            <ArrowUpRight className="w-4 h-4" />
+          </Button>
         </div>
 
         {projects.length === 0 ? (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-3">🌱</div>
-            <p className="text-gray-600 mb-4">No projects yet</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
-            >
-              Create Your First Project
-            </button>
-          </div>
+          <EmptyState
+            icon={<FolderOpen className="w-8 h-8" />}
+            title="No projects yet"
+            description="Start your carbon journey by creating your first project."
+            action={{ label: 'Create Your First Project', onClick: () => setShowCreateModal(true) }}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => (

@@ -16,7 +16,9 @@ export class CollaborationScoreService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async getCollaborationScore(query: CollaborationScoreQuery): Promise<CollaborationScore> {
+  async getCollaborationScore(
+    query: CollaborationScoreQuery,
+  ): Promise<CollaborationScore> {
     const {
       companyId,
       periodStart: queryStart,
@@ -28,7 +30,8 @@ export class CollaborationScoreService {
 
     // Default to last 7 days if not specified
     const periodEnd = queryEnd || new Date();
-    const periodStart = queryStart || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      queryStart || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const components = await this.calculateScoreComponents(
       companyId,
@@ -92,7 +95,8 @@ export class CollaborationScoreService {
       });
 
       const contributions = this.calculateContributions(activities);
-      const collaborationScore = this.calculateMemberCollaborationScore(contributions);
+      const collaborationScore =
+        this.calculateMemberCollaborationScore(contributions);
 
       contributors.push({
         userId: member.userId,
@@ -104,7 +108,9 @@ export class CollaborationScoreService {
       });
     }
 
-    return contributors.sort((a, b) => b.collaborationScore - a.collaborationScore);
+    return contributors.sort(
+      (a, b) => b.collaborationScore - a.collaborationScore,
+    );
   }
 
   private async calculateScoreComponents(
@@ -128,21 +134,34 @@ export class CollaborationScoreService {
 
     return {
       communicationScore: this.calculateCommunicationScore(activities, members),
-      knowledgeSharingScore: this.calculateKnowledgeSharingScore(activities, members),
+      knowledgeSharingScore: this.calculateKnowledgeSharingScore(
+        activities,
+        members,
+      ),
       responseTimeScore: 75, // Would need actual response time data
       meetingParticipationScore: 70, // Would need meeting integration
-      crossTeamCollaborationScore: this.calculateCrossTeamScore(activities, members),
-      goalAlignmentScore: await this.calculateGoalAlignmentScore(companyId, startDate, endDate),
+      crossTeamCollaborationScore: this.calculateCrossTeamScore(
+        activities,
+        members,
+      ),
+      goalAlignmentScore: await this.calculateGoalAlignmentScore(
+        companyId,
+        startDate,
+        endDate,
+      ),
     };
   }
 
-  private calculateCommunicationScore(activities: any[], members: number): number {
+  private calculateCommunicationScore(
+    activities: any[],
+    members: number,
+  ): number {
     const communicationTypes = [
       'TEAM_MEMBER_ADDED',
       'ROLE_CHANGED',
       'SETTINGS_UPDATED',
     ];
-    
+
     const communicationCount = activities.filter((a) =>
       communicationTypes.includes(a.activityType),
     ).length;
@@ -151,13 +170,16 @@ export class CollaborationScoreService {
     return Math.min(Math.round(perMemberAvg * 10) * 10, 100);
   }
 
-  private calculateKnowledgeSharingScore(activities: any[], members: number): number {
+  private calculateKnowledgeSharingScore(
+    activities: any[],
+    members: number,
+  ): number {
     const knowledgeTypes = [
       'REPORT_GENERATED',
       'DOCUMENT_UPLOADED',
       'COMPLIANCE_COMPLETED',
     ];
-    
+
     const knowledgeCount = activities.filter((a) =>
       knowledgeTypes.includes(a.activityType),
     ).length;
@@ -170,12 +192,13 @@ export class CollaborationScoreService {
     // Check for diverse activity types indicating cross-functional work
     const uniqueTypes = new Set(activities.map((a) => a.activityType)).size;
     const diversityRatio = uniqueTypes / 16; // Total possible activity types
-    
-    const participationRate = members > 0 
-      ? new Set(activities.map((a) => a.userId)).size / members 
-      : 0;
 
-    return Math.round((diversityRatio * 50 + participationRate * 50) * 100) / 100;
+    const participationRate =
+      members > 0 ? new Set(activities.map((a) => a.userId)).size / members : 0;
+
+    return (
+      Math.round((diversityRatio * 50 + participationRate * 50) * 100) / 100
+    );
   }
 
   private async calculateGoalAlignmentScore(
@@ -197,10 +220,13 @@ export class CollaborationScoreService {
       where: { companyId },
     });
 
-    const targetTotal = targets.reduce((sum: number, t: any) => sum + t.target, 0);
-    
+    const targetTotal = targets.reduce(
+      (sum: number, t: any) => sum + t.target,
+      0,
+    );
+
     if (targetTotal === 0) return 50; // Neutral score if no targets
-    
+
     const achievementRatio = retirements / targetTotal;
     return Math.min(Math.round(achievementRatio * 100) * 100, 100);
   }
@@ -220,7 +246,8 @@ export class CollaborationScoreService {
       components.knowledgeSharingScore * weights.knowledgeSharingScore +
       components.responseTimeScore * weights.responseTimeScore +
       components.meetingParticipationScore * weights.meetingParticipationScore +
-      components.crossTeamCollaborationScore * weights.crossTeamCollaborationScore +
+      components.crossTeamCollaborationScore *
+        weights.crossTeamCollaborationScore +
       components.goalAlignmentScore * weights.goalAlignmentScore;
 
     return Math.round(score * 100) / 100;
@@ -285,7 +312,8 @@ export class CollaborationScoreService {
       recommendations.push({
         category: 'Knowledge Sharing',
         priority: 'MEDIUM',
-        description: 'Create documentation templates and encourage report generation',
+        description:
+          'Create documentation templates and encourage report generation',
         expectedImpact: 'Increase knowledge sharing by 25%',
         implementationEffort: 'MEDIUM',
       });
@@ -341,12 +369,18 @@ export class CollaborationScoreService {
         ['TEAM_MEMBER_ADDED', 'ROLE_CHANGED'].includes(a.activityType),
       ).length,
       knowledgeSharing: activities.filter((a) =>
-        ['REPORT_GENERATED', 'DOCUMENT_UPLOADED', 'COMPLIANCE_COMPLETED'].includes(a.activityType),
+        [
+          'REPORT_GENERATED',
+          'DOCUMENT_UPLOADED',
+          'COMPLIANCE_COMPLETED',
+        ].includes(a.activityType),
       ).length,
       helpProvided: 0, // Would need mention/response tracking
       meetingsAttended: 0, // Would need meeting integration
       goalsCompleted: activities.filter((a) =>
-        ['RETIREMENT_CREATED', 'TARGET_SET', 'COMPLIANCE_COMPLETED'].includes(a.activityType),
+        ['RETIREMENT_CREATED', 'TARGET_SET', 'COMPLIANCE_COMPLETED'].includes(
+          a.activityType,
+        ),
       ).length,
     };
   }
@@ -360,8 +394,11 @@ export class CollaborationScoreService {
       goalsCompleted: 0.2,
     };
 
-    const total = (Object.values(contributions) as number[]).reduce((a, b) => a + b, 0);
-    
+    const total = (Object.values(contributions) as number[]).reduce(
+      (a, b) => a + b,
+      0,
+    );
+
     if (total === 0) return 0;
 
     const normalized = {
@@ -393,7 +430,7 @@ export class CollaborationScoreService {
   }): Promise<void> {
     try {
       const topContributors = await this.getTopContributors(data.companyId, 5);
-      
+
       await (this.prisma as any).collaborationMetric.upsert({
         where: {
           id_periodStart: {

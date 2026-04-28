@@ -24,6 +24,7 @@ import { StellarModule } from '../stellar/stellar.module';
     RetirementService,
     InstantRetirementService,
     ValidationService,
+    CertificateService,
     PostPurchaseService,
   ],
 })

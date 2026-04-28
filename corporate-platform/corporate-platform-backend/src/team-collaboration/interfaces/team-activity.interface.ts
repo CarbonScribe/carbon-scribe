@@ -30,7 +30,8 @@ export const ACTIVITY_TYPE_ENUM = {
   WEBHOOK_CONFIGURED: 'WEBHOOK_CONFIGURED',
 } as const;
 
-export type ActivityType = typeof ACTIVITY_TYPE_ENUM[keyof typeof ACTIVITY_TYPE_ENUM];
+export type ActivityType =
+  (typeof ACTIVITY_TYPE_ENUM)[keyof typeof ACTIVITY_TYPE_ENUM];
 
 export interface ActivityFeedQuery {
   companyId: string;

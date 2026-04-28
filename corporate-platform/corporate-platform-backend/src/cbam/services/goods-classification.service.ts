@@ -1,10 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
-import { CbamGood, CbamGoodsFilter, CbamSectorType } from '../interfaces/cbam-goods.interface';
+import {
+  CbamGood,
+  CbamGoodsFilter,
+  CbamSectorType,
+} from '../interfaces/cbam-goods.interface';
 
 @Injectable()
 export class GoodsClassificationService {
-  private readonly cbamSectors: Record<CbamSectorType, { code: string; name: string; description: string }> = {
+  private readonly cbamSectors: Record<
+    CbamSectorType,
+    { code: string; name: string; description: string }
+  > = {
     CEMENT: {
       code: 'CEMENT',
       name: 'Cement',
@@ -13,7 +20,8 @@ export class GoodsClassificationService {
     IRON_STEEL: {
       code: 'IRON_STEEL',
       name: 'Iron & Steel',
-      description: 'Iron and steel products including pig iron, sponge iron, and steel products',
+      description:
+        'Iron and steel products including pig iron, sponge iron, and steel products',
     },
     ALUMINIUM: {
       code: 'ALUMINIUM',
@@ -47,7 +55,10 @@ export class GoodsClassificationService {
     return this.cbamSectors[sector];
   }
 
-  async listGoods(companyId: string, filter?: CbamGoodsFilter): Promise<CbamGood[]> {
+  async listGoods(
+    companyId: string,
+    filter?: CbamGoodsFilter,
+  ): Promise<CbamGood[]> {
     const where: any = {};
 
     if (filter?.sector) {
@@ -80,7 +91,10 @@ export class GoodsClassificationService {
     return good as unknown as CbamGood;
   }
 
-  async createGood(companyId: string, data: Partial<CbamGood>): Promise<CbamGood> {
+  async createGood(
+    companyId: string,
+    data: Partial<CbamGood>,
+  ): Promise<CbamGood> {
     const good = await this.prisma.cbamGoods.create({
       data: {
         companyId,
@@ -96,7 +110,11 @@ export class GoodsClassificationService {
     return good as unknown as CbamGood;
   }
 
-  async updateGood(id: string, companyId: string, data: Partial<CbamGood>): Promise<CbamGood> {
+  async updateGood(
+    id: string,
+    companyId: string,
+    data: Partial<CbamGood>,
+  ): Promise<CbamGood> {
     await this.getGoodById(id, companyId);
 
     const good = await this.prisma.cbamGoods.update({

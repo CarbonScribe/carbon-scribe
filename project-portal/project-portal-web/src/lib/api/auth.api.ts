@@ -8,7 +8,7 @@ import type {
   RefreshResponse,
 } from "@/lib/store/auth/auth.types";
 
-function normalizeUser(data: any): User {
+export function normalizeUser(data: any): User {
   return {
     id: data?.id ?? "",
     email: data?.email ?? "",

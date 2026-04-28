@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { Link, Zap, Webhook, Bell, Activity, Plus } from 'lucide-react';
 import { useIntegrationStore } from '@/store/integrationSlice';
 import { useActiveConnections, useActiveWebhooks, useActiveSubscriptions, useOverallHealthStatus } from '@/store/integration.selectors';
+import EmptyState from '@/components/ui/EmptyState';
+import Button from '@/components/ui/Button';
 
 const IntegrationsOverview = () => {
   const {
@@ -94,10 +96,10 @@ const IntegrationsOverview = () => {
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-gray-900">Integration Hub</h2>
-        <button className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus className="w-4 h-4 mr-2" />
+        <Button variant="primary">
+          <Plus className="w-4 h-4" />
           New Connection
-        </button>
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -140,7 +142,11 @@ const IntegrationsOverview = () => {
             </div>
           ))}
           {activeConnections.length === 0 && (
-            <p className="text-gray-500 text-center py-4">No active connections yet</p>
+            <EmptyState
+              icon={<Link className="w-8 h-8" />}
+              title="No active connections"
+              description="Connect your first integration to start syncing data."
+            />
           )}
         </div>
       </div>

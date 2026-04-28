@@ -19,11 +19,11 @@ export interface ScoreComponents {
   goalAlignmentScore: number; // 0-100
 }
 
-export type CollaborationRating = 
-  | 'EXCELLENT'    // 90-100
-  | 'VERY_GOOD'    // 75-89
-  | 'GOOD'         // 60-74
-  | 'FAIR'         // 40-59
+export type CollaborationRating =
+  | 'EXCELLENT' // 90-100
+  | 'VERY_GOOD' // 75-89
+  | 'GOOD' // 60-74
+  | 'FAIR' // 40-59
   | 'NEEDS_IMPROVEMENT'; // 0-39
 
 export interface Recommendation {

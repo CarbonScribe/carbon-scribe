@@ -1,6 +1,16 @@
-import { IsOptional, IsArray, IsString, IsInt, Min, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsArray,
+  IsString,
+  IsInt,
+  Min,
+  IsEnum,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { ACTIVITY_TYPE_ENUM, ActivityType } from '../interfaces/team-activity.interface';
+import {
+  ACTIVITY_TYPE_ENUM,
+  ActivityType,
+} from '../interfaces/team-activity.interface';
 
 export class ActivityQueryDto {
   @IsOptional()

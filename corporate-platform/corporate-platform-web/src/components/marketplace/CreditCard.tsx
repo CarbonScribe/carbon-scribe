@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { MapPin, Calendar, Shield, TrendingUp, ShoppingCart, Eye } from 'lucide-react'
 import { CarbonCredit } from '@/types'
 import { useCorporate } from '@/contexts/CorporateContext'
@@ -81,11 +82,14 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
           </div>
 
           <div className="flex space-x-2">
-            <button className="flex-1 corporate-btn-secondary text-sm px-3 py-2">
+            <Link
+              href={`/marketplace/${credit.id}`}
+              className="flex-1 corporate-btn-secondary text-sm px-3 py-2 flex items-center justify-center"
+            >
               <Eye size={16} className="mr-1" />
               Details
-            </button>
-            <button 
+            </Link>
+            <button
               onClick={() => addToCart(credit)}
               className="flex-1 corporate-btn-primary text-sm px-3 py-2"
               disabled={credit.status !== 'available'}
@@ -179,11 +183,14 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
         
         <div className="md:w-1/4">
           <div className="flex flex-col space-y-2">
-            <button className="corporate-btn-secondary text-sm px-3 py-2">
+            <Link
+              href={`/marketplace/${credit.id}`}
+              className="corporate-btn-secondary text-sm px-3 py-2 flex items-center justify-center"
+            >
               <Eye size={16} className="mr-1" />
               View Details
-            </button>
-            <button 
+            </Link>
+            <button
               onClick={() => addToCart(credit)}
               className="corporate-btn-primary text-sm px-3 py-2"
               disabled={credit.status !== 'available'}

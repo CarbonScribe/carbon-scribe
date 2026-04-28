@@ -188,10 +188,32 @@ export class QuarterlyReportService {
     // Q4 (Oct-Dec): Due April 30 next year
 
     const deadlineConfig = [
-      { quarter: 1, deadlineMonth: 6, deadlineDay: 30, description: 'Q1 Report' },
-      { quarter: 2, deadlineMonth: 9, deadlineDay: 30, description: 'Q2 Report' },
-      { quarter: 3, deadlineMonth: 0, deadlineDay: 31, yearOffset: 1, description: 'Q3 Report' },
-      { quarter: 4, deadlineMonth: 3, deadlineDay: 30, yearOffset: 1, description: 'Q4 Report' },
+      {
+        quarter: 1,
+        deadlineMonth: 6,
+        deadlineDay: 30,
+        description: 'Q1 Report',
+      },
+      {
+        quarter: 2,
+        deadlineMonth: 9,
+        deadlineDay: 30,
+        description: 'Q2 Report',
+      },
+      {
+        quarter: 3,
+        deadlineMonth: 0,
+        deadlineDay: 31,
+        yearOffset: 1,
+        description: 'Q3 Report',
+      },
+      {
+        quarter: 4,
+        deadlineMonth: 3,
+        deadlineDay: 30,
+        yearOffset: 1,
+        description: 'Q4 Report',
+      },
     ];
 
     for (const config of deadlineConfig) {

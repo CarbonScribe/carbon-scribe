@@ -33,8 +33,10 @@ export interface ProjectInvitation {
   project_id: string;
   email: string;
   role: string;
-  status: 'pending' | 'accepted' | 'expired';
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
   expires_at: string;
+  resent_at?: string | null;
+  resent_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -162,6 +164,10 @@ export interface CollaborationLoadingState {
   createTask: boolean;
   updateTask: boolean;
   createResource: boolean;
+  resendInvitation: boolean;
+  cancelInvitation: boolean;
+  acceptInvitation: boolean;
+  declineInvitation: boolean;
 }
 
 export interface CollaborationErrorState {
@@ -177,6 +183,10 @@ export interface CollaborationErrorState {
   createTask: string | null;
   updateTask: string | null;
   createResource: string | null;
+  resendInvitation: string | null;
+  cancelInvitation: string | null;
+  acceptInvitation: string | null;
+  declineInvitation: string | null;
 }
 
 export interface CollaborationSlice {
@@ -212,6 +222,12 @@ export interface CollaborationSlice {
   createTask: (data: CreateTaskRequest) => Promise<Task | null>;
   updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>;
   createResource: (data: CreateResourceRequest) => Promise<SharedResource | null>;
+
+  // Invitation lifecycle
+  resendInvitation: (invitationId: string) => Promise<ProjectInvitation | null>;
+  cancelInvitation: (invitationId: string) => Promise<boolean>;
+  acceptInvitation: (invitationId: string) => Promise<ProjectInvitation | null>;
+  declineInvitation: (invitationId: string) => Promise<ProjectInvitation | null>;
 
   // UI state
   setCurrentProjectId: (projectId: string | null) => void;

@@ -114,9 +114,12 @@ export class ActivityFeedService implements OnModuleInit {
     };
   }
 
-  async getRecentActivities(companyId: string, limit = 10): Promise<TeamActivity[]> {
+  async getRecentActivities(
+    companyId: string,
+    limit = 10,
+  ): Promise<TeamActivity[]> {
     const cacheKey = `activity:recent:${companyId}:${limit}`;
-    
+
     // Try cache first
     const cached = await this.redis.getClient().get(cacheKey);
     if (cached) {
@@ -130,7 +133,9 @@ export class ActivityFeedService implements OnModuleInit {
     });
 
     // Cache for 5 minutes
-    await this.redis.getClient().setex(cacheKey, 300, JSON.stringify(activities));
+    await this.redis
+      .getClient()
+      .setex(cacheKey, 300, JSON.stringify(activities));
 
     return activities;
   }
@@ -163,7 +168,7 @@ export class ActivityFeedService implements OnModuleInit {
     });
 
     const summaryMap = new Map<string, number>();
-    
+
     activities.forEach((activity: TeamActivity) => {
       const count = summaryMap.get(activity.activityType) || 0;
       summaryMap.set(activity.activityType, count + 1);

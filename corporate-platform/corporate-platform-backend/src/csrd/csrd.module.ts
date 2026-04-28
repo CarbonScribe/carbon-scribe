@@ -5,12 +5,22 @@ import { MaterialityAssessmentService } from './services/materiality-assessment.
 import { EsrsDisclosureService } from './services/esrs-disclosure.service';
 import { ReportGeneratorService } from './services/report-generator.service';
 import { AssuranceService } from './services/assurance.service';
-import { FrameworkRegistryModule } from '../framework-registry/framework-registry.module';
+import { AuditTrailModule } from '../audit-trail/audit-trail.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 import { DatabaseModule } from '../shared/database/database.module';
+import { FrameworkRegistryModule } from '../framework-registry/framework-registry.module';
+import { GhgProtocolModule } from '../ghg-protocol/ghg-protocol.module';
 import { SecurityModule } from '../security/security.module';
 
 @Module({
-  imports: [FrameworkRegistryModule, DatabaseModule, SecurityModule],
+  imports: [
+    DatabaseModule,
+    FrameworkRegistryModule,
+    AuditTrailModule,
+    GhgProtocolModule,
+    SecurityModule,
+    ComplianceModule,
+  ],
   controllers: [CsrdController],
   providers: [
     CsrdService,

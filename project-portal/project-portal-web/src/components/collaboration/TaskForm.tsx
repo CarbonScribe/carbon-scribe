@@ -49,26 +49,40 @@ export default function TaskForm({ projectId, onSuccess, onCancel }: TaskFormPro
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="Task title"
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
-        required
-      />
-      <textarea
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder="Description (optional)"
-        rows={2}
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 resize-none"
-      />
+    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-gray-50 rounded-xl border border-gray-200" aria-label="Create new task form">
+      <div>
+        <label htmlFor="task-title" className="block text-sm font-medium text-gray-700 mb-1">
+          Title <span aria-hidden="true" className="text-red-500">*</span>
+        </label>
+        <input
+          id="task-title"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Task title"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
+          required
+          aria-required="true"
+        />
+      </div>
+      <div>
+        <label htmlFor="task-description" className="block text-sm font-medium text-gray-700 mb-1">
+          Description (optional)
+        </label>
+        <textarea
+          id="task-description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description (optional)"
+          rows={2}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 resize-none"
+        />
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <label htmlFor="task-status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
           <select
+            id="task-status"
             value={status}
             onChange={(e) => setStatus(e.target.value as TaskStatus)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -79,8 +93,9 @@ export default function TaskForm({ projectId, onSuccess, onCancel }: TaskFormPro
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+          <label htmlFor="task-priority" className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
           <select
+            id="task-priority"
             value={priority}
             onChange={(e) => setPriority(e.target.value as TaskPriority)}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg"
@@ -92,8 +107,9 @@ export default function TaskForm({ projectId, onSuccess, onCancel }: TaskFormPro
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Due date (optional)</label>
+        <label htmlFor="task-due-date" className="block text-sm font-medium text-gray-700 mb-1">Due date (optional)</label>
         <input
+          id="task-due-date"
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
@@ -108,8 +124,9 @@ export default function TaskForm({ projectId, onSuccess, onCancel }: TaskFormPro
           type="submit"
           disabled={loading}
           className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+          aria-busy={loading}
         >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}
           Create task
         </button>
       </div>

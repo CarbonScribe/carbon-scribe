@@ -10,7 +10,11 @@ import {
 } from '@nestjs/common';
 import { CbamService } from './cbam.service';
 import { ImportDeclarationDto } from './dto/import-declaration.dto';
-import { GenerateReportDto, SubmitReportDto, CalculateEmissionsDto } from './dto/report-submission.dto';
+import {
+  GenerateReportDto,
+  SubmitReportDto,
+  CalculateEmissionsDto,
+} from './dto/report-submission.dto';
 
 @Controller('api/v1/cbam')
 export class CbamController {
@@ -118,7 +122,8 @@ export class CbamController {
 
   @Post('certificates/purchase')
   async recordCertificatePurchase(
-    @Body() body: {
+    @Body()
+    body: {
       year: number;
       quarter: number;
       quantity: number;
@@ -137,7 +142,8 @@ export class CbamController {
 
   @Post('certificates/surrender')
   async surrenderCertificates(
-    @Body() body: {
+    @Body()
+    body: {
       year: number;
       quarter: number;
       quantity: number;

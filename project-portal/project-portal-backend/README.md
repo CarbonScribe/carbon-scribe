@@ -12,52 +12,68 @@ This service operates within CarbonScribe's 7-Layer Architecture as Layer 3: Pro
 ```
 project-portal-backend/
 ├── api/
-│   ├── v1/
-│   └── monitoring.go
+│   └── v1/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go
 │   └── workers/
-│       ├── alert_worker.go
-│       ├── minting_worker.go
-│       ├── payout_worker.go
-│       ├── price_update_worker.go
-│       ├── retention_worker.go
-│       └── satellite_worker.go
 ├── internal/
 │   ├── auth/
-│   │   ├── handler.go
-│   │   ├── jwt.go
-│   │   ├── middleware.go
-│   │   ├── models.go
-│   │   ├── repository.go
-│   │   ├── routes.go
-│   │   ├── service.go
-│   │   └── submission.go
 │   ├── collaboration/
-│   │   ├── handler.go
-│   │   ├── models.go
-│   │   ├── repository.go
-│   │   ├── routes.go
-│   │   └── service.go
 │   ├── compliance/
 │   │   ├── audit/
-│   │   │   ├── immutable_log.go
-│   │   │   ├── logger.go
-│   │   │   ├── middleware.go
-│   │   │   └── query.go
 │   │   ├── privacy/
-│   │   │   ├── consent.go
-│   │   │   └── preferences.go
 │   │   └── requests/
-│   │       ├── deleter.go
-│   │       ├── exporter.go
-│   │       └── processor.go
 │   ├── config/
-│   │   └── config.go
 │   ├── database/
 │   │   └── migrations/
-│   │       └── 008_reporting_tables.sql
+│   ├── document/
+│   ├── financing/
+│   │   ├── calculation/
+│   │   ├── sales/
+│   │   │   └── tokenization/
+│   │   └── tokenization/
+│   ├── geospatial/
+│   │   ├── geometry/
+│   │   └── queries/
+│   ├── integration/
+│   ├── middleware/
+│   ├── monitoring/
+│   │   ├── alerts/
+│   │   ├── analytics/
+│   │   ├── functions/
+│   │   ├── ingestion/
+│   │   └── processing/
+│   ├── notifications/
+│   │   ├── channels/
+│   │   ├── rules/
+│   │   ├── templates/
+│   │   └── websocket/
+│   │       └── lambda_handlers/
+│   ├── payments/
+│   ├── project/
+│   ├── reports/
+│   │   ├── benchmarks/
+│   │   ├── dashboard/
+│   │   ├── export/
+│   │   └── scheduler/
+│   └── retention/
+├── pkg/
+│   ├── aws/
+│   ├── events/
+│   ├── geojson/
+│   ├── iot/
+│   ├── postgis/
+│   ├── utils/
+│   └── websocket/
+├── test/
+├── .env.example
+├── .gitignore
+├── Dockerfile
+├── go.mod
+├── go.sum
+├── Makefile
+└── README.md
 │   ├── document/
 │   │   ├── ipfs_uploader.go
 │   │   └── pdf_generator.go

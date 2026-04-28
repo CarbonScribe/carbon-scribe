@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class DisclosureQueryDto {
   @IsOptional()
@@ -28,9 +28,19 @@ export class RecordDisclosureDto {
   dataPoint: string;
 
   @IsNotEmpty()
-  value: any;
+  value: unknown;
 
   @IsOptional()
-  @IsString()
+  @IsEnum(['LIMITED', 'REASONABLE'])
   assuranceLevel?: 'LIMITED' | 'REASONABLE';
+}
+
+export class UpdateAssuranceDto {
+  @IsNotEmpty()
+  @IsEnum(['LIMITED', 'REASONABLE'])
+  assuranceLevel: 'LIMITED' | 'REASONABLE';
+
+  @IsNotEmpty()
+  @IsString()
+  assuredBy: string;
 }

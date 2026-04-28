@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Shield, 
   FileText, 
@@ -19,9 +19,11 @@ import {
   ChevronRight,
   Eye,
   Send,
-  Bell
+  Bell,
+  Loader
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
+import { useCompliance } from '@/hooks/useCompliance'
 import { 
   BarChart, 
   Bar, 
@@ -32,11 +34,22 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts'
+import { ComplianceFramework } from '@/types'
 
 export default function CompliancePage() {
   const { portfolio, retirements } = useCorporate()
+  const compliance = useCompliance()
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'frameworks' | 'audit'>('overview')
   const [expandedRequirement, setExpandedRequirement] = useState<string | null>(null)
+  const [companyId, setCompanyId] = useState<string>('company-1') // Get from context/auth in production
+
+  // Load compliance data on mount
+  useEffect(() => {
+    if (companyId) {
+      compliance.getAllStatuses()
+      compliance.getComplianceReport(companyId)
+    }
+  }, [companyId])
 
   // Compliance frameworks
   const frameworks = [
@@ -345,7 +358,7 @@ export default function CompliancePage() {
                       <YAxis yAxisId="left" domain={[0, 100]} />
                       <YAxis yAxisId="right" orientation="right" />
                       <Tooltip 
-                        formatter={(value: any, name: string | undefined) => {
+                        formatter={(value, name) => {
                           if (name === 'compliance') return [`${value}%`, 'Compliance Score']
                           return [value, 'Reports Submitted']
                         }}

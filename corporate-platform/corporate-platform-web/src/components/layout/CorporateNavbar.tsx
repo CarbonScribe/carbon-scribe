@@ -1,14 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, Bell, Settings, User, ChevronDown, Menu, X } from 'lucide-react'
+import { Search, Bell, Settings, User, ChevronDown, Menu, X, LogOut } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { useCorporate } from '@/contexts/CorporateContext'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function CorporateNavbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
   const { toggleTheme, theme, mounted } = useTheme()
   const { company, cart } = useCorporate()
+  const { user, logout, isAuthenticated } = useAuth()
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+    } catch (error) {
+      console.error('Logout failed:', error)
+    }
+  }
 
   // Don't render theme toggle until mounted to avoid hydration mismatch
   if (!mounted) return null
@@ -82,20 +93,66 @@ export default function CorporateNavbar() {
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </div>
 
-            {/* Company Profile */}
-            <div className="hidden md:flex items-center space-x-3">
-              <div className="text-right">
-                <p className="font-medium text-sm">{company.name}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{company.industry}</p>
+            {/* User Profile with Dropdown */}
+            {isAuthenticated && user && (
+              <div className="hidden md:block relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-800 p-2 rounded-lg transition-all"
+                >
+                  <div className="text-right">
+                    <p className="font-medium text-sm">{user.firstName} {user.lastName}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{user.email}</p>
+                  </div>
+                  <div className="relative">
+                    <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-green-600 rounded-full flex items-center justify-center text-white font-medium">
+                      {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+                  </div>
+                  <ChevronDown size={16} className="text-gray-400" />
+                </button>
+
+                {/* Dropdown Menu */}
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50">
+                    <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {user.firstName} {user.lastName}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+                    </div>
+                    
+                    <div className="py-1">
+                      <a
+                        href="/settings"
+                        className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <Settings size={16} className="mr-3" />
+                        Settings
+                      </a>
+                      <a
+                        href="/profile"
+                        className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <User size={16} className="mr-3" />
+                        Profile
+                      </a>
+                    </div>
+
+                    <div className="border-t border-gray-200 dark:border-gray-700 py-1">
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        <LogOut size={16} className="mr-3" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="relative">
-                <div className="w-9 h-9 bg-linear-to-br from-corporate-blue to-corporate-teal rounded-full flex items-center justify-center text-white font-medium">
-                  TG
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-              </div>
-              <ChevronDown size={16} className="text-gray-400" />
-            </div>
+            )}
 
             {/* Settings */}
             <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">

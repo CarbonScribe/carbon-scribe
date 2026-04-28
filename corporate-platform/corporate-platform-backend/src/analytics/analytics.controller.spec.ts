@@ -218,9 +218,9 @@ describe('AnalyticsController', () => {
     });
 
     it('should reject invalid months parameter', async () => {
-      await expect(controller.predictRetirements(mockUser, '200')).rejects.toThrow(
-        'Months must be between 1 and 120',
-      );
+      await expect(
+        controller.predictRetirements(mockUser, '200'),
+      ).rejects.toThrow('Months must be between 1 and 120');
     });
   });
 

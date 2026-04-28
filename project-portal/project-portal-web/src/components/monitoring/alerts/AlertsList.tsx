@@ -6,6 +6,7 @@ import { AlertSeverity, SystemAlert } from '@/lib/store/health/health.types';
 import { ShieldAlert, AlertTriangle, Info, Clock, CheckCircle } from 'lucide-react';
 import AcknowledgeAlertButton from './AcknowledgeAlertButton';
 import AlertDetailModal from './AlertDetailModal';
+import EmptyState from '@/components/ui/EmptyState';
 
 const SeverityBadge = ({ severity }: { severity: AlertSeverity }) => {
     switch (severity) {
@@ -48,10 +49,11 @@ export default function AlertsList() {
             </div>
 
             {filteredAlerts.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 flex flex-col items-center">
-                    <CheckCircle className="w-10 h-10 text-green-500 mb-2 opacity-50" />
-                    <p>No alerts matching criteria.</p>
-                </div>
+                <EmptyState
+                  icon={<CheckCircle className="w-8 h-8 text-green-500" />}
+                  title="All clear"
+                  description="No alerts matching the selected criteria."
+                />
             ) : (
                 <div className="divide-y">
                     {filteredAlerts.map(alert => (

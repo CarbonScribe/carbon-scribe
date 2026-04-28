@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -13,7 +6,11 @@ import { Tenant } from '../multi-tenant/decorators/tenant.decorator';
 import { TenantContext } from '../multi-tenant/interfaces/tenant-context.interface';
 import { TeamCollaborationService } from './team-collaboration.service';
 import { ActivityQueryDto } from './dto/activity-query.dto';
-import { DateRangeDto, PaginatedQueryDto, MemberIdDto } from './dto/date-range.dto';
+import {
+  DateRangeDto,
+  PaginatedQueryDto,
+  MemberIdDto,
+} from './dto/date-range.dto';
 
 @Controller('api/v1/team')
 @UseGuards(JwtAuthGuard)
@@ -30,7 +27,10 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() query: ActivityQueryDto,
   ) {
-    return this.teamCollaborationService.getActivityFeed(tenant.companyId, { ...query, companyId: tenant.companyId });
+    return this.teamCollaborationService.getActivityFeed(tenant.companyId, {
+      ...query,
+      companyId: tenant.companyId,
+    });
   }
 
   @Get('activity/recent')
@@ -65,7 +65,10 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    return this.teamCollaborationService.getActivitySummary(tenant.companyId, dateRange);
+    return this.teamCollaborationService.getActivitySummary(
+      tenant.companyId,
+      dateRange,
+    );
   }
 
   // ==================== Performance Metrics Endpoints ====================
@@ -76,9 +79,12 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
+
     return this.teamCollaborationService.getTeamPerformance(tenant.companyId, {
       companyId: tenant.companyId,
       periodStart,
@@ -95,9 +101,12 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
+
     return this.teamCollaborationService.getTeamPerformance(tenant.companyId, {
       companyId: tenant.companyId,
       periodStart,
@@ -114,9 +123,12 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
+
     return this.teamCollaborationService.getTeamPerformance(tenant.companyId, {
       companyId: tenant.companyId,
       periodStart,
@@ -133,9 +145,12 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
+
     return this.teamCollaborationService.getTeamPerformance(tenant.companyId, {
       companyId: tenant.companyId,
       periodStart,
@@ -154,31 +169,41 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
-    return this.teamCollaborationService.getCollaborationScore(tenant.companyId, {
-      companyId: tenant.companyId,
-      periodStart,
-      periodEnd,
-      metricType: 'WEEKLY_SCORE',
-      includeHistory: true,
-      includeRecommendations: true,
-    });
+
+    return this.teamCollaborationService.getCollaborationScore(
+      tenant.companyId,
+      {
+        companyId: tenant.companyId,
+        periodStart,
+        periodEnd,
+        metricType: 'WEEKLY_SCORE',
+        includeHistory: true,
+        includeRecommendations: true,
+      },
+    );
   }
 
   @Get('collaboration/score/history')
   async getCollaborationScoreHistory(
     @CurrentUser() user: JwtPayload,
     @Tenant() tenant: TenantContext,
-    @Query('metricType') metricType: 'WEEKLY_SCORE' | 'MONTHLY_SCORE' = 'WEEKLY_SCORE',
+    @Query('metricType')
+    metricType: 'WEEKLY_SCORE' | 'MONTHLY_SCORE' = 'WEEKLY_SCORE',
   ) {
-    return this.teamCollaborationService.getCollaborationScore(tenant.companyId, {
-      companyId: tenant.companyId,
-      metricType,
-      includeHistory: true,
-      includeRecommendations: false,
-    });
+    return this.teamCollaborationService.getCollaborationScore(
+      tenant.companyId,
+      {
+        companyId: tenant.companyId,
+        metricType,
+        includeHistory: true,
+        includeRecommendations: false,
+      },
+    );
   }
 
   @Get('collaboration/components')
@@ -187,17 +212,23 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
-    const score = await this.teamCollaborationService.getCollaborationScore(tenant.companyId, {
-      companyId: tenant.companyId,
-      periodStart,
-      periodEnd,
-      includeHistory: false,
-      includeRecommendations: false,
-    });
-    
+
+    const score = await this.teamCollaborationService.getCollaborationScore(
+      tenant.companyId,
+      {
+        companyId: tenant.companyId,
+        periodStart,
+        periodEnd,
+        includeHistory: false,
+        includeRecommendations: false,
+      },
+    );
+
     return {
       companyId: tenant.companyId,
       periodStart,
@@ -214,17 +245,23 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Query() dateRange: DateRangeDto,
   ) {
-    const periodStart = dateRange.periodStart || dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const periodStart =
+      dateRange.periodStart ||
+      dateRange.startDate ||
+      new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const periodEnd = dateRange.periodEnd || dateRange.endDate || new Date();
-    
-    const score = await this.teamCollaborationService.getCollaborationScore(tenant.companyId, {
-      companyId: tenant.companyId,
-      periodStart,
-      periodEnd,
-      includeHistory: false,
-      includeRecommendations: true,
-    });
-    
+
+    const score = await this.teamCollaborationService.getCollaborationScore(
+      tenant.companyId,
+      {
+        companyId: tenant.companyId,
+        periodStart,
+        periodEnd,
+        includeHistory: false,
+        includeRecommendations: true,
+      },
+    );
+
     return {
       companyId: tenant.companyId,
       recommendations: score.recommendations,
@@ -251,7 +288,10 @@ export class TeamCollaborationController {
     @Tenant() tenant: TenantContext,
     @Param() params: MemberIdDto,
   ) {
-    return this.teamCollaborationService.getMemberProfile(tenant.companyId, params.id);
+    return this.teamCollaborationService.getMemberProfile(
+      tenant.companyId,
+      params.id,
+    );
   }
 
   @Get('members/:id/activity-history')
@@ -276,9 +316,10 @@ export class TeamCollaborationController {
     @Param() params: MemberIdDto,
     @Query() dateRange: DateRangeDto,
   ) {
-    const startDate = dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const startDate =
+      dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = dateRange.endDate || new Date();
-    
+
     return this.teamCollaborationService.getMemberContributions(
       tenant.companyId,
       params.id,

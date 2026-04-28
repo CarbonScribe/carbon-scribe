@@ -19,10 +19,11 @@ import {
   CreditCard
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
+import StellarTransferPanel from '@/components/stellar/StellarTransferPanel'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
 
 export default function RetirementPage() {
-  const { portfolio, retirements, credits } = useCorporate()
+  const { company, portfolio, retirements, credits } = useCorporate()
   const [selectedPurpose, setSelectedPurpose] = useState<string>('all')
   const [retirementAmount, setRetirementAmount] = useState(1000)
 
@@ -93,6 +94,9 @@ export default function RetirementPage() {
           </div>
         </div>
       </div>
+
+      {/* Progress to Goal */}
+      <StellarTransferPanel defaultCompanyId={company.id} />
 
       {/* Progress to Goal */}
       <div className="corporate-card p-6">

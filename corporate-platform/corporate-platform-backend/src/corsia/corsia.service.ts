@@ -6,12 +6,17 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../shared/database/prisma.service';
 import { SecurityService } from '../security/security.service';
+import { RetirementVerificationService } from '../compliance/services/retirement-verification.service';
 import { RecordFlightDto } from './dto/record-flight.dto';
 import { FlightEmissionsService } from './services/flight-emissions.service';
 import { OffsetRequirementService } from './services/offset-requirement.service';
 import { EmissionsReportService } from './services/emissions-report.service';
 import { EligibleFuelsService } from './services/eligible-fuels.service';
 import { VerifierService } from './services/verifier.service';
+import {
+  ComplianceFramework,
+  OffsetClaimStatus,
+} from '../compliance/dto/retirement-verification.dto';
 
 @Injectable()
 export class CorsiaService {
@@ -23,6 +28,7 @@ export class CorsiaService {
     private readonly emissionsReportService: EmissionsReportService,
     private readonly eligibleFuelsService: EligibleFuelsService,
     private readonly verifierService: VerifierService,
+    private readonly retirementVerificationService: RetirementVerificationService,
   ) {}
 
   async recordFlight(companyId: string, dto: RecordFlightDto) {
@@ -232,6 +238,25 @@ export class CorsiaService {
         credit: true,
       },
     });
+
+    const verificationResults =
+      await this.retirementVerificationService.verifyRetirements(companyId, {
+        tokens: retirements.map((r) => ({
+          tokenId: r.creditId,
+          retirementTxHash: r.id,
+        })),
+        framework: ComplianceFramework.CORSIA,
+      });
+
+    const invalidTokens = verificationResults.results
+      .filter((r) => r.status !== OffsetClaimStatus.VERIFIED)
+      .map((r) => r.tokenId);
+
+    if (invalidTokens.length > 0) {
+      throw new BadRequestException(
+        `The following credits cannot be used for CORSIA compliance due to retirement verification failure: ${invalidTokens.join(', ')}`,
+      );
+    }
 
     const results = await Promise.all(
       retirements.map(async (retirement) => {

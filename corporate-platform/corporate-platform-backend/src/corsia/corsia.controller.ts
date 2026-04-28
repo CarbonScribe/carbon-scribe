@@ -8,6 +8,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { CorsiaService } from './corsia.service';
 import { RecordFlightDto } from './dto/record-flight.dto';
 import { ComplianceYearDto } from './dto/compliance-year.dto';
@@ -21,6 +27,8 @@ import {
   COMPLIANCE_VIEW,
 } from '../rbac/constants/permissions.constants';
 
+@ApiTags('CORSIA - Aviation Offset Compliance')
+@ApiBearerAuth()
 @Controller('api/v1/corsia')
 @UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 export class CorsiaController {
@@ -79,6 +87,13 @@ export class CorsiaController {
 
   @Post('credits/validate')
   @Permissions(COMPLIANCE_SUBMIT)
+  @ApiOperation({
+    summary: 'Validate CORSIA-eligible credits with retirement verification',
+    description:
+      'Validates that the specified retirement IDs correspond to on-chain retired credits eligible for CORSIA compliance. Runs retirement verification against the Soroban Retirement Tracker contract to prevent double-counting.',
+  })
+  @ApiResponse({ status: 200, description: 'Credit validation results' })
+  @ApiResponse({ status: 400, description: 'No retirement IDs provided' })
   validateCredits(
     @CompanyId() companyId: string,
     @Body('retirementIds') retirementIds: string[],

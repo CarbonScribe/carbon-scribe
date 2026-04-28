@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { FarmerProvider } from '@/contexts/FarmerContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { Toaster } from 'sonner';
 import ToastContainer from '@/components/ui/Toast';
 import StoreHydrator from '@/components/StoreHydrator';
@@ -24,6 +25,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${inter.className} min-h-screen bg-linear-to-br from-emerald-50 via-white to-cyan-50 text-gray-900 antialiased`}
       >
+        <ThemeProvider>
         <FarmerProvider>
           <StoreHydrator />
           <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
@@ -44,6 +46,7 @@ export default function RootLayout({
           <ToastContainer />
           {children}
         </FarmerProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

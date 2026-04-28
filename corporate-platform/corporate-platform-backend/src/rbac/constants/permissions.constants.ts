@@ -26,10 +26,11 @@ export const TEAM_INVITE = 'team:invite';
 export const TEAM_MANAGE_ROLES = 'team:manage-roles';
 export const TEAM_REMOVE = 'team:remove';
 
-/** Compliance: view, submit, audit */
+/** Compliance: view, submit, audit, retirement verification */
 export const COMPLIANCE_VIEW = 'compliance:view';
 export const COMPLIANCE_SUBMIT = 'compliance:submit';
 export const COMPLIANCE_AUDIT = 'compliance:audit';
+export const COMPLIANCE_VERIFY_RETIREMENT = 'compliance:verify-retirement';
 
 /** Settings: view, update, billing */
 export const SETTINGS_VIEW = 'settings:view';
@@ -39,6 +40,10 @@ export const SETTINGS_BILLING = 'settings:billing';
 /** Admin: user management, audit logs */
 export const ADMIN_USER_MANAGE = 'admin:user-manage';
 export const ADMIN_VIEW_AUDIT_LOGS = 'admin:view-audit-logs';
+
+/** Audit Hash: anchor and verify retirement audit hashes */
+export const AUDIT_HASH_ANCHOR = 'audit-hash:anchor';
+export const AUDIT_HASH_VERIFY = 'audit-hash:verify';
 
 /** All permissions (flat list) */
 export const ALL_PERMISSIONS = [
@@ -60,11 +65,14 @@ export const ALL_PERMISSIONS = [
   COMPLIANCE_VIEW,
   COMPLIANCE_SUBMIT,
   COMPLIANCE_AUDIT,
+  COMPLIANCE_VERIFY_RETIREMENT,
   SETTINGS_VIEW,
   SETTINGS_UPDATE,
   SETTINGS_BILLING,
   ADMIN_USER_MANAGE,
   ADMIN_VIEW_AUDIT_LOGS,
+  AUDIT_HASH_ANCHOR,
+  AUDIT_HASH_VERIFY,
 ] as const;
 
 export type Permission = (typeof ALL_PERMISSIONS)[number];
@@ -93,6 +101,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     REPORT_EXPORT,
     COMPLIANCE_VIEW,
     TEAM_VIEW,
+    AUDIT_HASH_VERIFY,
   ],
   manager: [
     PORTFOLIO_VIEW,
@@ -105,7 +114,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     REPORT_GENERATE,
     COMPLIANCE_VIEW,
     COMPLIANCE_SUBMIT,
+    COMPLIANCE_VERIFY_RETIREMENT,
     TEAM_VIEW,
+    AUDIT_HASH_ANCHOR,
+    AUDIT_HASH_VERIFY,
   ],
   viewer: [
     PORTFOLIO_VIEW,
@@ -121,6 +133,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     REPORT_EXPORT,
     COMPLIANCE_VIEW,
     COMPLIANCE_AUDIT,
+    COMPLIANCE_VERIFY_RETIREMENT,
     ADMIN_VIEW_AUDIT_LOGS,
+    AUDIT_HASH_ANCHOR,
+    AUDIT_HASH_VERIFY,
   ],
 };

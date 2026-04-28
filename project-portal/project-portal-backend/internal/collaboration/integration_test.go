@@ -16,10 +16,10 @@ import (
 
 func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
-	token := bearerTokenForUser(t, tokenManager, "integration-user-1")
+	token := bearerTokenForUser(t, tokenManager, "owner-user-1")
 
 	t.Run("invite user", func(t *testing.T) {
 		body := map[string]any{"email": "new-user@example.com", "role": "Contributor"}
@@ -34,9 +34,24 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusCreated, resp.Code, "body=%s", resp.Body.String())
-		require.NotNil(t, repo.createdInvitation)
-		assert.Equal(t, "project-1", repo.createdInvitation.ProjectID)
-		assert.Equal(t, "new-user@example.com", repo.createdInvitation.Email)
+		require.NotNil(t, repo.CreatedInvitation)
+		assert.Equal(t, "project-1", repo.CreatedInvitation.ProjectID)
+		assert.Equal(t, "new-user@example.com", repo.CreatedInvitation.Email)
+
+		// Simulate the invited user as a member for the list_members test
+		repo.Members = append(repo.Members, EnrichedProjectMember{
+			UserID:      "new-user-id",
+			ProjectID:   "project-1",
+			Role:        "Contributor",
+			DisplayName: "New User",
+			Email:       "new-user@example.com",
+			AvatarURL:   "https://example.com/avatar.png",
+			Phone:       "",
+			Location:    "",
+			Title:       "",
+			Bio:         "",
+			JoinedAt:    time.Now(),
+		})
 	})
 
 	t.Run("create comment", func(t *testing.T) {
@@ -52,10 +67,10 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusCreated, resp.Code, "body=%s", resp.Body.String())
-		require.NotNil(t, repo.createdComment)
-		assert.Equal(t, "project-1", repo.createdComment.ProjectID)
-		assert.Equal(t, "integration-user-1", repo.createdComment.UserID)
-		assert.Equal(t, "Can we update this section?", repo.createdComment.Content)
+		require.NotNil(t, repo.CreatedComment)
+		assert.Equal(t, "project-1", repo.CreatedComment.ProjectID)
+		assert.Equal(t, "owner-user-1", repo.CreatedComment.UserID)
+		assert.Equal(t, "Can we update this section?", repo.CreatedComment.Content)
 	})
 
 	t.Run("create task", func(t *testing.T) {
@@ -71,10 +86,10 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusCreated, resp.Code, "body=%s", resp.Body.String())
-		require.NotNil(t, repo.createdTask)
-		assert.Equal(t, "project-1", repo.createdTask.ProjectID)
-		assert.Equal(t, "integration-user-1", repo.createdTask.CreatedBy)
-		assert.Equal(t, "Validate project geofence", repo.createdTask.Title)
+		require.NotNil(t, repo.CreatedTask)
+		assert.Equal(t, "project-1", repo.CreatedTask.ProjectID)
+		assert.Equal(t, "owner-user-1", repo.CreatedTask.CreatedBy)
+		assert.Equal(t, "Validate project geofence", repo.CreatedTask.Title)
 	})
 
 	t.Run("list members", func(t *testing.T) {
@@ -90,12 +105,12 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		assert.NotNil(t, body)
 	})
 
-	assert.GreaterOrEqual(t, len(repo.activities), 3, "expected activities from invite/comment/task operations")
+	assert.GreaterOrEqual(t, len(repo.Activities), 3, "expected activities from invite/comment/task operations")
 }
 
 func TestCollaborationIntegration_AuthErrorMatrix(t *testing.T) {
 	tokenManager := auth.NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
-	repo := &fakeCollaborationRepo{}
+	repo := &FakeCollaborationRepo{}
 	router := newCollaborationTestRouter(repo, tokenManager)
 
 	tests := []struct {

@@ -46,9 +46,9 @@ export default function ToastContainer() {
   };
 
   const iconMap = {
-    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
-    error: <XCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
+    success: <CheckCircle className="w-5 h-5 text-emerald-500" aria-hidden="true" />,
+    error: <XCircle className="w-5 h-5 text-red-500" aria-hidden="true" />,
+    info: <Info className="w-5 h-5 text-blue-500" aria-hidden="true" />,
   };
 
   const bgMap = {
@@ -58,10 +58,16 @@ export default function ToastContainer() {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-9999 flex flex-col gap-3 max-w-sm">
+    <div 
+      className="fixed top-4 right-4 z-9999 flex flex-col gap-3 max-w-sm"
+      role="region"
+      aria-label="Notifications"
+      aria-live="polite"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}
+          role="alert"
           className={`flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg animate-fadeIn ${bgMap[toast.type]}`}
         >
           {iconMap[toast.type]}
@@ -71,8 +77,9 @@ export default function ToastContainer() {
           <button
             onClick={() => removeToast(toast.id)}
             className="text-gray-400 hover:text-gray-600"
+            aria-label={`Dismiss ${toast.type} notification`}
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       ))}

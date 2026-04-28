@@ -66,22 +66,36 @@ describe('TeamCollaborationService', () => {
 
     service = module.get<TeamCollaborationService>(TeamCollaborationService);
     activityFeedService = module.get<ActivityFeedService>(ActivityFeedService);
-    collaborationScoreService = module.get<CollaborationScoreService>(CollaborationScoreService);
-    memberDetailsService = module.get<MemberDetailsService>(MemberDetailsService);
-    notificationsService = module.get<NotificationsService>(NotificationsService);
+    collaborationScoreService = module.get<CollaborationScoreService>(
+      CollaborationScoreService,
+    );
+    memberDetailsService =
+      module.get<MemberDetailsService>(MemberDetailsService);
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   describe('Activity Feed', () => {
     it('should get activity feed', async () => {
       const companyId = 'test-company';
       const query = { companyId, page: 1, limit: 20 };
-      const expectedResult = { activities: [], total: 0, page: 1, hasMore: false };
+      const expectedResult = {
+        activities: [],
+        total: 0,
+        page: 1,
+        hasMore: false,
+      };
 
-      jest.spyOn(activityFeedService, 'getActivityFeed').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(activityFeedService, 'getActivityFeed')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getActivityFeed(companyId, query);
       expect(result).toEqual(expectedResult);
-      expect(activityFeedService.getActivityFeed).toHaveBeenCalledWith({ ...query, companyId });
+      expect(activityFeedService.getActivityFeed).toHaveBeenCalledWith({
+        ...query,
+        companyId,
+      });
     });
 
     it('should get recent activities', async () => {
@@ -89,11 +103,16 @@ describe('TeamCollaborationService', () => {
       const limit = 10;
       const expectedResult = [];
 
-      jest.spyOn(activityFeedService, 'getRecentActivities').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(activityFeedService, 'getRecentActivities')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getRecentActivities(companyId, limit);
       expect(result).toEqual(expectedResult);
-      expect(activityFeedService.getRecentActivities).toHaveBeenCalledWith(companyId, limit);
+      expect(activityFeedService.getRecentActivities).toHaveBeenCalledWith(
+        companyId,
+        limit,
+      );
     });
   });
 
@@ -121,11 +140,15 @@ describe('TeamCollaborationService', () => {
         history: [],
       };
 
-      jest.spyOn(collaborationScoreService, 'getCollaborationScore').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(collaborationScoreService, 'getCollaborationScore')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getCollaborationScore(companyId, query);
       expect(result).toEqual(expectedResult);
-      expect(collaborationScoreService.getCollaborationScore).toHaveBeenCalledWith({ ...query, companyId });
+      expect(
+        collaborationScoreService.getCollaborationScore,
+      ).toHaveBeenCalledWith({ ...query, companyId });
     });
 
     it('should get top contributors', async () => {
@@ -133,11 +156,16 @@ describe('TeamCollaborationService', () => {
       const limit = 10;
       const expectedResult = [];
 
-      jest.spyOn(collaborationScoreService, 'getTopContributors').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(collaborationScoreService, 'getTopContributors')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getTopContributors(companyId, limit);
       expect(result).toEqual(expectedResult);
-      expect(collaborationScoreService.getTopContributors).toHaveBeenCalledWith(companyId, limit);
+      expect(collaborationScoreService.getTopContributors).toHaveBeenCalledWith(
+        companyId,
+        limit,
+      );
     });
   });
 
@@ -169,11 +197,16 @@ describe('TeamCollaborationService', () => {
         expertiseAreas: ['Reporting'],
       };
 
-      jest.spyOn(memberDetailsService, 'getMemberProfile').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(memberDetailsService, 'getMemberProfile')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getMemberProfile(companyId, memberId);
       expect(result).toEqual(expectedResult);
-      expect(memberDetailsService.getMemberProfile).toHaveBeenCalledWith(companyId, memberId);
+      expect(memberDetailsService.getMemberProfile).toHaveBeenCalledWith(
+        companyId,
+        memberId,
+      );
     });
   });
 
@@ -183,11 +216,16 @@ describe('TeamCollaborationService', () => {
       const userId = 'user-123';
       const expectedResult = [];
 
-      jest.spyOn(notificationsService, 'getUnreadNotifications').mockResolvedValue(expectedResult);
+      jest
+        .spyOn(notificationsService, 'getUnreadNotifications')
+        .mockResolvedValue(expectedResult);
 
       const result = await service.getUnreadNotifications(companyId, userId);
       expect(result).toEqual(expectedResult);
-      expect(notificationsService.getUnreadNotifications).toHaveBeenCalledWith(companyId, userId);
+      expect(notificationsService.getUnreadNotifications).toHaveBeenCalledWith(
+        companyId,
+        userId,
+      );
     });
 
     it('should send team member joined notification', async () => {
@@ -195,10 +233,16 @@ describe('TeamCollaborationService', () => {
       const email = 'new@example.com';
       const name = 'Jane Doe';
 
-      jest.spyOn(notificationsService, 'notifyTeamMemberJoined').mockResolvedValue();
+      jest
+        .spyOn(notificationsService, 'notifyTeamMemberJoined')
+        .mockResolvedValue();
 
       await service.notifyTeamMemberJoined(companyId, email, name);
-      expect(notificationsService.notifyTeamMemberJoined).toHaveBeenCalledWith(companyId, email, name);
+      expect(notificationsService.notifyTeamMemberJoined).toHaveBeenCalledWith(
+        companyId,
+        email,
+        name,
+      );
     });
   });
 });

@@ -1,250 +1,151 @@
 'use client'
 
 import { useState } from 'react'
-import { 
-  Users, 
-  UserPlus, 
-  Settings, 
-  Mail, 
-  Phone, 
-  Globe, 
-  Shield,
-  Award,
-  Calendar,
-  TrendingUp,
-  MessageSquare,
-  Clock,
-  Filter,
-  Search,
-  Edit,
-  Trash2,
-  Eye,
-  ChevronRight,
-  Bell,
-  CheckCircle,
-  AlertCircle,
-  PieChart,
-  BarChart3,
-  FileText,
-  Target
+import {
+  Users, UserPlus, Shield, Clock, BarChart3, Search, Filter,
+  Mail, Calendar, Edit, Trash2, RefreshCw, CheckCircle, AlertCircle,
+  Target, ChevronRight, X, Send,
 } from 'lucide-react'
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell
+import {
+  Tooltip, ResponsiveContainer,
+  PieChart as RechartsPieChart, Pie, Cell,
 } from 'recharts'
+import { useTeam } from '@/hooks/useTeam'
+import AddMemberModal from '@/components/team/AddMemberModal'
+import EditMemberModal from '@/components/team/EditMemberModal'
+import InviteMemberModal from '@/components/team/InviteMemberModal'
+import ManageRoleModal from '@/components/team/ManageRoleModal'
+import type { TeamMember, TeamRole } from '@/types/team'
+
+const ROLE_COLORS: Record<string, string> = {
+  ADMIN: '#0073e6', MANAGER: '#8b5cf6', ANALYST: '#00d4aa',
+  VIEWER: '#f59e0b', AUDITOR: '#ef4444',
+}
+const roleColor = (name: string) => ROLE_COLORS[name.toUpperCase()] ?? '#6b7280'
+
+const statusBadge = (status: string) => {
+  switch (status) {
+    case 'ACTIVE': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+    case 'PENDING': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+    default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
+  }
+}
+
+const memberInitials = (m: TeamMember) => {
+  const f = m.firstName?.[0] ?? ''
+  const l = m.lastName?.[0] ?? ''
+  return (f + l).toUpperCase() || m.email[0].toUpperCase()
+}
+
+const memberDisplayName = (m: TeamMember) =>
+  [m.firstName, m.lastName].filter(Boolean).join(' ') || m.email
 
 export default function TeamPage() {
-  const [activeTab, setActiveTab] = useState<'members' | 'roles' | 'activity' | 'analytics'>('members')
-  const [selectedMember, setSelectedMember] = useState<string | null>(null)
+  const {
+    members, roles, invitations, permissions, loading, error,
+    fetchAll, createMember, updateMember, deactivateMember, reactivateMember,
+    assignRole, createRole, updateRole, deleteRole, inviteMember,
+    resendInvitation, cancelInvitation,
+  } = useTeam()
+
+  const [activeTab, setActiveTab] = useState<'members' | 'roles' | 'invitations'>('members')
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null)
+  const [modal, setModal] = useState<
+    | { type: 'addMember' }
+    | { type: 'editMember'; member: TeamMember }
+    | { type: 'invite' }
+    | { type: 'createRole' }
+    | { type: 'editRole'; role: TeamRole }
+    | null
+  >(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
 
-  // Team members data
-  const teamMembers = [
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      role: 'Sustainability Director',
-      email: 'sarah.johnson@techglobal.com',
-      phone: '+1 (555) 123-4567',
-      avatar: 'SJ',
-      status: 'active',
-      joined: '2022-03-15',
-      permissions: ['admin', 'reporting', 'purchase'],
-      projects: 12,
-      credits: 45000,
-      color: 'bg-blue-500',
-      bio: 'Leads ESG strategy and carbon offset initiatives. Former climate policy advisor.'
-    },
-    {
-      id: '2',
-      name: 'Michael Chen',
-      role: 'Carbon Analyst',
-      email: 'michael.chen@techglobal.com',
-      phone: '+1 (555) 234-5678',
-      avatar: 'MC',
-      status: 'active',
-      joined: '2023-01-20',
-      permissions: ['analytics', 'reporting'],
-      projects: 8,
-      credits: 28000,
-      color: 'bg-green-500',
-      bio: 'Specializes in carbon credit analysis and portfolio optimization.'
-    },
-    {
-      id: '3',
-      name: 'Emma Wilson',
-      role: 'Compliance Manager',
-      email: 'emma.wilson@techglobal.com',
-      phone: '+1 (555) 345-6789',
-      avatar: 'EW',
-      status: 'active',
-      joined: '2022-08-10',
-      permissions: ['compliance', 'reporting'],
-      projects: 15,
-      credits: 62000,
-      color: 'bg-purple-500',
-      bio: 'Ensures regulatory compliance across all sustainability frameworks.'
-    },
-    {
-      id: '4',
-      name: 'David Lee',
-      role: 'Project Manager',
-      email: 'david.lee@techglobal.com',
-      phone: '+1 (555) 456-7890',
-      avatar: 'DL',
-      status: 'away',
-      joined: '2023-05-30',
-      permissions: ['projects', 'monitoring'],
-      projects: 6,
-      credits: 18000,
-      color: 'bg-orange-500',
-      bio: 'Manages relationships with carbon credit project developers.'
-    },
-    {
-      id: '5',
-      name: 'Jessica Martinez',
-      role: 'Financial Analyst',
-      email: 'jessica.martinez@techglobal.com',
-      phone: '+1 (555) 567-8901',
-      avatar: 'JM',
-      status: 'active',
-      joined: '2024-01-05',
-      permissions: ['finance', 'purchase'],
-      projects: 4,
-      credits: 12000,
-      color: 'bg-pink-500',
-      bio: 'Analyzes financial aspects of carbon credit investments.'
-    },
-    {
-      id: '6',
-      name: 'Robert Kim',
-      role: 'Data Scientist',
-      email: 'robert.kim@techglobal.com',
-      phone: '+1 (555) 678-9012',
-      avatar: 'RK',
-      status: 'inactive',
-      joined: '2023-03-22',
-      permissions: ['analytics', 'data'],
-      projects: 10,
-      credits: 35000,
-      color: 'bg-teal-500',
-      bio: 'Develops algorithms for carbon credit quality assessment.'
-    },
-  ]
-
-  // Team roles data
-  const teamRoles = [
-    { name: 'Admin', members: 2, permissions: ['Full Access'], color: '#0073e6' },
-    { name: 'Analyst', members: 3, permissions: ['View', 'Analyze', 'Report'], color: '#00d4aa' },
-    { name: 'Manager', members: 2, permissions: ['View', 'Purchase', 'Approve'], color: '#8b5cf6' },
-    { name: 'Viewer', members: 1, permissions: ['View Only'], color: '#f59e0b' },
-    { name: 'Auditor', members: 1, permissions: ['View', 'Audit'], color: '#ef4444' },
-  ]
-
-  // Team activity data
-  const teamActivity = [
-    { user: 'Sarah Johnson', action: 'Retired 10,000 tCO₂', time: '2 hours ago', project: 'Amazon Rainforest', icon: Award },
-    { user: 'Michael Chen', action: 'Generated Portfolio Report', time: '4 hours ago', project: 'Monthly Analysis', icon: FileText },
-    { user: 'Emma Wilson', action: 'Submitted CSRD Report', time: '1 day ago', project: 'Q1 2024 Compliance', icon: Shield },
-    { user: 'David Lee', action: 'Added Project to Monitor', time: '2 days ago', project: 'Indonesia Mangroves', icon: Eye },
-    { user: 'Jessica Martinez', action: 'Approved Credit Purchase', time: '3 days ago', project: 'Kenya Solar Farms', icon: CheckCircle },
-    { user: 'Robert Kim', action: 'Updated Quality Algorithm', time: '5 days ago', project: 'Dynamic Scoring', icon: TrendingUp },
-  ]
-
-  // Team performance data
-  const performanceData = [
-    { month: 'Jan', retirements: 8000, purchases: 10000, reports: 3 },
-    { month: 'Feb', retirements: 12000, purchases: 15000, reports: 5 },
-    { month: 'Mar', retirements: 15000, purchases: 20000, reports: 7 },
-    { month: 'Apr', retirements: 10000, purchases: 12000, reports: 4 },
-    { month: 'May', retirements: 14000, purchases: 18000, reports: 6 },
-    { month: 'Jun', retirements: 18000, purchases: 22000, reports: 8 },
-  ]
-
-  // Role distribution data for pie chart
-  const roleDistributionData = teamRoles.map(role => ({
-    name: role.name,
-    value: role.members,
-    color: role.color
-  }))
-
-  // Calculate team statistics
-  const totalMembers = teamMembers.length
-  const activeMembers = teamMembers.filter(m => m.status === 'active').length
-  const totalProjects = teamMembers.reduce((sum, m) => sum + m.projects, 0)
-  const totalCredits = teamMembers.reduce((sum, m) => sum + m.credits, 0)
-
-  // Get status color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-      case 'away':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-      case 'inactive':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
-    }
+  const notify = (msg: string, isError = false) => {
+    if (isError) { setActionError(msg); setTimeout(() => setActionError(null), 4000) }
+    else { setActionSuccess(msg); setTimeout(() => setActionSuccess(null), 3000) }
   }
 
-  // Filter team members based on search
-  const filteredMembers = teamMembers.filter(member =>
-    member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredMembers = members.filter((m) => {
+    const q = searchTerm.toLowerCase()
+    return (
+      memberDisplayName(m).toLowerCase().includes(q) ||
+      m.email.toLowerCase().includes(q) ||
+      (m.role?.name ?? '').toLowerCase().includes(q)
+    )
+  })
+
+  const activeCount = members.filter((m) => m.status === 'ACTIVE').length
+  const pendingInvitations = invitations.filter((i) => i.status === 'PENDING')
+
+  const roleDistribution = roles.map((r) => ({
+    name: r.name, value: r.memberCount, color: roleColor(r.name),
+  }))
 
   return (
     <div className="space-y-6 animate-in">
-      {/* Team Header */}
+      {/* Toast notifications */}
+      {actionError && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-xl shadow-lg">
+          <AlertCircle size={16} /> {actionError}
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-xl shadow-lg">
+          <CheckCircle size={16} /> {actionSuccess}
+        </div>
+      )}
+
+      {/* Header */}
       <div className="bg-linear-to-r from-corporate-navy via-corporate-blue to-corporate-teal rounded-2xl p-6 md:p-8 text-white shadow-2xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between">
           <div className="mb-6 lg:mb-0">
-            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-2 tracking-tight">
-              Team Management
-            </h1>
+            <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold mb-2 tracking-tight">Team Management</h1>
             <p className="text-blue-100 opacity-90 max-w-2xl">
-              Manage your sustainability team, assign roles, track activities, and optimize collaboration.
+              Manage your sustainability team, assign roles, and control permissions.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-4">
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-50">
-              <div className="text-sm text-blue-200 mb-1">Team Members</div>
-              <div className="text-2xl font-bold">{totalMembers}</div>
-              <div className="text-xs text-green-300">{activeMembers} active</div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-30">
+              <div className="text-sm text-blue-200 mb-1">Members</div>
+              <div className="text-2xl font-bold">{members.length}</div>
+              <div className="text-xs text-green-300">{activeCount} active</div>
             </div>
-            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-50">
-              <div className="text-sm text-blue-200 mb-1">Total Projects</div>
-              <div className="text-2xl font-bold">{totalProjects}</div>
-              <div className="text-xs text-blue-300">Managed by team</div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-30">
+              <div className="text-sm text-blue-200 mb-1">Pending Invites</div>
+              <div className="text-2xl font-bold">{pendingInvitations.length}</div>
+              <div className="text-xs text-blue-300">awaiting response</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs Navigation */}
+      {/* Global error */}
+      {error && (
+        <div className="corporate-card p-4 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+            <AlertCircle size={16} /> {error}
+          </div>
+          <button onClick={fetchAll} className="flex items-center gap-1 text-sm text-corporate-blue hover:underline">
+            <RefreshCw size={14} /> Retry
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
       <div className="corporate-card p-2">
         <div className="flex flex-wrap gap-2">
           {[
             { id: 'members', label: 'Team Members', icon: Users },
             { id: 'roles', label: 'Roles & Permissions', icon: Shield },
-            { id: 'activity', label: 'Team Activity', icon: Clock },
-            { id: 'analytics', label: 'Team Analytics', icon: BarChart3 },
+            { id: 'invitations', label: 'Invitations', icon: Mail, badge: pendingInvitations.length },
           ].map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`flex items-center px-4 py-3 rounded-lg font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'bg-corporate-blue text-white'
@@ -253,493 +154,420 @@ export default function TeamPage() {
               >
                 <Icon size={18} className="mr-2" />
                 {tab.label}
+                {tab.badge ? (
+                  <span className="ml-2 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5">{tab.badge}</span>
+                ) : null}
               </button>
             )
           })}
         </div>
       </div>
 
-      {/* Team Members Tab */}
+      {/* ── Members Tab ── */}
       {activeTab === 'members' && (
         <div className="space-y-6">
-          {/* Search and Actions */}
           <div className="corporate-card p-4">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-                  <input
-                    type="search"
-                    placeholder="Search team members by name, role, or email..."
-                    className="w-full pl-10 pr-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-corporate-blue"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                  type="search"
+                  placeholder="Search by name, email, or role..."
+                  className="w-full pl-10 pr-4 py-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
-              <div className="flex items-center space-x-2">
-                <button className="corporate-btn-secondary px-4 py-2">
-                  <Filter size={16} className="mr-2" />
-                  Filter
+              <div className="flex items-center gap-2">
+                <button onClick={() => setModal({ type: 'invite' })} className="corporate-btn-secondary px-4 py-2 flex items-center">
+                  <Mail size={16} className="mr-2" /> Invite
                 </button>
-                <button className="corporate-btn-primary px-4 py-2">
-                  <UserPlus size={16} className="mr-2" />
-                  Add Member
+                <button onClick={() => setModal({ type: 'addMember' })} className="corporate-btn-primary px-4 py-2 flex items-center">
+                  <UserPlus size={16} className="mr-2" /> Add Member
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Team Members Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMembers.map((member) => (
-              <div 
-                key={member.id} 
-                className={`corporate-card p-5 hover:shadow-xl transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
-                  selectedMember === member.id ? 'ring-2 ring-corporate-blue' : ''
-                }`}
-                onClick={() => setSelectedMember(member.id === selectedMember ? null : member.id)}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center">
-                    <div className={`${member.color} w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg mr-3`}>
-                      {member.avatar}
+          {loading && !members.length ? (
+            <div className="corporate-card p-12 text-center text-gray-500">Loading team members...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredMembers.map((member) => (
+                <div
+                  key={member.id}
+                  className={`corporate-card p-5 hover:shadow-xl transition-all duration-300 hover:scale-[1.02] cursor-pointer ${
+                    selectedMember?.id === member.id ? 'ring-2 ring-corporate-blue' : ''
+                  }`}
+                  onClick={() => setSelectedMember(selectedMember?.id === member.id ? null : member)}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center">
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg mr-3"
+                        style={{ backgroundColor: roleColor(member.role?.name ?? '') }}
+                      >
+                        {memberInitials(member)}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 dark:text-white">{memberDisplayName(member)}</h3>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{member.role?.name ?? '—'}</div>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white">{member.name}</h3>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{member.role}</div>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(member.status)}`}>
+                      {member.status}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                      <Mail size={14} className="mr-2 shrink-0" /> {member.email}
+                    </div>
+                    {member.title && (
+                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                        <Target size={14} className="mr-2 shrink-0" /> {member.title}
+                      </div>
+                    )}
+                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                      <Calendar size={14} className="mr-2 shrink-0" />
+                      Joined {new Date(member.joinedAt).toLocaleDateString()}
                     </div>
                   </div>
-                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(member.status)}`}>
-                    {member.status}
+
+                  {member.role?.permissions && (
+                    <div className="mb-4">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Permissions</div>
+                      <div className="flex flex-wrap gap-1">
+                        {(member.role.permissions as string[]).slice(0, 4).map((p) => (
+                          <span key={p} className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                            {p.split(':')[1]}
+                          </span>
+                        ))}
+                        {(member.role.permissions as string[]).length > 4 && (
+                          <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                            +{(member.role.permissions as string[]).length - 4} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button
+                      className="flex-1 corporate-btn-secondary text-sm px-3 py-2 flex items-center justify-center"
+                      onClick={(e) => { e.stopPropagation(); setModal({ type: 'editMember', member }) }}
+                    >
+                      <Edit size={14} className="mr-1" /> Edit
+                    </button>
+                    {member.status === 'ACTIVE' ? (
+                      <button
+                        className="flex-1 text-sm px-3 py-2 flex items-center justify-center text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          try { await deactivateMember(member.id); notify('Member deactivated') }
+                          catch (err) { notify(err instanceof Error ? err.message : 'Failed', true) }
+                        }}
+                      >
+                        <Trash2 size={14} className="mr-1" /> Deactivate
+                      </button>
+                    ) : (
+                      <button
+                        className="flex-1 text-sm px-3 py-2 flex items-center justify-center text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800"
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          try { await reactivateMember(member.id); notify('Member reactivated') }
+                          catch (err) { notify(err instanceof Error ? err.message : 'Failed', true) }
+                        }}
+                      >
+                        <RefreshCw size={14} className="mr-1" /> Reactivate
+                      </button>
+                    )}
                   </div>
                 </div>
+              ))}
 
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <Mail size={14} className="mr-2" />
-                    {member.email}
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <Phone size={14} className="mr-2" />
-                    {member.phone}
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                    <Calendar size={14} className="mr-2" />
-                    Joined {new Date(member.joined).toLocaleDateString()}
-                  </div>
+              {!loading && filteredMembers.length === 0 && (
+                <div className="col-span-3 corporate-card p-12 text-center text-gray-500">
+                  {searchTerm ? 'No members match your search.' : 'No team members yet. Add one to get started.'}
                 </div>
+              )}
+            </div>
+          )}
 
-                <div className="mb-4">
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">Permissions</div>
-                  <div className="flex flex-wrap gap-1">
-                    {member.permissions.map((permission) => (
-                      <span key={permission} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
-                        {permission}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                    <div className="font-bold text-gray-900 dark:text-white">{member.projects}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Projects</div>
-                  </div>
-                  <div className="text-center p-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                    <div className="font-bold text-gray-900 dark:text-white">{(member.credits / 1000).toFixed(1)}K</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Credits</div>
-                  </div>
-                </div>
-
-                <div className="flex space-x-2">
-                  <button className="flex-1 corporate-btn-secondary text-sm px-3 py-2">
-                    <MessageSquare size={14} className="mr-1" />
-                    Message
-                  </button>
-                  <button className="flex-1 corporate-btn-primary text-sm px-3 py-2">
-                    <Eye size={14} className="mr-1" />
-                    Profile
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Selected Member Details */}
+          {/* Selected member detail panel */}
           {selectedMember && (
             <div className="corporate-card p-6 animate-in">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">Member Details</h2>
-                <div className="flex items-center space-x-2">
-                  <button className="corporate-btn-secondary px-3 py-1">
-                    <Edit size={14} className="mr-1" />
-                    Edit
-                  </button>
-                  <button className="text-red-600 hover:text-red-800 px-3 py-1">
-                    <Trash2 size={14} className="mr-1" />
-                    Remove
-                  </button>
+                <button onClick={() => setSelectedMember(null)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-3">
+                  {[
+                    { label: 'Email', value: selectedMember.email },
+                    { label: 'Department', value: selectedMember.department },
+                    { label: 'Title', value: selectedMember.title },
+                    { label: 'Status', value: selectedMember.status },
+                    { label: 'Role', value: selectedMember.role?.name },
+                    { label: 'Joined', value: new Date(selectedMember.joinedAt).toLocaleDateString() },
+                    { label: 'Last Active', value: selectedMember.lastActiveAt ? new Date(selectedMember.lastActiveAt).toLocaleDateString() : '—' },
+                  ].map(({ label, value }) => value ? (
+                    <div key={label} className="flex justify-between text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+                      <span className="font-medium text-gray-900 dark:text-white">{value}</span>
+                    </div>
+                  ) : null)}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">All Permissions</div>
+                  <div className="flex flex-wrap gap-1">
+                    {(selectedMember.role?.permissions as string[] ?? []).map((p) => (
+                      <span key={p} className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
-              
-              {(() => {
-                const member = teamMembers.find(m => m.id === selectedMember)
-                if (!member) return null
-                
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="md:col-span-2">
-                      <div className="mb-6">
-                        <h3 className="font-bold text-gray-900 dark:text-white mb-2">Biography</h3>
-                        <p className="text-gray-600 dark:text-gray-400">{member.bio}</p>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <div className="text-2xl font-bold text-corporate-blue mb-1">{member.projects}</div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">Projects Managed</div>
-                        </div>
-                        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                          <div className="text-2xl font-bold text-green-600 mb-1">{(member.credits / 1000).toFixed(1)}K</div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">Credits Managed</div>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <h3 className="font-bold text-gray-900 dark:text-white mb-4">Recent Activity</h3>
-                      <div className="space-y-3">
-                        {teamActivity
-                          .filter(activity => activity.user === member.name)
-                          .slice(0, 3)
-                          .map((activity, index) => {
-                            const Icon = activity.icon
-                            return (
-                              <div key={index} className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                                <div className="flex items-start">
-                                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg mr-3">
-                                    <Icon className="text-corporate-blue" size={16} />
-                                  </div>
-                                  <div>
-                                    <div className="font-medium text-gray-900 dark:text-white text-sm">
-                                      {activity.action}
-                                    </div>
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                                      {activity.time} • {activity.project}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })()}
             </div>
           )}
         </div>
       )}
 
-      {/* Roles & Permissions Tab */}
+      {/* ── Roles Tab ── */}
       {activeTab === 'roles' && (
         <div className="space-y-6">
           <div className="corporate-card p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Team Roles</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Define permissions and access levels</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Roles & Permissions</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Define access levels for your team</p>
               </div>
-              <button className="corporate-btn-primary px-4 py-2">
-                <UserPlus size={16} className="mr-2" />
-                Create Role
+              <button onClick={() => setModal({ type: 'createRole' })} className="corporate-btn-primary px-4 py-2 flex items-center">
+                <Shield size={16} className="mr-2" /> Create Role
               </button>
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Role Distribution Chart */}
+              {/* Pie chart */}
               <div>
                 <h3 className="font-bold text-gray-900 dark:text-white mb-4">Role Distribution</h3>
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={roleDistributionData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={2}
-                        dataKey="value"
-                      >
-                        {roleDistributionData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [`${value} members`, 'Count']} />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
+                {roleDistribution.length > 0 ? (
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <Pie data={roleDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value">
+                          {roleDistribution.map((entry, i) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v) => [`${v} members`, 'Count']} />
+                      </RechartsPieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="h-64 flex items-center justify-center text-gray-400">No roles yet</div>
+                )}
               </div>
-              
-              {/* Role List */}
+
+              {/* Role list */}
               <div>
                 <h3 className="font-bold text-gray-900 dark:text-white mb-4">All Roles</h3>
-                <div className="space-y-4">
-                  {teamRoles.map((role, index) => (
-                    <div key={index} className="p-4 border border-gray-200 dark:border-gray-800 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center">
-                          <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: role.color }}></div>
-                          <h4 className="font-bold text-gray-900 dark:text-white">{role.name}</h4>
+                {loading && !roles.length ? (
+                  <div className="text-gray-500 text-sm">Loading roles...</div>
+                ) : (
+                  <div className="space-y-4">
+                    {roles.map((role) => (
+                      <div key={role.id} className="p-4 border border-gray-200 dark:border-gray-800 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: roleColor(role.name) }} />
+                            <h4 className="font-bold text-gray-900 dark:text-white">{role.name}</h4>
+                            {role.isSystem && (
+                              <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-1.5 py-0.5 rounded">system</span>
+                            )}
+                          </div>
+                          <span className="text-sm text-gray-600 dark:text-gray-400">{role.memberCount} member{role.memberCount !== 1 ? 's' : ''}</span>
                         </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {role.members} member{role.members !== 1 ? 's' : ''}
+                        {role.description && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{role.description}</p>
+                        )}
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {(role.permissions as string[]).slice(0, 5).map((p) => (
+                            <span key={p} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded text-xs">{p}</span>
+                          ))}
+                          {(role.permissions as string[]).length > 5 && (
+                            <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded text-xs">+{(role.permissions as string[]).length - 5}</span>
+                          )}
+                        </div>
+                        <div className="flex justify-end gap-3">
+                          <button
+                            onClick={() => setModal({ type: 'editRole', role })}
+                            className="text-sm text-corporate-blue hover:underline flex items-center gap-1"
+                          >
+                            <Edit size={13} /> Edit
+                          </button>
+                          {!role.isSystem && (
+                            <button
+                              onClick={async () => {
+                                try { await deleteRole(role.id); notify('Role deleted') }
+                                catch (err) { notify(err instanceof Error ? err.message : 'Failed', true) }
+                              }}
+                              className="text-sm text-red-600 hover:underline flex items-center gap-1"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {role.permissions.map((permission, idx) => (
-                          <span key={idx} className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded text-xs">
-                            {permission}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex justify-end space-x-2">
-                        <button className="text-sm text-corporate-blue hover:text-corporate-blue/80">
-                          <Edit size={14} className="inline mr-1" />
-                          Edit
-                        </button>
-                        <button className="text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400">
-                          <Users size={14} className="inline mr-1" />
-                          Assign
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Team Activity Tab */}
-      {activeTab === 'activity' && (
+      {/* ── Invitations Tab ── */}
+      {activeTab === 'invitations' && (
         <div className="space-y-6">
           <div className="corporate-card p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Team Activity Feed</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Recent actions and updates</p>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Invitations</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Pending and past team invitations</p>
               </div>
-              <button className="corporate-btn-secondary px-4 py-2">
-                <Filter size={16} className="mr-2" />
-                Filter Activities
+              <button onClick={() => setModal({ type: 'invite' })} className="corporate-btn-primary px-4 py-2 flex items-center">
+                <Send size={16} className="mr-2" /> Invite Member
               </button>
             </div>
-            
-            <div className="space-y-4">
-              {teamActivity.map((activity, index) => {
-                const Icon = activity.icon
-                return (
-                  <div key={index} className="p-4 border border-gray-200 dark:border-gray-800 rounded-lg hover:border-corporate-blue/50 transition-colors">
-                    <div className="flex items-start">
-                      <div className={`p-2 rounded-lg mr-4 ${
-                        index === 0 ? 'bg-green-100 dark:bg-green-900/30' :
-                        index === 1 ? 'bg-blue-100 dark:bg-blue-900/30' :
-                        'bg-gray-100 dark:bg-gray-800/50'
-                      }`}>
-                        <Icon className={
-                          index === 0 ? 'text-green-600 dark:text-green-400' :
-                          index === 1 ? 'text-blue-600 dark:text-blue-400' :
-                          'text-gray-600 dark:text-gray-400'
-                        } size={20} />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-bold text-gray-900 dark:text-white">{activity.user}</div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">{activity.time}</div>
-                        </div>
-                        <div className="text-gray-900 dark:text-white mb-1">{activity.action}</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Project: {activity.project}</div>
-                      </div>
-                      <button className="text-gray-400 hover:text-gray-600 dark:text-gray-600 dark:hover:text-gray-400 ml-2">
-                        <Bell size={16} />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            
-            <button className="w-full mt-6 corporate-btn-secondary py-3">
-              <ChevronRight size={16} className="mr-2" />
-              Load More Activities
-            </button>
-          </div>
-        </div>
-      )}
 
-      {/* Team Analytics Tab */}
-      {activeTab === 'analytics' && (
-        <div className="space-y-6">
-          <div className="corporate-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Team Performance Analytics</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Monthly team contributions and impact</p>
-              </div>
-              <Target className="text-corporate-blue" size={24} />
-            </div>
-            
-            <div className="h-72 mb-8">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={performanceData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip 
-                    formatter={(value: any, name: string | undefined) => {
-                      if (name === 'retirements') return [`${value.toLocaleString()} tCO₂`, 'Retirements']
-                      if (name === 'purchases') return [`${value.toLocaleString()} tCO₂`, 'Purchases']
-                      return [value, 'Reports Generated']
-                    }}
-                  />
-                  <Bar dataKey="retirements" fill="#0073e6" name="Credits Retired" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="purchases" fill="#00d4aa" name="Credits Purchased" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="reports" fill="#8b5cf6" name="Reports Generated" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-linear-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-corporate-blue mb-1">
-                  {(performanceData.reduce((sum, m) => sum + m.retirements, 0) / 1000).toFixed(1)}K
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Total Credits Retired</div>
-              </div>
-              <div className="p-4 bg-linear-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-green-600 mb-1">
-                  {(performanceData.reduce((sum, m) => sum + m.purchases, 0) / 1000).toFixed(1)}K
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Total Credits Purchased</div>
-              </div>
-              <div className="p-4 bg-linear-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 mb-1">
-                  {performanceData.reduce((sum, m) => sum + m.reports, 0)}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">Total Reports Generated</div>
-              </div>
-            </div>
-          </div>
-          
-          {/* Team Collaboration Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="corporate-card p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">Collaboration Score</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Team collaboration effectiveness</p>
-                </div>
-                <div className="text-2xl font-bold text-corporate-blue">87/100</div>
-              </div>
+            {loading && !invitations.length ? (
+              <div className="text-center text-gray-500 py-8">Loading invitations...</div>
+            ) : invitations.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">No invitations yet.</div>
+            ) : (
               <div className="space-y-3">
-                {[
-                  { metric: 'Cross-team Projects', score: 92, trend: 'up' },
-                  { metric: 'Document Sharing', score: 85, trend: 'up' },
-                  { metric: 'Meeting Participation', score: 78, trend: 'stable' },
-                  { metric: 'Feedback Response', score: 91, trend: 'up' },
-                ].map((item, index) => (
-                  <div key={index}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-900 dark:text-white">{item.metric}</span>
-                      <span className="font-medium">{item.score}/100</span>
+                {invitations.map((inv) => (
+                  <div key={inv.id} className="p-4 border border-gray-200 dark:border-gray-800 rounded-lg flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <Mail className="text-corporate-blue" size={18} />
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">{inv.email}</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                          Role: {inv.role?.name ?? inv.roleId} · Sent {new Date(inv.createdAt).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-400 dark:text-gray-500">
+                          Expires {new Date(inv.expiresAt).toLocaleDateString()}
+                        </div>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full ${
-                          item.score >= 90 ? 'bg-green-500' :
-                          item.score >= 80 ? 'bg-blue-500' : 'bg-yellow-500'
-                        }`}
-                        style={{ width: `${item.score}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="corporate-card p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">Team Health</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Well-being and engagement metrics</p>
-                </div>
-                <PieChart className="text-corporate-blue" size={24} />
-              </div>
-              <div className="space-y-4">
-                {[
-                  { aspect: 'Engagement', value: 88, status: 'Excellent', color: 'bg-green-500' },
-                  { aspect: 'Workload Balance', value: 72, status: 'Good', color: 'bg-blue-500' },
-                  { aspect: 'Skill Development', value: 65, status: 'Moderate', color: 'bg-yellow-500' },
-                  { aspect: 'Recognition', value: 81, status: 'Good', color: 'bg-teal-500' },
-                ].map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`w-3 h-3 rounded-full mr-2 ${item.color}`}></div>
-                      <span className="text-gray-900 dark:text-white">{item.aspect}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-gray-900 dark:text-white">{item.value}%</div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400">{item.status}</div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(inv.status)}`}>
+                        {inv.status}
+                      </span>
+                      {inv.status === 'PENDING' && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              try { await resendInvitation(inv.id); notify('Invitation resent') }
+                              catch (err) { notify(err instanceof Error ? err.message : 'Failed', true) }
+                            }}
+                            className="text-sm text-corporate-blue hover:underline"
+                          >
+                            Resend
+                          </button>
+                          <button
+                            onClick={async () => {
+                              try { await cancelInvitation(inv.id); notify('Invitation cancelled') }
+                              catch (err) { notify(err instanceof Error ? err.message : 'Failed', true) }
+                            }}
+                            className="text-sm text-red-600 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Team Tools & Resources */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button className="corporate-card p-5 hover:shadow-lg transition-all duration-300 group">
-          <div className="flex items-center">
-            <MessageSquare className="text-corporate-blue mr-3" size={24} />
-            <div>
-              <div className="font-bold text-gray-900 dark:text-white group-hover:text-corporate-blue">
-                Team Chat
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Internal communication</div>
-            </div>
-          </div>
-        </button>
-        <button className="corporate-card p-5 hover:shadow-lg transition-all duration-300 group">
-          <div className="flex items-center">
-            <Calendar className="text-corporate-blue mr-3" size={24} />
-            <div>
-              <div className="font-bold text-gray-900 dark:text-white group-hover:text-corporate-blue">
-                Team Calendar
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Schedule meetings & deadlines</div>
-            </div>
-          </div>
-        </button>
-        <button className="corporate-card p-5 hover:shadow-lg transition-all duration-300 group">
-          <div className="flex items-center">
-            <FileText className="text-corporate-blue mr-3" size={24} />
-            <div>
-              <div className="font-bold text-gray-900 dark:text-white group-hover:text-corporate-blue">
-                Team Documents
-              </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Shared resources & files</div>
-            </div>
-          </div>
-        </button>
-      </div>
+      {/* ── Modals ── */}
+      {modal?.type === 'addMember' && (
+        <AddMemberModal
+          roles={roles}
+          onClose={() => setModal(null)}
+          onSubmit={async (payload) => {
+            const result = await createMember(payload)
+            if (result) notify('Member added successfully')
+            else throw new Error('Failed to add member')
+          }}
+        />
+      )}
+
+      {modal?.type === 'editMember' && (
+        <EditMemberModal
+          member={modal.member}
+          roles={roles}
+          onClose={() => setModal(null)}
+          onUpdate={async (id, payload) => {
+            const result = await updateMember(id, payload)
+            if (!result) throw new Error('Failed to update member')
+          }}
+          onAssignRole={async (memberId, roleId) => {
+            const result = await assignRole(memberId, roleId)
+            if (!result) throw new Error('Failed to assign role')
+            notify('Member updated successfully')
+          }}
+        />
+      )}
+
+      {modal?.type === 'invite' && (
+        <InviteMemberModal
+          roles={roles}
+          onClose={() => setModal(null)}
+          onSubmit={async (payload) => {
+            const result = await inviteMember(payload)
+            if (result) notify('Invitation sent')
+            else throw new Error('Failed to send invitation')
+          }}
+        />
+      )}
+
+      {modal?.type === 'createRole' && (
+        <ManageRoleModal
+          availablePermissions={permissions}
+          onClose={() => setModal(null)}
+          onCreate={async (payload) => {
+            const result = await createRole(payload)
+            if (result) notify('Role created')
+            else throw new Error('Failed to create role')
+          }}
+        />
+      )}
+
+      {modal?.type === 'editRole' && (
+        <ManageRoleModal
+          role={modal.role}
+          availablePermissions={permissions}
+          onClose={() => setModal(null)}
+          onUpdate={async (id, payload) => {
+            const result = await updateRole(id, payload)
+            if (result) notify('Role updated')
+            else throw new Error('Failed to update role')
+          }}
+        />
+      )}
     </div>
   )
 }

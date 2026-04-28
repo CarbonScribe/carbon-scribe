@@ -3,11 +3,24 @@ package collaboration
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	authctx "carbon-scribe/project-portal/project-portal-backend/internal/auth"
 
 	"github.com/gin-gonic/gin"
 )
+
+// GetEnrichedMember handles GET /projects/:id/members/:userId
+func (h *Handler) GetEnrichedMember(c *gin.Context) {
+       projectID := c.Param("id")
+       userID := c.Param("userId")
+       member, err := h.service.GetEnrichedMember(c.Request.Context(), projectID, userID)
+       if err != nil {
+	       c.JSON(http.StatusNotFound, gin.H{"error": "member not found"})
+	       return
+       }
+       c.JSON(http.StatusOK, member)
+}
 
 type Handler struct {
 	service *Service
@@ -21,6 +34,18 @@ func NewHandler(service *Service) *Handler {
 type InviteUserRequest struct {
 	Email string `json:"email" binding:"required,email"`
 	Role  string `json:"role" binding:"required"`
+}
+
+type inviteUserResponse struct {
+	ID        string    `json:"id"`
+	ProjectID string    `json:"project_id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	Token     string    `json:"token"`
+	Status    string    `json:"status"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (h *Handler) InviteUser(c *gin.Context) {
@@ -43,7 +68,17 @@ func (h *Handler) InviteUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, invite)
+	c.JSON(http.StatusCreated, inviteUserResponse{
+		ID:        invite.ID,
+		ProjectID: invite.ProjectID,
+		Email:     invite.Email,
+		Role:      invite.Role,
+		Token:     invite.Token,
+		Status:    invite.Status,
+		ExpiresAt: invite.ExpiresAt,
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: invite.UpdatedAt,
+	})
 }
 
 func (h *Handler) GetActivities(c *gin.Context) {
@@ -127,19 +162,27 @@ func (h *Handler) CreateResource(c *gin.Context) {
 }
 
 func (h *Handler) ListMembers(c *gin.Context) {
-	projectID := c.Param("id")
-	members, err := h.service.ListMembers(c.Request.Context(), projectID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, members)
+       projectID := c.Param("id")
+       members, err := h.service.ListMembers(c.Request.Context(), projectID)
+       if err != nil {
+	       c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	       return
+       }
+       c.JSON(http.StatusOK, members)
 }
 
 func (h *Handler) RemoveMember(c *gin.Context) {
 	projectID := c.Param("id")
-	userID := c.Param("userId")
-	if err := h.service.RemoveMember(c.Request.Context(), projectID, userID); err != nil {
+	targetUserID := c.Param("userId")
+
+	// Get the requesting user ID from context
+	requestingUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	if err := h.service.RemoveMember(c.Request.Context(), projectID, requestingUserID, targetUserID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -222,4 +265,95 @@ func (h *Handler) ListResources(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, resources)
+}
+
+// Invitation Lifecycle Handlers
+
+func (h *Handler) ResendInvitation(c *gin.Context) {
+	requestingUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	invitationID := c.Param("invitationId")
+
+	invite, err := h.service.ResendInvitation(c.Request.Context(), invitationID, requestingUserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, inviteUserResponse{
+		ID:        invite.ID,
+		ProjectID: invite.ProjectID,
+		Email:     invite.Email,
+		Role:      invite.Role,
+		Token:     invite.Token,
+		Status:    invite.Status,
+		ExpiresAt: invite.ExpiresAt,
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: invite.UpdatedAt,
+	})
+}
+
+func (h *Handler) CancelInvitation(c *gin.Context) {
+	requestingUserID, err := authctx.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	invitationID := c.Param("invitationId")
+
+	if err := h.service.CancelInvitation(c.Request.Context(), invitationID, requestingUserID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) AcceptInvitation(c *gin.Context) {
+	invitationID := c.Param("invitationId")
+
+	invite, err := h.service.AcceptInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, inviteUserResponse{
+		ID:        invite.ID,
+		ProjectID: invite.ProjectID,
+		Email:     invite.Email,
+		Role:      invite.Role,
+		Token:     invite.Token,
+		Status:    invite.Status,
+		ExpiresAt: invite.ExpiresAt,
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: invite.UpdatedAt,
+	})
+}
+
+func (h *Handler) DeclineInvitation(c *gin.Context) {
+	invitationID := c.Param("invitationId")
+
+	invite, err := h.service.DeclineInvitation(c.Request.Context(), invitationID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, inviteUserResponse{
+		ID:        invite.ID,
+		ProjectID: invite.ProjectID,
+		Email:     invite.Email,
+		Role:      invite.Role,
+		Token:     invite.Token,
+		Status:    invite.Status,
+		ExpiresAt: invite.ExpiresAt,
+		CreatedAt: invite.CreatedAt,
+		UpdatedAt: invite.UpdatedAt,
+	})
 }

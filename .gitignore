@@ -189,3 +189,4 @@ public
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+ISSUE_CONTEXT.md

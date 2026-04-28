@@ -13,13 +13,20 @@ import { SorobanEventDto } from '../dto/soroban-event.dto';
 export class SorobanEventService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SorobanEventService.name);
   private pollInterval?: NodeJS.Timeout;
-  private lastLedger: number = 0;
+  private lastLedger: number = 1;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly dispatcherService: WebhookDispatcherService,
   ) {
-    this.lastLedger = parseInt(process.env.SOROBAN_START_LEDGER || '0');
+    const configuredStartLedger = Number.parseInt(
+      process.env.SOROBAN_START_LEDGER || '1',
+      10,
+    );
+    this.lastLedger = Math.max(
+      1,
+      Number.isFinite(configuredStartLedger) ? configuredStartLedger : 1,
+    );
   }
 
   onModuleInit() {

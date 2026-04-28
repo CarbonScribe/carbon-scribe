@@ -123,8 +123,10 @@ export default function RegisterClient() {
                 ? 'bg-red-50 text-red-700 border-red-200'
                 : 'bg-yellow-50 text-yellow-800 border-yellow-200'
             }`}
+            role="alert"
+            aria-live="assertive"
           >
-            <AlertCircle className="w-5 h-5 mt-0.5" />
+            <AlertCircle className="w-5 h-5 mt-0.5" aria-hidden="true" />
             <div>
               <div className="font-medium">
                 {serverError ? 'Sign up failed' : 'Please fix the highlighted fields'}
@@ -136,12 +138,15 @@ export default function RegisterClient() {
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-4 text-black">
+        <form onSubmit={onSubmit} className="space-y-4 text-black" aria-label="Registration form">
           <div>
-            <label className="text-sm font-medium text-gray-700">Full Name</label>
+            <label htmlFor="register-full_name" className="text-sm font-medium text-gray-700">
+              Full Name <span aria-hidden="true" className="text-red-500">*</span>
+            </label>
             <div className="relative mt-1">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="register-full_name"
                 value={full_name}
                 onChange={(e) => {
                   setFullName(e.target.value);
@@ -153,16 +158,26 @@ export default function RegisterClient() {
                 placeholder="John Doe"
                 type="text"
                 autoComplete="name"
+                aria-required="true"
+                aria-invalid={!!formErrors.full_name}
+                aria-describedby={formErrors.full_name ? 'register-full_name-error' : undefined}
               />
             </div>
-            {formErrors.full_name && <p className="mt-1 text-sm text-red-600">{formErrors.full_name}</p>}
+            {formErrors.full_name && (
+              <p id="register-full_name-error" className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.full_name}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="register-email" className="text-sm font-medium text-gray-700">
+              Email <span aria-hidden="true" className="text-red-500">*</span>
+            </label>
             <div className="relative mt-1">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="register-email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -174,16 +189,26 @@ export default function RegisterClient() {
                 placeholder="you@domain.com"
                 type="email"
                 autoComplete="email"
+                aria-required="true"
+                aria-invalid={!!formErrors.email}
+                aria-describedby={formErrors.email ? 'register-email-error' : undefined}
               />
             </div>
-            {formErrors.email && <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>}
+            {formErrors.email && (
+              <p id="register-email-error" className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.email}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Organization (optional)</label>
+            <label htmlFor="register-organization" className="text-sm font-medium text-gray-700">
+              Organization (optional)
+            </label>
             <div className="relative mt-1">
-              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="register-organization"
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg outline-none transition-colors focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
@@ -195,10 +220,13 @@ export default function RegisterClient() {
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Password</label>
+            <label htmlFor="register-password" className="text-sm font-medium text-gray-700">
+              Password <span aria-hidden="true" className="text-red-500">*</span>
+            </label>
             <div className="relative mt-1">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="register-password"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -210,17 +238,27 @@ export default function RegisterClient() {
                 placeholder="••••••••"
                 type="password"
                 autoComplete="new-password"
+                aria-required="true"
+                aria-invalid={!!formErrors.password}
+                aria-describedby={formErrors.password ? 'register-password-error' : undefined}
               />
             </div>
-            {formErrors.password && <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>}
+            {formErrors.password && (
+              <p id="register-password-error" className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.password}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
             disabled={loading}
             className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            aria-busy={loading}
           >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
             {loading ? 'Registering...' : 'Register'}
           </button>
         </form>

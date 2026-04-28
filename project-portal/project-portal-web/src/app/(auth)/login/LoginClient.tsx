@@ -109,8 +109,10 @@ export default function LoginClient() {
                 ? 'bg-red-50 text-red-700 border-red-200'
                 : 'bg-yellow-50 text-yellow-800 border-yellow-200'
             }`}
+            role="alert"
+            aria-live="assertive"
           >
-            <AlertCircle className="w-5 h-5 mt-0.5" />
+            <AlertCircle className="w-5 h-5 mt-0.5" aria-hidden="true" />
             <div>
               <div className="font-medium">
                 {serverError ? 'Sign in failed' : 'Please fix the highlighted fields'}
@@ -122,12 +124,15 @@ export default function LoginClient() {
           </div>
         )}
 
-        <form onSubmit={onSubmit} className="space-y-4 text-black">
+        <form onSubmit={onSubmit} className="space-y-4 text-black" aria-label="Login form">
           <div>
-            <label className="text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="login-email" className="text-sm font-medium text-gray-700">
+              Email
+            </label>
             <div className="relative mt-1">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="login-email"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
@@ -139,16 +144,26 @@ export default function LoginClient() {
                 placeholder="you@domain.com"
                 type="email"
                 autoComplete="email"
+                aria-required="true"
+                aria-invalid={!!formErrors.email}
+                aria-describedby={formErrors.email ? 'login-email-error' : undefined}
               />
             </div>
-            {formErrors.email && <p className="mt-1 text-sm text-red-600">{formErrors.email}</p>}
+            {formErrors.email && (
+              <p id="login-email-error" className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.email}
+              </p>
+            )}
           </div>
 
           <div>
-            <label className="text-sm font-medium text-gray-700">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium text-gray-700">
+              Password
+            </label>
             <div className="relative mt-1">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" aria-hidden="true" />
               <input
+                id="login-password"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -160,17 +175,27 @@ export default function LoginClient() {
                 placeholder="••••••••"
                 type="password"
                 autoComplete="current-password"
+                aria-required="true"
+                aria-invalid={!!formErrors.password}
+                aria-describedby={formErrors.password ? 'login-password-error' : undefined}
               />
             </div>
-            {formErrors.password && <p className="mt-1 text-sm text-red-600">{formErrors.password}</p>}
+            {formErrors.password && (
+              <p id="login-password-error" className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.password}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
             disabled={loading}
             className="w-full px-6 py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            aria-busy={loading}
           >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
             {loading ? 'Signing in…' : 'Login'}
           </button>
         </form>

@@ -23,7 +23,9 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	integrationstellar "carbon-scribe/project-portal/project-portal-backend/internal/integration/stellar"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/quality"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
@@ -55,6 +57,11 @@ func main() {
 		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 	log.Println("✅ Database connection established")
+
+	// --- Quality Scoring ---
+	qualityRepo := quality.NewRepository(db)
+	qualityService := quality.NewService(qualityRepo)
+	qualityHandler := quality.NewHandler(qualityService)
 
 	// Run all migrations
 	if err := runAllMigrations(db); err != nil {
@@ -105,7 +112,6 @@ func main() {
 	methodologyService := methodology.NewService(methodologyRepo, methodology.NewContractClientFromEnv())
 	methodologyCapClient := integrationstellar.NewMethodologyClientFromEnv()
 	methodologyCapService := methodology.NewCapEnforcementService(methodologyCapRepo, methodologyRepo, methodologyCapClient)
-	methodologyHandler := methodology.NewHandler(methodologyService, methodologyCapService)
 
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
 	mintingService := minting.NewService(db, nil, mintingCapValidator)
@@ -172,6 +178,14 @@ func main() {
 	}
 	settingsHandler := settings.NewHandler(settingsService)
 
+	// Initialize inventory service for on-chain credit querying
+	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
+	inventoryRepo := inventory.NewRepository(db)
+	sorobanClient := inventory.NewMockSorobanClient()
+	inventoryService := inventory.NewService(inventoryRepo, sorobanClient, inventoryCacheTTL)
+	inventoryHandler := inventory.NewHandler(inventoryService)
+	log.Println("✅ Credit inventory service initialized")
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -189,7 +203,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing", "inventory"},
 		})
 	})
 
@@ -210,6 +224,7 @@ func main() {
 				"geospatial":    "/api/v1/geospatial/*",
 				"settings":      "/api/v1/settings/*",
 				"financing":     "/api/v1/financing/*",
+				"inventory":     "/api/v1/projects/:id/inventory/*",
 			},
 		})
 	})
@@ -221,9 +236,11 @@ func main() {
 		authGroup := v1.Group("/auth")
 		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager)
 
-		// Register projects routes under v1
-		projectHandler.RegisterRoutes(v1)
-		methodologyHandler.RegisterRoutes(v1)
+		// Register all project and quality routes (no duplicates)
+		project.RegisterRoutes(router, projectHandler, qualityHandler)
+
+		// Register inventory routes under v1 (on-chain credit queries)
+		inventoryHandler.RegisterRoutes(v1)
 
 		// Register reports routes under v1
 		reportsHandler.RegisterRoutes(v1)
@@ -416,6 +433,9 @@ func runAllMigrations(db *gorm.DB) error {
 		&methodology.MethodologyCap{},
 		&methodology.MintingAttempt{},
 		&methodology.CapConfigurationSource{},
+
+		// Inventory models
+		&inventory.ProjectCreditCache{},
 	)
 
 	if err != nil {

@@ -35,9 +35,14 @@ export class TeamCollaborationService {
   }
 
   async getActivitySummary(companyId: string, dateRange: DateRangeDto) {
-    const startDate = dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const startDate =
+      dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const endDate = dateRange.endDate || new Date();
-    return this.activityFeedService.getActivitySummary(companyId, startDate, endDate);
+    return this.activityFeedService.getActivitySummary(
+      companyId,
+      startDate,
+      endDate,
+    );
   }
 
   async logActivity(data: {
@@ -58,8 +63,13 @@ export class TeamCollaborationService {
     return this.performanceMetricsService.getTeamPerformance(query);
   }
 
-  async getMemberPerformance(companyId: string, userId: string, dateRange: DateRangeDto) {
-    const startDate = dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  async getMemberPerformance(
+    companyId: string,
+    userId: string,
+    dateRange: DateRangeDto,
+  ) {
+    const startDate =
+      dateRange.startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const endDate = dateRange.endDate || new Date();
     return this.performanceMetricsService.getMemberPerformance(
       companyId,
@@ -70,8 +80,14 @@ export class TeamCollaborationService {
   }
 
   // Collaboration Score Methods
-  async getCollaborationScore(companyId: string, query: CollaborationScoreQuery) {
-    return this.collaborationScoreService.getCollaborationScore({ ...query, companyId });
+  async getCollaborationScore(
+    companyId: string,
+    query: CollaborationScoreQuery,
+  ) {
+    return this.collaborationScoreService.getCollaborationScore({
+      ...query,
+      companyId,
+    });
   }
 
   async getTopContributors(companyId: string, limit = 10) {
@@ -89,7 +105,12 @@ export class TeamCollaborationService {
     page = 1,
     limit = 50,
   ) {
-    return this.memberDetailsService.getActivityHistory(companyId, userId, limit, page);
+    return this.memberDetailsService.getActivityHistory(
+      companyId,
+      userId,
+      limit,
+      page,
+    );
   }
 
   async getMemberContributions(
@@ -97,13 +118,22 @@ export class TeamCollaborationService {
     userId: string,
     dateRange: DateRangeDto,
   ) {
-    const startDate = dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const startDate =
+      dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = dateRange.endDate || new Date();
-    return this.memberDetailsService.getContributions(companyId, userId, startDate, endDate);
+    return this.memberDetailsService.getContributions(
+      companyId,
+      userId,
+      startDate,
+      endDate,
+    );
   }
 
   async getMemberCollaborationPatterns(companyId: string, userId: string) {
-    return this.memberDetailsService.getCollaborationPatterns(companyId, userId);
+    return this.memberDetailsService.getCollaborationPatterns(
+      companyId,
+      userId,
+    );
   }
 
   // Notifications Methods
@@ -111,23 +141,61 @@ export class TeamCollaborationService {
     return this.notificationsService.getUnreadNotifications(companyId, userId);
   }
 
-  async markNotificationAsRead(notificationId: string, companyId: string, userId: string) {
-    return this.notificationsService.markAsRead(notificationId, companyId, userId);
+  async markNotificationAsRead(
+    notificationId: string,
+    companyId: string,
+    userId: string,
+  ) {
+    return this.notificationsService.markAsRead(
+      notificationId,
+      companyId,
+      userId,
+    );
   }
 
   async notifyTeamMemberJoined(companyId: string, email: string, name: string) {
-    return this.notificationsService.notifyTeamMemberJoined(companyId, email, name);
+    return this.notificationsService.notifyTeamMemberJoined(
+      companyId,
+      email,
+      name,
+    );
   }
 
-  async notifyRoleChange(companyId: string, userId: string, oldRole: string, newRole: string) {
-    return this.notificationsService.notifyRoleChange(companyId, userId, oldRole, newRole);
+  async notifyRoleChange(
+    companyId: string,
+    userId: string,
+    oldRole: string,
+    newRole: string,
+  ) {
+    return this.notificationsService.notifyRoleChange(
+      companyId,
+      userId,
+      oldRole,
+      newRole,
+    );
   }
 
-  async notifyTargetAchieved(companyId: string, target: number, actual: number) {
-    return this.notificationsService.notifyTargetAchieved(companyId, target, actual);
+  async notifyTargetAchieved(
+    companyId: string,
+    target: number,
+    actual: number,
+  ) {
+    return this.notificationsService.notifyTargetAchieved(
+      companyId,
+      target,
+      actual,
+    );
   }
 
-  async notifyCollaborationMilestone(companyId: string, score: number, rating: string) {
-    return this.notificationsService.notifyCollaborationMilestone(companyId, score, rating);
+  async notifyCollaborationMilestone(
+    companyId: string,
+    score: number,
+    rating: string,
+  ) {
+    return this.notificationsService.notifyCollaborationMilestone(
+      companyId,
+      score,
+      rating,
+    );
   }
 }

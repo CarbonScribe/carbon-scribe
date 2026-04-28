@@ -14,6 +14,37 @@ export const api = axios.create({
   timeout: 20_000,
 });
 
+// Dynamically import the Zustand store to avoid circular imports
+let getUserId: (() => string | null) | null = null;
+export function setUserIdGetter(fn: () => string | null) {
+  getUserId = fn;
+}
+
+// Attach X-User-ID header for financing endpoints if user is authenticated
+api.interceptors.request.use((config) => {
+  if (getUserId && config.url && config.url.includes('/financing/')) {
+    const userId = getUserId();
+    if (userId) {
+      if (typeof window !== 'undefined') {
+        console.debug('[DEBUG] X-User-ID header value:', userId);
+        try {
+          localStorage.setItem('last-x-user-id', userId);
+        } catch {}
+      }
+      config.headers = config.headers || {};
+      config.headers['X-User-ID'] = userId;
+    } else {
+      if (typeof window !== 'undefined') {
+        console.warn('[DEBUG] No userId found for X-User-ID header');
+        try {
+          localStorage.setItem('last-x-user-id', '');
+        } catch {}
+      }
+    }
+  }
+  return config;
+});
+
 // Token setter (store calls this)
 export function setAuthToken(token: string | null) {
   if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -30,38 +61,91 @@ export function setOnUnauthorized(handler: (() => void) | null) {
 const shownErrors = new Set<string>();
 const ERROR_COOLDOWN = 5000; // 5 seconds
 
+// Track if refresh is already in progress
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+}
+
+function addRefreshSubscriber(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err: AxiosError) => {
+  async (err: AxiosError) => {
     const status = err.response?.status;
+    const originalRequest = err.config as any;
+    
+    if (status === 401 && onUnauthorized && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      // If already refreshing, queue this request
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          addRefreshSubscriber((token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
+      
+      isRefreshing = true;
+      
+      try {
+        // Attempt to refresh session
+        const { useStore } = await import("@/lib/store/store");
+        const state = useStore.getState();
+        
+        await state.refreshSession();
+        
+        const newToken = state.token;
+        if (newToken) {
+          // Update auth header
+          setAuthToken(newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          
+          // Notify queued subscribers
+          onRefreshed(newToken);
+          isRefreshing = false;
+          
+          // Retry original request
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        isRefreshing = false;
+        onRefreshed(''); // Clear subscribers
+        // Refresh failed - show toast and logout
+        showErrorToast("Session expired", {
+          description: "Please sign in again to continue.",
+        });
+        onUnauthorized();
+      }
+      
+      return Promise.reject(err);
+    }
+    
+    // Prevent duplicate error toasts within cooldown period (for non-401 errors)
     const errorMessage = (err.response?.data as any)?.message || err.message;
     const errorKey = `${status}-${errorMessage}`;
-
-    // Prevent duplicate error toasts within cooldown period
     const shouldShowToast = !shownErrors.has(errorKey);
     
-    if (shouldShowToast) {
+    if (shouldShowToast && status !== 401) {
       shownErrors.add(errorKey);
       setTimeout(() => shownErrors.delete(errorKey), ERROR_COOLDOWN);
 
-      // Handle 401 separately
-      if (status === 401) {
-        if (onUnauthorized) {
-          showErrorToast("Session expired", {
-            description: "Please sign in again to continue.",
-          });
-          onUnauthorized();
-        }
-      } else if (status !== 403 && status !== 404) {
-        // Don't show toast for expected errors (forbidden, not found)
-        // These should be handled by the calling code
+      // Don't show toast for expected errors (forbidden, not found)
+      if (status !== 403 && status !== 404) {
         showErrorToast(errorMessage, {
           description: getErrorDescription(status),
           retryable: isRetryableStatus(status),
         });
       }
     }
-
+    
     return Promise.reject(err);
   },
 );

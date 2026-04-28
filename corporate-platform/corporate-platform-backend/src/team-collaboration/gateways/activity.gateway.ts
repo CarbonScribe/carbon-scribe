@@ -34,7 +34,7 @@ export class ActivityGateway
 
   async handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
-    
+
     // Authenticate and join company room
     const companyId = client.handshake.query.companyId as string;
     if (companyId) {
@@ -50,14 +50,18 @@ export class ActivityGateway
   @SubscribeMessage('subscribe:activity')
   handleSubscribe(client: Socket, payload: { companyId: string }) {
     client.join(`company:${payload.companyId}`);
-    this.logger.log(`Client ${client.id} subscribed to company:${payload.companyId}`);
+    this.logger.log(
+      `Client ${client.id} subscribed to company:${payload.companyId}`,
+    );
     return { event: 'subscribed', data: { companyId: payload.companyId } };
   }
 
   @SubscribeMessage('unsubscribe:activity')
   handleUnsubscribe(client: Socket, payload: { companyId: string }) {
     client.leave(`company:${payload.companyId}`);
-    this.logger.log(`Client ${client.id} unsubscribed from company:${payload.companyId}`);
+    this.logger.log(
+      `Client ${client.id} unsubscribed from company:${payload.companyId}`,
+    );
     return { event: 'unsubscribed', data: { companyId: payload.companyId } };
   }
 
@@ -70,23 +74,23 @@ export class ActivityGateway
       this.redisSubscriber = this.redis.getClient().duplicate();
       await this.redisSubscriber.subscribe('activity:stream');
 
-      this.redisSubscriber.on(
-        'message',
-        (channel: string, message: string) => {
-          try {
-            const parsed = JSON.parse(message);
-            if (channel === 'activity:stream' && parsed.event === 'activity:created') {
-              this.broadcastToCompany(
-                parsed.companyId,
-                'activity:new',
-                parsed.data,
-              );
-            }
-          } catch (error) {
-            this.logger.error('Error processing Redis message:', error);
+      this.redisSubscriber.on('message', (channel: string, message: string) => {
+        try {
+          const parsed = JSON.parse(message);
+          if (
+            channel === 'activity:stream' &&
+            parsed.event === 'activity:created'
+          ) {
+            this.broadcastToCompany(
+              parsed.companyId,
+              'activity:new',
+              parsed.data,
+            );
           }
-        },
-      );
+        } catch (error) {
+          this.logger.error('Error processing Redis message:', error);
+        }
+      });
 
       this.logger.log('Redis subscriber setup complete');
     } catch (error) {

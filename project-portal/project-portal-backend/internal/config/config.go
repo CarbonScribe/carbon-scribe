@@ -19,6 +19,7 @@ type Config struct {
 	Settings      SettingsConfig
 	Auth          AuthConfig
 	Redis         RedisConfig
+	Soroban       SorobanConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -74,6 +75,13 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+}
+
+type SorobanConfig struct {
+	RPCURL               string
+	NetworkPassphrase    string
+	CarbonAssetContract  string
+	InventoryCacheTTL    string
 }
 
 // Load loads configuration from environment variables
@@ -162,6 +170,12 @@ func Load() (*Config, error) {
 			Port:     getEnvOrDefault("REDIS_PORT", "6379"),
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDBAbc,
+		},
+		Soroban: SorobanConfig{
+			RPCURL:              getEnvOrDefault("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
+			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
+			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
+			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
 		},
 	}, nil
 }

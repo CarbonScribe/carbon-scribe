@@ -140,7 +140,7 @@ describe('Team Collaboration (e2e)', () => {
 
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBeLessThanOrEqual(5);
-      
+
       if (response.body.length > 0) {
         const contributor = response.body[0];
         expect(contributor).toHaveProperty('userId');
@@ -154,7 +154,9 @@ describe('Team Collaboration (e2e)', () => {
     it('should return member profile', async () => {
       // Create a team member first
       const role = await (prisma as any).role.upsert({
-        where: { companyId_name: { companyId: testCompany.id, name: 'VIEWER' } },
+        where: {
+          companyId_name: { companyId: testCompany.id, name: 'VIEWER' },
+        },
         update: {},
         create: {
           companyId: testCompany.id,

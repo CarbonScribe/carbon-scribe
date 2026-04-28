@@ -539,7 +539,7 @@ export default function ProjectsPage() {
                   <YAxis yAxisId="left" />
                   <YAxis yAxisId="right" orientation="right" domain={[85, 95]} />
                   <Tooltip 
-                    formatter={(value: any, name: string | undefined) => {
+                    formatter={(value, name) => {
                       if (name === 'score') return [`${value}`, 'Quality Score']
                       return [value, name === 'newProjects' ? 'New Projects' : 'Verifications']
                     }}
@@ -580,7 +580,7 @@ export default function ProjectsPage() {
                   />
                   <Tooltip 
                     cursor={{ strokeDasharray: '3 3' }}
-                    formatter={(value: any, name: string | undefined) => {
+                    formatter={(value, name) => {
                       if (name === 'carbon') return [`${value}K tCO₂`, 'Carbon Volume']
                       return [value, 'Quality Score']
                     }}

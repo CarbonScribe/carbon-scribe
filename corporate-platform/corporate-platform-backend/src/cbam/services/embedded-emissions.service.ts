@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { EmissionsCalculationInput, EmissionsCalculationResult } from '../interfaces/emissions-calculation.interface';
+import {
+  EmissionsCalculationInput,
+  EmissionsCalculationResult,
+} from '../interfaces/emissions-calculation.interface';
 import { GoodsClassificationService } from './goods-classification.service';
 
 @Injectable()
@@ -8,11 +11,17 @@ export class EmbeddedEmissionsService {
     private readonly goodsClassificationService: GoodsClassificationService,
   ) {}
 
-  calculateEmbeddedEmissions(input: EmissionsCalculationInput): EmissionsCalculationResult {
+  calculateEmbeddedEmissions(
+    input: EmissionsCalculationInput,
+  ): EmissionsCalculationResult {
     const { actualEmissions, quantity } = input;
 
     // If actual emissions are provided and valid, use them
-    if (actualEmissions !== undefined && actualEmissions !== null && actualEmissions > 0) {
+    if (
+      actualEmissions !== undefined &&
+      actualEmissions !== null &&
+      actualEmissions > 0
+    ) {
       return {
         actualEmissions,
         defaultEmissions: 0,
@@ -27,12 +36,17 @@ export class EmbeddedEmissionsService {
     return this.calculateWithDefaults(input);
   }
 
-  private calculateWithDefaults(input: EmissionsCalculationInput): EmissionsCalculationResult {
+  private calculateWithDefaults(
+    input: EmissionsCalculationInput,
+  ): EmissionsCalculationResult {
     const { goodsId, quantity, countryOfOrigin } = input;
 
     // Get the good's default emission factor
     // In a real implementation, this would fetch from database
-    const defaultFactor = this.getDefaultEmissionFactor(goodsId, countryOfOrigin);
+    const defaultFactor = this.getDefaultEmissionFactor(
+      goodsId,
+      countryOfOrigin,
+    );
 
     const defaultEmissions = defaultFactor * quantity;
 
@@ -46,7 +60,10 @@ export class EmbeddedEmissionsService {
     };
   }
 
-  private getDefaultEmissionFactor(goodsId: string, countryOfOrigin: string): number {
+  private getDefaultEmissionFactor(
+    goodsId: string,
+    countryOfOrigin: string,
+  ): number {
     // Default emission factors based on CBAM methodology
     // These would typically come from the database or configuration
     const baseFactors: Record<string, number> = {
@@ -69,12 +86,16 @@ export class EmbeddedEmissionsService {
     };
 
     const baseFactor = baseFactors[goodsId] || 1.0;
-    const countryFactor = countryFactors[countryOfOrigin] || countryFactors.DEFAULT;
+    const countryFactor =
+      countryFactors[countryOfOrigin] || countryFactors.DEFAULT;
 
     return baseFactor * countryFactor;
   }
 
-  calculateCertificateCost(emissions: number, certificatePrice?: number): number {
+  calculateCertificateCost(
+    emissions: number,
+    certificatePrice?: number,
+  ): number {
     // Default CBAM certificate price (would be fetched from EU registry)
     const defaultPrice = certificatePrice || 80; // EUR per tCO2e
     return emissions * defaultPrice;

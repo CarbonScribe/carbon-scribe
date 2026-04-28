@@ -7,14 +7,14 @@ import {
 import { ConfigService } from '../../../config/config.service';
 import { OwnershipHistoryService } from '../../../audit/ownership-history/ownership-history.service';
 import { EventProcessorService } from '../../../audit/ownership-history/event-processor.service';
-import { SorobanService } from '../../soroban.service';
+import { SorobanService } from '../soroban.service';
 import { PrismaService } from '../../../shared/database/prisma.service';
 
 @Injectable()
 export class OwnershipEventListener implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OwnershipEventListener.name);
   private pollInterval?: NodeJS.Timeout;
-  private lastLedger: number = 0;
+  private lastLedger: number = 1;
 
   // Specific Carbon Asset contract ID from requirements
   private readonly CONTRACT_ID =
@@ -34,14 +34,39 @@ export class OwnershipEventListener implements OnModuleInit, OnModuleDestroy {
       const lastRecord = await this.prisma.creditOwnershipHistory.findFirst({
         orderBy: { ledgerSequence: 'desc' },
       });
-      this.lastLedger = lastRecord
-        ? lastRecord.ledgerSequence + 1
-        : parseInt(process.env.OWNERSHIP_START_LEDGER || '0');
+
+      if (lastRecord) {
+        this.lastLedger = Math.max(1, lastRecord.ledgerSequence + 1);
+      } else {
+        // No DB history: start from the configured ledger or, if it resolves to 1
+        // (the genesis default), bootstrap from the current ledger head to avoid
+        // requesting ledgers outside the Soroban RPC's ~24 h retention window.
+        const configuredStartLedger = Number.parseInt(
+          process.env.OWNERSHIP_START_LEDGER || '0',
+          10,
+        );
+        if (
+          Number.isFinite(configuredStartLedger) &&
+          configuredStartLedger > 1
+        ) {
+          this.lastLedger = configuredStartLedger;
+        } else {
+          const latestSeq = await this.sorobanService.getLatestLedgerSequence();
+          this.lastLedger = latestSeq > 0 ? latestSeq : 1;
+          this.logger.log(
+            `No ownership history in DB; bootstrapping Soroban listener from current ledger ${this.lastLedger}.`,
+          );
+        }
+      }
     } catch (err) {
+      // DB may not exist yet — best-effort bootstrap from current ledger head.
+      const latestSeq = await this.sorobanService
+        .getLatestLedgerSequence()
+        .catch(() => 0);
+      this.lastLedger = latestSeq > 0 ? latestSeq : 1;
       this.logger.warn(
-        `Could not read last ledger from DB (table may not exist yet): ${err.message}. Starting from ledger ${process.env.OWNERSHIP_START_LEDGER || '0'}.`,
+        `Could not read last ledger from DB (table may not exist yet): ${err.message}. Starting from ledger ${this.lastLedger}.`,
       );
-      this.lastLedger = parseInt(process.env.OWNERSHIP_START_LEDGER || '0');
     }
 
     this.startPolling();
@@ -78,12 +103,19 @@ export class OwnershipEventListener implements OnModuleInit, OnModuleDestroy {
         this.lastLedger,
       );
 
+      let latestSeenLedger = this.lastLedger - 1;
       for (const event of events) {
         await this.handleContractEvent(event);
+        const eventLedger = Number.parseInt(String(event.ledger), 10);
+        if (Number.isFinite(eventLedger)) {
+          latestSeenLedger = Math.max(latestSeenLedger, eventLedger);
+        }
       }
 
-      // Update last ledger progress
-      // this.lastLedger = latestSeenLedger;
+      // Move cursor forward to avoid re-reading the same window.
+      if (latestSeenLedger >= this.lastLedger) {
+        this.lastLedger = latestSeenLedger + 1;
+      }
     } catch (error) {
       this.logger.error(
         `Ownership polling failed: ${error.message}`,
@@ -161,7 +193,7 @@ export class OwnershipEventListener implements OnModuleInit, OnModuleDestroy {
       `Initiating historical sync backfill for Carbon Asset ownership from ledger 0...`,
     );
 
-    let currentLedger = 0;
+    let currentLedger = 1;
     let keepSyncing = true;
 
     while (keepSyncing) {
