@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AnalyticsController } from './analytics.controller';
+import { AnalyticsService } from './analytics.service';
 import { DashboardService } from './services/dashboard.service';
 import { PredictiveService } from './services/predictive.service';
 import { CreditQualityService } from './services/credit-quality.service';
@@ -29,6 +30,21 @@ describe('AnalyticsController', () => {
 
   beforeEach(async () => {
     const mockServices = {
+      AnalyticsService: {
+        getRetirementSummary: jest.fn().mockResolvedValue({
+          summary: { totalRetired: 1000, totalTransactions: 10 },
+          trends: { thisMonth: 100, lastMonth: 80, percentageChange: 25 },
+        }),
+        getRetirementTrends: jest.fn().mockResolvedValue({
+          labels: ['Jan', 'Feb'],
+          datasets: [],
+        }),
+        getRetirementBreakdown: jest.fn().mockResolvedValue({
+          dimension: 'entity',
+          data: [],
+          total: 1000,
+        }),
+      },
       DashboardService: {
         getOverview: jest.fn().mockResolvedValue({
           totalProjects: 10,
@@ -128,6 +144,10 @@ describe('AnalyticsController', () => {
       controllers: [AnalyticsController],
       providers: [
         {
+          provide: AnalyticsService,
+          useValue: mockServices.AnalyticsService,
+        },
+        {
           provide: DashboardService,
           useValue: mockServices.DashboardService,
         },
@@ -182,6 +202,36 @@ describe('AnalyticsController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  // Retirement Analytics Tests (Issue #237)
+  describe('getRetirementSummary', () => {
+    it('should return retirement summary', async () => {
+      const result = await controller.getRetirementSummary(mockUser);
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('getRetirementTrends', () => {
+    it('should return retirement trends', async () => {
+      const result = await controller.getRetirementTrends(mockUser);
+      expect(result).toBeDefined();
+    });
+
+    it('should reject invalid months', async () => {
+      await expect(controller.getRetirementTrends(mockUser, '100')).rejects.toThrow();
+    });
+  });
+
+  describe('getRetirementBreakdown', () => {
+    it('should return retirement breakdown', async () => {
+      const result = await controller.getRetirementBreakdown(mockUser);
+      expect(result).toBeDefined();
+    });
+
+    it('should reject invalid dimension', async () => {
+      await expect(controller.getRetirementBreakdown(mockUser, 'invalid')).rejects.toThrow();
+    });
   });
 
   // Dashboard Tests
@@ -402,4 +452,4 @@ describe('AnalyticsController', () => {
       expect(result).toBeDefined();
     });
   });
-});
+}); 
