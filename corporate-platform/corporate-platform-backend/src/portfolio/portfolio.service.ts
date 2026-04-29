@@ -106,4 +106,73 @@ export class PortfolioService {
       generatedAt: new Date(),
     };
   }
+
+  async getHoldingDetails(companyId: string, holdingId: string) {
+    const portfolio = await this.prisma.portfolio.findUnique({
+      where: { companyId },
+    });
+
+    if (!portfolio) {
+      throw new Error('Portfolio not found');
+    }
+
+    const holding = await this.prisma.portfolioHolding.findFirst({
+      where: {
+        id: holdingId,
+        portfolioId: portfolio.id,
+      },
+      include: {
+        credit: {
+          include: {
+            project: true,
+          },
+        },
+      },
+    });
+
+    if (!holding) {
+      throw new Error('Holding not found');
+    }
+
+    return holding;
+  }
+
+  async getPortfolioTransactions(
+    companyId: string,
+    page: number = 1,
+    pageSize: number = 20,
+  ) {
+    const skip = (page - 1) * pageSize;
+
+    // Fetch transactions related to portfolio activities
+    const [transactions, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: {
+          companyId,
+          type: {
+            in: ['order', 'refund', 'adjustment', 'transfer'],
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.transaction.count({
+        where: {
+          companyId,
+          type: {
+            in: ['order', 'refund', 'adjustment', 'transfer'],
+          },
+        },
+      }),
+    ]);
+
+    return {
+      data: transactions,
+      total,
+      page,
+      pageSize,
+      pages: Math.ceil(total / pageSize),
+    };
+  }
 }

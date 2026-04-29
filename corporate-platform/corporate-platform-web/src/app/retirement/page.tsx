@@ -167,9 +167,6 @@ export default function RetirementPage() {
       </div>
 
       {/* Progress to Goal */}
-      <StellarTransferPanel defaultCompanyId={company.id} />
-
-      {/* Progress to Goal */}
       <div className="corporate-card p-6">
         <div className="flex items-center justify-between mb-6">
           <div>

@@ -2,8 +2,10 @@ import {
   Controller,
   Get,
   Query,
+  Param,
   UseGuards,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { PortfolioService } from './portfolio.service';
 import { PortfolioQueryDto } from './dto/portfolio-query.dto';
@@ -217,6 +219,68 @@ export class PortfolioController {
       details: {
         analyticsType: 'full_dashboard',
       },
+    });
+
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date(),
+    };
+  }
+
+  @Get('/holdings/:id')
+  @Permissions(PORTFOLIO_VIEW)
+  async getHoldingDetails(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') holdingId: string,
+  ) {
+    const companyId = user.companyId;
+    const result = await this.portfolioService.getHoldingDetails(
+      companyId,
+      holdingId,
+    );
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId,
+      userId: user.sub,
+      resource: `/api/v1/portfolio/holdings/${holdingId}`,
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
+    });
+
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date(),
+    };
+  }
+
+  @Get('/transactions')
+  @Permissions(PORTFOLIO_VIEW)
+  async getTransactions(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: PortfolioQueryDto,
+  ) {
+    const companyId = user.companyId;
+    const page = query.page || 1;
+    const pageSize = query.pageSize || 20;
+
+    const result = await this.portfolioService.getPortfolioTransactions(
+      companyId,
+      page,
+      pageSize,
+    );
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.ReportExported,
+      companyId,
+      userId: user.sub,
+      resource: '/api/v1/portfolio/transactions',
+      method: 'GET',
+      status: 'success',
+      statusCode: 200,
     });
 
     return {

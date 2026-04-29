@@ -27,6 +27,8 @@ describe('PortfolioController', () => {
     getPortfolioRisk: jest.fn(),
     getPortfolioHoldings: jest.fn(),
     getPortfolioAnalytics: jest.fn(),
+    getHoldingDetails: jest.fn(),
+    getPortfolioTransactions: jest.fn(),
   };
 
   const mockSecurityService = {
@@ -210,6 +212,97 @@ describe('PortfolioController', () => {
             analyticsType: 'full_dashboard',
           }),
         }),
+      );
+    });
+  });
+
+  describe('GET /api/v1/portfolio/holdings/:id', () => {
+    it('should return specific holding details', async () => {
+      const mockHolding = {
+        id: 'holding-1',
+        portfolioId: 'portfolio-1',
+        creditId: 'credit-1',
+        quantity: 100,
+        averagePrice: 15.5,
+        credit: {
+          id: 'credit-1',
+          projectName: 'Test Project',
+          methodology: 'REDD+',
+        },
+      };
+
+      mockPortfolioService.getHoldingDetails.mockResolvedValue(mockHolding);
+
+      const result = await controller.getHoldingDetails(
+        mockUser as any,
+        'holding-1',
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockHolding);
+      expect(mockPortfolioService.getHoldingDetails).toHaveBeenCalledWith(
+        'company-1',
+        'holding-1',
+      );
+    });
+  });
+
+  describe('GET /api/v1/portfolio/transactions', () => {
+    it('should return paginated transaction history', async () => {
+      const mockTransactions = {
+        data: [
+          {
+            id: 'tx-1',
+            type: 'order',
+            amount: 100,
+            status: 'completed',
+            createdAt: new Date(),
+          },
+        ],
+        total: 50,
+        page: 1,
+        pageSize: 20,
+        pages: 3,
+      };
+
+      mockPortfolioService.getPortfolioTransactions.mockResolvedValue(
+        mockTransactions,
+      );
+
+      const result = await controller.getTransactions(mockUser as any, {});
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockTransactions);
+      expect(mockPortfolioService.getPortfolioTransactions).toHaveBeenCalledWith(
+        'company-1',
+        1,
+        20,
+      );
+    });
+
+    it('should handle custom pagination parameters', async () => {
+      const mockTransactions = {
+        data: [],
+        total: 50,
+        page: 2,
+        pageSize: 10,
+        pages: 5,
+      };
+
+      mockPortfolioService.getPortfolioTransactions.mockResolvedValue(
+        mockTransactions,
+      );
+
+      const result = await controller.getTransactions(mockUser as any, {
+        page: 2,
+        pageSize: 10,
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockPortfolioService.getPortfolioTransactions).toHaveBeenCalledWith(
+        'company-1',
+        2,
+        10,
       );
     });
   });
