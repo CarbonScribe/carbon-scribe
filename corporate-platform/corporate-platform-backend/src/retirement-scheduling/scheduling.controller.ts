@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Put,
   Patch,
   Post,
   UploadedFile,
@@ -25,6 +26,7 @@ export class SchedulingController {
   constructor(private readonly schedulingService: SchedulingService) {}
 
   @Post('retirement-schedules')
+  @Post('retirement-scheduling')
   createSchedule(
     @CurrentUser() user: JwtPayload,
     @Body() dto: CreateScheduleDto,
@@ -33,16 +35,20 @@ export class SchedulingController {
   }
 
   @Get('retirement-schedules')
+  @Get('retirement-scheduling')
   listSchedules(@CurrentUser() user: JwtPayload) {
     return this.schedulingService.listSchedules(user.companyId);
   }
 
   @Get('retirement-schedules/:id')
+  @Get('retirement-scheduling/:id')
   getSchedule(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.schedulingService.getSchedule(user.companyId, id);
   }
 
   @Patch('retirement-schedules/:id')
+  @Patch('retirement-scheduling/:id')
+  @Put('retirement-scheduling/:id')
   updateSchedule(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -52,6 +58,7 @@ export class SchedulingController {
   }
 
   @Delete('retirement-schedules/:id')
+  @Delete('retirement-scheduling/:id')
   deleteSchedule(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.schedulingService.deleteSchedule(user.companyId, id);
   }

@@ -27,44 +27,62 @@ const mockPrisma = {
   },
   csrdReport: {
     count: jest.fn().mockResolvedValue(1),
-    findMany: jest.fn().mockResolvedValue([
-      { id: 'r1', reportingYear: 2024, status: 'SUBMITTED' },
-    ]),
+    findMany: jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'r1', reportingYear: 2024, status: 'SUBMITTED' },
+      ]),
   },
 };
 
 const mockMaterialityService = {
-  createAssessment: jest
-    .fn()
-    .mockResolvedValue({ id: 'assess-1', assessmentYear: 2024, status: 'IN_PROGRESS' }),
-  getCurrent: jest
-    .fn()
-    .mockResolvedValue({ id: 'assess-1', status: 'COMPLETED', assessmentYear: 2024 }),
+  createAssessment: jest.fn().mockResolvedValue({
+    id: 'assess-1',
+    assessmentYear: 2024,
+    status: 'IN_PROGRESS',
+  }),
+  getCurrent: jest.fn().mockResolvedValue({
+    id: 'assess-1',
+    status: 'COMPLETED',
+    assessmentYear: 2024,
+  }),
 };
 
 const mockDisclosureService = {
-  record: jest
-    .fn()
-    .mockResolvedValue({ id: 'disc-1', standard: 'ESRS E1', reportingPeriod: '2024' }),
+  record: jest.fn().mockResolvedValue({
+    id: 'disc-1',
+    standard: 'ESRS E1',
+    reportingPeriod: '2024',
+  }),
   list: jest.fn().mockResolvedValue([
     { id: 'disc-1', standard: 'ESRS E1' },
     { id: 'disc-2', standard: 'ESRS S1' },
   ]),
   getRequirements: jest.fn().mockResolvedValue([
-    { id: 'E1-6', standard: 'ESRS E1', requirement: 'E1-6', description: 'GHG emissions', dataPoints: ['scope1_tco2e'] },
+    {
+      id: 'E1-6',
+      standard: 'ESRS E1',
+      requirement: 'E1-6',
+      description: 'GHG emissions',
+      dataPoints: ['scope1_tco2e'],
+    },
   ]),
 };
 
 const mockReportService = {
-  generate: jest
-    .fn()
-    .mockResolvedValue({ id: 'report-1', reportingYear: 2024, status: 'REVIEW' }),
+  generate: jest.fn().mockResolvedValue({
+    id: 'report-1',
+    reportingYear: 2024,
+    status: 'REVIEW',
+  }),
 };
 
 const mockAssuranceService = {
-  updateAssurance: jest
-    .fn()
-    .mockResolvedValue({ id: 'disc-1', assuranceLevel: 'LIMITED', assuredBy: 'Deloitte' }),
+  updateAssurance: jest.fn().mockResolvedValue({
+    id: 'disc-1',
+    assuranceLevel: 'LIMITED',
+    assuredBy: 'Deloitte',
+  }),
 };
 
 const mockSecurityService = {
@@ -83,7 +101,10 @@ describe('CsrdService', () => {
       providers: [
         CsrdService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: MaterialityAssessmentService, useValue: mockMaterialityService },
+        {
+          provide: MaterialityAssessmentService,
+          useValue: mockMaterialityService,
+        },
         { provide: EsrsDisclosureService, useValue: mockDisclosureService },
         { provide: ReportGeneratorService, useValue: mockReportService },
         { provide: AssuranceService, useValue: mockAssuranceService },
@@ -137,7 +158,9 @@ describe('CsrdService', () => {
   describe('getCurrentMateriality', () => {
     it('should return the most recent assessment for the company', async () => {
       const result = await service.getCurrentMateriality(MOCK_COMPANY);
-      expect(mockMaterialityService.getCurrent).toHaveBeenCalledWith(MOCK_COMPANY);
+      expect(mockMaterialityService.getCurrent).toHaveBeenCalledWith(
+        MOCK_COMPANY,
+      );
       expect(result.status).toBe('COMPLETED');
     });
   });
@@ -169,7 +192,10 @@ describe('CsrdService', () => {
     it('should delegate to disclosureService with query params', async () => {
       const query = { standard: 'ESRS E1' };
       const result = await service.listDisclosures(MOCK_COMPANY, query);
-      expect(mockDisclosureService.list).toHaveBeenCalledWith(MOCK_COMPANY, query);
+      expect(mockDisclosureService.list).toHaveBeenCalledWith(
+        MOCK_COMPANY,
+        query,
+      );
       expect(result).toHaveLength(2);
     });
   });
@@ -177,13 +203,17 @@ describe('CsrdService', () => {
   describe('getRequirements', () => {
     it('should return ESRS requirements for a given standard', async () => {
       const result = await service.getRequirements('ESRS E1');
-      expect(mockDisclosureService.getRequirements).toHaveBeenCalledWith('ESRS E1');
+      expect(mockDisclosureService.getRequirements).toHaveBeenCalledWith(
+        'ESRS E1',
+      );
       expect(result[0].standard).toBe('ESRS E1');
     });
 
     it('should return all requirements when no standard is provided', async () => {
       await service.getRequirements();
-      expect(mockDisclosureService.getRequirements).toHaveBeenCalledWith(undefined);
+      expect(mockDisclosureService.getRequirements).toHaveBeenCalledWith(
+        undefined,
+      );
     });
   });
 
@@ -242,12 +272,22 @@ describe('CsrdService', () => {
 
   describe('verifyOffsetsForCompliance', () => {
     it('should return valid=true when all tokens are verified', async () => {
-      mockRetirementVerificationService.verifyRetirements.mockResolvedValueOnce({
-        results: [
-          { tokenId: 'tok-1', status: OffsetClaimStatus.VERIFIED, message: 'OK' },
-          { tokenId: 'tok-2', status: OffsetClaimStatus.VERIFIED, message: 'OK' },
-        ],
-      });
+      mockRetirementVerificationService.verifyRetirements.mockResolvedValueOnce(
+        {
+          results: [
+            {
+              tokenId: 'tok-1',
+              status: OffsetClaimStatus.VERIFIED,
+              message: 'OK',
+            },
+            {
+              tokenId: 'tok-2',
+              status: OffsetClaimStatus.VERIFIED,
+              message: 'OK',
+            },
+          ],
+        },
+      );
       const result = await service.verifyOffsetsForCompliance(MOCK_COMPANY, [
         'tok-1',
         'tok-2',
@@ -255,19 +295,31 @@ describe('CsrdService', () => {
       expect(result.valid).toBe(true);
       expect(result.totalValid).toBe(2);
       expect(result.totalTokens).toBe(2);
-      expect(mockRetirementVerificationService.verifyRetirements).toHaveBeenCalledWith(
+      expect(
+        mockRetirementVerificationService.verifyRetirements,
+      ).toHaveBeenCalledWith(
         MOCK_COMPANY,
         expect.objectContaining({ framework: ComplianceFramework.CSRD }),
       );
     });
 
     it('should return valid=false when some tokens fail verification', async () => {
-      mockRetirementVerificationService.verifyRetirements.mockResolvedValueOnce({
-        results: [
-          { tokenId: 'tok-1', status: OffsetClaimStatus.VERIFIED, message: 'OK' },
-          { tokenId: 'tok-2', status: OffsetClaimStatus.ALREADY_CLAIMED, message: 'Double claim' },
-        ],
-      });
+      mockRetirementVerificationService.verifyRetirements.mockResolvedValueOnce(
+        {
+          results: [
+            {
+              tokenId: 'tok-1',
+              status: OffsetClaimStatus.VERIFIED,
+              message: 'OK',
+            },
+            {
+              tokenId: 'tok-2',
+              status: OffsetClaimStatus.ALREADY_CLAIMED,
+              message: 'Double claim',
+            },
+          ],
+        },
+      );
       const result = await service.verifyOffsetsForCompliance(MOCK_COMPANY, [
         'tok-1',
         'tok-2',

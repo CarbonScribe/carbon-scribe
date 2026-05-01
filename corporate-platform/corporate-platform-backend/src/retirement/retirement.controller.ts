@@ -11,7 +11,15 @@ import {
   Sse,
   MessageEvent,
 } from '@nestjs/common';
-import { Observable, interval, from, switchMap, map, catchError, of } from 'rxjs';
+import {
+  Observable,
+  interval,
+  from,
+  switchMap,
+  map,
+  catchError,
+  of,
+} from 'rxjs';
 import { InstantRetirementService } from './services/instant-retirement.service';
 import { HistoryService } from './services/history.service';
 import { ValidationService } from './services/validation.service';
