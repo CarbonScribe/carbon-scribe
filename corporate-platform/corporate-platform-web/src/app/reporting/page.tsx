@@ -22,9 +22,15 @@ import {
   Printer,
   Share2,
   BookOpen,
-  PieChart
+  PieChart,
+  Shield
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
+import { useCSRD } from '@/hooks/useCSRD'
+import { MaterialityAssessmentForm } from '@/components/csrd/MaterialityAssessmentForm'
+import { DisclosureList } from '@/components/csrd/DisclosureList'
+import { CSRDReportList } from '@/components/csrd/CSRDReportList'
+import { CSRDReadinessCard } from '@/components/csrd/CSRDReadinessCard'
 import { 
   BarChart, 
   Bar, 
@@ -41,7 +47,7 @@ import {
 
 export default function ReportingPage() {
   const { portfolio, retirements } = useCorporate()
-  const [activeTab, setActiveTab] = useState<'esg' | 'carbon' | 'custom' | 'templates'>('esg')
+  const [activeTab, setActiveTab] = useState<'esg' | 'carbon' | 'custom' | 'templates' | 'csrd'>('esg')
   const [selectedReport, setSelectedReport] = useState<string | null>(null)
   const [reportPeriod, setReportPeriod] = useState<'quarterly' | 'annual' | 'monthly'>('quarterly')
 
@@ -166,6 +172,36 @@ export default function ReportingPage() {
     }
   }
 
+  const {
+    materiality: _csrdMateriality,
+    materialityResult,
+    assessing,
+    assessError,
+    disclosures,
+    disclosuresLoading,
+    disclosuresError,
+    recording,
+    recordError,
+    reports: csrdReports,
+    reportsLoading: csrdReportsLoading,
+    reportsError: csrdReportsError,
+    generating,
+    generateError,
+    lastGeneratedReport,
+    readiness,
+    readinessLoading,
+    readinessError,
+    assessMateriality,
+    fetchDisclosures,
+    recordDisclosure,
+    generateReport,
+    fetchReports,
+    fetchReadiness,
+    clearAssessError,
+    clearRecordError,
+    clearGenerateError,
+  } = useCSRD(activeTab === 'csrd')
+
   // Calculate report statistics
   const totalReports = availableReports.length
   const publishedReports = availableReports.filter(r => r.status === 'published').length
@@ -207,6 +243,7 @@ export default function ReportingPage() {
             { id: 'carbon', label: 'Carbon Reporting', icon: Target },
             { id: 'custom', label: 'Custom Reports', icon: FileText },
             { id: 'templates', label: 'Templates', icon: BookOpen },
+            { id: 'csrd', label: 'CSRD Disclosures', icon: Shield },
           ].map((tab) => {
             const Icon = tab.icon
             return (
@@ -693,6 +730,94 @@ export default function ReportingPage() {
           </div>
         </div>
       </div>
+
+      {/* CSRD Disclosures Tab */}
+      {activeTab === 'csrd' && (
+        <div className="space-y-6">
+          {/* Readiness Card */}
+          <CSRDReadinessCard
+            readiness={readiness}
+            loading={readinessLoading}
+            error={readinessError}
+            onRefresh={fetchReadiness}
+          />
+
+          {/* Materiality Assessment */}
+          <div className="corporate-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Double Materiality Assessment
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Identify and score material sustainability topics per ESRS 2
+                </p>
+              </div>
+              {materialityResult && (
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-corporate-blue">
+                    {materialityResult.materialTopics.length}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    material topics
+                  </div>
+                </div>
+              )}
+            </div>
+            <MaterialityAssessmentForm
+              onAssess={assessMateriality}
+              assessing={assessing}
+              assessError={assessError}
+              onClearError={clearAssessError}
+            />
+          </div>
+
+          {/* ESRS Disclosures */}
+          <div className="corporate-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  ESRS Disclosures
+                </h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Record and review data points across all ESRS standards
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-corporate-blue">
+                  {disclosures.length}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  recorded
+                </div>
+              </div>
+            </div>
+            <DisclosureList
+              disclosures={disclosures}
+              loading={disclosuresLoading}
+              error={disclosuresError}
+              recording={recording}
+              recordError={recordError}
+              onFetch={fetchDisclosures}
+              onRecord={recordDisclosure}
+              onClearRecordError={clearRecordError}
+            />
+          </div>
+
+          {/* Reports */}
+          <CSRDReportList
+            reports={csrdReports}
+            loading={csrdReportsLoading}
+            error={csrdReportsError}
+            generating={generating}
+            generateError={generateError}
+            lastGeneratedReport={lastGeneratedReport}
+            onGenerate={generateReport}
+            onFetchReports={fetchReports}
+            onClearGenerateError={clearGenerateError}
+          />
+        </div>
+      )}
     </div>
   )
 }
