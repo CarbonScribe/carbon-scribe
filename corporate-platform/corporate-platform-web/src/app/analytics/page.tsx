@@ -23,6 +23,7 @@ import {
   ChevronUp
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
+import RetirementAnalyticsDashboard from '@/components/analytics/RetirementAnalyticsDashboard'
 import { 
   LineChart as RechartsLineChart, 
   Line, 
@@ -175,6 +176,9 @@ export default function AnalyticsPage() {
           </div>
         </div>
       </div>
+
+      {/* Key Performance Metrics */}
+      <RetirementAnalyticsDashboard />
 
       {/* Key Performance Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

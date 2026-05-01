@@ -4,6 +4,7 @@ import { RetirementAnalyticsService } from './analytics.service';
 
 describe('RetirementAnalyticsController', () => {
   let controller: RetirementAnalyticsController;
+  const user = { companyId: 'company-1', sub: 'user-1' } as any;
 
   const mockAnalyticsService = {
     getPurposeBreakdown: jest.fn(),
@@ -37,7 +38,7 @@ describe('RetirementAnalyticsController', () => {
   });
 
   it('should call getPurposeBreakdown on the service', async () => {
-    const query = { companyId: 'c1' };
+    const query = { startDate: '2026-01-01' };
     const expected = {
       purposes: [],
       totalRetired: 0,
@@ -46,16 +47,19 @@ describe('RetirementAnalyticsController', () => {
     };
     mockAnalyticsService.getPurposeBreakdown.mockResolvedValue(expected);
 
-    const result = await controller.getPurposeBreakdown(query);
+    const result = await controller.getPurposeBreakdown(query, user);
 
     expect(result).toEqual(expected);
     expect(mockAnalyticsService.getPurposeBreakdown).toHaveBeenCalledWith(
-      query,
+      expect.objectContaining({
+        companyId: user.companyId,
+        startDate: '2026-01-01',
+      }),
     );
   });
 
   it('should call getTrends on the service', async () => {
-    const query = { companyId: 'c1', aggregation: 'monthly' as const };
+    const query = { aggregation: 'monthly' as const };
     const expected = {
       periods: [],
       aggregation: 'monthly',
@@ -64,25 +68,32 @@ describe('RetirementAnalyticsController', () => {
     };
     mockAnalyticsService.getTrends.mockResolvedValue(expected);
 
-    const result = await controller.getTrends(query);
+    const result = await controller.getTrends(query, user);
 
     expect(result).toEqual(expected);
-    expect(mockAnalyticsService.getTrends).toHaveBeenCalledWith(query);
+    expect(mockAnalyticsService.getTrends).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: user.companyId,
+        aggregation: 'monthly',
+      }),
+    );
   });
 
   it('should call getForecast on the service', async () => {
-    const query = { companyId: 'c1' };
+    const query = {};
     const expected = { projections: [], methodology: 'test', basedOnMonths: 0 };
     mockAnalyticsService.getForecast.mockResolvedValue(expected);
 
-    const result = await controller.getForecast(query);
+    const result = await controller.getForecast(query, user);
 
     expect(result).toEqual(expected);
-    expect(mockAnalyticsService.getForecast).toHaveBeenCalledWith(query);
+    expect(mockAnalyticsService.getForecast).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: user.companyId }),
+    );
   });
 
   it('should call getImpactMetrics on the service', async () => {
-    const query = { companyId: 'c1' };
+    const query = {};
     const expected = {
       co2Offset: 100,
       treesPlanted: 4545,
@@ -92,14 +103,16 @@ describe('RetirementAnalyticsController', () => {
     };
     mockAnalyticsService.getImpactMetrics.mockResolvedValue(expected);
 
-    const result = await controller.getImpactMetrics(query);
+    const result = await controller.getImpactMetrics(query, user);
 
     expect(result).toEqual(expected);
-    expect(mockAnalyticsService.getImpactMetrics).toHaveBeenCalledWith(query);
+    expect(mockAnalyticsService.getImpactMetrics).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: user.companyId }),
+    );
   });
 
   it('should call getProgress on the service', async () => {
-    const query = { companyId: 'c1' };
+    const query = {};
     const expected = {
       annual: { target: 1000, achieved: 500, percentage: 50 },
       netZero: { target: 10000, achieved: 2000, percentage: 20 },
@@ -107,14 +120,16 @@ describe('RetirementAnalyticsController', () => {
     };
     mockAnalyticsService.getProgress.mockResolvedValue(expected);
 
-    const result = await controller.getProgress(query);
+    const result = await controller.getProgress(query, user);
 
     expect(result).toEqual(expected);
-    expect(mockAnalyticsService.getProgress).toHaveBeenCalledWith(query);
+    expect(mockAnalyticsService.getProgress).toHaveBeenCalledWith(
+      expect.objectContaining({ companyId: user.companyId }),
+    );
   });
 
   it('should call getSummary on the service', async () => {
-    const query = { companyId: 'c1' };
+    const query = { endDate: '2026-12-31' };
     const expected = {
       purposeBreakdown: {},
       trends: {},
@@ -124,9 +139,14 @@ describe('RetirementAnalyticsController', () => {
     };
     mockAnalyticsService.getSummary.mockResolvedValue(expected);
 
-    const result = await controller.getSummary(query);
+    const result = await controller.getSummary(query, user);
 
     expect(result).toEqual(expected);
-    expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(query);
+    expect(mockAnalyticsService.getSummary).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companyId: user.companyId,
+        endDate: '2026-12-31',
+      }),
+    );
   });
 });

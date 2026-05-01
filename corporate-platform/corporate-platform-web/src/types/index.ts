@@ -146,3 +146,4 @@ export interface CarbonCredit {
   }
 
   export * from './retirement-scheduling'
+  export * from './retirement-analytics'

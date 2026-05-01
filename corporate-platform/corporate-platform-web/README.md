@@ -8,6 +8,7 @@ A modern Next.js web application for corporate buyers to purchase, manage, and r
 - **Credit Marketplace**: Browse and purchase verified carbon credits
 - **Instant Retirement**: Retire credits with on-chain verification
 - **Retirement Scheduling**: Create, edit, and cancel future retirement events with reminder windows
+- **Retirement Analytics**: Live impact, trend, forecast, and sustainability progress dashboards
 - **Portfolio Analytics**: Visual breakdown by methodology and region
 - **Live Retirement Feed**: Real-time updates on corporate retirements
 - **Stellar Transfer Center**: Initiate single and batch blockchain transfers, poll live status, and track on-chain confirmations
@@ -63,6 +64,25 @@ What is included:
 - Scheduling manager UI in `src/components/retirement/RetirementSchedulingManager.tsx`
 - Upcoming reminder cards based on `notifyBefore` and each schedule's `nextRunDate`
 - Unit and component tests for API methods and scheduling create/cancel/error flows
+
+## Retirement Analytics Integration
+
+The analytics page now integrates Retirement Analytics API endpoints:
+
+- `GET /api/v1/retirement-analytics/purpose-breakdown`
+- `GET /api/v1/retirement-analytics/trends`
+- `GET /api/v1/retirement-analytics/forecast`
+- `GET /api/v1/retirement-analytics/impact`
+- `GET /api/v1/retirement-analytics/progress`
+- `GET /api/v1/retirement-analytics/summary`
+
+What is included:
+
+- Typed analytics client in `src/services/retirement-analytics.service.ts`
+- Retirement analytics dashboard component in `src/components/analytics/RetirementAnalyticsDashboard.tsx`
+- Filter support for time range and aggregation (monthly/quarterly)
+- Resilient loading, error, and empty-state handling
+- Unit/component tests for analytics API wiring and UI states
 
 ## Environment Variables
 

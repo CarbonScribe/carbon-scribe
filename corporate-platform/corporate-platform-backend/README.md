@@ -208,6 +208,21 @@ The backend supports both plural and singular scheduling route prefixes for comp
 
 `PUT` support on the singular route is provided for frontend clients that perform full-update semantics.
 
+## Retirement Analytics API
+
+Retirement analytics endpoints are exposed at `api/v1/retirement-analytics` and are scoped to the authenticated user's company:
+
+- `GET /api/v1/retirement-analytics/purpose-breakdown`
+- `GET /api/v1/retirement-analytics/trends`
+- `GET /api/v1/retirement-analytics/forecast`
+- `GET /api/v1/retirement-analytics/impact`
+- `GET /api/v1/retirement-analytics/progress`
+- `GET /api/v1/retirement-analytics/summary`
+
+For API key integrations, equivalent endpoints are available under:
+
+- `GET /api/v1/integrations/retirement-analytics/*`
+
 ## 📁 Project Structure
 ```
 corporate-platform-backend/
