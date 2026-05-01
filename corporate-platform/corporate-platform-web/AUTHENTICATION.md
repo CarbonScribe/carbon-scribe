@@ -51,6 +51,20 @@ The Corporate Platform frontend now implements secure, seamless user session man
 - Automatic redirect to login if not authenticated
 - Automatic redirect to dashboard if already authenticated on public routes
 
+### 4. Role-Based Access Control (RBAC)
+
+- User role is synchronized from `GET /api/v1/auth/me` after login and token refresh
+- Permissions are derived from backend-aligned role mapping in `src/lib/auth/rbac.ts`
+- Protected routes are enforced in `RouteGuard` at layout level
+- Sidebar hides links for routes that the current role cannot access
+
+Restricted routes currently enforced:
+
+- `/team` → `admin` only (user/role management)
+- `/audit` → `admin`, `auditor` only (audit log visibility)
+
+> Frontend RBAC improves UX and prevents accidental access. Backend authorization remains the source of truth for critical security and data enforcement.
+
 ### 4. Secure Logout
 
 - Clears both access and refresh tokens
@@ -168,6 +182,27 @@ function UserProfile() {
 }
 ```
 
+### Check Roles & Permissions
+
+```typescript
+import { useAuth } from '@/contexts/AuthContext';
+
+function TeamActions() {
+  const { hasPermission, hasRole } = useAuth();
+
+  if (!hasRole('admin')) {
+    return <div>Access denied</div>;
+  }
+
+  return (
+    <>
+      {hasPermission('team:manage-roles') && <button>Manage Roles</button>}
+      {hasPermission('team:invite') && <button>Invite Member</button>}
+    </>
+  );
+}
+```
+
 ### Using the Auth API Client
 
 ```typescript
@@ -203,6 +238,35 @@ async function fetchData() {
 3. **Secure Refresh Tokens**: 7-day expiry with rotation on each use
 4. **Token Blacklisting**: Backend invalidates tokens on logout
 5. **Session Management**: Backend tracks sessions with IP and user agent
+6. **Server-validated identity**: Frontend re-syncs user identity/role via `/auth/me` after login/refresh
+7. **Defense in depth**: Frontend RBAC controls UX; backend guards still enforce API authorization
+
+## Roles & Permissions Enforced in Frontend
+
+Roles (backend-aligned):
+
+- `admin`
+- `manager`
+- `analyst`
+- `viewer`
+- `auditor`
+
+Permission model (key examples):
+
+- `admin:user-manage`
+- `admin:view-audit-logs`
+- `team:manage-roles`
+- `compliance:audit`
+- `credit:purchase`
+- `report:export`
+
+Role highlights:
+
+- `admin`: full permissions
+- `manager`: operational management (credits/compliance/reporting), no admin user management
+- `analyst`: analytics/reporting-focused read and export
+- `viewer`: read-only baseline
+- `auditor`: audit/compliance verification and audit-log viewing
 
 ### Production Recommendations
 

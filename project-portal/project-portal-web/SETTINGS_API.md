@@ -4,6 +4,8 @@
 
 Complete integration of the `/settings` backend endpoints with Next.js frontend. Provides comprehensive management for user profiles, notifications, API keys, integrations, and billing.
 
+Compliance and privacy integration is also included via `/compliance` endpoints for privacy requests, preferences, consents, audit logs, and retention policies.
+
 ## Architecture
 
 ### API Client (`src/lib/api/settings/`)
@@ -45,6 +47,41 @@ getBillingSummary(): Promise<BillingSummary>
 getInvoices(): Promise<Invoice[]>
 downloadInvoicePDF(invoiceId: string): Promise<Blob>
 addPaymentMethod(payload: PaymentMethodPayload): Promise<{ message: string; payment_method_id: string }>
+```
+
+### Compliance API Client (`src/lib/api/compliance/`)
+
+#### `client.ts`
+Main API client with async methods for all compliance endpoints:
+
+```typescript
+// Privacy requests
+createExportRequest(payload: ExportRequestPayload): Promise<PrivacyRequest>
+createDeleteRequest(payload: DeleteRequestPayload): Promise<PrivacyRequest>
+getPrivacyRequestStatus(id: string): Promise<PrivacyRequest>
+listPrivacyRequests(params?: { status?: string; limit?: number; offset?: number }): Promise<PaginatedResponse<PrivacyRequest[]>>
+
+// Preferences
+getPreferences(): Promise<PrivacyPreference>
+updatePreferences(payload: UpdatePreferencesPayload): Promise<PrivacyPreference>
+
+// Consents
+recordConsent(payload: RecordConsentPayload): Promise<ConsentRecord>
+listConsents(): Promise<ConsentRecord[]>
+withdrawConsent(type: string): Promise<{ message: string }>
+
+// Audit logs
+queryAuditLogs(params?: AuditLogQuery): Promise<PaginatedResponse<AuditLog[]>>
+
+// Retention
+createRetentionPolicy(payload: CreateRetentionPolicyPayload): Promise<RetentionPolicy>
+listRetentionPolicies(params?: { data_category?: string; jurisdiction?: string; active_only?: boolean }): Promise<RetentionPolicy[]>
+getRetentionPolicy(id: string): Promise<RetentionPolicy>
+updateRetentionPolicy(id: string, payload: CreateRetentionPolicyPayload): Promise<RetentionPolicy>
+listRetentionSchedules(params?: { policy_id?: string }): Promise<RetentionSchedule[]>
+
+// Stats
+getComplianceStats(): Promise<ComplianceStats>
 ```
 
 #### `types.ts`
@@ -115,6 +152,13 @@ Main container with tab navigation. Manages active tab state and renders appropr
 - Invoice history with download links
 - Filter by status (paid, pending, overdue)
 - Payment method management placeholder
+
+### ComplianceTab
+- Submit privacy export and delete requests
+- Manage privacy preferences and user consents
+- View audit logs with event filtering
+- Create and update retention policies
+- View retention schedules and compliance stats
 
 ## Usage Examples
 
@@ -228,6 +272,10 @@ src/
 │   │       ├── client.ts          # Main API client
 │   │       ├── types.ts           # TypeScript interfaces
 │   │       └── index.ts           # Exports
+│   │   └── compliance/
+│   │       ├── client.ts          # Compliance API client
+│   │       ├── types.ts           # Compliance types
+│   │       └── index.ts           # Exports
 │   ├── errors/
 │   │   └── settingsErrors.ts      # Error handling
 │   └── hooks/
@@ -239,11 +287,14 @@ src/
 │       ├── APIKeysTab.tsx
 │       ├── IntegrationsTab.tsx
 │       ├── BillingTab.tsx
+│       ├── ComplianceTab.tsx
 │       ├── SettingsLayout.tsx
 │       └── index.ts
 └── test/
     └── settings/
         └── client.test.ts
+  └── compliance/
+    └── client.test.ts
 ```
 
 ## Testing
@@ -254,6 +305,7 @@ Unit tests cover:
 - API key lifecycle (create, list, delete, rotate)
 - Integration configuration
 - Billing data retrieval
+- Compliance requests, preferences, consents, audit logs, and retention policies
 - Error handling for all status codes
 
 Run tests:
@@ -270,7 +322,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8080
 NEXT_PUBLIC_API_BASE_URL=https://api.example.com
 ```
 
-Endpoints are relative to `/api/v1/settings`.
+Endpoints are relative to `/api/v1/settings` and `/api/v1/compliance`.
 
 ## Headers
 
@@ -278,6 +330,11 @@ All requests automatically include:
 ```
 Authorization: Bearer <token>
 Content-Type: application/json
+```
+
+For compliance and financing routes, the frontend also attaches:
+```
+X-User-ID: <authenticated_user_id>
 ```
 
 Token is set via `setAuthToken()` after login. 401 responses automatically trigger logout.

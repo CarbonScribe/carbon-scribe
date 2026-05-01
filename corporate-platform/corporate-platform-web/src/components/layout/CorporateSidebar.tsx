@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import { 
   Home, 
   ShoppingCart, 
@@ -35,6 +36,12 @@ const navigation = [
 export default function CorporateSidebar() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const { canAccessRoute, isAuthenticated } = useAuth()
+
+  const visibleNavigation = navigation.filter((item) => {
+    if (!isAuthenticated) return false
+    return canAccessRoute(item.href).allowed
+  })
 
   return (
     <aside className={`
@@ -72,7 +79,7 @@ export default function CorporateSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const isActive = pathname === item.href
           return (
             <Link
