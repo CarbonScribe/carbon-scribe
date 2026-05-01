@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
 import StellarTransferPanel from '@/components/stellar/StellarTransferPanel'
+import RetirementSchedulingManager from '@/components/retirement/RetirementSchedulingManager'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
 
 export default function RetirementPage() {
@@ -248,6 +249,9 @@ export default function RetirementPage() {
               </div>
             </div>
           </div>
+
+          {/* Retirement History */}
+          <RetirementSchedulingManager />
 
           {/* Retirement History */}
           <div className="corporate-card p-6">

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { Filter, Grid, List, Search, TrendingUp, MapPin, Shield, RefreshCw, AlertCircle } from 'lucide-react'
+import Link from 'next/link'
+import { Filter, Grid, List, Search, TrendingUp, MapPin, Shield, RefreshCw, AlertCircle, Gavel } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
 import { useMarketplace, DEFAULT_FILTERS } from '@/hooks/useMarketplace'
 import { MarketplaceCredit, LocalFilterState } from '@/types/marketplace'
@@ -76,6 +77,20 @@ export default function MarketplacePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Tab strip: Credits / Auctions */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700 gap-1">
+        <span className="px-5 py-2.5 text-sm font-semibold border-b-2 border-corporate-blue text-corporate-blue">
+          Credits
+        </span>
+        <Link
+          href="/marketplace/auctions"
+          className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-corporate-blue dark:hover:text-corporate-blue transition-colors"
+        >
+          <Gavel size={14} />
+          Auctions
+        </Link>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">

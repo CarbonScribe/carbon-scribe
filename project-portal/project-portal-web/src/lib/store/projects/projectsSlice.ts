@@ -8,6 +8,7 @@ import {
   deleteProjectApi,
 } from './projects.api';
 import { getErrorMessage } from '@/lib/utils/errorMessage';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 
 const initialState = {
   projects: [] as Project[],
@@ -103,12 +104,24 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
         projects: [newProject, ...state.projects],
         loading: { ...state.loading, isCreating: false },
       }));
+      
+      // Show success toast
+      showSuccessToast('Project created successfully', {
+        description: data.name ? `"${data.name}" has been created` : undefined,
+      });
+      
       return newProject;
     } catch (error: unknown) {
       set({
         loading: { ...get().loading, isCreating: false },
         errors: { ...get().errors, create: getErrorMessage(error) },
       });
+      
+      // Show error toast
+      showErrorToast('Failed to create project', {
+        description: 'Please check your input and try again.',
+      });
+      
       return null;
     }
   },
@@ -130,12 +143,24 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
           state.selectedProject?.id === id ? updatedProject : state.selectedProject,
         loading: { ...state.loading, isUpdating: false },
       }));
+      
+      // Show success toast
+      showSuccessToast('Project updated successfully', {
+        description: data.name ? `"${data.name}" has been updated` : undefined,
+      });
+      
       return updatedProject;
     } catch (error: unknown) {
       set({
         loading: { ...get().loading, isUpdating: false },
         errors: { ...get().errors, update: getErrorMessage(error) },
       });
+      
+      // Show error toast
+      showErrorToast('Failed to update project', {
+        description: 'Please try again or contact support.',
+      });
+      
       return null;
     }
   },
@@ -155,12 +180,22 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
           state.selectedProject?.id === id ? null : state.selectedProject,
         loading: { ...state.loading, isDeleting: false },
       }));
+      
+      // Show success toast
+      showSuccessToast('Project deleted successfully');
+      
       return true;
     } catch (error: unknown) {
       set({
         loading: { ...get().loading, isDeleting: false },
         errors: { ...get().errors, delete: getErrorMessage(error) },
       });
+      
+      // Show error toast
+      showErrorToast('Failed to delete project', {
+        description: 'Please try again or contact support.',
+      });
+      
       return false;
     }
   },

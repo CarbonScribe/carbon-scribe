@@ -1,4 +1,9 @@
-import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  RequestMethod,
+} from '@nestjs/common';
 import { StellarModule } from '../stellar/stellar.module';
 import { DatabaseModule } from '../shared/database/database.module';
 import { AuditTrailController } from './audit-trail.controller';
@@ -31,12 +36,12 @@ export class AuditTrailModule implements NestModule {
     consumer.apply(ComplianceAuditMiddleware).forRoutes('*');
 
     // Rate limiting on audit hash anchoring and verification endpoints
-    consumer
-      .apply(AuditRateLimitMiddleware)
-      .forRoutes(
-        { path: 'api/v1/audit/anchor-hash', method: RequestMethod.POST },
-        { path: 'api/v1/audit/verify-hash/:tokenId', method: RequestMethod.GET },
-      );
+    consumer.apply(AuditRateLimitMiddleware).forRoutes(
+      { path: 'api/v1/audit/anchor-hash', method: RequestMethod.POST },
+      {
+        path: 'api/v1/audit/verify-hash/:tokenId',
+        method: RequestMethod.GET,
+      },
+    );
   }
 }
-

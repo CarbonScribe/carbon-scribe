@@ -6,8 +6,15 @@ import { NotificationsTab } from "./NotificationsTab";
 import { APIKeysTab } from "./APIKeysTab";
 import { IntegrationsTab } from "./IntegrationsTab";
 import { BillingTab } from "./BillingTab";
+import { ComplianceTab } from "./ComplianceTab";
 
-type TabType = "profile" | "notifications" | "api-keys" | "integrations" | "billing";
+type TabType =
+  | "profile"
+  | "notifications"
+  | "api-keys"
+  | "integrations"
+  | "billing"
+  | "compliance";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: "👤" },
@@ -15,6 +22,7 @@ const TABS = [
   { id: "api-keys", label: "API Keys", icon: "🔑" },
   { id: "integrations", label: "Integrations", icon: "🔗" },
   { id: "billing", label: "Billing", icon: "💳" },
+  { id: "compliance", label: "Compliance", icon: "🛡️" },
 ] as const;
 
 export function SettingsLayout() {
@@ -32,6 +40,8 @@ export function SettingsLayout() {
         return <IntegrationsTab />;
       case "billing":
         return <BillingTab />;
+      case "compliance":
+        return <ComplianceTab />;
       default:
         return <ProfileTab />;
     }

@@ -108,11 +108,7 @@ export class EsrsDisclosureService {
     private readonly ghgProtocolService: GhgProtocolService,
   ) {}
 
-  async record(
-    companyId: string,
-    dto: RecordDisclosureDto,
-    userId = 'system',
-  ) {
+  async record(companyId: string, dto: RecordDisclosureDto, userId = 'system') {
     const disclosure = await this.prisma.esrsDisclosure.create({
       data: {
         companyId,

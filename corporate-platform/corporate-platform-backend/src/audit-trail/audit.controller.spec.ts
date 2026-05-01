@@ -103,7 +103,10 @@ describe('AuditController', () => {
 
       const result = await controller.verifyHash(mockUser, tokenId);
 
-      expect(service.verifyHash).toHaveBeenCalledWith(mockUser.companyId, tokenId);
+      expect(service.verifyHash).toHaveBeenCalledWith(
+        mockUser.companyId,
+        tokenId,
+      );
       expect(result).toEqual(expectedResult);
     });
   });

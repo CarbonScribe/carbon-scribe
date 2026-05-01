@@ -195,6 +195,49 @@ JWT_EXPIRY=15m
 
 `PORT=4000` is recommended locally to avoid conflicts with other services on `3000`.
 
+## Retirement Scheduling API
+
+The backend supports both plural and singular scheduling route prefixes for compatibility:
+
+- `POST /api/v1/retirement-schedules` and `POST /api/v1/retirement-scheduling`
+- `GET /api/v1/retirement-schedules` and `GET /api/v1/retirement-scheduling`
+- `GET /api/v1/retirement-schedules/:id` and `GET /api/v1/retirement-scheduling/:id`
+- `PATCH /api/v1/retirement-schedules/:id`
+- `PATCH /api/v1/retirement-scheduling/:id` and `PUT /api/v1/retirement-scheduling/:id`
+- `DELETE /api/v1/retirement-schedules/:id` and `DELETE /api/v1/retirement-scheduling/:id`
+
+`PUT` support on the singular route is provided for frontend clients that perform full-update semantics.
+
+## Retirement Analytics API
+
+Retirement analytics endpoints are exposed at `api/v1/retirement-analytics` and are scoped to the authenticated user's company:
+
+- `GET /api/v1/retirement-analytics/purpose-breakdown`
+- `GET /api/v1/retirement-analytics/trends`
+- `GET /api/v1/retirement-analytics/forecast`
+- `GET /api/v1/retirement-analytics/impact`
+- `GET /api/v1/retirement-analytics/progress`
+- `GET /api/v1/retirement-analytics/summary`
+
+For API key integrations, equivalent endpoints are available under:
+
+- `GET /api/v1/integrations/retirement-analytics/*`
+
+## IPFS API
+
+IPFS-backed document and certificate management endpoints are available at `api/v1/ipfs`:
+
+- `POST /api/v1/ipfs/upload`
+- `POST /api/v1/ipfs/batch/upload`
+- `POST /api/v1/ipfs/batch/pin`
+- `GET /api/v1/ipfs/:cid`
+- `GET /api/v1/ipfs/:cid/metadata`
+- `DELETE /api/v1/ipfs/:cid`
+- `POST /api/v1/ipfs/certificate/:retirementId`
+- `GET /api/v1/ipfs/certificate/:cid/verify`
+- `GET /api/v1/ipfs/documents`
+- `GET /api/v1/ipfs/documents/:referenceId`
+
 ## 📁 Project Structure
 ```
 corporate-platform-backend/

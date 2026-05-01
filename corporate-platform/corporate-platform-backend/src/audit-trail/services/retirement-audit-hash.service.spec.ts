@@ -54,12 +54,14 @@ const buildService = (overrides?: {
   };
 
   const retirementTracker = {
-    invoke: overrides?.trackerInvoke ??
+    invoke:
+      overrides?.trackerInvoke ??
       jest.fn().mockResolvedValue({
         transactionHash: 'tx_abc123',
         status: 'CONFIRMED',
       }),
-    getRetirementRecord: overrides?.trackerGetRecord ??
+    getRetirementRecord:
+      overrides?.trackerGetRecord ??
       jest.fn().mockResolvedValue({
         token_id: 42,
         retiring_entity: 'GABC...',
@@ -77,7 +79,14 @@ const buildService = (overrides?: {
     eventLogger as any,
   );
 
-  return { service, prisma, retirementTracker, eventLogger, defaultAnchor, now };
+  return {
+    service,
+    prisma,
+    retirementTracker,
+    eventLogger,
+    defaultAnchor,
+    now,
+  };
 };
 
 const baseInput = {
@@ -113,7 +122,12 @@ describe('RetirementAuditHashService — deterministic hashing', () => {
 
   it('handles nested arrays and null values deterministically', () => {
     const { service } = buildService();
-    const record = { items: [{ b: null, a: 1 }, { b: 2, a: null }] };
+    const record = {
+      items: [
+        { b: null, a: 1 },
+        { b: 2, a: null },
+      ],
+    };
 
     const h1 = service.computeAuditHash(record);
     const h2 = service.computeAuditHash(record);
@@ -213,7 +227,9 @@ describe('RetirementAuditHashService — anchorHash (happy path)', () => {
 describe('RetirementAuditHashService — anchorHash (idempotency)', () => {
   it('returns existing CONFIRMED anchor without re-invoking contract', async () => {
     const existingHash = new RetirementAuditHashService(
-      {} as any, {} as any, {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
     ).computeAuditHash(baseInput.auditRecord);
 
     const confirmedAnchor = {
@@ -252,9 +268,18 @@ describe('RetirementAuditHashService — anchorHash (idempotency)', () => {
       anchoredAt: new Date(),
     };
 
-    const updateMock = jest.fn()
-      .mockResolvedValueOnce({ ...failedAnchor, anchorStatus: 'PENDING', onChainTxHash: null })
-      .mockResolvedValueOnce({ ...failedAnchor, anchorStatus: 'CONFIRMED', onChainTxHash: 'tx_retry' });
+    const updateMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ...failedAnchor,
+        anchorStatus: 'PENDING',
+        onChainTxHash: null,
+      })
+      .mockResolvedValueOnce({
+        ...failedAnchor,
+        anchorStatus: 'CONFIRMED',
+        onChainTxHash: 'tx_retry',
+      });
 
     const { service, retirementTracker } = buildService({
       prismaAnchor: {
@@ -350,7 +375,9 @@ describe('RetirementAuditHashService — verifyHash', () => {
     const { service } = buildService({
       prismaAnchor: {
         findFirst: jest.fn().mockResolvedValue(confirmedAnchor),
-        update: jest.fn().mockResolvedValue({ ...confirmedAnchor, verifiedAt: new Date() }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ ...confirmedAnchor, verifiedAt: new Date() }),
       },
     });
 
@@ -412,7 +439,9 @@ describe('RetirementAuditHashService — verifyHash', () => {
         findFirst: jest.fn().mockResolvedValue(confirmedAnchor),
         update: jest.fn().mockResolvedValue(confirmedAnchor),
       },
-      trackerGetRecord: jest.fn().mockRejectedValue(new Error('Soroban RPC down')),
+      trackerGetRecord: jest
+        .fn()
+        .mockRejectedValue(new Error('Soroban RPC down')),
     });
 
     const result = await service.verifyHash('company-1', 42);

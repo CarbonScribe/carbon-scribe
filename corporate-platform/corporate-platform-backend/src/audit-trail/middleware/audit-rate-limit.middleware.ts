@@ -29,7 +29,9 @@ export class AuditRateLimitMiddleware implements NestMiddleware {
   private readonly requestLog = new Map<string, number[]>();
 
   constructor() {
-    this.windowMs = Number(process.env.AUDIT_ANCHOR_RATE_LIMIT_WINDOW_MS ?? 60_000);
+    this.windowMs = Number(
+      process.env.AUDIT_ANCHOR_RATE_LIMIT_WINDOW_MS ?? 60_000,
+    );
     this.maxRequests = Number(process.env.AUDIT_ANCHOR_RATE_LIMIT_MAX ?? 30);
   }
 

@@ -7,6 +7,9 @@ A modern Next.js web application for corporate buyers to purchase, manage, and r
 - **Dashboard Overview**: Real-time portfolio metrics and performance analytics
 - **Credit Marketplace**: Browse and purchase verified carbon credits
 - **Instant Retirement**: Retire credits with on-chain verification
+- **Retirement Scheduling**: Create, edit, and cancel future retirement events with reminder windows
+- **Retirement Analytics**: Live impact, trend, forecast, and sustainability progress dashboards
+- **IPFS Document Management**: Upload, retrieve, pin, and verify documents/certificates via decentralized storage
 - **Portfolio Analytics**: Visual breakdown by methodology and region
 - **Live Retirement Feed**: Real-time updates on corporate retirements
 - **Stellar Transfer Center**: Initiate single and batch blockchain transfers, poll live status, and track on-chain confirmations
@@ -46,11 +49,69 @@ What is included:
 - Real-time polling for pending transfers
 - On-chain activity table with direct explorer links
 
+## Retirement Scheduling Integration
+
+The retirement view now integrates backend scheduling endpoints for full lifecycle management:
+
+- `POST /api/v1/retirement-scheduling`
+- `GET /api/v1/retirement-scheduling`
+- `GET /api/v1/retirement-scheduling/:id`
+- `PUT /api/v1/retirement-scheduling/:id`
+- `DELETE /api/v1/retirement-scheduling/:id`
+
+What is included:
+
+- Typed scheduling API service in `src/services/retirement-scheduling.service.ts`
+- Scheduling manager UI in `src/components/retirement/RetirementSchedulingManager.tsx`
+- Upcoming reminder cards based on `notifyBefore` and each schedule's `nextRunDate`
+- Unit and component tests for API methods and scheduling create/cancel/error flows
+
+## Retirement Analytics Integration
+
+The analytics page now integrates Retirement Analytics API endpoints:
+
+- `GET /api/v1/retirement-analytics/purpose-breakdown`
+- `GET /api/v1/retirement-analytics/trends`
+- `GET /api/v1/retirement-analytics/forecast`
+- `GET /api/v1/retirement-analytics/impact`
+- `GET /api/v1/retirement-analytics/progress`
+- `GET /api/v1/retirement-analytics/summary`
+
+What is included:
+
+- Typed analytics client in `src/services/retirement-analytics.service.ts`
+- Retirement analytics dashboard component in `src/components/analytics/RetirementAnalyticsDashboard.tsx`
+- Filter support for time range and aggregation (monthly/quarterly)
+- Resilient loading, error, and empty-state handling
+- Unit/component tests for analytics API wiring and UI states
+
+## IPFS Integration
+
+The web app now includes IPFS document and certificate management via:
+
+- `POST /api/v1/ipfs/upload`
+- `POST /api/v1/ipfs/batch/upload`
+- `POST /api/v1/ipfs/batch/pin`
+- `GET /api/v1/ipfs/:cid`
+- `GET /api/v1/ipfs/:cid/metadata`
+- `DELETE /api/v1/ipfs/:cid`
+- `POST /api/v1/ipfs/certificate/:retirementId`
+- `GET /api/v1/ipfs/certificate/:cid/verify`
+- `GET /api/v1/ipfs/documents`
+- `GET /api/v1/ipfs/documents/:referenceId`
+
+What is included:
+
+- Typed IPFS API client in `src/services/ipfs.service.ts`
+- Document and certificate manager UI in `src/components/ipfs/IpfsManager.tsx`
+- Support for single upload, batch upload, batch pin, CID retrieval, delete/unpin, certificate anchoring, and verification
+- Loading/error/success states and integration tests for core flows
+
 ## Environment Variables
 
 Create `.env.local` from `.env.example` and configure:
 
-- `NEXT_PUBLIC_API_BASE_URL`: Base URL for backend API (example: `http://localhost:4000`)
+- `NEXT_PUBLIC_API_URL`: Base URL for backend API (example: `http://localhost:4000/api/v1`)
 - `NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL`: Explorer prefix used for transfer links
 
 ## Testing
