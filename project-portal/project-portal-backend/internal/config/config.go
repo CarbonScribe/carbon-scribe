@@ -20,6 +20,7 @@ type Config struct {
 	Auth          AuthConfig
 	Redis         RedisConfig
 	Soroban       SorobanConfig
+	Notifications NotificationsConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -78,10 +79,17 @@ type RedisConfig struct {
 }
 
 type SorobanConfig struct {
-	RPCURL               string
-	NetworkPassphrase    string
-	CarbonAssetContract  string
-	InventoryCacheTTL    string
+	RPCURL              string
+	NetworkPassphrase   string
+	CarbonAssetContract string
+	InventoryCacheTTL   string
+}
+
+type NotificationsConfig struct {
+	MongoURI          string
+	MongoDatabase     string
+	MongoEnabled      bool
+	ReconnectQueueMax int
 }
 
 // Load loads configuration from environment variables
@@ -177,6 +185,12 @@ func Load() (*Config, error) {
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
 		},
+		Notifications: NotificationsConfig{
+			MongoURI:          getEnvOrDefault("NOTIFICATIONS_MONGO_URI", "mongodb://localhost:27017"),
+			MongoDatabase:     getEnvOrDefault("NOTIFICATIONS_MONGO_DB", "carbon_scribe_notifications"),
+			MongoEnabled:      getEnvOrDefault("NOTIFICATIONS_STORAGE", "mongo") == "mongo",
+			ReconnectQueueMax: getIntOrDefault("NOTIFICATIONS_RECONNECT_QUEUE_MAX", 100),
+		},
 	}, nil
 }
 
@@ -185,4 +199,16 @@ func getEnvOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+func getIntOrDefault(key string, defaultVal int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
 }

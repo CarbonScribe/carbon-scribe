@@ -22,6 +22,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	integrationstellar "carbon-scribe/project-portal/project-portal-backend/internal/integration/stellar"
+	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
@@ -178,6 +179,17 @@ func main() {
 	}
 	settingsHandler := settings.NewHandler(settingsService)
 
+	// Initialize notifications module with local MongoDB-backed mock delivery implementation.
+	notificationCtx, notificationCancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer notificationCancel()
+	notificationMongoClient, err := notifications.ConnectMongo(notificationCtx, cfg.Notifications.MongoURI)
+	if err != nil {
+		log.Fatalf("❌ Failed to connect notifications MongoDB: %v", err)
+	}
+	notificationsRepo := notifications.NewMongoRepository(notificationMongoClient, cfg.Notifications.MongoDatabase)
+	notificationsService := notifications.NewService(notificationsRepo)
+	notificationsHandler := notifications.NewHandler(notificationsService)
+
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
 	inventoryRepo := inventory.NewRepository(db)
@@ -203,7 +215,7 @@ func main() {
 			"service":   "carbon-scribe-project-portal",
 			"timestamp": time.Now().Format(time.RFC3339),
 			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing", "inventory"},
+			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing", "inventory", "notifications"},
 		})
 	})
 
@@ -225,6 +237,7 @@ func main() {
 				"settings":      "/api/v1/settings/*",
 				"financing":     "/api/v1/financing/*",
 				"inventory":     "/api/v1/projects/:id/inventory/*",
+				"notifications": "/api/v1/notifications/*",
 			},
 		})
 	})
@@ -266,6 +279,9 @@ func main() {
 		// Register collaboration routes under v1
 		collaboration.RegisterRoutes(v1, collaborationHandler, tokenManager)
 
+		// Register notifications routes under v1
+		notifications.RegisterRoutes(v1, notificationsHandler, tokenManager)
+
 		// Register financing routes under v1
 		financingHandler.RegisterRoutes(v1)
 		mintingHandler.RegisterRoutes(v1)
@@ -306,6 +322,7 @@ func main() {
 		fmt.Println("   - Geospatial: /api/v1/geospatial/*")
 		fmt.Println("   - Settings: /api/v1/settings/*")
 		fmt.Println("   - Financing: /api/v1/financing/*")
+		fmt.Println("   - Notifications: /api/v1/notifications/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
