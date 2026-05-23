@@ -195,6 +195,35 @@ JWT_EXPIRY=15m
 
 `PORT=4000` is recommended locally to avoid conflicts with other services on `3000`.
 
+## Development Seed Login
+
+For open-source contribution flow, the backend now auto-seeds a default development account on startup (non-production only).
+
+Default seeded credentials:
+
+- Email: `admin@acme.com`
+- Password: `Demo123!`
+
+Behavior:
+
+- Runs automatically when `NODE_ENV != production` and `DEV_SEED_ENABLED=true`
+- Creates or updates the default company and user idempotently
+- Resets the seeded password on each boot when `DEV_SEED_RESET_PASSWORD=true`
+
+Seed configuration variables (in `.env`):
+
+- `DEV_SEED_ENABLED`
+- `DEV_SEED_EMAIL`
+- `DEV_SEED_PASSWORD`
+- `DEV_SEED_FIRST_NAME`
+- `DEV_SEED_LAST_NAME`
+- `DEV_SEED_ROLE`
+- `DEV_SEED_COMPANY_ID`
+- `DEV_SEED_COMPANY_NAME`
+- `DEV_SEED_RESET_PASSWORD`
+
+This is intended for local development only.
+
 ## Retirement Scheduling API
 
 The backend supports both plural and singular scheduling route prefixes for compatibility:

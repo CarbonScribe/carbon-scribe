@@ -35,6 +35,7 @@ import { GhgProtocolModule } from './ghg-protocol/ghg-protocol.module';
 import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 import { CbamModule } from './cbam/cbam.module';
 import { SbtiModule } from './sbti/sbti.module';
+import { DevBootstrapSeedService } from './dev/dev-bootstrap-seed.service';
 
 @Module({
   imports: [
@@ -72,7 +73,7 @@ import { SbtiModule } from './sbti/sbti.module';
     SbtiModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, DevBootstrapSeedService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

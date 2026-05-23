@@ -114,6 +114,22 @@ Create `.env.local` from `.env.example` and configure:
 - `NEXT_PUBLIC_API_URL`: Base URL for backend API (example: `http://localhost:4000/api/v1`)
 - `NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL`: Explorer prefix used for transfer links
 
+## Contributor Login (Local Development)
+
+To reduce setup friction for contributors, the backend now auto-seeds a development user at startup (when not in production).
+
+Use these local credentials in the web login screen:
+
+- Email: `admin@acme.com`
+- Password: `Demo123!`
+
+If your team uses different local credentials, override the backend `DEV_SEED_*` values in `corporate-platform-backend/.env`.
+
+UI note for contributors:
+
+- Public auth routes (login/register) render a dedicated auth navigation shell
+- Authenticated application routes render the full app navigation shell
+
 ## Testing
 
 Run frontend tests (unit + component integration):
