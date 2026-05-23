@@ -106,19 +106,41 @@ src/
 ## ⚡ Quick Start
 
 1. Install dependencies:
-   `bash
-	npm install
-	# or
+```bash
+npm install
+# or
 yarn
-	`
+```
 2. Copy `.env.example` to `.env.local` and set API URLs as needed.
 3. Run the development server:
-   `bash
-	npm run dev
-	# or
+```bash
+npm run dev
+# or
 yarn dev
-	`
+```
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+---
+
+## 🔐 Authentication Setup
+
+The registration form accepts the following fields:
+
+- `full_name` - required
+- `email` - required and must be valid
+- `password` - required and must be at least 8 characters
+- `organization` - optional
+
+For local development, the backend seeds login-ready accounts on startup by default. Set `SEED_DEV_USERS=false` only if you want to disable the automatic seeding. Those accounts match the frontend login form, which only requires email and password.
+
+Default seeded accounts:
+
+| Email | Password | Role |
+| --- | --- | --- |
+| admin@carbonscribe.dev | Admin@CarbonScribe2024! | admin |
+| farmer@carbonscribe.dev | Farmer@CarbonScribe2024! | farmer |
+| verifier@carbonscribe.dev | Verifier@CarbonScribe2024! | verifier |
+| viewer@carbonscribe.dev | Viewer@CarbonScribe2024! | viewer |
 
 ---
 

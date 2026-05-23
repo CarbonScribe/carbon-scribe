@@ -244,7 +244,12 @@ make migrate-up
 ```
 4. Start development server:
 ```bash
+make run
+```
 
+5. Seed default contributor accounts for local frontend login:
+```bash
+SEED_DEV_USERS=true make run
 ```
 
 ### Configuration
@@ -260,7 +265,25 @@ STELLAR_SECRET_KEY=your_secret
 # AWS
 AWS_REGION=us-east-1
 AWS_S3_BUCKET=carbon-documents
+
+# Local development seeding
+SEED_DEV_USERS=true
 ```
+
+### Default Contributor Accounts
+
+The backend creates the following local-only accounts on startup by default. The operation is idempotent: existing accounts are detected by email and left unchanged. To disable this behavior, set `SEED_DEV_USERS=false` in your local environment.
+
+Use these credentials to sign in from the frontend app after the backend has started:
+
+| Email | Password | Full name | Organization | Role |
+| --- | --- | --- | --- | --- |
+| admin@carbonscribe.dev | Admin@CarbonScribe2024! | Admin User | CarbonScribe | admin |
+| farmer@carbonscribe.dev | Farmer@CarbonScribe2024! | Farmer User | Green Farms Co. | farmer |
+| verifier@carbonscribe.dev | Verifier@CarbonScribe2024! | Verifier User | CarbonVerify Inc. | verifier |
+| viewer@carbonscribe.dev | Viewer@CarbonScribe2024! | Viewer User | CarbonScribe | viewer |
+
+Registration from the frontend still uses the normal auth flow: full name, email, password, and optional organization. Seeded users exist only to make local contribution and frontend login easier.
 
 ## Methodology NFT Registration Flow
 

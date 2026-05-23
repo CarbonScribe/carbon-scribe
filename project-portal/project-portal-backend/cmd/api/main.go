@@ -29,6 +29,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/quality"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
+	"carbon-scribe/project-portal/project-portal-backend/internal/seed"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
@@ -42,10 +43,9 @@ import (
 
 func main() {
 
-	if err := godotenv.Load(); err != nil {
-		log.Println("⚠️  No .env file found, using environment variables")
+	if err := loadEnvFiles(); err != nil {
+		log.Println("⚠️  No .env file found in expected locations, using environment variables")
 	}
-
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -67,6 +67,11 @@ func main() {
 	// Run all migrations
 	if err := runAllMigrations(db); err != nil {
 		log.Printf("⚠️ Migration warnings: %v", err)
+	}
+
+	// Seed default contributor accounts (idempotent — skips existing records)
+	if cfg.SeedDevUsers {
+		seed.SeedDevUsers(db, cfg.Auth.PasswordHashCost)
 	}
 
 	// Initialize Elasticsearch client
@@ -343,6 +348,18 @@ func main() {
 	}
 
 	fmt.Println("✅ Server exited gracefully")
+}
+
+func loadEnvFiles() error {
+	if err := godotenv.Load(); err == nil {
+		return nil
+	}
+
+	if err := godotenv.Load(".env", "project-portal-backend/.env", "../project-portal-backend/.env"); err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("unable to locate .env file")
 }
 
 // initDatabase initializes the GORM database connection

@@ -12,6 +12,7 @@ type Config struct {
 	Port          string
 	DatabaseURL   string
 	Debug         bool
+	SeedDevUsers  bool
 	Elasticsearch ElasticsearchConfig
 	AWS           AWSConfig
 	Storage       StorageConfig
@@ -105,6 +106,7 @@ func Load() (*Config, error) {
 	}
 
 	debug := os.Getenv("DEBUG") == "true" || os.Getenv("SERVER_MODE") == "development"
+	seedDevUsers := getEnvOrDefault("SEED_DEV_USERS", "true") == "true"
 
 	esAddresses := os.Getenv("ELASTICSEARCH_ADDRESSES")
 	if esAddresses == "" {
@@ -131,9 +133,10 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:        port,
-		DatabaseURL: databaseURL,
-		Debug:       debug,
+		Port:         port,
+		DatabaseURL:  databaseURL,
+		Debug:        debug,
+		SeedDevUsers: seedDevUsers,
 		Elasticsearch: ElasticsearchConfig{
 			Addresses: strings.Split(esAddresses, ","),
 			Username:  os.Getenv("ELASTICSEARCH_USERNAME"),
