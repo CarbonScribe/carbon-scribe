@@ -55,7 +55,7 @@ class ComplianceService {
     try {
       const token =
         typeof window !== 'undefined'
-          ? localStorage.getItem('accessToken')
+          ? localStorage.getItem('cs_access_token')
           : null;
       const headers: HeadersInit = {
         Authorization: token ? `Bearer ${token}` : '',

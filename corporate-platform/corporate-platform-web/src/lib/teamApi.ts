@@ -19,7 +19,7 @@ const TEAM_BASE = `${BASE_URL}/api/v1/team`
 
 function getAuthHeaders(): HeadersInit {
   const token =
-    typeof window !== 'undefined' ? localStorage.getItem('access_token') : null
+    typeof window !== 'undefined' ? localStorage.getItem('cs_access_token') : null
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
