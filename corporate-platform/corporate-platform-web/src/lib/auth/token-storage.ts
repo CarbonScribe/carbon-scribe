@@ -43,7 +43,23 @@ export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
   
   try {
-    return localStorage.getItem(ACCESS_TOKEN_KEY);
+    let token = localStorage.getItem(ACCESS_TOKEN_KEY);
+    
+    // Migration from legacy keys
+    if (!token) {
+      const legacyKeys = ['accessToken', 'access_token'];
+      for (const key of legacyKeys) {
+        const legacyToken = localStorage.getItem(key);
+        if (legacyToken) {
+          token = legacyToken;
+          localStorage.setItem(ACCESS_TOKEN_KEY, token);
+          legacyKeys.forEach(k => localStorage.removeItem(k));
+          break;
+        }
+      }
+    }
+    
+    return token;
   } catch (error) {
     console.error('Failed to get access token:', error);
     return null;

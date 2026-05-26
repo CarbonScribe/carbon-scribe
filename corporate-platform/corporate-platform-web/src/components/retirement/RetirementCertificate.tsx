@@ -54,7 +54,7 @@ export default function RetirementCertificate({
     if (!record) return;
     const url = retirementService.getCertificateDownloadUrl(record.id);
     const token =
-      typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      typeof window !== 'undefined' ? localStorage.getItem('cs_access_token') : null;
 
     const res = await fetch(url, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
