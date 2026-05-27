@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as FormData from 'form-data';
 import axios from 'axios';
+import { createReadStream, unlink } from 'fs';
+import { createHash } from 'crypto';
 import { IpfsConfig } from '../ipfs.config';
 import { PrismaService } from '../../shared/database/prisma.service';
+import * as NodeClam from 'clamscan';
 
 @Injectable()
 export class UploadService {
@@ -14,13 +17,120 @@ export class UploadService {
     private readonly prisma: PrismaService,
   ) {}
 
+  private async computeSha256(file: any): Promise<string> {
+    const hash = createHash('sha256');
+
+    if (file?.path) {
+      await new Promise<void>((resolve, reject) => {
+        const stream = createReadStream(file.path);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve());
+      });
+      return hash.digest('hex');
+    }
+
+    if (file?.buffer) {
+      hash.update(file.buffer);
+      return hash.digest('hex');
+    }
+
+    throw new Error('No file data available for hashing');
+  }
+
   async upload(file: any, metadata: any) {
     if (!file) return { error: 'No file provided' };
+    const idempotencyKey = metadata?.idempotencyKey;
+    const companyId = metadata?.companyId || 'unknown';
+    let contentHash: string;
+
+    try {
+      contentHash = await this.computeSha256(file);
+    } catch (hashErr) {
+      this.logger.error(
+        `Hashing failed for ${file?.originalname || 'unknown file'}:`,
+        hashErr,
+      );
+      if (file.path) unlink(file.path, () => {});
+      return {
+        error: 'File hash computation failed',
+        details: hashErr?.message || hashErr,
+      };
+    }
+
+    if (idempotencyKey) {
+      const existing = await this.prisma.ipfsDocument.findFirst({
+        where: { companyId, idempotencyKey },
+      });
+      if (existing) {
+        return { cid: existing.ipfsCid, record: existing, idempotent: true };
+      }
+    }
+
+    // --- Antivirus scan step ---
+    let scanResult;
+    try {
+      const clamscan = await new NodeClam().init({
+        removeInfected: false,
+        quarantineInfected: false,
+        scanLog: null,
+        debugMode: false,
+        fileList: null,
+        scanRecursively: false,
+        clamdscan: {
+          socket: false,
+          host: '127.0.0.1',
+          port: 3310,
+          timeout: 60000,
+          localFallback: true,
+        },
+      });
+      if (file.path) {
+        scanResult = await clamscan.isInfected(file.path);
+      } else if (file.buffer) {
+        scanResult = await clamscan.scanBuffer(file.buffer);
+      } else {
+        return { error: 'No file data provided' };
+      }
+      if (scanResult && scanResult.isInfected) {
+        this.logger.warn(
+          `File ${file.originalname} failed antivirus scan: ${scanResult.viruses}`,
+        );
+        if (file.path) unlink(file.path, () => {});
+        return {
+          error: 'File failed antivirus scan',
+          details: scanResult.viruses,
+        };
+      }
+      this.logger.log(`File ${file.originalname} passed antivirus scan.`);
+    } catch (scanErr) {
+      this.logger.error(
+        `Antivirus scan error for ${file.originalname}:`,
+        scanErr,
+      );
+      if (file.path) unlink(file.path, () => {});
+      return {
+        error: 'Antivirus scan failed',
+        details: scanErr?.message || scanErr,
+      };
+    }
+    // --- End antivirus scan ---
+
     const form = new FormData();
-    form.append('file', file.buffer, {
-      filename: file.originalname,
-      contentType: file.mimetype,
-    });
+    if (file.path) {
+      form.append('file', createReadStream(file.path), {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+    } else if (file.buffer) {
+      // fallback for tests or non-streaming
+      form.append('file', file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+    } else {
+      return { error: 'No file data provided' };
+    }
     if (metadata) {
       form.append(
         'pinataMetadata',
@@ -42,7 +152,7 @@ export class UploadService {
       const cid = res.data.IpfsHash || res.data.cid || res.data.hash;
       const record = await this.prisma.ipfsDocument.create({
         data: {
-          companyId: metadata.companyId || 'unknown',
+          companyId,
           documentType: metadata.documentType || 'UNKNOWN',
           referenceId: metadata.referenceId || '',
           ipfsCid: cid,
@@ -53,16 +163,22 @@ export class UploadService {
           pinned: true,
           pinnedAt: new Date(),
           metadata,
+          idempotencyKey: idempotencyKey || null,
+          contentHash,
         },
       });
-      return { cid, record };
+      // Clean up file after upload (if streaming)
+      if (file.path) {
+        unlink(file.path, () => {});
+      }
+      return { cid, record: { ...record, contentHash } };
     } catch (err) {
       this.logger.error('Pinata upload failed', err?.message || err);
-      // fallback: return mock CID based on buffer
+      // fallback: return mock CID based on buffer or file
       const cid = `mockcid-${Date.now()}`;
       const record = await this.prisma.ipfsDocument.create({
         data: {
-          companyId: metadata.companyId || 'unknown',
+          companyId,
           documentType: metadata.documentType || 'UNKNOWN',
           referenceId: metadata.referenceId || '',
           ipfsCid: cid,
@@ -73,30 +189,28 @@ export class UploadService {
           pinned: false,
           pinnedAt: new Date(),
           metadata,
+          idempotencyKey: idempotencyKey || null,
+          contentHash,
         },
       });
-      return { cid, record, warning: 'pinning-failed-mock-cid' };
+      if (file.path) {
+        unlink(file.path, () => {});
+      }
+      return {
+        cid,
+        record: { ...record, contentHash },
+        warning: 'pinning-failed-mock-cid',
+      };
     }
   }
 
-  async batchUpload(
-    files: Array<{ fileName: string; content: string }>,
-    metadata: any,
-  ) {
+  async batchUpload(files: any[], metadata: any) {
     const results = [];
-    for (const f of files) {
-      // create a buffer from base64 if provided
-      const buffer = Buffer.from(f.content || '', 'base64');
-      const fakeFile: any = {
-        originalname: f.fileName,
-        buffer,
-        size: buffer.length,
-        mimetype: 'application/octet-stream',
-      };
-      // reuse upload
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const res = await this.upload(fakeFile, metadata);
+    const idempotencyKeys = metadata.idempotencyKeys || [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const meta = { ...metadata, idempotencyKey: idempotencyKeys[i] };
+      const res = await this.upload(file, meta);
       results.push(res);
     }
     return results;

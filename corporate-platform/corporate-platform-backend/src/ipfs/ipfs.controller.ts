@@ -10,7 +10,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,12 +31,26 @@ export class IpfsController {
   ) {}
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, cb) => {
+          cb(null, `${Date.now()}-${file.originalname}`);
+        },
+      }),
+      limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB limit, adjust as needed
+    }),
+  )
   async uploadFile(
     @UploadedFile() file: any,
     @Body() body: any,
     @CurrentUser() user: JwtPayload,
   ) {
+    // Require idempotencyKey
+    if (!body?.idempotencyKey) {
+      return { error: 'idempotencyKey is required' };
+    }
     return this.upload.upload(file, {
       ...(body || {}),
       companyId: user.companyId,
@@ -43,16 +58,39 @@ export class IpfsController {
   }
 
   @Post('batch/upload')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: diskStorage({
+        destination: './uploads',
+        filename: (req, file, cb) => {
+          cb(null, `${Date.now()}-${file.originalname}`);
+        },
+      }),
+      limits: { fileSize: 1024 * 1024 * 1024 }, // 1GB per file
+    }),
+  )
   async batchUpload(
-    @Body()
-    body: {
-      files: Array<{ fileName: string; content: string }>;
-      metadata?: any;
-    },
+    @UploadedFile() files: any[],
+    @Body() body: any,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.upload.batchUpload(body.files || [], {
+    // Each file must have an idempotencyKey in the body (as array or map)
+    const idempotencyKeys = Array.isArray(body.idempotencyKeys)
+      ? body.idempotencyKeys
+      : [];
+    if (!files || files.length === 0) {
+      return { error: 'No files uploaded' };
+    }
+    for (let i = 0; i < files.length; i++) {
+      if (!idempotencyKeys[i]) {
+        return {
+          error: `File ${files[i].originalname} missing idempotencyKey`,
+        };
+      }
+    }
+    return this.upload.batchUpload(files, {
       ...(body.metadata || {}),
+      idempotencyKeys,
       companyId: user.companyId,
     });
   }

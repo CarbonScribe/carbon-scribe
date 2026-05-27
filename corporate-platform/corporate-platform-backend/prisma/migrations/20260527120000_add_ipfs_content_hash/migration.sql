@@ -1,0 +1,2 @@
+ALTER TABLE "IpfsDocument"
+ADD COLUMN IF NOT EXISTS "contentHash" TEXT;
