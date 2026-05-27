@@ -267,6 +267,22 @@ IPFS-backed document and certificate management endpoints are available at `api/
 - `GET /api/v1/ipfs/documents`
 - `GET /api/v1/ipfs/documents/:referenceId`
 
+## 🚦 Idempotency for Uploads
+
+All file upload endpoints (`/api/v1/ipfs/upload`, `/api/v1/ipfs/batch/upload`) require an `idempotencyKey` parameter. This key must be unique per logical file upload attempt. If a request with the same `idempotencyKey` is retried (e.g., due to network issues), the backend will return the original upload record and never create duplicates.
+
+- **Single Upload:**
+  - Field: `idempotencyKey` (string, required)
+  - Example (multipart/form-data):
+    - `idempotencyKey: 123e4567-e89b-12d3-a456-426614174000`
+    - `file: <yourfile.pdf>`
+- **Batch Upload:**
+  - Each file object must include an `idempotencyKey`.
+
+If `idempotencyKey` is missing, the API returns an error. Duplicate requests with the same key return the same record and `cid`.
+
+See [test/ipfs-idempotency.e2e-spec.ts](test/ipfs-idempotency.e2e-spec.ts) for usage examples.
+
 ## 📁 Project Structure
 ```
 corporate-platform-backend/

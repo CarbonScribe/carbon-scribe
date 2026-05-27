@@ -1112,24 +1112,26 @@ model ApiKey {
 }
 
 model IpfsDocument {
-  id           String    @id @default(cuid())
-  companyId    String
-  company      Company   @relation(fields: [companyId], references: [id])
-  documentType String // CERTIFICATE, REPORT, AUDIT_LOG, PROOF
-  referenceId  String // retirementId, reportId, auditId
-  ipfsCid      String    @unique
-  ipfsGateway  String
-  fileName     String
-  fileSize     Int
-  mimeType     String
-  pinned       Boolean   @default(true)
-  pinnedAt     DateTime
-  metadata     Json?
-  createdAt    DateTime  @default(now())
-  expiresAt    DateTime?
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id])
+  documentType    String // CERTIFICATE, REPORT, AUDIT_LOG, PROOF
+  referenceId     String // retirementId, reportId, auditId
+  ipfsCid         String    @unique
+  ipfsGateway     String
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  pinned          Boolean   @default(true)
+  pinnedAt        DateTime
+  metadata        Json?
+  idempotencyKey  String?
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
 
   @@index([companyId])
   @@index([referenceId])
+  @@unique([companyId, idempotencyKey])
 }
 
 // ==========================================

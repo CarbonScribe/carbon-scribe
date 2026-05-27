@@ -16,6 +16,16 @@ export class UploadService {
 
   async upload(file: any, metadata: any) {
     if (!file) return { error: 'No file provided' };
+    const idempotencyKey = metadata?.idempotencyKey;
+    const companyId = metadata?.companyId || 'unknown';
+    if (idempotencyKey) {
+      const existing = await this.prisma.ipfsDocument.findFirst({
+        where: { companyId, idempotencyKey },
+      });
+      if (existing) {
+        return { cid: existing.ipfsCid, record: existing, idempotent: true };
+      }
+    }
     const form = new FormData();
     form.append('file', file.buffer, {
       filename: file.originalname,
@@ -42,7 +52,7 @@ export class UploadService {
       const cid = res.data.IpfsHash || res.data.cid || res.data.hash;
       const record = await this.prisma.ipfsDocument.create({
         data: {
-          companyId: metadata.companyId || 'unknown',
+          companyId,
           documentType: metadata.documentType || 'UNKNOWN',
           referenceId: metadata.referenceId || '',
           ipfsCid: cid,
@@ -53,6 +63,7 @@ export class UploadService {
           pinned: true,
           pinnedAt: new Date(),
           metadata,
+          idempotencyKey: idempotencyKey || null,
         },
       });
       return { cid, record };
@@ -62,7 +73,7 @@ export class UploadService {
       const cid = `mockcid-${Date.now()}`;
       const record = await this.prisma.ipfsDocument.create({
         data: {
-          companyId: metadata.companyId || 'unknown',
+          companyId,
           documentType: metadata.documentType || 'UNKNOWN',
           referenceId: metadata.referenceId || '',
           ipfsCid: cid,
@@ -73,6 +84,7 @@ export class UploadService {
           pinned: false,
           pinnedAt: new Date(),
           metadata,
+          idempotencyKey: idempotencyKey || null,
         },
       });
       return { cid, record, warning: 'pinning-failed-mock-cid' };
@@ -80,7 +92,11 @@ export class UploadService {
   }
 
   async batchUpload(
-    files: Array<{ fileName: string; content: string }>,
+    files: Array<{
+      fileName: string;
+      content: string;
+      idempotencyKey?: string;
+    }>,
     metadata: any,
   ) {
     const results = [];
@@ -93,10 +109,12 @@ export class UploadService {
         size: buffer.length,
         mimetype: 'application/octet-stream',
       };
-      // reuse upload
+      // Merge idempotencyKey for each file if present
+      const meta = { ...metadata };
+      if (f.idempotencyKey) meta.idempotencyKey = f.idempotencyKey;
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
-      const res = await this.upload(fakeFile, metadata);
+      const res = await this.upload(fakeFile, meta);
       results.push(res);
     }
     return results;

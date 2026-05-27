@@ -36,6 +36,10 @@ export class IpfsController {
     @Body() body: any,
     @CurrentUser() user: JwtPayload,
   ) {
+    // Require idempotencyKey
+    if (!body?.idempotencyKey) {
+      return { error: 'idempotencyKey is required' };
+    }
     return this.upload.upload(file, {
       ...(body || {}),
       companyId: user.companyId,
@@ -46,11 +50,21 @@ export class IpfsController {
   async batchUpload(
     @Body()
     body: {
-      files: Array<{ fileName: string; content: string }>;
+      files: Array<{
+        fileName: string;
+        content: string;
+        idempotencyKey?: string;
+      }>;
       metadata?: any;
     },
     @CurrentUser() user: JwtPayload,
   ) {
+    // Optionally enforce idempotencyKey for each file
+    for (const f of body.files || []) {
+      if (!f.idempotencyKey) {
+        return { error: 'Each file must have an idempotencyKey' };
+      }
+    }
     return this.upload.batchUpload(body.files || [], {
       ...(body.metadata || {}),
       companyId: user.companyId,
