@@ -21,44 +21,51 @@ import { useCorporate } from '@/contexts/CorporateContext'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
 
 export default function PortfolioPage() {
-  const { portfolio, credits, retirements } = useCorporate()
-  const [timeRange, setTimeRange] = useState<'1m' | '3m' | '6m' | '1y' | 'all'>('6m')
+  const {
+    portfolioSummary,
+    portfolioAnalytics,
+    portfolioHoldings,
+    portfolioLoading,
+    portfolioError,
+  } = useCorporate();
+  const [timeRange, setTimeRange] = useState<'1m' | '3m' | '6m' | '1y' | 'all'>('6m');
 
-  // Mock portfolio growth data
-  const growthData = [
-    { month: 'Jan', value: 45000, retired: 8000 },
-    { month: 'Feb', value: 53000, retired: 12000 },
-    { month: 'Mar', value: 65000, retired: 15000 },
-    { month: 'Apr', value: 75000, retired: 10000 },
-    { month: 'May', value: 82000, retired: 12000 },
-    { month: 'Jun', value: 90000, retired: 15000 },
-  ]
+  // Prepare data from API
+  const growthData = portfolioAnalytics?.timeline?.portfolioGrowth?.monthly?.map((item: any) => ({
+    month: item.date,
+    value: item.value,
+    retired: portfolioAnalytics?.timeline?.retirementTrends?.monthly?.find((r: any) => r.date === item.date)?.value || 0,
+  })) || [];
 
-  // Methodology distribution
-  const methodologyData = [
-    { name: 'REDD+', value: 35, color: '#0073e6' },
-    { name: 'Renewable Energy', value: 25, color: '#00d4aa' },
-    { name: 'Agriculture', value: 20, color: '#8b5cf6' },
-    { name: 'Energy Efficiency', value: 15, color: '#f59e0b' },
-    { name: 'Others', value: 5, color: '#6b7280' },
-  ]
+  const methodologyData = portfolioAnalytics?.composition?.methodologyDistribution?.map((item: any) => ({
+    name: item.name,
+    value: item.percentage,
+    color: '#0073e6', // TODO: assign colors dynamically or from backend
+  })) || [];
 
-  // Recent transactions
-  const recentTransactions = [
-    { id: 1, type: 'Purchase', project: 'Amazon Rainforest', amount: 10000, price: 18.5, date: '2024-03-15', status: 'Completed' },
-    { id: 2, type: 'Retirement', project: 'Kenya Solar', amount: 7500, price: 16.25, date: '2024-03-10', status: 'Completed' },
-    { id: 3, type: 'Purchase', project: 'Indonesia Mangroves', amount: 5000, price: 22.75, date: '2024-03-05', status: 'Pending' },
-    { id: 4, type: 'Retirement', project: 'US Agriculture', amount: 3000, price: 24.90, date: '2024-02-28', status: 'Completed' },
-    { id: 5, type: 'Purchase', project: 'India Wind', amount: 8000, price: 14.80, date: '2024-02-20', status: 'Completed' },
-  ]
+  const recentTransactions = portfolioHoldings.map((h) => ({
+    id: h.id,
+    type: h.credit?.projectName ? 'Purchase' : 'Unknown',
+    project: h.credit?.projectName || 'N/A',
+    amount: h.quantity,
+    price: h.purchasePrice,
+    date: (h as any).purchaseDate || '', // fallback if not typed
+    status: 'Completed', // TODO: map real status if available
+  }));
 
-  // Performance metrics
-  const performanceMetrics = [
-    { label: 'Portfolio Value', value: '$1.65M', change: '+12.5%', trend: 'up', icon: DollarSign },
-    { label: 'Avg. Price/ton', value: '$18.33', change: '-2.1%', trend: 'down', icon: TrendingDown },
-    { label: 'Credits Held', value: '90K tCO₂', change: '+8.2%', trend: 'up', icon: Package },
-    { label: 'Project Diversity', value: '8', change: '+2', trend: 'up', icon: Globe },
-  ]
+  const performanceMetrics = portfolioAnalytics ? [
+    { label: 'Portfolio Value', value: `$${portfolioAnalytics.performance.portfolioValue?.toLocaleString()}`, change: '+12.5%', trend: 'up', icon: DollarSign },
+    { label: 'Avg. Price/ton', value: `$${portfolioAnalytics.performance.avgPricePerTon}`, change: '-2.1%', trend: 'down', icon: TrendingDown },
+    { label: 'Credits Held', value: `${portfolioAnalytics.performance.creditsHeld?.toLocaleString()} tCO₂`, change: '+8.2%', trend: 'up', icon: Package },
+    { label: 'Project Diversity', value: `${portfolioAnalytics.performance.projectDiversity}`, change: '+2', trend: 'up', icon: Globe },
+  ] : [];
+
+  if (portfolioLoading) {
+    return <div className="p-8 text-center text-lg">Loading portfolio data...</div>;
+  }
+  if (portfolioError) {
+    return <div className="p-8 text-center text-red-600">{portfolioError}</div>;
+  }
 
   return (
     <div className="space-y-6 animate-in">

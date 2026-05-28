@@ -130,6 +130,26 @@ UI note for contributors:
 - Public auth routes (login/register) render a dedicated auth navigation shell
 - Authenticated application routes render the full app navigation shell
 
+## Authentication Features
+
+- User registration and login integrated with backend Auth API
+- Secure session/token management
+- Error handling and user feedback for all auth flows
+- Loading states for all auth actions
+- Password reset (Forgot Password) page implemented
+- Protected routes enforced for authenticated users
+
+### Password Reset Flow
+
+1. User visits `/forgot-password` and submits their email address.
+2. If the email exists, a password reset link is sent (API integration required).
+3. User follows the link to reset their password (reset page to be implemented if backend supports).
+
+### To Do
+- Integrate real API for password reset and recovery
+- Add automated tests for authentication flows
+- Document any new environment variables for auth endpoints
+
 ## Testing
 
 Run frontend tests (unit + component integration):
@@ -180,5 +200,3 @@ src/
 ├── types/
 │   └── index.ts
 ```
-
----

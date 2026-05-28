@@ -12,7 +12,7 @@ const monthlyData = [
 ]
 
 export default function DashboardOverview() {
-  const { portfolio } = useCorporate()
+  const { portfolioSummary, portfolioAnalytics } = useCorporate()
 
   return (
     <div className="corporate-card p-6">
@@ -30,10 +30,10 @@ export default function DashboardOverview() {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Value', value: `$${(portfolio.totalSpent / 1000).toFixed(1)}K`, icon: DollarSign, change: '+8.2%', trend: 'up' },
-          { label: 'Credits Retired', value: `${(portfolio.totalRetired / 1000).toFixed(1)}K`, icon: TrendingUp, change: '+12.5%', trend: 'up' },
-          { label: 'SDG Impact', value: `${Object.keys(portfolio.sdgContributions).length}`, icon: Globe, change: '+3', trend: 'up' },
-          { label: 'Risk Score', value: 'Low', icon: Shield, change: '-2pts', trend: 'down' },
+          { label: 'Total Value', value: portfolioSummary ? `$${(portfolioSummary.availableBalance / 1000).toFixed(1)}K` : 'N/A', icon: DollarSign, change: '+8.2%', trend: 'up' },
+          { label: 'Credits Retired', value: portfolioSummary ? `${(portfolioSummary.totalRetired / 1000).toFixed(1)}K` : 'N/A', icon: TrendingUp, change: '+12.5%', trend: 'up' },
+          { label: 'SDG Impact', value: portfolioAnalytics?.composition?.sdgImpact ? `${portfolioAnalytics.composition.sdgImpact.length}` : 'N/A', icon: Globe, change: '+3', trend: 'up' },
+          { label: 'Risk Score', value: portfolioAnalytics?.risk?.riskRating || 'N/A', icon: Shield, change: '-2pts', trend: 'down' },
         ].map((stat) => (
           <div key={stat.label} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">

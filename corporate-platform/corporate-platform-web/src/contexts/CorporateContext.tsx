@@ -1,7 +1,8 @@
 'use client'
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react'
-import { mockCorporateData, mockCredits, mockProjects, mockRetirements, mockPortfolio } from '@/lib/mockData'
+import { mockCorporateData, mockCredits, mockProjects, mockRetirements } from '@/lib/mockData'
+import portfolioService, { PortfolioAnalytics, PortfolioSummaryMetrics, PortfolioHolding } from '@/services/portfolio.service'
 import { useCompliance } from '@/hooks/useCompliance'
 import { ComplianceReport, ComplianceStatusItem, ComplianceFramework } from '@/types'
 
@@ -10,7 +11,11 @@ interface CorporateContextType {
   credits: any[]
   projects: any[]
   retirements: any[]
-  portfolio: any
+  portfolioSummary: PortfolioSummaryMetrics | null
+  portfolioAnalytics: PortfolioAnalytics | null
+  portfolioHoldings: PortfolioHolding[]
+  portfolioLoading: boolean
+  portfolioError: string | null
   selectedCredit: any | null
   setSelectedCredit: (credit: any) => void
   addToCart: (credit: any) => void
@@ -36,7 +41,12 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
   const [credits] = useState(mockCredits)
   const [projects] = useState(mockProjects)
   const [retirements] = useState(mockRetirements)
-  const [portfolio] = useState(mockPortfolio)
+  // Portfolio state
+  const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummaryMetrics | null>(null)
+  const [portfolioAnalytics, setPortfolioAnalytics] = useState<PortfolioAnalytics | null>(null)
+  const [portfolioHoldings, setPortfolioHoldings] = useState<PortfolioHolding[]>([])
+  const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [portfolioError, setPortfolioError] = useState<string | null>(null)
   const [selectedCredit, setSelectedCredit] = useState<any>(null)
   const [cart, setCart] = useState<any[]>([])
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
@@ -46,11 +56,26 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
   const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null)
   const [complianceStatuses, setComplianceStatuses] = useState<ComplianceStatusItem[] | null>(null)
 
-  // Load initial compliance data on mount
+
+  // Fetch portfolio data on mount
   useEffect(() => {
-    // Optionally fetch initial compliance data
-    // In production, you might want to fetch this
-    // For now, we'll let components fetch as needed
+    setPortfolioLoading(true)
+    setPortfolioError(null)
+    Promise.all([
+      portfolioService.getSummary(),
+      portfolioService.getAnalytics(),
+      portfolioService.getHoldings({ page: 1, pageSize: 20 })
+    ])
+      .then(([summaryRes, analyticsRes, holdingsRes]) => {
+        if (summaryRes.success) setPortfolioSummary(summaryRes.data!);
+        else setPortfolioError(summaryRes.error || 'Failed to load summary');
+        if (analyticsRes.success) setPortfolioAnalytics(analyticsRes.data!);
+        else setPortfolioError(analyticsRes.error || 'Failed to load analytics');
+        if (holdingsRes.success) setPortfolioHoldings(holdingsRes.data?.data || []);
+        else setPortfolioError(holdingsRes.error || 'Failed to load holdings');
+      })
+      .catch((err) => setPortfolioError(err.message || 'Portfolio API error'))
+      .finally(() => setPortfolioLoading(false));
   }, [])
 
   const addToCart = (credit: any) => {
@@ -93,7 +118,11 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
       credits,
       projects,
       retirements,
-      portfolio,
+      portfolioSummary,
+      portfolioAnalytics,
+      portfolioHoldings,
+      portfolioLoading,
+      portfolioError,
       selectedCredit,
       setSelectedCredit,
       addToCart,
