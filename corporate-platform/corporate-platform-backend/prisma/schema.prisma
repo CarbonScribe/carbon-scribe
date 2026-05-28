@@ -1354,6 +1354,7 @@ model CreditTransfer {
 model ContractCall {
   id              String    @id @default(cuid())
   companyId       String
+  workflowId      String
   contractId      String
   methodName      String
   transactionHash String    @unique
@@ -1363,6 +1364,7 @@ model ContractCall {
   submittedAt     DateTime  @default(now())
   confirmedAt     DateTime?
 
+  @@unique([workflowId, contractId, methodName])
   @@index([companyId])
   @@index([contractId])
   @@index([status])

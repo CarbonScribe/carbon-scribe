@@ -74,44 +74,338 @@ export class SorobanService {
   ): Promise<ContractExecutionResult> {
     this.ensureCallInput(payload.contractId, payload.methodName);
 
-    const args = payload.args || [];
+    const { companyId, workflowId, contractId, methodName, args = [] } = payload;
     const secret = process.env.STELLAR_SECRET_KEY;
+    const tempHash = `PENDING_${workflowId}`;
 
-    if (!secret) {
-      const simulated = await this.simulateContractCall({
-        contractId: payload.contractId,
-        methodName: payload.methodName,
-        args,
-      });
-
-      const txHash = `sim_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      const submittedAt = new Date();
-
+    // 1. Idempotency check / reservation
+    try {
       await this.prisma.contractCall.create({
         data: {
-          companyId: payload.companyId,
-          contractId: payload.contractId,
-          methodName: payload.methodName,
-          transactionHash: txHash,
+          companyId,
+          workflowId,
+          contractId,
+          methodName,
+          transactionHash: tempHash,
           args: this.toJson(args),
-          status: 'CONFIRMED',
-          result: this.toJson(simulated),
-          submittedAt,
-          confirmedAt: submittedAt,
+          status: 'PENDING',
+          submittedAt: new Date(),
         },
       });
-
-      return {
-        contractId: payload.contractId,
-        methodName: payload.methodName,
-        transactionHash: txHash,
-        status: 'CONFIRMED',
-        result: simulated,
-        submittedAt: submittedAt.toISOString(),
-        confirmedAt: submittedAt.toISOString(),
-        source: 'simulated',
-      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.prisma.contractCall.findFirst({
+          where: { workflowId, contractId, methodName },
+        });
+        if (existing) {
+          return this.formatResultFromPrisma(existing);
+        }
+      }
+      throw error;
     }
+
+    try {
+      if (!secret) {
+        // Simulation
+        const simulated = await this.simulateContractCall({
+          contractId,
+          methodName,
+          args,
+          workflowId,
+        });
+
+        const txHash = `sim_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+        const submittedAt = new Date();
+
+        await this.prisma.contractCall.update({
+          where: { transactionHash: tempHash },
+          data: {
+            transactionHash: txHash,
+            status: 'CONFIRMED',
+            result: this.toJson(simulated),
+            submittedAt,
+            confirmedAt: submittedAt,
+          },
+        });
+
+        return {
+          contractId,
+          methodName,
+          transactionHash: txHash,
+          status: 'CONFIRMED',
+          result: simulated,
+          submittedAt: submittedAt.toISOString(),
+          confirmedAt: submittedAt.toISOString(),
+          source: 'simulated',
+        };
+      } else {
+        // On-chain
+        const keypair = StellarSdk.Keypair.fromSecret(secret);
+        const sourceAccount = await this.rpc.getAccount(keypair.publicKey());
+        const contract = new StellarSdk.Contract(contractId);
+        const scArgs = args.map((arg) => this.toScVal(arg));
+
+        const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+          fee: '10000',
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(contract.call(methodName, ...scArgs))
+          .setTimeout(60)
+          .build();
+
+        const prepared = await this.rpc.prepareTransaction(tx as any);
+        prepared.sign(keypair);
+
+        const submittedAt = new Date();
+        const sendResponse = await this.rpc.sendTransaction(prepared as any);
+        const txHash = (sendResponse as any).hash || this.fallbackHash();
+
+        if ((sendResponse as any).status === 'ERROR') {
+          await this.prisma.contractCall.update({
+            where: { transactionHash: tempHash },
+            data: {
+              transactionHash: txHash,
+              status: 'FAILED',
+              result: this.toJson(sendResponse),
+              submittedAt,
+            },
+          });
+          throw new InternalServerErrorException(
+            `Contract invocation failed: ${JSON.stringify(sendResponse)}`,
+          );
+        }
+
+        let status: 'PENDING' | 'CONFIRMED' = 'PENDING';
+        let confirmedAt: Date | null = null;
+        let txDetails: unknown = null;
+
+        try {
+          txDetails = await this.getTransaction(txHash);
+          const txStatus = String((txDetails as any)?.status || '').toUpperCase();
+          if (txStatus === 'SUCCESS') {
+            status = 'CONFIRMED';
+            confirmedAt = new Date();
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Unable to fetch tx ${txHash} immediately after send: ${this.getErrorMessage(error)}`,
+          );
+        }
+
+        await this.prisma.contractCall.update({
+          where: { transactionHash: tempHash },
+          data: {
+            transactionHash: txHash,
+            status,
+            result: this.toJson(txDetails || sendResponse),
+            submittedAt,
+            confirmedAt: confirmedAt || undefined,
+          },
+        });
+
+        return {
+          contractId,
+          methodName,
+          transactionHash: txHash,
+          status,
+          result: txDetails || sendResponse,
+          submittedAt: submittedAt.toISOString(),
+          confirmedAt: confirmedAt?.toISOString(),
+          source: 'onchain',
+        };
+      }
+    } catch (error) {
+      // If error was already handled (e.g. throw in if (status === 'ERROR'))
+      // we should still try to update the record to FAILED if it's still PENDING.
+      try {
+        const currentCall = await this.prisma.contractCall.findFirst({
+          where: { transactionHash: tempHash },
+        });
+        if (currentCall && currentCall.status === 'PENDING') {
+          await this.prisma.contractCall.update({
+            where: { transactionHash: tempHash },
+            data: {
+              status: 'FAILED',
+              result: this.toJson({ error: this.getErrorMessage(error) }),
+              submittedAt: new Date(),
+            },
+          });
+        }
+      } catch (updateError) {
+        // Ignore update error
+      }
+      throw error;
+    }
+  }
+
+
+  async invokeContract(
+    payload: ContractInvocation,
+  ): Promise<ContractExecutionResult> {
+    this.ensureCallInput(payload.contractId, payload.methodName);
+
+    const { companyId, workflowId, contractId, methodName, args = [] } = payload;
+    const secret = process.env.STELLAR_SECRET_KEY;
+    const tempHash = `PENDING_${workflowId}`;
+
+    let createdCallId: string | undefined;
+
+    // 1. Idempotency check / reservation
+    try {
+      const newCall = await this.prisma.contractCall.create({
+        data: {
+          companyId,
+          workflowId,
+          contractId,
+          methodName,
+          transactionHash: tempHash,
+          args: this.toJson(args),
+          status: 'PENDING',
+          submittedAt: new Date(),
+        },
+      });
+      createdCallId = newCall.id;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.prisma.contractCall.findFirst({
+          where: { workflowId, contractId, methodName },
+        });
+        if (existing) {
+          return this.formatResultFromPrisma(existing);
+        }
+      }
+      throw error;
+    }
+
+    try {
+      if (!secret) {
+        // Simulation
+        const simulated = await this.simulateContractCall({
+          contractId,
+          methodName,
+          args,
+          workflowId,
+        });
+
+        const txHash = `sim_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+        const submittedAt = new Date();
+
+        await this.prisma.contractCall.update({
+          where: { id: createdCallId! },
+          data: {
+            transactionHash: txHash,
+            status: 'CONFIRMED',
+            result: this.toJson(simulated),
+            submittedAt,
+            confirmedAt: submittedAt,
+          },
+        });
+
+        return {
+          contractId,
+          methodName,
+          transactionHash: txHash,
+          status: 'CONFIRMED',
+          result: simulated,
+          submittedAt: submittedAt.toISOString(),
+          confirmedAt: submittedAt.toISOString(),
+          source: 'simulated',
+        };
+      } else {
+        // On-chain
+        const keypair = StellarSdk.Keypair.fromSecret(secret);
+        const sourceAccount = await this.rpc.getAccount(keypair.publicKey());
+        const contract = new StellarSdk.Contract(contractId);
+        const scArgs = args.map((arg) => this.toScVal(arg));
+
+        const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
+          fee: '10000',
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(contract.call(methodName, ...scArgs))
+          .setTimeout(60)
+          .build();
+
+        const prepared = await this.rpc.prepareTransaction(tx as any);
+        prepared.sign(keypair);
+
+        const submittedAt = new Date();
+        const sendResponse = await this.rpc.sendTransaction(prepared as any);
+        const txHash = (sendResponse as any).hash || this.fallbackHash();
+
+        if ((sendResponse as any).status === 'ERROR') {
+          await this.prisma.contractCall.update({
+            where: { id: createdCallId! },
+            data: {
+              transactionHash: txHash,
+              status: 'FAILED',
+              result: this.toJson(sendResponse),
+              submittedAt,
+            },
+          });
+          throw new InternalServerErrorException(
+            `Contract invocation failed: ${JSON.stringify(sendResponse)}`,
+          );
+        }
+
+        let status: 'PENDING' | 'CONFIRMED' = 'PENDING';
+        let confirmedAt: Date | null = null;
+        let txDetails: unknown = null;
+
+        try {
+          txDetails = await this.getTransaction(txHash);
+          const txStatus = String((txDetails as any)?.status || '').toUpperCase();
+          if (txStatus === 'SUCCESS') {
+            status = 'CONFIRMED';
+            confirmedAt = new Date();
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Unable to fetch tx ${txHash} immediately after send: ${this.getErrorMessage(error)}`,
+          );
+        }
+
+        await this.prisma.contractCall.update({
+          where: { id: createdCallId! },
+          data: {
+            transactionHash: txHash,
+            status,
+            result: this.toJson(txDetails || sendResponse),
+            submittedAt,
+            confirmedAt: confirmedAt || undefined,
+          },
+        });
+
+        return {
+          contractId,
+          methodName,
+          transactionHash: txHash,
+          status,
+          result: txDetails || sendResponse,
+          submittedAt: submittedAt.toISOString(),
+          confirmedAt: confirmedAt?.toISOString(),
+          source: 'onchain',
+        };
+      }
+    } catch (error) {
+      if (createdCallId) {
+        try {
+          await this.prisma.contractCall.update({
+            where: { id: createdCallId },
+            data: {
+              status: 'FAILED',
+              result: this.toJson({ error: this.getErrorMessage(error) }),
+              submittedAt: new Date(),
+            },
+          });
+        } catch (updateError) {
+          // Ignore update error if record was already updated
+        }
+      }
+      throw error;
+    }
+  }
+
 
     const keypair = StellarSdk.Keypair.fromSecret(secret);
     const sourceAccount = await this.rpc.getAccount(keypair.publicKey());
@@ -133,23 +427,24 @@ export class SorobanService {
     const sendResponse = await this.rpc.sendTransaction(prepared as any);
     const txHash = (sendResponse as any).hash || this.fallbackHash();
 
-    if ((sendResponse as any).status === 'ERROR') {
-      await this.prisma.contractCall.create({
-        data: {
-          companyId: payload.companyId,
-          contractId: payload.contractId,
-          methodName: payload.methodName,
-          transactionHash: txHash,
-          args: this.toJson(args),
-          status: 'FAILED',
-          result: this.toJson(sendResponse),
-          submittedAt,
-        },
-      });
-      throw new InternalServerErrorException(
-        `Contract invocation failed: ${JSON.stringify(sendResponse)}`,
-      );
-    }
+     if ((sendResponse as any).status === 'ERROR') {
+       await this.prisma.contractCall.create({
+         data: {
+           companyId: payload.companyId,
+           workflowId: payload.workflowId,
+           contractId: payload.contractId,
+           methodName: payload.methodName,
+           transactionHash: txHash,
+           args: this.toJson(args),
+           status: 'FAILED',
+           result: this.toJson(sendResponse),
+           submittedAt,
+         },
+       });
+       throw new InternalServerErrorException(
+         `Contract invocation failed: ${JSON.stringify(sendResponse)}`,
+       );
+     }
 
     let status: 'PENDING' | 'CONFIRMED' = 'PENDING';
     let confirmedAt: Date | null = null;
@@ -168,19 +463,20 @@ export class SorobanService {
       );
     }
 
-    await this.prisma.contractCall.create({
-      data: {
-        companyId: payload.companyId,
-        contractId: payload.contractId,
-        methodName: payload.methodName,
-        transactionHash: txHash,
-        args: this.toJson(args),
-        status,
-        result: this.toJson(txDetails || sendResponse),
-        submittedAt,
-        confirmedAt: confirmedAt || undefined,
-      },
-    });
+     await this.prisma.contractCall.create({
+       data: {
+         companyId: payload.companyId,
+         workflowId: payload.workflowId,
+         contractId: payload.contractId,
+         methodName: payload.methodName,
+         transactionHash: txHash,
+         args: this.toJson(args),
+         status,
+         result: this.toJson(txDetails || sendResponse),
+         submittedAt,
+         confirmedAt: confirmedAt || undefined,
+       },
+     });
 
     return {
       contractId: payload.contractId,
@@ -321,8 +617,17 @@ export class SorobanService {
     return `tx_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
   }
 
-  private toJson(value: unknown): Prisma.InputJsonValue {
-    return JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+  private formatResultFromPrisma(call: any): ContractExecutionResult {
+    return {
+      contractId: call.contractId,
+      methodName: call.methodName,
+      transactionHash: call.transactionHash,
+      status: call.status,
+      result: call.result,
+      submittedAt: call.submittedAt.toISOString(),
+      confirmedAt: call.confirmedAt?.toISOString(),
+      source: call.transactionHash.startsWith('sim_') ? 'simulated' : 'onchain',
+    };
   }
 
   private getErrorMessage(error: unknown): string {

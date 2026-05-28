@@ -69,6 +69,7 @@ export class StellarController {
 
     return this.sorobanService.invokeContract({
       companyId: user.companyId,
+      workflowId: dto.workflowId,
       contractId: resolvedContractId,
       methodName: dto.methodName,
       args: dto.args || [],

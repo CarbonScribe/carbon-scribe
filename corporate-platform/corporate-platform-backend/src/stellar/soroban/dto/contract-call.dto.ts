@@ -1,6 +1,10 @@
-import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ContractCallDto {
+  @IsNotEmpty()
+  @IsString()
+  workflowId: string;
+
   @IsOptional()
   @IsString()
   contractId?: string;

@@ -8,6 +8,7 @@ export type ContractAlias = 'carbonAsset' | 'retirementTracker';
 
 export interface ContractInvocation {
   companyId: string;
+  workflowId: string;
   contractId: string;
   methodName: string;
   args?: unknown[];
@@ -17,6 +18,7 @@ export interface ContractSimulation {
   contractId: string;
   methodName: string;
   args?: unknown[];
+  workflowId?: string;
 }
 
 export interface ContractExecutionResult {
