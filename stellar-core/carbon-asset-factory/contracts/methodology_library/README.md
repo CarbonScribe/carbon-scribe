@@ -70,10 +70,13 @@ methodology_library/
 initialize(env, admin, name, symbol)
 ```
 
-- `admin`: governance address for authority and admin management
+- `admin`: governance address for authority and admin management (must sign the transaction via require_auth)
 - `name`: methodology collection display name
 - `symbol`: short symbol for methodology token class
 
+Security Note
+
+The initialize function is restricted to the admin account only. The admin must authenticate the call using require_auth(). Any unauthorized attempt to initialize the contract will fail and no state will be written.
 ## Public Interface
 
 ### Authority and Governance
