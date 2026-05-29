@@ -45,7 +45,11 @@ pub struct MethodologyLibrary;
 
 #[contractimpl]
 impl MethodologyLibrary {
+   
     pub fn initialize(env: Env, admin: Address, name: String, symbol: String) -> Result<(), Error> {
+
+        admin.require_auth();
+
         if env.storage().persistent().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
