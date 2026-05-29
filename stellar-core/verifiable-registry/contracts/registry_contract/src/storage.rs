@@ -12,6 +12,10 @@ pub enum StorageKey {
     ProjectOwner(String),
     DocumentHistory(String),
     AncorerProjects(Address),
+    /// Whether strict monotonic timestamp enforcement is enabled
+    MonotonicEnforcement,
+    /// Last recorded timestamp for a project (project_id -> u64)
+    LastTimestamp(String),
 }
 
 /// Extend the TTL of instance storage
@@ -88,6 +92,35 @@ pub fn get_anchorer_projects(env: &Env, anchorer: &Address) -> Result<Vec<String
 pub fn set_anchorer_projects(env: &Env, anchorer: &Address, projects: &Vec<String>) {
     let key = StorageKey::AncorerProjects(anchorer.clone());
     env.storage().persistent().set(&key, projects);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+// Monotonic timestamp enforcement storage functions
+
+pub fn get_monotonic_enforcement(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&StorageKey::MonotonicEnforcement)
+        .unwrap_or(false)
+}
+
+pub fn set_monotonic_enforcement(env: &Env, enabled: bool) {
+    env.storage()
+        .instance()
+        .set(&StorageKey::MonotonicEnforcement, &enabled);
+}
+
+pub fn get_last_timestamp(env: &Env, project_id: &String) -> Option<u64> {
+    env.storage()
+        .persistent()
+        .get(&StorageKey::LastTimestamp(project_id.clone()))
+}
+
+pub fn set_last_timestamp(env: &Env, project_id: &String, timestamp: u64) {
+    let key = StorageKey::LastTimestamp(project_id.clone());
+    env.storage().persistent().set(&key, &timestamp);
     env.storage()
         .persistent()
         .extend_ttl(&key, INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);

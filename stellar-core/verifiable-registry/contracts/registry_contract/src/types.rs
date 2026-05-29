@@ -35,4 +35,6 @@ pub enum Error {
     EmptyBatch = 7,
     /// No projects found for anchorer
     NoProjectsFound = 8,
+    /// Timestamp is not strictly greater than the last recorded timestamp (anti-backdate)
+    TimestampNotMonotonic = 9,
 }

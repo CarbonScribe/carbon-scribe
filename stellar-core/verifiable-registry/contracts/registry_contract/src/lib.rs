@@ -29,6 +29,23 @@ impl ProjectRegistry {
         Ok(())
     }
 
+    /// Enable or disable strict monotonic timestamp enforcement (admin only).
+    ///
+    /// When enabled, every new document anchored for a project must have a
+    /// timestamp strictly greater than the previous one, preventing backdating.
+    pub fn set_monotonic_enforcement(env: Env, enabled: bool) -> Result<(), Error> {
+        let admin = storage::get_admin(&env)?;
+        admin.require_auth();
+        storage::set_monotonic_enforcement(&env, enabled);
+        extend_instance_ttl(&env);
+        Ok(())
+    }
+
+    /// Return whether strict monotonic timestamp enforcement is currently enabled.
+    pub fn is_monotonic_enforcement_enabled(env: Env) -> bool {
+        storage::get_monotonic_enforcement(&env)
+    }
+
     /// Register a new project and assign initial owner (admin only)
     pub fn register_project(env: Env, project_id: String, owner: Address) -> Result<(), Error> {
         let admin = storage::get_admin(&env)?;
@@ -73,6 +90,16 @@ impl ProjectRegistry {
         validate_ipfs_cid(&ipfs_cid)?;
 
         let timestamp = env.ledger().timestamp();
+
+        // Enforce strict monotonic timestamps when the flag is enabled
+        if storage::get_monotonic_enforcement(&env) {
+            if let Some(last_ts) = storage::get_last_timestamp(&env, &project_id) {
+                if timestamp <= last_ts {
+                    return Err(Error::TimestampNotMonotonic);
+                }
+            }
+        }
+
         let record = DocumentRecord {
             ipfs_cid: ipfs_cid.clone(),
             timestamp,
@@ -89,6 +116,9 @@ impl ProjectRegistry {
 
         // Store updated history
         storage::set_document_history(&env, &project_id, &history);
+
+        // Update last recorded timestamp for monotonic enforcement
+        storage::set_last_timestamp(&env, &project_id, timestamp);
 
         // Update anchorer index
         let mut anchorer_projects =
@@ -122,6 +152,16 @@ impl ProjectRegistry {
         }
 
         let timestamp = env.ledger().timestamp();
+
+        // Enforce strict monotonic timestamps when the flag is enabled
+        if storage::get_monotonic_enforcement(&env) {
+            if let Some(last_ts) = storage::get_last_timestamp(&env, &project_id) {
+                if timestamp <= last_ts {
+                    return Err(Error::TimestampNotMonotonic);
+                }
+            }
+        }
+
         let mut history =
             storage::get_document_history(&env, &project_id).unwrap_or_else(|_| Vec::new(&env));
 
@@ -156,6 +196,9 @@ impl ProjectRegistry {
 
         // Store updated history
         storage::set_document_history(&env, &project_id, &history);
+
+        // Update last recorded timestamp for monotonic enforcement
+        storage::set_last_timestamp(&env, &project_id, timestamp);
 
         // Update anchorer index
         let mut anchorer_projects =

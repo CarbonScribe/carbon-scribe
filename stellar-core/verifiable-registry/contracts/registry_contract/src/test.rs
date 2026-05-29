@@ -290,3 +290,120 @@ fn test_valid_cid_min_length() {
     let cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
     assert!(validate_ipfs_cid(&cid).is_ok());
 }
+
+// ========== Monotonic Timestamp Tests ==========
+
+#[test]
+fn test_monotonic_enforcement_disabled_by_default() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+    // Enforcement is off by default
+    assert!(!client.is_monotonic_enforcement_enabled());
+}
+
+#[test]
+fn test_set_monotonic_enforcement_toggle() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    client.set_monotonic_enforcement(&true);
+    assert!(client.is_monotonic_enforcement_enabled());
+
+    client.set_monotonic_enforcement(&false);
+    assert!(!client.is_monotonic_enforcement_enabled());
+}
+
+#[test]
+fn test_monotonic_enforcement_allows_increasing_timestamps() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+    let cid1 = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let cid2 = SorobanString::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let doc_type = SorobanString::from_str(&env, "PDD");
+
+    client.initialize(&admin);
+    client.set_monotonic_enforcement(&true);
+    client.register_project(&project_id, &owner);
+
+    // First anchor at ledger timestamp 1000
+    env.ledger().set_timestamp(1000);
+    client.anchor_document(&project_id, &cid1, &doc_type);
+
+    // Second anchor at a strictly later timestamp — should succeed
+    env.ledger().set_timestamp(1001);
+    let v2 = client.anchor_document(&project_id, &cid2, &doc_type);
+    assert_eq!(v2, 1);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_monotonic_enforcement_rejects_backdated_timestamp() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+    let cid1 = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let cid2 = SorobanString::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let doc_type = SorobanString::from_str(&env, "PDD");
+
+    client.initialize(&admin);
+    client.set_monotonic_enforcement(&true);
+    client.register_project(&project_id, &owner);
+
+    env.ledger().set_timestamp(1000);
+    client.anchor_document(&project_id, &cid1, &doc_type);
+
+    // Same timestamp — should be rejected (not strictly greater)
+    env.ledger().set_timestamp(1000);
+    client.anchor_document(&project_id, &cid2, &doc_type);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_monotonic_enforcement_rejects_earlier_timestamp() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+    let cid1 = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let cid2 = SorobanString::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let doc_type = SorobanString::from_str(&env, "PDD");
+
+    client.initialize(&admin);
+    client.set_monotonic_enforcement(&true);
+    client.register_project(&project_id, &owner);
+
+    env.ledger().set_timestamp(1000);
+    client.anchor_document(&project_id, &cid1, &doc_type);
+
+    // Earlier timestamp — should be rejected
+    env.ledger().set_timestamp(999);
+    client.anchor_document(&project_id, &cid2, &doc_type);
+}
+
+#[test]
+fn test_monotonic_enforcement_disabled_allows_any_order() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+    let cid1 = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let cid2 = SorobanString::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    let doc_type = SorobanString::from_str(&env, "PDD");
+
+    client.initialize(&admin);
+    // Enforcement is off — any timestamp order is accepted
+    client.register_project(&project_id, &owner);
+
+    env.ledger().set_timestamp(1000);
+    client.anchor_document(&project_id, &cid1, &doc_type);
+
+    // Same timestamp — allowed when enforcement is disabled
+    env.ledger().set_timestamp(1000);
+    let v2 = client.anchor_document(&project_id, &cid2, &doc_type);
+    assert_eq!(v2, 1);
+}
