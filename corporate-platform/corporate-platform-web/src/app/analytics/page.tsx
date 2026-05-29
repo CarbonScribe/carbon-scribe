@@ -50,7 +50,7 @@ import {
 } from 'recharts'
 
 export default function AnalyticsPage() {
-  const { portfolio, credits, retirements } = useCorporate()
+  const { portfolioAnalytics, credits, retirements } = useCorporate()
   const [timeRange, setTimeRange] = useState<'1y' | '2y' | '3y' | 'all'>('1y')
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [selectedMetric, setSelectedMetric] = useState('price')

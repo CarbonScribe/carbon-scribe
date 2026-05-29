@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { UploadService } from './upload.service';
 import { PrismaService } from '../../shared/database/prisma.service';
+import { RetrievalService } from './retrieval.service';
 
 @Injectable()
 export class CertificateIpfsService {
   constructor(
     private readonly upload: UploadService,
     private readonly prisma: PrismaService,
+    private readonly retrieval: RetrievalService,
   ) {}
 
   async anchorCertificate(retirementId: string, body: any) {
@@ -59,7 +61,33 @@ export class CertificateIpfsService {
       where: { ipfsCid: cid },
     });
     if (!doc) return { cid, verified: false, reason: 'not-found' };
-    // In a full implementation we'd compare content hash with on-chain proof — omitted here
-    return { cid, verified: true, doc };
+
+    const retrieval = await this.retrieval.get(cid);
+    if (retrieval?.error === 'integrity-check-failed') {
+      return {
+        cid,
+        verified: false,
+        reason: 'integrity-check-failed',
+        expectedHash: retrieval.expectedHash,
+        actualHash: retrieval.actualHash,
+      };
+    }
+
+    if (retrieval?.error) {
+      return {
+        cid,
+        verified: false,
+        reason: 'not-retrievable',
+        details: retrieval.details,
+      };
+    }
+
+    return {
+      cid,
+      verified: true,
+      integrityVerified: retrieval.integrityVerified,
+      contentHash: retrieval.contentHash,
+      doc,
+    };
   }
 }

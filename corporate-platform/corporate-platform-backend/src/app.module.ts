@@ -35,6 +35,7 @@ import { GhgProtocolModule } from './ghg-protocol/ghg-protocol.module';
 import { TeamCollaborationModule } from './team-collaboration/team-collaboration.module';
 import { CbamModule } from './cbam/cbam.module';
 import { SbtiModule } from './sbti/sbti.module';
+import { HealthModule } from './health/health.module';
 import { DevBootstrapSeedService } from './dev/dev-bootstrap-seed.service';
 
 @Module({
@@ -71,6 +72,7 @@ import { DevBootstrapSeedService } from './dev/dev-bootstrap-seed.service';
     TeamCollaborationModule,
     CbamModule,
     SbtiModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService, DevBootstrapSeedService],

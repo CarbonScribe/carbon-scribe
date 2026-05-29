@@ -46,7 +46,7 @@ import {
 } from 'recharts'
 
 export default function ReportingPage() {
-  const { portfolio, retirements } = useCorporate()
+  const { portfolioSummary, retirements } = useCorporate()
   const [activeTab, setActiveTab] = useState<'esg' | 'carbon' | 'custom' | 'templates' | 'csrd'>('esg')
   const [selectedReport, setSelectedReport] = useState<string | null>(null)
   const [reportPeriod, setReportPeriod] = useState<'quarterly' | 'annual' | 'monthly'>('quarterly')
@@ -505,7 +505,7 @@ export default function ReportingPage() {
                 <div className="text-sm text-gray-600 dark:text-gray-400">Net Zero 2030 target</div>
               </div>
               <div className="p-4 bg-linear-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600 mb-1">{portfolio.totalRetired.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-purple-600 mb-1">{portfolioSummary?.totalRetired?.toLocaleString() ?? '0'}</div>
                 <div className="text-sm text-gray-600 dark:text-gray-400">tCO₂ retired to date</div>
               </div>
             </div>

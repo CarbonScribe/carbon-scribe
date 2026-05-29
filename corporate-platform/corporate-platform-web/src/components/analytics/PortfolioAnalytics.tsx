@@ -1,25 +1,33 @@
 'use client'
 
+import React from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { useCorporate } from '@/contexts/CorporateContext'
 
-export default function PortfolioAnalytics() {
-  const { portfolio } = useCorporate()
+export default function PortfolioComposition() {
+  const { portfolioAnalytics, portfolioLoading, portfolioError } = useCorporate();
 
-  const methodologyData = [
-    { name: 'REDD+', value: 35, color: '#0073e6' },
-    { name: 'Renewable Energy', value: 25, color: '#00d4aa' },
-    { name: 'Agriculture', value: 20, color: '#8b5cf6' },
-    { name: 'Energy Efficiency', value: 15, color: '#f59e0b' },
-    { name: 'Others', value: 5, color: '#6b7280' },
-  ]
+  // Use real API data for methodology and region
+  const methodologyData = portfolioAnalytics?.composition?.methodologyDistribution?.map((item, idx) => ({
+    name: item.name,
+    value: item.percentage,
+    color: ['#0073e6', '#00d4aa', '#8b5cf6', '#f59e0b', '#6b7280'][idx % 5],
+  })) || [];
 
-  const regionData = [
-    { name: 'South America', value: 40, color: '#10b981' },
-    { name: 'Asia', value: 30, color: '#3b82f6' },
-    { name: 'Africa', value: 20, color: '#8b5cf6' },
-    { name: 'North America', value: 10, color: '#f59e0b' },
-  ]
+  const regionData = portfolioAnalytics?.composition?.geographicAllocation?.map((item, idx) => ({
+    name: item.name,
+    value: item.percentage,
+    color: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#6366f1'][idx % 5],
+  })) || [];
+
+  if (portfolioLoading) {
+    return <div className="p-8 text-center text-lg text-gray-700 dark:text-gray-300">Loading analytics...</div>;
+  }
+  if (portfolioError) {
+    return <div className="p-8 text-center text-red-600">{portfolioError}</div>;
+  }
+
+  const totalSdgs = portfolioAnalytics?.composition?.sdgImpact?.length || 0;
 
   return (
     <div className="corporate-card p-6 h-full">
@@ -40,7 +48,7 @@ export default function PortfolioAnalytics() {
                 dataKey="value"
               >
                 {methodologyData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                  <Cell key={`methodology-cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip formatter={(value) => [`${value}%`, 'Share']} />
@@ -53,7 +61,7 @@ export default function PortfolioAnalytics() {
                   <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: item.color }}></div>
                   <span className="text-gray-700 dark:text-gray-300">{item.name}</span>
                 </div>
-                <span className="font-medium">{item.value}%</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{item.value}%</span>
               </div>
             ))}
           </div>
@@ -73,7 +81,7 @@ export default function PortfolioAnalytics() {
                 dataKey="value"
               >
                 {regionData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                  <Cell key={`region-cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip formatter={(value) => [`${value}%`, 'Share']} />
@@ -86,7 +94,7 @@ export default function PortfolioAnalytics() {
                   <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: item.color }}></div>
                   <span className="text-gray-700 dark:text-gray-300">{item.name}</span>
                 </div>
-                <span className="font-medium">{item.value}%</span>
+                <span className="font-medium text-gray-900 dark:text-gray-100">{item.value}%</span>
               </div>
             ))}
           </div>
@@ -96,11 +104,11 @@ export default function PortfolioAnalytics() {
       <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
         <div className="grid grid-cols-2 gap-4">
           <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-            <div className="text-2xl font-bold text-corporate-blue">{Object.keys(portfolio.sdgContributions).length}</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalSdgs}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400">SDGs Supported</div>
           </div>
           <div className="text-center p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-            <div className="text-2xl font-bold text-corporate-teal">8</div>
+            <div className="text-2xl font-bold text-teal-600 dark:text-teal-400">8</div>
             <div className="text-sm text-gray-600 dark:text-gray-400">Countries</div>
           </div>
         </div>

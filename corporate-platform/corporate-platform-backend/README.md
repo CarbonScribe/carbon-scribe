@@ -267,6 +267,45 @@ IPFS-backed document and certificate management endpoints are available at `api/
 - `GET /api/v1/ipfs/documents`
 - `GET /api/v1/ipfs/documents/:referenceId`
 
+## 🚦 Idempotency for Uploads
+
+All file upload endpoints (`/api/v1/ipfs/upload`, `/api/v1/ipfs/batch/upload`) require an `idempotencyKey` parameter. This key must be unique per logical file upload attempt. If a request with the same `idempotencyKey` is retried (e.g., due to network issues), the backend will return the original upload record and never create duplicates.
+
+- **Single Upload:**
+  - Field: `idempotencyKey` (string, required)
+  - Example (multipart/form-data):
+    - `idempotencyKey: 123e4567-e89b-12d3-a456-426614174000`
+    - `file: <yourfile.pdf>`
+- **Batch Upload:**
+  - Each file object must include an `idempotencyKey`.
+
+If `idempotencyKey` is missing, the API returns an error. Duplicate requests with the same key return the same record and `cid`.
+
+See [test/ipfs-idempotency.e2e-spec.ts](test/ipfs-idempotency.e2e-spec.ts) for usage examples.
+
+## 🚀 Streaming Upload Support
+
+All upload endpoints now support streaming large files efficiently:
+
+- **Single Upload:**
+  - Endpoint: `/api/v1/ipfs/upload`
+  - Accepts a single file as multipart/form-data (field: `file`).
+  - File is streamed from disk to IPFS/Pinata, minimizing memory usage.
+  - Required field: `idempotencyKey` (string).
+
+- **Batch Upload:**
+  - Endpoint: `/api/v1/ipfs/batch/upload`
+  - Accepts multiple files as multipart/form-data (field: `files`).
+  - Each file must have a corresponding `idempotencyKey` (send as `idempotencyKeys[]` in the form body, order must match files array).
+  - Each file is streamed from disk to IPFS/Pinata.
+
+**Limitations:**
+- Maximum file size per upload is 1GB by default (configurable).
+- Antivirus scanning is not yet implemented for streams (see future roadmap).
+- If an upload is interrupted, partial files are cleaned up from disk.
+
+See code and tests for usage examples.
+
 ## 📁 Project Structure
 ```
 corporate-platform-backend/
@@ -557,6 +596,7 @@ Response:
 ```
 
 ---
+
 ## GHG Protocol Service Module
 
 The backend now includes a dedicated GHG Protocol module at `src/ghg-protocol/` for Scope 1, 2, and 3 accounting backed by Prisma models, seeded emission factors, and audit-trail events.
@@ -588,3 +628,35 @@ npx prisma generate
 npx prisma migrate deploy
 npx prisma db seed
 ```
+
+---
+
+## 🛡️ Antivirus & Content Scanning
+
+All uploaded files are scanned for malware using ClamAV before being persisted or pinned to IPFS.
+
+- **Clean files** are accepted and processed as normal.
+- **Infected or suspicious files** are rejected, not stored, and a clear error is returned to the user.
+- All scan results are logged for audit and monitoring.
+- If ClamAV is unavailable or a scan fails, the upload is rejected and an error is returned.
+
+**Operational Guidance:**
+- Ensure ClamAV is running and accessible (default: TCP 127.0.0.1:3310).
+- Regularly update virus definitions (e.g., via `freshclam`).
+- Monitor logs for scan failures or suspicious activity.
+
+See [test/ipfs-antivirus.e2e-spec.ts](test/ipfs-antivirus.e2e-spec.ts) for test scenarios.
+
+## 🔐 File Hash Verification
+
+Uploaded files are hashed with SHA-256 during upload, and the digest is persisted with each IPFS document record.
+
+- On upload:
+  - The backend computes `contentHash` (SHA-256) from the uploaded file bytes.
+  - The hash is stored on the `IpfsDocument` row.
+- On retrieval/verification:
+  - The backend recomputes SHA-256 from retrieved content.
+  - The recomputed hash is compared to the persisted `contentHash`.
+  - If they differ, the request is flagged with `integrity-check-failed` and logged as an integrity error.
+
+This provides cryptographic integrity checks for evidence and certificate payloads across storage/retrieval flows.

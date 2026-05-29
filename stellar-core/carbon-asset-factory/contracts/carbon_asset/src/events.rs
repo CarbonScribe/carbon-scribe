@@ -4,6 +4,7 @@ use crate::types::AssetStatus;
 
 #[contractevent]
 pub struct MintEvent {
+    pub sequence: u64,
     pub token_id: u32,
     pub owner: Address,
     pub project_id: String,
@@ -13,6 +14,7 @@ pub struct MintEvent {
 
 #[contractevent]
 pub struct TransferEvent {
+    pub sequence: u64,
     pub token_id: u32,
     pub from: Address,
     pub to: Address,
@@ -20,6 +22,7 @@ pub struct TransferEvent {
 
 #[contractevent]
 pub struct StatusChangeEvent {
+    pub sequence: u64,
     pub token_id: u32,
     pub old_status: Option<AssetStatus>,
     pub new_status: AssetStatus,
@@ -28,6 +31,7 @@ pub struct StatusChangeEvent {
 
 #[contractevent]
 pub struct QualityScoreUpdatedEvent {
+    pub sequence: u64,
     pub token_id: u32,
     pub old_score: i128,
     pub new_score: i128,
@@ -37,6 +41,7 @@ pub struct QualityScoreUpdatedEvent {
 // SEP-41 style events
 #[contractevent]
 pub struct ApproveEvent {
+    pub sequence: u64,
     pub from: Address,
     pub spender: Address,
     pub amount: i128,
@@ -45,6 +50,7 @@ pub struct ApproveEvent {
 
 #[contractevent]
 pub struct Sep41TransferEvent {
+    pub sequence: u64,
     pub from: Address,
     pub to: Address,
     pub amount: i128,
@@ -52,6 +58,7 @@ pub struct Sep41TransferEvent {
 
 #[contractevent]
 pub struct Sep41BurnEvent {
+    pub sequence: u64,
     pub from: Address,
     pub amount: i128,
 }

@@ -55,6 +55,7 @@ impl CarbonAsset {
             .instance()
             .set(&DataKey::HostJurisdiction, &host_jurisdiction);
         env.storage().instance().set(&DataKey::NextTokenId, &1u32);
+        env.storage().instance().set(&DataKey::EventSequence, &0u64);
 
         Ok(())
     }
@@ -102,7 +103,17 @@ impl CarbonAsset {
             .persistent()
             .set(&DataKey::Burned(token_id), &false);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let mint_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &mint_sequence);
         MintEvent {
+            sequence: mint_sequence,
             token_id,
             owner: owner.clone(),
             project_id: metadata.project_id.clone(),
@@ -111,7 +122,17 @@ impl CarbonAsset {
         }
         .publish(&env);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let status_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &status_sequence);
         StatusChangeEvent {
+            sequence: status_sequence,
             token_id,
             old_status: None,
             new_status: AssetStatus::Issued,
@@ -160,7 +181,17 @@ impl CarbonAsset {
         };
         env.storage().persistent().set(&key, &data);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
         ApproveEvent {
+            sequence: next_sequence,
             from,
             spender,
             amount,
@@ -386,7 +417,17 @@ impl CarbonAsset {
             .persistent()
             .set(&DataKey::QualityScore(token_id), &new_score);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
         QualityScoreUpdatedEvent {
+            sequence: next_sequence,
             token_id,
             old_score,
             new_score,
@@ -517,6 +558,13 @@ impl CarbonAsset {
         env.storage().instance().get(&DataKey::Oracle)
     }
 
+    pub fn get_event_sequence(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64)
+    }
+
     pub fn owner_of(env: Env, token_id: u32) -> Result<Address, ContractError> {
         let burned: bool = env
             .storage()
@@ -614,7 +662,17 @@ impl CarbonAsset {
             .persistent()
             .set(&DataKey::Owner(token_id), &to);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
         TransferEvent {
+            sequence: next_sequence,
             token_id,
             from: from.clone(),
             to: to.clone(),
@@ -645,7 +703,16 @@ impl CarbonAsset {
             Self::transfer_token_internal(env.clone(), from.clone(), to.clone(), token_id, false)?;
         }
 
-        Sep41TransferEvent { from, to, amount }.publish(&env);
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        Sep41TransferEvent { sequence: next_sequence, from, to, amount }.publish(&env);
 
         Ok(())
     }
@@ -665,7 +732,16 @@ impl CarbonAsset {
             Self::burn_token(env.clone(), token_id, from.clone())?;
         }
 
-        Sep41BurnEvent { from, amount }.publish(&env);
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        Sep41BurnEvent { sequence: next_sequence, from, amount }.publish(&env);
 
         Ok(())
     }
@@ -757,7 +833,17 @@ impl CarbonAsset {
             .persistent()
             .set(&DataKey::Status(token_id), &new_status);
 
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
         StatusChangeEvent {
+            sequence: next_sequence,
             token_id,
             old_status: Some(current),
             new_status,

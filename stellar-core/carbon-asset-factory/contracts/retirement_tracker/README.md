@@ -13,7 +13,7 @@ The Retirement Tracker contract is CarbonScribe's finality layer for carbon offs
 - Immutable retirement records per token id
 - Entity-based retirement indexing for reporting
 - Linked contract governance for upgradeable asset references
-- Event emission for real-time compliance pipelines
+- Event emission with contract-scoped nonces for real-time compliance pipelines
 
 ## Table of Contents
 
@@ -85,11 +85,15 @@ initialize(env, admin, carbon_asset_contract)
 
 ```rust
 retire(env, token_id, retiring_entity, reason)
+retire_with_tx_hash(env, token_id, retiring_entity, reason, tx_hash)
 batch_retire(env, token_ids, retiring_entity, reason)
+batch_retire_with_tx_hashes(env, token_ids, retiring_entity, reason, tx_hashes)
 ```
 
-- `retire`: executes one retirement and returns the created record
-- `batch_retire`: attempts each token and returns only successful retirements
+- `retire`: executes one retirement with nonce fallback and returns the created record
+- `retire_with_tx_hash`: executes one retirement with a caller-supplied actual transaction hash
+- `batch_retire`: attempts each token with nonce fallback and returns only successful retirements
+- `batch_retire_with_tx_hashes`: attempts each token with caller-supplied transaction hashes
 
 ### Ledger Queries
 
@@ -97,6 +101,7 @@ batch_retire(env, token_ids, retiring_entity, reason)
 is_retired(env, token_id)
 get_retirement_record(env, token_id)
 get_retirements_by_entity(env, retiring_entity)
+get_event_nonce(env)
 ```
 
 ### Admin Controls
@@ -114,10 +119,17 @@ Each `RetirementRecord` stores:
 - token id
 - retiring entity address
 - ledger timestamp
-- derived transaction hash
+- actual transaction hash when supplied
+- contract-scoped event nonce
 - optional reason string for reporting context
 
 This schema supports corporate disclosures, anti-double-counting checks, and public retirement proof.
+
+## Event Uniqueness
+
+The contract does not synthesize transaction hashes. When an integration has the actual transaction hash, it should call `retire_with_tx_hash` or `batch_retire_with_tx_hashes`. Otherwise, the contract records `tx_hash: None` and assigns a strictly increasing `event_nonce`.
+
+`event_nonce` is stored in instance storage, increments only for successful retirement writes, and is included in both retirement records and retirement events. Off-chain indexers can use it for deterministic ordering and replay-safe uniqueness.
 
 ## Build and Test
 

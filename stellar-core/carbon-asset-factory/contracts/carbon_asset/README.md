@@ -23,9 +23,10 @@ The Carbon Asset contract is CarbonScribe's primary issuance and lifecycle engin
 4. [Initialization Parameters](#initialization-parameters)
 5. [Public Interface](#public-interface)
 6. [Dynamic Credit Readiness](#dynamic-credit-readiness)
-7. [Build and Test](#build-and-test)
-8. [Testnet Deployment](#testnet-deployment)
-9. [Security Notes](#security-notes)
+7. [Event Sequencing for Off-Chain Indexers](#event-sequencing-for-off-chain-indexers)
+8. [Build and Test](#build-and-test)
+9. [Testnet Deployment](#testnet-deployment)
+10. [Security Notes](#security-notes)
 
 ## System Role
 
@@ -151,6 +152,60 @@ The contract already includes on-chain quality score storage and oracle-authoriz
 1. Connect satellite and IoT oracle feeds to trusted updater identities.
 2. Define score-to-price policy in the marketplace layer.
 3. Version and audit oracle update policy via governance controls.
+
+## Event Sequencing for Off-Chain Indexers
+
+All events emitted by the Carbon Asset contract include a `sequence` field that provides replay-safe, monotonic ordering for off-chain indexers. This feature enables:
+
+- **Replay Protection**: Indexers can detect and reject duplicate events by tracking processed sequence numbers
+- **Deterministic Ordering**: Events can be ordered consistently across different indexer implementations
+- **Idempotent Processing**: Indexers can safely reprocess events without double-counting
+
+### How It Works
+
+The contract maintains an `EventSequence` counter in instance storage that:
+- Initializes to 0 on contract deployment
+- Increments by 1 for each event emission
+- Persists across contract upgrades
+- Is included in all event types: `MintEvent`, `TransferEvent`, `StatusChangeEvent`, `QualityScoreUpdatedEvent`, `ApproveEvent`, `Sep41TransferEvent`, and `Sep41BurnEvent`
+
+### Event Structure
+
+All events now include a `sequence: u64` field as the first parameter:
+
+```rust
+#[contractevent]
+pub struct MintEvent {
+    pub sequence: u64,
+    pub token_id: u32,
+    pub owner: Address,
+    pub project_id: String,
+    pub vintage_year: u64,
+    pub methodology_id: u32,
+}
+```
+
+### Indexer Integration
+
+Off-chain indexers should:
+1. Track the highest processed sequence number per contract instance
+2. Reject events with sequence numbers less than or equal to the last processed sequence
+3. Use the sequence field to order events when processing out-of-order blocks
+4. Store sequence numbers in their database to enable idempotent reprocessing
+
+### Example Indexer Logic
+
+```python
+last_sequence = get_last_processed_sequence(contract_address)
+
+for event in events:
+    if event.sequence <= last_sequence:
+        continue  # Skip already processed event
+    
+    process_event(event)
+    last_sequence = event.sequence
+    save_sequence(contract_address, last_sequence)
+```
 
 ## Build and Test
 

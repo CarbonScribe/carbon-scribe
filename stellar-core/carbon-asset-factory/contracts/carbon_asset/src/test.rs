@@ -109,3 +109,31 @@ fn test_transfer_to_retirement_tracker_sets_status() {
     client.transfer(&owner, &retirement_tracker, &1);
     assert_eq!(client.get_status(&token_id), AssetStatus::Retired);
 }
+
+#[test]
+fn test_event_sequence_persistence_in_storage() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let contract_id = env.register(CarbonAsset, ());
+    let client = CarbonAssetClient::new(&env, &contract_id);
+
+    client.initialize(
+        &admin,
+        &String::from_str(&env, "Carbon Asset"),
+        &String::from_str(&env, "C01"),
+        &retirement_tracker,
+        &String::from_str(&env, "US"),
+    );
+
+    let meta = CarbonAssetMetadata {
+        project_id: String::from_str(&env, "PROJ-1"),
+        vintage_year: 1704067200,
+        methodology_id: 1,
+        geo_hash: BytesN::from_array(&env, &[7u8; 32]),
+    };
+
+    client.mint(&admin, &owner, &meta);
+
+    // Check sequence incremented to 2 (MintEvent + StatusChangeEvent)
+    let sequence = client.get_event_sequence();
+    assert_eq!(sequence, 2);
+}

@@ -7,12 +7,21 @@ import { PinningService } from './services/pinning.service';
 import { CertificateIpfsService } from './services/certificate-ipfs.service';
 import { IpfsController } from './ipfs.controller';
 import { DatabaseModule } from '../shared/database/database.module';
+import { PinataProvider } from './providers/pinata.provider';
+import { IPFS_PROVIDER } from './interfaces/ipfs-provider.interface';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    IpfsService,
     IpfsConfig,
+    // Register the active provider via injection token.
+    // To switch providers, replace PinataProvider with another IIpfsProvider implementation.
+    {
+      provide: IPFS_PROVIDER,
+      useClass: PinataProvider,
+    },
+    PinataProvider,
+    IpfsService,
     UploadService,
     RetrievalService,
     PinningService,
@@ -20,7 +29,9 @@ import { DatabaseModule } from '../shared/database/database.module';
   ],
   controllers: [IpfsController],
   exports: [
+    IPFS_PROVIDER,
     IpfsService,
+    IpfsConfig,
     UploadService,
     RetrievalService,
     PinningService,

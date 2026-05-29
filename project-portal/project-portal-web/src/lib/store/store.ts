@@ -14,13 +14,16 @@ import {
   createSearchSlice,
   loadPersistedSearchData,
 } from "./search/searchSlice";
+import type { NotificationsSlice } from "@/store/notification.types";
+import { createNotificationsSlice } from "@/store/notificationsSlice";
 
 // Unified store state type
 export type StoreState = AuthSlice &
   ProjectsSlice &
   CollaborationSlice &
   SearchSlice &
-  HealthSlice;
+  HealthSlice &
+  NotificationsSlice;
 
 // Helper to check if token is expired or about to expire (60s buffer)
 const isTokenExpiringSoon = (expiresIn: number | null): boolean => {
@@ -37,6 +40,7 @@ export const useStore = create<StoreState>()(
       ...createCollaborationSlice(...args),
       ...createSearchSlice(...args),
       ...createHealthSlice(...args),
+      ...createNotificationsSlice(...args),
     }),
     {
       name: "project-portal-store",

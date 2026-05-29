@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { Toaster } from 'sonner';
 import ToastContainer from '@/components/ui/Toast';
 import StoreHydrator from '@/components/StoreHydrator';
+import NotificationProvider from '@/components/NotificationProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -26,8 +27,9 @@ export default function RootLayout({
         className={`${inter.className} min-h-screen bg-linear-to-br from-emerald-50 via-white to-cyan-50 text-gray-900 antialiased`}
       >
         <ThemeProvider>
-        <FarmerProvider>
-          <StoreHydrator />
+<FarmerProvider>
+         <StoreHydrator />
+         <NotificationProvider />
           <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
             <div className="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-emerald-300/25 blur-3xl" />
             <div className="absolute top-1/3 -right-28 h-104 w-104 rounded-full bg-teal-300/20 blur-3xl" />

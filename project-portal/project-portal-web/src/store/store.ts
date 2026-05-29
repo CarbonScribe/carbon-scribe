@@ -12,3 +12,5 @@ export { useIntegrationStore } from './integrationSlice';
 export type { IntegrationSlice } from './integrationSlice';
 export * from './integration.selectors';
 export * from './integration.types';
+
+export type { Notification, NotificationType, NotificationsSlice } from './notification.types';

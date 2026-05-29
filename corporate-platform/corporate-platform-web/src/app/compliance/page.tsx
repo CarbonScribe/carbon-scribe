@@ -37,7 +37,7 @@ import {
 import { ComplianceFramework } from '@/types'
 
 export default function CompliancePage() {
-  const { portfolio, retirements } = useCorporate()
+  const { portfolioSummary, retirements } = useCorporate()
   const compliance = useCompliance()
   const [activeTab, setActiveTab] = useState<'overview' | 'reports' | 'frameworks' | 'audit'>('overview')
   const [expandedRequirement, setExpandedRequirement] = useState<string | null>(null)

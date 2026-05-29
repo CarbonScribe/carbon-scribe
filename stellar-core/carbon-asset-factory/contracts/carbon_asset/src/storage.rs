@@ -8,6 +8,7 @@ pub enum DataKey {
     Symbol,
     Decimals,
     NextTokenId,
+    EventSequence,
     RetirementTracker,
     RegulatoryCheck,
     HostJurisdiction,

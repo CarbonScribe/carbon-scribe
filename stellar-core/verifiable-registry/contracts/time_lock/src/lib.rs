@@ -21,6 +21,8 @@ pub enum TimeLockError {
     InvalidUnlockTime = 6,
     VintageValidationFailed = 7,
     EmptyBatch = 8,
+    /// Contract initialization has already completed.
+    AlreadyInitialized = 9,
 }
 
 // ---------------------------------------------------------------------------
@@ -147,9 +149,9 @@ impl TimeLock {
         carbon_asset_contract: Address,
         validate_vintage: bool,
         vintage_check_contract: Option<Address>,
-    ) {
+    ) -> Result<(), TimeLockError> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Already initialized");
+            return Err(TimeLockError::AlreadyInitialized);
         }
 
         admin.require_auth();
@@ -169,6 +171,8 @@ impl TimeLock {
         env.storage()
             .persistent()
             .set(&DataKey::LockRecords, &records);
+
+        Ok(())
     }
 
     pub fn version(_env: Env) -> u32 {
@@ -500,5 +504,42 @@ impl TimeLock {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{TimeLock, TimeLockClient, TimeLockError};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
+
+    fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let carbon_asset_contract = Address::generate(&env);
+        let contract_id = env.register(TimeLock, ());
+        let client = TimeLockClient::new(&env, &contract_id);
+
+        (env, admin, carbon_asset_contract, client)
+    }
+
+    #[test]
+    fn test_initialize_success() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None);
+
+        assert_eq!(result, Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_initialize_twice_returns_already_initialized() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None);
+        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None);
+
+        assert_eq!(result, Err(Ok(TimeLockError::AlreadyInitialized)));
     }
 }

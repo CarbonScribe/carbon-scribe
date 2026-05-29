@@ -16,12 +16,12 @@ fn test_initialize_and_auth() {
 
     // Verify admin set (indirectly via auth check)
     env.mock_all_auths();
-    
+
     // Authorize emitter
     client.authorize_emitter(&emitter);
-    
+
     assert!(client.is_authorized(&emitter));
-    
+
     // Revoke emitter
     client.revoke_emitter(&emitter);
     assert!(!client.is_authorized(&emitter));
@@ -77,6 +77,37 @@ fn test_record_and_query_event() {
 }
 
 #[test]
+#[should_panic(expected = "Event payload exceeds maximum allowed size")]
+fn test_oversized_event_payload() {
+    let env = Env::default();
+    let contract_id = env.register_contract(None, AuditTrailContract);
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let emitter = Address::generate(&env);
+
+    client.initialize(&admin);
+    env.mock_all_auths();
+    client.authorize_emitter(&emitter);
+
+    let event_type = String::from_str(&env, "BIG_EVENT");
+    let primary_id = String::from_str(&env, "big-entity");
+    // Create a payload larger than MAX_EVENT_PAYLOAD_SIZE
+    let oversized = "A".repeat(crate::MAX_EVENT_PAYLOAD_SIZE as usize + 1);
+    let event_data = String::from_str(&env, &oversized);
+    let tx_hash = BytesN::from_array(&env, &[1; 32]);
+
+    client.record_event_auth(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+}
+
+#[test]
 #[should_panic(expected = "Emitter not authorized")]
 fn test_unauthorized_emitter() {
     let env = Env::default();
@@ -88,7 +119,7 @@ fn test_unauthorized_emitter() {
 
     client.initialize(&admin);
     env.mock_all_auths();
-    
+
     // Emitter not authorized yet
     let event_type = String::from_str(&env, "TOKEN_MINTED");
     let primary_id = String::from_str(&env, "project-123");

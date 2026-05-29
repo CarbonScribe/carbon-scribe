@@ -19,7 +19,7 @@ import type { RetirementRecord } from '@/types/retirement'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 export default function RetirementPage() {
-  const { company, portfolio, retirements, credits } = useCorporate()
+  const { company, portfolioSummary, retirements, credits } = useCorporate()
   const [lastRetirementId, setLastRetirementId] = useState<string | null>(null)
 
   function handleRetirementSuccess(record: RetirementRecord) {
@@ -57,7 +57,7 @@ export default function RetirementPage() {
   ]
 
   // Calculate totals
-  const totalRetired = portfolio.totalRetired
+  const totalRetired = portfolioSummary?.totalRetired ?? 0
   const remainingTarget = 100000 - totalRetired // Assuming 100K target
   const completionPercentage = (totalRetired / 100000) * 100
 
@@ -85,7 +85,7 @@ export default function RetirementPage() {
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 min-w-50">
               <div className="text-sm text-blue-200 mb-1">Available for Retirement</div>
-              <div className="text-2xl font-bold">{portfolio.currentBalance.toLocaleString()} tCO₂</div>
+              <div className="text-2xl font-bold">{(portfolioSummary?.availableBalance ?? 0).toLocaleString()} tCO₂</div>
               <div className="text-xs text-blue-300">Ready for instant retirement</div>
             </div>
           </div>

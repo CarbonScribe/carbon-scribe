@@ -3,6 +3,8 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, String, Vec,
 };
 
+mod test;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[contracttype]
 pub enum OperationType {
@@ -56,7 +58,7 @@ pub enum DataKey {
     PendingApproval(BytesN<32>),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 #[contracterror]
 pub enum ContractError {
     NotAuthorized = 1,
@@ -66,6 +68,7 @@ pub enum ContractError {
     InvalidApprovalKey = 5,
     ApprovalExpired = 6,
     NoMatchingRule = 7,
+    RuleConflict = 8, // New error for logical duplicate/conflict
 }
 
 #[contract]
@@ -117,9 +120,31 @@ impl RegulatoryCheck {
 
         let rule_key = DataKey::Rule(rule.rule_id.clone());
 
-        // Check if rule already exists
+        // Check if rule_id already exists
         if env.storage().persistent().has(&rule_key) {
             return Err(ContractError::RuleAlreadyExists);
+        }
+
+        // Check for logical duplicate/conflict
+        let active_rules: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveRuleIds)
+            .unwrap_or(Vec::new(&env));
+        for i in 0..active_rules.len() {
+            let rid = active_rules.get(i).unwrap();
+            let existing_key = DataKey::Rule(rid.clone());
+            if let Some(existing_rule) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, JurisdictionRule>(&existing_key)
+            {
+                if Self::rules_conflict(&rule, &existing_rule) {
+                    // Compose a clear error message (not possible to return string in ContractError, so log it)
+                    soroban_sdk::log!(&env, "Rule conflict: attempted to add rule {:?} which conflicts with existing rule {:?}", rule, existing_rule);
+                    return Err(ContractError::RuleConflict);
+                }
+            }
         }
 
         // Store the rule
@@ -137,6 +162,17 @@ impl RegulatoryCheck {
             .set(&DataKey::ActiveRuleIds, &active_rules);
 
         Ok(())
+    }
+
+    /// Returns true if two rules are logically equivalent or would cause enforcement ambiguity.
+    fn rules_conflict(a: &JurisdictionRule, b: &JurisdictionRule) -> bool {
+        // Consider rules conflicting if all key parameters match (except rule_id/description)
+        a.source_jur == b.source_jur
+            && a.dest_jur == b.dest_jur
+            && a.host_jur == b.host_jur
+            && a.operation == b.operation
+            && a.is_allowed == b.is_allowed
+            && a.required_authority == b.required_authority
     }
 
     /// Update an existing rule
