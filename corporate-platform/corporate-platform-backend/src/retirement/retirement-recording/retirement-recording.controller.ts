@@ -9,7 +9,9 @@ import { COMPLIANCE_VIEW } from '../../rbac/constants/permissions.constants';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('api/v1/retirements')
 export class RetirementRecordingController {
-  constructor(private readonly retirementRecordingService: RetirementRecordingService) {}
+  constructor(
+    private readonly retirementRecordingService: RetirementRecordingService,
+  ) {}
 
   @Post('record')
   @Permissions(COMPLIANCE_VIEW)
@@ -19,17 +21,20 @@ export class RetirementRecordingController {
       return this.retirementRecordingService.batchRetire(body, user?.sub);
     }
     // Single
-    return this.retirementRecordingService.recordRetirement({ ...body, userId: user?.sub });
+    return this.retirementRecordingService.recordRetirement({
+      ...body,
+      userId: user?.sub,
+    });
   }
 
   @Get(':tokenId')
-  async getRetirementByToken(@Param('tokenId') tokenId: string) {
+  async getRetirementByToken(@Param('tokenId') _tokenId: string) {
     // TODO: Fetch from DB or contract
     return {};
   }
 
   @Get('entity/:address')
-  async listRetirementsByEntity(@Param('address') address: string) {
+  async listRetirementsByEntity(@Param('address') _address: string) {
     // TODO: Fetch from DB or contract
     return [];
   }

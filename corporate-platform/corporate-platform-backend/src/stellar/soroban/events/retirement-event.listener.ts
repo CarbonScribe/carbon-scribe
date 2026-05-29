@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { RetirementTrackerService } from '../contracts/retirement-tracker.service';
 import { PrismaService } from '../../../shared/database/prisma.service';
 
@@ -87,7 +92,10 @@ export class RetirementEventListener implements OnModuleInit, OnModuleDestroy {
         this.lastLedger = latestSeenLedger + 1;
       }
     } catch (error) {
-      this.logger.error(`Retirement polling failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `Retirement polling failed: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
@@ -96,7 +104,9 @@ export class RetirementEventListener implements OnModuleInit, OnModuleDestroy {
     try {
       // transactionHash is not unique, so just create if not exists
       const exists = event.txHash
-        ? await this.prisma.retirement.findFirst({ where: { transactionHash: event.txHash } })
+        ? await this.prisma.retirement.findFirst({
+            where: { transactionHash: event.txHash },
+          })
         : null;
       if (!exists) {
         await this.prisma.retirement.create({
