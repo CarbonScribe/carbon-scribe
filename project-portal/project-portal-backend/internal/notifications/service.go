@@ -1,23 +1,23 @@
 package notifications
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"regexp"
-	"strings"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "regexp"
+    "strings"
+    "time"
 
-	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+    "carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
 
-	"github.com/google/uuid"
+    "github.com/google/uuid"
 )
 
 type Service struct {
-	repo          Repository
-	retryLimit    int
-	defaultLocale string
-	smsSender     channels.SMSSender
+    repo          Repository
+    retryLimit    int
+    defaultLocale string
+    smsSender     channels.SMSSender
 }
 
 func NewService(repo Repository) *Service {

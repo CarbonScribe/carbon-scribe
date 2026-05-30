@@ -1,4 +1,4 @@
-package notifications
+package channels
 
 import (
 	"context"
