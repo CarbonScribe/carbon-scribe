@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
+import * as helmet from 'helmet';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { getHelmetConfig } from './config/helmet.config';
 
 function parseCorsOrigins(value?: string): string[] {
   const defaults = ['http://localhost:3000', 'http://127.0.0.1:3000'];
@@ -21,6 +23,11 @@ function isLocalDevOrigin(origin: string): boolean {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableShutdownHooks();
+
+  // Apply helmet middleware for comprehensive HTTP security hardening
+  // Helmet must be applied before CORS to ensure security headers are set correctly
+  const isProduction = process.env.NODE_ENV === 'production';
+  app.use(helmet(getHelmetConfig(isProduction)));
 
   const configuredOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
 
@@ -48,6 +55,19 @@ async function bootstrap() {
       'X-Api-Key',
       'x-api-key',
       'Accept',
+    ],
+    // Expose security headers to client
+    exposedHeaders: [
+      'X-Frame-Options',
+      'X-Content-Type-Options',
+      'Strict-Transport-Security',
+      'Referrer-Policy',
+      'Cross-Origin-Resource-Policy',
+      'Cross-Origin-Opener-Policy',
+      'X-DNS-Prefetch-Control',
+      'Expect-CT',
+      'Permissions-Policy',
+      'X-XSS-Protection',
     ],
     optionsSuccessStatus: 204,
   });
