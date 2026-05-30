@@ -53,8 +53,8 @@ export interface GeospatialSlice {
   mapTiles: MapTile[];
   selectedGeometry: ProjectGeometry | null;
   selectedGeofence: Geofence | null;
-  loading: GeospatialLoadingState;
-  errors: GeospatialErrorState;
+  geospatialLoading: GeospatialLoadingState;
+  geospatialErrors: GeospatialErrorState;
 
   // Actions
   fetchProjectGeometry: (projectId: string) => Promise<void>;

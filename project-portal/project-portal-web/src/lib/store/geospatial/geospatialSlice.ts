@@ -15,20 +15,20 @@ import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 
 const initialState: Pick<
   GeospatialSlice,
-  'projectGeometries' | 'geofences' | 'mapTiles' | 'selectedGeometry' | 'selectedGeofence' | 'loading' | 'errors'
+  'projectGeometries' | 'geofences' | 'mapTiles' | 'selectedGeometry' | 'selectedGeofence' | 'geospatialLoading' | 'geospatialErrors'
 > = {
   projectGeometries: [],
   geofences: [],
   mapTiles: [],
   selectedGeometry: null,
   selectedGeofence: null,
-  loading: {
+  geospatialLoading: {
     isFetchingGeometry: false,
     isFetchingGeofences: false,
     isFetchingTiles: false,
     isUpdating: false,
   },
-  errors: {
+  geospatialErrors: {
     fetchGeometry: null,
     fetchGeofences: null,
     fetchTiles: null,
@@ -41,8 +41,8 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   fetchProjectGeometry: async (projectId: string) => {
     set((state) => ({
-      loading: { ...state.loading, isFetchingGeometry: true },
-      errors: { ...state.errors, fetchGeometry: null },
+      geospatialLoading: { ...state.geospatialLoading, isFetchingGeometry: true },
+      geospatialErrors: { ...state.geospatialErrors, fetchGeometry: null },
     }));
 
     try {
@@ -51,40 +51,40 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
         projectGeometries: state.projectGeometries
           .filter((g) => g.projectId !== projectId)
           .concat([geometry]),
-        loading: { ...get().loading, isFetchingGeometry: false },
+        geospatialLoading: { ...get().geospatialLoading, isFetchingGeometry: false },
       }));
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isFetchingGeometry: false },
-        errors: { ...state.errors, fetchGeometry: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isFetchingGeometry: false },
+        geospatialErrors: { ...state.geospatialErrors, fetchGeometry: getErrorMessage(error) },
       }));
     }
   },
 
   fetchAllProjectGeometries: async () => {
     set((state) => ({
-      loading: { ...state.loading, isFetchingGeometry: true },
-      errors: { ...state.errors, fetchGeometry: null },
+      geospatialLoading: { ...state.geospatialLoading, isFetchingGeometry: true },
+      geospatialErrors: { ...state.geospatialErrors, fetchGeometry: null },
     }));
 
     try {
       const geometries = await fetchAllProjectGeometriesApi();
       set({
         projectGeometries: geometries,
-        loading: { ...get().loading, isFetchingGeometry: false },
+        geospatialLoading: { ...get().geospatialLoading, isFetchingGeometry: false },
       });
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isFetchingGeometry: false },
-        errors: { ...state.errors, fetchGeometry: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isFetchingGeometry: false },
+        geospatialErrors: { ...state.geospatialErrors, fetchGeometry: getErrorMessage(error) },
       }));
     }
   },
 
   updateProjectGeometry: async (projectId: string, geometry: Geometry) => {
     set((state) => ({
-      loading: { ...state.loading, isUpdating: true },
-      errors: { ...state.errors, update: null },
+      geospatialLoading: { ...state.geospatialLoading, isUpdating: true },
+      geospatialErrors: { ...state.geospatialErrors, update: null },
     }));
 
     try {
@@ -93,14 +93,14 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
         projectGeometries: state.projectGeometries
           .map((g) => (g.projectId === projectId ? updatedGeometry : g)),
         selectedGeometry: state.selectedGeometry?.projectId === projectId ? updatedGeometry : state.selectedGeometry,
-        loading: { ...get().loading, isUpdating: false },
+        geospatialLoading: { ...get().geospatialLoading, isUpdating: false },
       }));
       showSuccessToast('Geometry updated successfully');
       return updatedGeometry;
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isUpdating: false },
-        errors: { ...state.errors, update: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isUpdating: false },
+        geospatialErrors: { ...state.geospatialErrors, update: getErrorMessage(error) },
       }));
       showErrorToast('Failed to update geometry');
       return null;
@@ -109,8 +109,8 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   fetchGeofences: async (projectId: string) => {
     set((state) => ({
-      loading: { ...state.loading, isFetchingGeofences: true },
-      errors: { ...state.errors, fetchGeofences: null },
+      geospatialLoading: { ...state.geospatialLoading, isFetchingGeofences: true },
+      geospatialErrors: { ...state.geospatialErrors, fetchGeofences: null },
     }));
 
     try {
@@ -119,34 +119,34 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
         geofences: state.geofences
           .filter((g) => g.projectId !== projectId)
           .concat(geofences),
-        loading: { ...get().loading, isFetchingGeofences: false },
+        geospatialLoading: { ...get().geospatialLoading, isFetchingGeofences: false },
       }));
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isFetchingGeofences: false },
-        errors: { ...state.errors, fetchGeofences: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isFetchingGeofences: false },
+        geospatialErrors: { ...state.geospatialErrors, fetchGeofences: getErrorMessage(error) },
       }));
     }
   },
 
   createGeofence: async (projectId: string, data: Omit<Geofence, 'id' | 'createdAt' | 'updatedAt'>) => {
     set((state) => ({
-      loading: { ...state.loading, isUpdating: true },
-      errors: { ...state.errors, update: null },
+      geospatialLoading: { ...state.geospatialLoading, isUpdating: true },
+      geospatialErrors: { ...state.geospatialErrors, update: null },
     }));
 
     try {
       const newGeofence = await createGeofenceApi(projectId, data);
       set((state) => ({
         geofences: [...state.geofences, newGeofence],
-        loading: { ...get().loading, isUpdating: false },
+        geospatialLoading: { ...get().geospatialLoading, isUpdating: false },
       }));
       showSuccessToast('Geofence created successfully');
       return newGeofence;
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isUpdating: false },
-        errors: { ...state.errors, update: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isUpdating: false },
+        geospatialErrors: { ...state.geospatialErrors, update: getErrorMessage(error) },
       }));
       showErrorToast('Failed to create geofence');
       return null;
@@ -155,8 +155,8 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   updateGeofence: async (id: string, data: Partial<Omit<Geofence, 'id' | 'createdAt' | 'updatedAt'>>) => {
     set((state) => ({
-      loading: { ...state.loading, isUpdating: true },
-      errors: { ...state.errors, update: null },
+      geospatialLoading: { ...state.geospatialLoading, isUpdating: true },
+      geospatialErrors: { ...state.geospatialErrors, update: null },
     }));
 
     try {
@@ -164,14 +164,14 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
       set((state) => ({
         geofences: state.geofences.map((g) => (g.id === id ? updatedGeofence : g)),
         selectedGeofence: state.selectedGeofence?.id === id ? updatedGeofence : state.selectedGeofence,
-        loading: { ...get().loading, isUpdating: false },
+        geospatialLoading: { ...get().geospatialLoading, isUpdating: false },
       }));
       showSuccessToast('Geofence updated successfully');
       return updatedGeofence;
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isUpdating: false },
-        errors: { ...state.errors, update: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isUpdating: false },
+        geospatialErrors: { ...state.geospatialErrors, update: getErrorMessage(error) },
       }));
       showErrorToast('Failed to update geofence');
       return null;
@@ -180,8 +180,8 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   deleteGeofence: async (id: string) => {
     set((state) => ({
-      loading: { ...state.loading, isUpdating: true },
-      errors: { ...state.errors, update: null },
+      geospatialLoading: { ...state.geospatialLoading, isUpdating: true },
+      geospatialErrors: { ...state.geospatialErrors, update: null },
     }));
 
     try {
@@ -189,14 +189,14 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
       set((state) => ({
         geofences: state.geofences.filter((g) => g.id !== id),
         selectedGeofence: state.selectedGeofence?.id === id ? null : state.selectedGeofence,
-        loading: { ...get().loading, isUpdating: false },
+        geospatialLoading: { ...get().geospatialLoading, isUpdating: false },
       }));
       showSuccessToast('Geofence deleted successfully');
       return true;
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isUpdating: false },
-        errors: { ...state.errors, update: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isUpdating: false },
+        geospatialErrors: { ...state.geospatialErrors, update: getErrorMessage(error) },
       }));
       showErrorToast('Failed to delete geofence');
       return false;
@@ -205,8 +205,8 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   fetchMapTiles: async (projectId: string, type?: string) => {
     set((state) => ({
-      loading: { ...state.loading, isFetchingTiles: true },
-      errors: { ...state.errors, fetchTiles: null },
+      geospatialLoading: { ...state.geospatialLoading, isFetchingTiles: true },
+      geospatialErrors: { ...state.geospatialErrors, fetchTiles: null },
     }));
 
     try {
@@ -215,12 +215,12 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
         mapTiles: state.mapTiles
           .filter((t) => t.projectId !== projectId || (type && t.type !== type))
           .concat(tiles),
-        loading: { ...get().loading, isFetchingTiles: false },
+        geospatialLoading: { ...get().geospatialLoading, isFetchingTiles: false },
       }));
     } catch (error: unknown) {
       set((state) => ({
-        loading: { ...state.loading, isFetchingTiles: false },
-        errors: { ...state.errors, fetchTiles: getErrorMessage(error) },
+        geospatialLoading: { ...state.geospatialLoading, isFetchingTiles: false },
+        geospatialErrors: { ...state.geospatialErrors, fetchTiles: getErrorMessage(error) },
       }));
     }
   },
@@ -230,7 +230,7 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
 
   clearGeospatialErrors: () =>
     set({
-      errors: {
+      geospatialErrors: {
         fetchGeometry: null,
         fetchGeofences: null,
         fetchTiles: null,
