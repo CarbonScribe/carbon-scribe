@@ -144,6 +144,12 @@ impl BufferPoolContract {
         let modulo = (10000 / percentage) as u32;
 
         if token_id % modulo == 0 {
+            // Check for duplicate token to prevent duplicate custody records
+            if has_custody_record(&env, token_id) {
+                emit_duplicate_auto_deposit_event(&env, token_id, &project_id);
+                return Ok(false);
+            }
+
             let record = CustodyRecord {
                 token_id,
                 deposited_at: env.ledger().timestamp(),

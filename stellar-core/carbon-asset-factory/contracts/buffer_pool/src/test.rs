@@ -152,6 +152,68 @@ fn test_auto_deposit_calculation() {
 }
 
 #[test]
+fn test_auto_deposit_duplicate_protection() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+
+    // First auto-deposit should succeed
+    let deposited = client.auto_deposit(&carbon_contract, &20, &project_id, &20);
+    assert_eq!(deposited, true);
+
+    // Second auto-deposit with same token_id should return false (duplicate protection)
+    let duplicate = client.auto_deposit(&carbon_contract, &20, &project_id, &20);
+    assert_eq!(duplicate, false);
+
+    // TVL should only be incremented once
+    let tvl = client.get_total_value_locked();
+    assert_eq!(tvl, 1);
+}
+
+#[test]
+fn test_auto_deposit_after_manual_deposit() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+
+    // Manual deposit first
+    client.deposit(&admin, &20, &project_id);
+
+    // Auto-deposit with same token_id should return false (duplicate protection)
+    let deposited = client.auto_deposit(&carbon_contract, &20, &project_id, &20);
+    assert_eq!(deposited, false);
+
+    // TVL should only be incremented once
+    let tvl = client.get_total_value_locked();
+    assert_eq!(tvl, 1);
+}
+
+#[test]
+fn test_manual_deposit_after_auto_deposit() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+
+    // Auto-deposit first
+    let deposited = client.auto_deposit(&carbon_contract, &20, &project_id, &20);
+    assert_eq!(deposited, true);
+
+    // Manual deposit with same token_id should fail
+    let result = client.try_deposit(&admin, &20, &project_id);
+    assert!(result.is_err());
+
+    // TVL should only be incremented once
+    let tvl = client.get_total_value_locked();
+    assert_eq!(tvl, 1);
+}
+
+#[test]
 fn test_invalid_percentage() {
     let (_, admin, governance, carbon_contract, client) = setup_test_env();
 
