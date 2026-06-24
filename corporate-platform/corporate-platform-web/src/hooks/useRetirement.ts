@@ -61,7 +61,9 @@ export function useRetirement(
       if (res.success && res.data) {
         setHistory(res.data);
       } else {
-        setHistoryError(res.parsedError?.message || res.error ?? 'Failed to fetch retirement history');
+        // Use parentheses to clarify operator precedence
+        const errorMsg = (res.parsedError?.message || res.error) ?? 'Failed to fetch retirement history';
+        setHistoryError(errorMsg);
       }
       setHistoryLoading(false);
     },

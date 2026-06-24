@@ -101,14 +101,22 @@ function extractMessage(body: unknown, statusCode?: number): string {
       }
     }
 
+    // Shape: { title: string, detail: string } - check this BEFORE standalone detail
+    if (typeof obj.title === 'string' && typeof obj.detail === 'string') {
+      return `${obj.title}: ${obj.detail}`;
+    }
+
+    // Shape: { title: string, detail: { message: string } }
+    if (typeof obj.title === 'string' && typeof obj.detail === 'object' && obj.detail !== null) {
+      const detailObj = obj.detail as Record<string, unknown>;
+      if (typeof detailObj.message === 'string') {
+        return `${obj.title}: ${detailObj.message}`;
+      }
+    }
+
     // Shape: { detail: string }
     if (typeof obj.detail === 'string') {
       return obj.detail;
-    }
-
-    // Shape: { title: string, detail: string }
-    if (typeof obj.title === 'string' && typeof obj.detail === 'string') {
-      return `${obj.title}: ${obj.detail}`;
     }
 
     // Shape: { title: string }
@@ -187,7 +195,7 @@ function determineErrorCode(body: unknown, statusCode?: number): ErrorCode {
     const obj = body as Record<string, unknown>;
 
     // Check for validation-related fields
-    if (obj.validation || obj.errors && typeof obj.errors === 'object' && !Array.isArray(obj.errors)) {
+    if (obj.validation || (obj.errors && typeof obj.errors === 'object' && !Array.isArray(obj.errors))) {
       return ErrorCode.VALIDATION_ERROR;
     }
 

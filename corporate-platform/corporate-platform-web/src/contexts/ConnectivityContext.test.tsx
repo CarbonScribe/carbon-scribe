@@ -142,7 +142,8 @@ describe('ConnectivityContext', () => {
 
     const { result } = renderHook(() => useConnectivity(), { wrapper });
 
-    const beforeTime = result.current.state.lastSuccessfulApiCall;
+    // Ensure beforeTime is a number, default to 0 if null
+    const beforeTime = result.current.state.lastSuccessfulApiCall ?? 0;
 
     act(() => {
       result.current.recordApiCall(true);
@@ -158,7 +159,8 @@ describe('ConnectivityContext', () => {
 
     const { result } = renderHook(() => useConnectivity(), { wrapper });
 
-    const beforeTime = result.current.state.lastSuccessfulApiCall;
+    // Ensure beforeTime is a number, default to 0 if null
+    const beforeTime = result.current.state.lastSuccessfulApiCall ?? 0;
 
     act(() => {
       result.current.recordApiCall(false);
@@ -222,4 +224,3 @@ describe('ConnectivityContext', () => {
     expect(result.current.state.pendingOperations).toBe(0);
   });
 });
-</write_to_file>

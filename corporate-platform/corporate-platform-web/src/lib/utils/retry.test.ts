@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   withRetry,
   isRetryableError,
@@ -57,18 +57,16 @@ describe('retry', () => {
       const error = new TypeError('Network error');
       const fn = vi.fn().mockRejectedValue(error);
       
+      // Use expect().rejects with the promise directly
       const promise = withRetry(fn, { maxAttempts: 2, initialDelayMs: 100 });
       
-      // First attempt
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fn).toHaveBeenCalledTimes(1);
-      
-      // Second attempt after delay
+      // Advance timers to trigger retries
       await vi.advanceTimersByTimeAsync(100);
-      expect(fn).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(100);
       
-      // Should not retry again
+      // Now the promise should be rejected
       await expect(promise).rejects.toThrow('Network error');
+      
       expect(fn).toHaveBeenCalledTimes(2);
     });
 

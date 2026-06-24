@@ -29,14 +29,22 @@ const DEGRADED_RECOVERY_THRESHOLD = Number(process.env.NEXT_PUBLIC_DEGRADED_RECO
 const CONNECTIVITY_CHECK_INTERVAL = Number(process.env.NEXT_PUBLIC_CONNECTIVITY_CHECK_INTERVAL) || 30000; // Connectivity check interval in milliseconds
 
 export function ConnectivityProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ConnectivityState>({
-    status: 'online',
-    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  // Get initial online status from navigator, default to true if not available
+  const getInitialOnlineStatus = (): boolean => {
+    if (typeof navigator !== 'undefined') {
+      return navigator.onLine;
+    }
+    return true;
+  };
+
+  const [state, setState] = useState<ConnectivityState>(() => ({
+    status: getInitialOnlineStatus() ? 'online' : 'offline',
+    isOnline: getInitialOnlineStatus(),
     lastOnlineTime: Date.now(),
     lastSuccessfulApiCall: Date.now(),
     pendingOperations: 0,
     consecutiveFailures: 0,
-  });
+  }));
 
   // Monitor browser online/offline events
   useEffect(() => {
@@ -68,7 +76,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Periodic connectivity check (ping)
+  // Periodic connectivity check (ping) - only runs in browser
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -91,7 +99,7 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const interval = setInterval(checkConnectivity, 30000); // Check every 30 seconds
+    const interval = setInterval(checkConnectivity, CONNECTIVITY_CHECK_INTERVAL);
 
     return () => clearInterval(interval);
   }, []);
@@ -111,7 +119,8 @@ export function ConnectivityProvider({ children }: { children: ReactNode }) {
         newStatus = 'offline';
       } else if (newConsecutiveFailures >= DEGRADED_THRESHOLD) {
         newStatus = 'degraded';
-      } else if (success && prev.status === 'degraded' && newConsecutiveFailures < DEGRADED_RECOVERY_THRESHOLD) {
+      } else if (success && prev.status === 'degraded' && newConsecutiveFailures === 0) {
+        // Only recover after reaching 0 consecutive failures (successful call)
         newStatus = 'online';
       } else if (success && prev.status === 'offline') {
         newStatus = 'online';

@@ -1,5 +1,5 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
-import { parseApiError, ParsedError } from '@/lib/utils/errorParser';
+import { parseApiError, ParsedError, ErrorCode } from '@/lib/utils/errorParser';
 import { withRetry, isRetryableError, RetryOptions, generateIdempotencyKey } from '@/lib/utils/retry';
 import { requestQueue } from '@/lib/utils/requestQueue';
 
@@ -101,7 +101,7 @@ class ApiClient {
         timestamp: new Date().toISOString(),
         parsedError: {
           message: 'You are offline. This request has been queued and will be retried when you reconnect.',
-          code: 'NETWORK_ERROR',
+          code: ErrorCode.NETWORK_ERROR,
           statusCode: 0,
         },
       };
@@ -167,7 +167,7 @@ class ApiClient {
             timestamp: new Date().toISOString(),
             parsedError: {
               message: 'You are offline. This request has been queued and will be retried when you reconnect.',
-              code: 'NETWORK_ERROR',
+              code: ErrorCode.NETWORK_ERROR,
               statusCode: 0,
             },
           };
