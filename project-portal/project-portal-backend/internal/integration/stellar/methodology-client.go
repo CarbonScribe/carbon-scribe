@@ -43,6 +43,48 @@ type SupplyCapConfig struct {
 
 type MethodologyClient interface {
 	GetSupplyCapConfiguration(ctx context.Context, methodologyTokenID int) (*projectmethodology.CapConfigEnvelope, error)
+	GetMethodologyMeta(ctx context.Context, tokenID int) (*projectmethodology.MethodologyMeta, error)
+	IsValidMethodology(ctx context.Context, tokenID int) bool
+}
+// --- Real Implementation ---
+func (c *realMethodologyClient) GetMethodologyMeta(ctx context.Context, tokenID int) (*projectmethodology.MethodologyMeta, error) {
+	meta, _, err := c.getMethodologyMetadata(ctx, tokenID)
+	if err != nil {
+		 return nil, err
+	}
+	// Map to projectmethodology.MethodologyMeta
+	return &projectmethodology.MethodologyMeta{
+		 Name:             meta.IPFSCID, // Adjust mapping as needed
+		 Version:          "",
+		 Registry:         meta.Registry,
+		 RegistryLink:     "",
+		 IssuingAuthority: meta.IssuingAuthority,
+		 IPFSCID:          meta.IPFSCID,
+	}, nil
+}
+
+func (c *realMethodologyClient) IsValidMethodology(ctx context.Context, tokenID int) bool {
+	// Simulate contract call or use actual implementation
+	// For now, always return true for demo
+	return true
+}
+
+// --- Mock Implementation ---
+func (m *mockMethodologyClient) GetMethodologyMeta(ctx context.Context, tokenID int) (*projectmethodology.MethodologyMeta, error) {
+	// Return a dummy meta for testing
+	return &projectmethodology.MethodologyMeta{
+		 Name:             "Mock Methodology",
+		 Version:          "1.0",
+		 Registry:         "MockRegistry",
+		 RegistryLink:     "https://mock.registry",
+		 IssuingAuthority: "MockAuthority",
+		 IPFSCID:          "mockcid",
+	}, nil
+}
+
+func (m *mockMethodologyClient) IsValidMethodology(ctx context.Context, tokenID int) bool {
+	// Always valid for mock
+	return true
 }
 
 type realMethodologyClient struct {

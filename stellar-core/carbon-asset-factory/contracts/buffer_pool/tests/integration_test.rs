@@ -3,6 +3,17 @@
 use buffer_pool::{BufferPoolContract, BufferPoolContractClient};
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
+// A simple mock contract to capture and pass the cross-contract "transfer" call
+#[soroban_sdk::contract]
+pub struct MockAsset;
+
+#[soroban_sdk::contractimpl]
+impl MockAsset {
+    pub fn transfer(_env: Env, _from: Address, _to: Address, _amount: i128) {
+        // Return successfully to validate integration behavior
+    }
+}
+
 #[test]
 fn test_full_lifecycle() {
     let env = Env::default();
@@ -10,7 +21,9 @@ fn test_full_lifecycle() {
 
     let admin = Address::generate(&env);
     let governance = Address::generate(&env);
-    let carbon_contract = Address::generate(&env);
+
+    // Register the mock contract implementation to represent the carbon asset
+    let carbon_contract = env.register(MockAsset, ());
 
     let client = BufferPoolContractClient::new(&env, &env.register(BufferPoolContract, ()));
 
@@ -70,7 +83,9 @@ fn test_governance_updates() {
     let admin = Address::generate(&env);
     let governance = Address::generate(&env);
     let new_governance = Address::generate(&env);
-    let carbon_contract = Address::generate(&env);
+
+    // Register mock asset dependency
+    let carbon_contract = env.register(MockAsset, ());
 
     let client = BufferPoolContractClient::new(&env, &env.register(BufferPoolContract, ()));
 
@@ -104,21 +119,24 @@ fn test_multiple_projects() {
 
     let admin = Address::generate(&env);
     let governance = Address::generate(&env);
-    let carbon_contract = Address::generate(&env);
+
+    // Register mock asset dependency
+    let carbon_contract = env.register(MockAsset, ());
 
     let client = BufferPoolContractClient::new(&env, &env.register(BufferPoolContract, ()));
 
     client.initialize(&admin, &governance, &carbon_contract, &500);
 
     // Deposit from multiple projects
-    let projects = vec![
+    let projects = soroban_sdk::vec![
+        &env,
         String::from_str(&env, "PROJECT-A"),
         String::from_str(&env, "PROJECT-B"),
         String::from_str(&env, "PROJECT-C"),
     ];
 
     for (i, project) in projects.iter().enumerate() {
-        client.deposit(&admin, &((i as u32) + 1), project);
+        client.deposit(&admin, &((i as u32) + 1), &project);
     }
 
     let tvl = client.get_total_value_locked();
@@ -126,11 +144,11 @@ fn test_multiple_projects() {
 
     // Verify each record
     let record_a = client.get_custody_record(&1).unwrap();
-    assert_eq!(record_a.project_id, projects[0]);
+    assert_eq!(record_a.project_id, projects.get(0).unwrap());
 
     let record_b = client.get_custody_record(&2).unwrap();
-    assert_eq!(record_b.project_id, projects[1]);
+    assert_eq!(record_b.project_id, projects.get(1).unwrap());
 
     let record_c = client.get_custody_record(&3).unwrap();
-    assert_eq!(record_c.project_id, projects[2]);
+    assert_eq!(record_c.project_id, projects.get(2).unwrap());
 }

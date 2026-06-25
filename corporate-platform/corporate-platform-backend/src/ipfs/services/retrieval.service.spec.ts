@@ -3,6 +3,20 @@ import { createHash } from 'crypto';
 import { RetrievalService } from './retrieval.service';
 import { IpfsConfig } from '../ipfs.config';
 
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const config: Record<string, any> = {
+      PINATA_API_KEY: 'test-key',
+      PINATA_SECRET_KEY: 'test-secret',
+      PINATA_JWT: 'test-jwt',
+      PINATA_GATEWAY: 'https://gateway.pinata.cloud/ipfs/',
+      IPFS_GATEWAY: 'https://ipfs.io/ipfs/',
+      PINATA_TIMEOUT_MS: 20000,
+    };
+    return config[key];
+  }),
+} as any;
+
 describe('RetrievalService hash verification', () => {
   const mockIpfs = {
     validateCid: jest.fn(),
@@ -19,7 +33,11 @@ describe('RetrievalService hash verification', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new RetrievalService(mockIpfs, new IpfsConfig(), mockPrisma);
+    service = new RetrievalService(
+      mockIpfs,
+      new IpfsConfig(mockConfigService),
+      mockPrisma,
+    );
     mockIpfs.validateCid.mockReturnValue(true);
     mockIpfs.gatewayForCid.mockReturnValue(
       'https://gateway.pinata.cloud/ipfs/cid123',

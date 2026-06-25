@@ -3,36 +3,26 @@
 
 import { useState, useEffect } from 'react';
 import { Coins, CreditCard, TrendingUp, Calendar, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import { getProjectCredits, getCreditTraceability, type CarbonCredit, type TraceabilityResponse } from '@/lib/api/financing.api';
+import { getCreditTraceability, type TraceabilityResponse } from '@/lib/api/financing.api';
+import { useStore, type StoreState } from '@/lib/store/store';
+import type { FinancingCredit } from '@/lib/store/financing/financing.types';
 
 interface TokenizationStatusProps {
   projectId: string;
 }
 
 const TokenizationStatus: React.FC<TokenizationStatusProps> = ({ projectId }) => {
-  const [credits, setCredits] = useState<CarbonCredit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [traceability, setTraceability] = useState<Record<string, TraceabilityResponse>>({});
+  const credits = useStore((s: StoreState) => s.financingCreditsByProjectId[projectId] ?? []);
+  const loading = useStore((s: StoreState) => s.financingLoading.isFetchingCredits);
+  const error = useStore((s: StoreState) => s.financingErrors.credits);
+  const fetchCredits = useStore((s: StoreState) => s.fetchFinancingCredits);
 
   useEffect(() => {
     if (projectId) {
-      fetchCredits();
+      fetchCredits(projectId);
     }
-  }, [projectId]);
-
-  const fetchCredits = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const creditsData = await getProjectCredits(projectId);
-      setCredits(creditsData);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch credits. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [projectId, fetchCredits]);
 
   const fetchTraceability = async (tokenId: string) => {
     if (traceability[tokenId]) return; // Already fetched
@@ -45,7 +35,7 @@ const TokenizationStatus: React.FC<TokenizationStatusProps> = ({ projectId }) =>
     }
   };
 
-  const formatCreditValue = (credit: CarbonCredit) => {
+  const formatCreditValue = (credit: FinancingCredit) => {
     // This would ideally come from pricing data, using a simple estimate for now
     const pricePerTon = 15; // Default price
     return `$${(credit.issued_tons * pricePerTon).toFixed(2)}`;
@@ -78,7 +68,7 @@ const TokenizationStatus: React.FC<TokenizationStatusProps> = ({ projectId }) =>
   };
 
   const calculateTotalRevenue = () => {
-    return credits.reduce((total, credit) => {
+    return credits.reduce((total: number, credit: FinancingCredit) => {
       const pricePerTon = 15; // Default price
       return total + (credit.issued_tons * pricePerTon);
     }, 0);
@@ -120,7 +110,7 @@ const TokenizationStatus: React.FC<TokenizationStatusProps> = ({ projectId }) =>
                 <p>No credits found for this project</p>
               </div>
             ) : (
-              credits.map((credit) => (
+              credits.map((credit: FinancingCredit) => (
                 <div key={credit.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                   <div>
                     <div className="font-medium text-gray-900">
@@ -158,7 +148,7 @@ const TokenizationStatus: React.FC<TokenizationStatusProps> = ({ projectId }) =>
           </div>
 
           <button 
-            onClick={fetchCredits}
+            onClick={() => fetchCredits(projectId, { force: true })}
             className="w-full mt-4 py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors"
           >
             Refresh Credits

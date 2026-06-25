@@ -1136,6 +1136,34 @@ model IpfsDocument {
 }
 
 // ==========================================
+// Certificate anchoring dead-letter / recovery (#400)
+// ==========================================
+
+// Persists actionable failure state for certificate IPFS anchoring so failed
+// uploads can be retried or repaired without manual database forensics.
+model CertificateAnchorFailure {
+  id              String    @id @default(cuid())
+  retirementId    String? // reference to the retirement record (if applicable)
+  companyId       String? // owning company, for scoping/filtering
+  certificateData Json // payload of the certificate being anchored
+  attemptCount    Int       @default(0) // number of retry attempts made
+  lastError       String? // error message from the last failure
+  lastAttemptAt   DateTime? // timestamp of the last attempt
+  status          String    @default("pending") // pending, in_progress, failed, resolved
+  nextRetryAt     DateTime? // timestamp for the next scheduled retry
+  resolvedCid     String? // CID produced once anchoring succeeds
+  notifiedAt      DateTime? // last time a threshold alert was emitted
+  createdAt       DateTime  @default(now()) // timestamp of initial failure
+  resolvedAt      DateTime? // timestamp when resolved
+
+  @@index([status])
+  @@index([retirementId])
+  @@index([companyId])
+  @@index([nextRetryAt])
+  @@map("certificate_anchor_failures")
+}
+
+// ==========================================
 // Framework Registry (methodology-to-framework mapping)
 // ==========================================
 

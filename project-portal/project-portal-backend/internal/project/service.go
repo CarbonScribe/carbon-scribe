@@ -7,6 +7,7 @@ import (
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization/minting"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/google/uuid"
 )
@@ -23,30 +24,32 @@ type service struct {
 	repo        Repository
 	methService methodology.Service
 	mintService minting.Service
+	validator   validation.Validator // Injected methodology validator
 }
 
-func NewService(repo Repository, methService methodology.Service, mintService minting.Service) Service {
-	return &service{
-		repo:        repo,
-		methService: methService,
-		mintService: mintService,
-	}
+func NewService(repo Repository, methService methodology.Service, mintService minting.Service, validator validation.Validator) Service {
+       return &service{
+	       repo:        repo,
+	       methService: methService,
+	       mintService: mintService,
+	       validator:   validator,
+       }
 }
 
 func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) (*Project, error) {
-	project := &Project{
-		Name:          req.Name,
-		Type:          req.Type,
-		Location:      req.Location,
-		Area:          req.Area,
-		Farmers:       req.Farmers,
-		CarbonCredits: req.CarbonCredits,
-		Progress:      req.Progress,
-		Icon:          req.Icon,
-		Status:        req.Status,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-	}
+       project := &Project{
+	       Name:          req.Name,
+	       Type:          req.Type,
+	       Location:      req.Location,
+	       Area:          req.Area,
+	       Farmers:       req.Farmers,
+	       CarbonCredits: req.CarbonCredits,
+	       Progress:      req.Progress,
+	       Icon:          req.Icon,
+	       Status:        req.Status,
+	       CreatedAt:     time.Now(),
+	       UpdatedAt:     time.Now(),
+       }
 
 	if req.Status == "" {
 		project.Status = "pending"

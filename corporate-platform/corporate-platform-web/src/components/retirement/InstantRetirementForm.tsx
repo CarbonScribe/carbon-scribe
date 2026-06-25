@@ -98,11 +98,11 @@ export default function InstantRetirementForm({
   const creditId = availableCredits.length > 0 ? selectedCreditId : manualCreditId.trim();
   const selectedCredit = availableCredits.find((c) => c.id === selectedCreditId);
   const maxAmount = selectedCredit?.availableAmount ?? 10000;
-  const canSubmit = creditId.length > 0 && amount >= 1;
+  const canSubmit = creditId.length > 0 && amount >= 1 && !retiring;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit || retiring) return;
 
     const result = await retire({
       creditId,
@@ -376,7 +376,7 @@ export default function InstantRetirementForm({
         {/* Submit */}
         <button
           type="submit"
-          disabled={!canSubmit || retiring}
+          disabled={!canSubmit}
           className="w-full corporate-btn-primary py-4 text-base font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {retiring ? (

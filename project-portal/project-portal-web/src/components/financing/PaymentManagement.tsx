@@ -2,18 +2,27 @@
 
 import { useState, useEffect } from 'react';
 import { CreditCard, DollarSign, AlertCircle, CheckCircle, Clock, TrendingUp, Wallet } from 'lucide-react';
-import { initiatePayment, distributeRevenue, getPayoutStatus, type PaymentTransaction, type RevenueDistribution, type InitiatePaymentRequest, type DistributeRevenueRequest } from '@/lib/api/financing.api';
+import { type InitiatePaymentRequest, type DistributeRevenueRequest } from '@/lib/api/financing.api';
+import { useStore } from '@/lib/store/store';
 
 interface PaymentManagementProps {
   projectId: string;
 }
 
 const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
-  const [payments, setPayments] = useState<PaymentTransaction[]>([]);
-  const [payouts, setPayouts] = useState<RevenueDistribution[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const payments = useStore((s) => s.financingPaymentsByProjectId[projectId] ?? []);
+  const payouts = useStore((s) => s.financingPayoutsByProjectId[projectId] ?? []);
+  const isInitiatingPayment = useStore((s) => s.financingLoading.isInitiatingPayment);
+  const isDistributingRevenue = useStore((s) => s.financingLoading.isDistributingRevenue);
+  const loading = isInitiatingPayment || isDistributingRevenue;
+  const error = useStore(
+    (s) => s.financingErrors.initiatePayment || s.financingErrors.distributeRevenue,
+  );
+  const initiatePaymentOptimistic = useStore((s) => s.initiatePaymentOptimistic);
+  const distributeRevenueOptimistic = useStore((s) => s.distributeRevenueOptimistic);
+  const fetchPayments = useStore((s) => s.fetchFinancingPayments);
+  const fetchPayouts = useStore((s) => s.fetchFinancingPayouts);
 
   // Form states
   const [paymentForm, setPaymentForm] = useState<InitiatePaymentRequest>({
@@ -33,6 +42,12 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
     platform_fee_percent: 5,
     beneficiaries: [],
   });
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchPayments(projectId).catch(() => {});
+    fetchPayouts(projectId).catch(() => {});
+  }, [projectId, fetchPayments, fetchPayouts]);
 
   const handlePaymentInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -83,13 +98,11 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
 
   const handleInitiatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
     setSuccess(null);
 
     try {
-      const payment = await initiatePayment(paymentForm);
-      setPayments(prev => [payment, ...prev]);
+      const payment = await initiatePaymentOptimistic(paymentForm);
+      if (!payment) return;
       setSuccess('Payment initiated successfully!');
       setPaymentForm({
         project_id: projectId,
@@ -99,22 +112,17 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
         payment_provider: 'stripe',
         metadata: {},
       });
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to initiate payment. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch {
     }
   };
 
   const handleDistributeRevenue = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
     setSuccess(null);
 
     try {
-      const payout = await distributeRevenue(payoutForm);
-      setPayouts(prev => [payout, ...prev]);
+      const payout = await distributeRevenueOptimistic({ ...payoutForm, projectId });
+      if (!payout) return;
       setSuccess('Revenue distributed successfully!');
       setPayoutForm({
         credit_sale_id: '',
@@ -124,10 +132,7 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
         platform_fee_percent: 5,
         beneficiaries: [],
       });
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to distribute revenue. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch {
     }
   };
 
@@ -244,10 +249,10 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isInitiatingPayment}
             className="w-full py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center"
           >
-            {loading ? (
+            {isInitiatingPayment ? (
               <>
                 <Clock className="w-5 h-5 mr-2 animate-spin" />
                 Processing...
@@ -385,10 +390,10 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ projectId }) => {
 
           <button
             type="submit"
-            disabled={loading || payoutForm.beneficiaries.length === 0}
+            disabled={isDistributingRevenue || payoutForm.beneficiaries.length === 0}
             className="w-full py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center"
           >
-            {loading ? (
+            {isDistributingRevenue ? (
               <>
                 <Clock className="w-5 h-5 mr-2 animate-spin" />
                 Processing...

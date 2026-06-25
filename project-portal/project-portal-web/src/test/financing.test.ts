@@ -6,10 +6,13 @@ import {
   getProjectCredits,
   getCreditTraceability,
   createForwardSale,
+  getProjectForwardSales,
   getPriceQuote,
   initiatePayment,
+  getProjectPayments,
   distributeRevenue,
-  getPayoutStatus
+  getPayoutStatus,
+  getProjectPayouts
 } from '@/lib/api/financing.api';
 import { api } from '@/lib/api/axios';
 
@@ -194,6 +197,20 @@ describe('Financing API', () => {
       expect(api.get).toHaveBeenCalledWith('/financing/pricing/quote', { params });
       expect(result).toEqual(mockResponse);
     });
+
+    it('should get project forward sales successfully', async () => {
+      const projectId = 'project-123';
+      const mockResponse = [
+        { id: 'sale-1', project_id: projectId, buyer_id: 'buyer-1', vintage_year: 2024, tons_committed: 10, price_per_ton: 15, currency: 'USD', total_amount: 150, delivery_date: '2024-12-31', deposit_percent: 10, deposit_paid: false, deposit_transaction_id: '', payment_schedule: {}, contract_hash: '', status: 'pending', created_at: '2024-01-01', updated_at: '2024-01-01' },
+      ];
+
+      vi.mocked(api.get).mockResolvedValue({ data: mockResponse });
+
+      const result = await getProjectForwardSales(projectId);
+
+      expect(api.get).toHaveBeenCalledWith(`/financing/projects/${projectId}/forward-sales`);
+      expect(result).toEqual(mockResponse);
+    });
   });
 
   describe('Payments and Payouts', () => {
@@ -219,6 +236,20 @@ describe('Financing API', () => {
       const result = await initiatePayment(payload);
 
       expect(api.post).toHaveBeenCalledWith('/financing/payments/initiate', payload);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should get project payments successfully', async () => {
+      const projectId = 'project-123';
+      const mockResponse = [
+        { id: 'payment-1', external_id: 'ext-1', project_id: projectId, amount: 100, currency: 'USD', payment_method: 'stripe', payment_provider: 'stripe', status: 'completed', provider_status: {}, metadata: {}, created_at: '2024-01-01', updated_at: '2024-01-01' },
+      ];
+
+      vi.mocked(api.get).mockResolvedValue({ data: mockResponse });
+
+      const result = await getProjectPayments(projectId);
+
+      expect(api.get).toHaveBeenCalledWith(`/financing/projects/${projectId}/payments`);
       expect(result).toEqual(mockResponse);
     });
 
@@ -279,6 +310,20 @@ describe('Financing API', () => {
       const result = await getPayoutStatus(payoutId);
 
       expect(api.get).toHaveBeenCalledWith(`/financing/payouts/${payoutId}`);
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should get project payouts successfully', async () => {
+      const projectId = 'project-123';
+      const mockResponse = [
+        { id: 'payout-1', credit_sale_id: 'sale-1', distribution_type: 'revenue_share', total_received: 1000, currency: 'USD', platform_fee_percent: 5, platform_fee_amount: 50, net_amount: 950, beneficiaries: [], payment_batch_id: '', payment_status: 'pending', created_at: '2024-01-01' },
+      ];
+
+      vi.mocked(api.get).mockResolvedValue({ data: mockResponse });
+
+      const result = await getProjectPayouts(projectId);
+
+      expect(api.get).toHaveBeenCalledWith(`/financing/projects/${projectId}/payouts`);
       expect(result).toEqual(mockResponse);
     });
   });

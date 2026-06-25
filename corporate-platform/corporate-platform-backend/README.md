@@ -660,3 +660,52 @@ Uploaded files are hashed with SHA-256 during upload, and the digest is persiste
   - If they differ, the request is flagged with `integrity-check-failed` and logged as an integrity error.
 
 This provides cryptographic integrity checks for evidence and certificate payloads across storage/retrieval flows.
+
+## 🏛️ Retirement History Compliance API
+
+The backend exposes robust endpoints for querying on-chain retirement history from the Retirement Tracker contract, supporting compliance reporting for GHG Protocol, CSRD, CORSIA, and other frameworks.
+
+### Endpoints
+
+- `GET /api/v1/compliance/retirements` — Query retirements with filters (entity, date range, framework, asset type, project, etc.)
+- `GET /api/v1/compliance/retirements/:tokenId` — Fetch retirement record for a token (compliance view)
+- `GET /api/v1/compliance/retirements/entity/:address` — List all retirements for an entity (compliance view)
+
+#### Query Parameters
+- `entity` — Entity address or ID
+- `tokenId` — Retirement token or transaction hash
+- `dateFrom`, `dateTo` — ISO date range
+- `framework` — Compliance framework (GHG, CSRD, CORSIA, etc.)
+- `assetType` — Asset type (e.g., CARBON)
+- `project` — Project identifier
+
+#### Example Request
+```http
+GET /api/v1/compliance/retirements?entity=GABC123&framework=GHG&dateFrom=2025-01-01&dateTo=2025-12-31
+Authorization: Bearer <JWT>
+```
+
+#### Example Response
+```json
+[
+  {
+    "retiredAt": "2025-03-15T12:00:00Z",
+    "entity": "GABC123",
+    "assetType": "CARBON",
+    "project": "ProjectX",
+    "amount": 100,
+    "framework": "GHG Protocol"
+  }
+]
+```
+
+#### Security & Audit
+- All endpoints require JWT authentication and `compliance:view` permission.
+- All queries are logged for audit trail and regulatory review.
+
+#### Integration
+- Data is normalized and mapped to compliance schemas for GHG, CSRD, CORSIA, etc.
+- Results are suitable for automated, auditable compliance reporting.
+
+#### Testing
+- See `test/retirement-history.e2e-spec.ts` for integration tests and usage examples.

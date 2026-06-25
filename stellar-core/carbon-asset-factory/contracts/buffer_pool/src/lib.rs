@@ -8,7 +8,7 @@ mod test;
 
 use errors::Error;
 use events::*;
-use soroban_sdk::{contract, contractimpl, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String, Symbol, Val, Vec};
 use storage::*;
 
 #[contract]
@@ -81,6 +81,7 @@ impl BufferPoolContract {
     }
 
     /// Governance withdraws a credit from pool to replace an invalidated token.
+    /// Performs a cross-contract transfer-out call before deleting the custody record.
     pub fn withdraw_to_replace(
         env: Env,
         governance_caller: Address,
@@ -99,6 +100,19 @@ impl BufferPoolContract {
             return Err(Error::TokenNotFound);
         }
 
+        // Get the token contract address saved during initialization
+        let carbon_contract = get_carbon_asset_contract(&env);
+        let current_contract = env.current_contract_address();
+
+        // Prepare parameters for the cross-contract call: transfer(from, to, amount)
+        // Transfer 1 unit representing the specific asset layer to the target governance caller address
+        let args: Vec<Val> = (current_contract, governance_caller.clone(), 1_i128).into_val(&env);
+
+        // Perform cross-contract transfer call.
+        // If this invocation fails, the transaction reverts here, preventing storage deletion.
+        let _: Val = env.invoke_contract(&carbon_contract, &Symbol::new(&env, "transfer"), args);
+
+        // Safely delete custody record after the transfer-out returns success
         env.storage()
             .persistent()
             .remove(&(storage::CUSTODY, token_id));
@@ -106,6 +120,7 @@ impl BufferPoolContract {
         let tvl = get_total_value_locked(&env);
         set_total_value_locked(&env, tvl - 1);
 
+        // Emit trace events for off-chain tracking
         emit_withdraw_event(&env, token_id, target_invalidated_token, &governance_caller);
 
         Ok(())
@@ -129,6 +144,12 @@ impl BufferPoolContract {
         let modulo = (10000 / percentage) as u32;
 
         if token_id % modulo == 0 {
+            // Check for duplicate token to prevent duplicate custody records
+            if has_custody_record(&env, token_id) {
+                emit_duplicate_auto_deposit_event(&env, token_id, &project_id);
+                return Ok(false);
+            }
+
             let record = CustodyRecord {
                 token_id,
                 deposited_at: env.ledger().timestamp(),

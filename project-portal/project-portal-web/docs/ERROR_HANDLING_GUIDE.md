@@ -176,6 +176,22 @@ const handleSubmit = async (data: FormData) => {
 };
 ```
 
+## Request Timeouts
+
+Both the main Axios instance (`src/lib/api/axios.ts`) and the Geospatial Axios instance (`src/lib/geospatial/api.ts`) are configured with a **10-second timeout** (`timeout: 10_000`) to prevent requests from hanging indefinitely.
+
+### Interception & Graceful Recovery
+
+When a request exceeds 10 seconds:
+1. Axios aborts the request and throws an error with `code: 'ECONNABORTED'`.
+2. The global response interceptor catches the timeout error.
+3. A user-friendly error toast is automatically generated:
+   - **Message**: `"Request timed out"`
+   - **Description**: `"The server took too long to respond. Please check your connection and try again."`
+   - **Retry Option**: A `"Retry"` option is enabled to allow convenient request recovery.
+
+This ensures a slow or unresponsive backend does not degrade the user experience or lead to UI freezes.
+
 ## Error Categories & Severity
 
 ### Categories

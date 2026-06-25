@@ -3,6 +3,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, String, Vec,
 };
 
+mod events;
 mod test;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -105,6 +106,7 @@ impl RegulatoryCheck {
     // ========================================================================
 
     /// Add a new jurisdiction rule
+    /// Emits a RuleAdded event after the rule is stored successfully.
     pub fn add_rule(
         env: Env,
         caller: Address,
@@ -161,6 +163,19 @@ impl RegulatoryCheck {
             .instance()
             .set(&DataKey::ActiveRuleIds, &active_rules);
 
+        // Emit RuleAdded event after state changes
+        events::emit_rule_added_event(
+            &env,
+            rule.rule_id.clone(),
+            rule.source_jur.clone(),
+            rule.dest_jur.clone(),
+            rule.host_jur.clone(),
+            rule.operation,
+            rule.is_allowed,
+            rule.required_authority,
+            caller,
+        );
+
         Ok(())
     }
 
@@ -176,6 +191,7 @@ impl RegulatoryCheck {
     }
 
     /// Update an existing rule
+    /// Emits a RuleUpdated event after the rule is updated.
     pub fn update_rule(
         env: Env,
         caller: Address,
@@ -191,16 +207,34 @@ impl RegulatoryCheck {
 
         let rule_key = DataKey::Rule(rule.rule_id.clone());
 
-        if !env.storage().persistent().has(&rule_key) {
-            return Err(ContractError::RuleNotFound);
-        }
+        // Retrieve the old rule before updating
+        let old_rule: JurisdictionRule = env
+            .storage()
+            .persistent()
+            .get(&rule_key)
+            .ok_or(ContractError::RuleNotFound)?;
 
+        // Compute hashes for change detection before overwriting
+        let old_rule_hash = events::compute_rule_hash(&env, &old_rule);
+        let new_rule_hash = events::compute_rule_hash(&env, &rule);
+
+        // Store the updated rule
         env.storage().persistent().set(&rule_key, &rule);
+
+        // Emit RuleUpdated event after state change
+        events::emit_rule_updated_event(
+            &env,
+            rule.rule_id.clone(),
+            old_rule_hash,
+            new_rule_hash,
+            caller,
+        );
 
         Ok(())
     }
 
     /// Deactivate a rule
+    /// Emits a RuleDeactivated event after the rule is removed.
     pub fn deactivate_rule(
         env: Env,
         caller: Address,
@@ -220,8 +254,10 @@ impl RegulatoryCheck {
             return Err(ContractError::RuleNotFound);
         }
 
+        // Remove the rule
         env.storage().persistent().remove(&rule_key);
 
+        // Remove from active rules list
         let active_rules: Vec<String> = env
             .storage()
             .instance()
@@ -238,6 +274,9 @@ impl RegulatoryCheck {
         env.storage()
             .instance()
             .set(&DataKey::ActiveRuleIds, &new_rules);
+
+        // Emit RuleDeactivated event after state changes
+        events::emit_rule_deactivated_event(&env, rule_id, caller);
 
         Ok(())
     }

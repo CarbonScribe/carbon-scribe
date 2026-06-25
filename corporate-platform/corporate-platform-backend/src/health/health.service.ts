@@ -95,7 +95,10 @@ export class HealthService {
       await Promise.race([
         admin.fetchTopicMetadata({ topics: [] }),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Kafka metadata fetch timed out')), 3000),
+          setTimeout(
+            () => reject(new Error('Kafka metadata fetch timed out')),
+            3000,
+          ),
         ),
       ]);
       return { status: 'healthy', latencyMs: Date.now() - start };
@@ -115,16 +118,23 @@ export class HealthService {
       const headers = this.ipfsConfig.jwt
         ? { Authorization: `Bearer ${this.ipfsConfig.jwt}` }
         : {};
-      
-      const requestPromise = axios.get('https://api.pinata.cloud/data/testAuthentication', {
-        headers,
-        timeout: 2000,
-      });
+
+      const requestPromise = axios.get(
+        'https://api.pinata.cloud/data/testAuthentication',
+        {
+          headers,
+          timeout: 2000,
+        },
+      );
 
       await Promise.race([
         requestPromise,
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('IPFS gateway reachability check timed out')), 2000),
+          setTimeout(
+            () =>
+              reject(new Error('IPFS gateway reachability check timed out')),
+            2000,
+          ),
         ),
       ]);
 
@@ -151,12 +161,18 @@ export class HealthService {
     try {
       const rpcClient = this.sorobanService.getRpcClient();
       if (!rpcClient) {
-        return { status: 'unhealthy', error: 'Stellar RPC client not initialized' };
+        return {
+          status: 'unhealthy',
+          error: 'Stellar RPC client not initialized',
+        };
       }
       await Promise.race([
         rpcClient.getLatestLedger(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Stellar RPC request timed out')), 2000),
+          setTimeout(
+            () => reject(new Error('Stellar RPC request timed out')),
+            2000,
+          ),
         ),
       ]);
       return { status: 'healthy', latencyMs: Date.now() - start };

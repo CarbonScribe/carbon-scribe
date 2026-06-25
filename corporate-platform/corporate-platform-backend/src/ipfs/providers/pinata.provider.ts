@@ -51,14 +51,10 @@ export class PinataProvider implements IIpfsProvider {
       JSON.stringify({ name: file.originalname, keyvalues: metadata }),
     );
 
-    const res = await axios.post(
-      `${this.base}/pinning/pinFileToIPFS`,
-      form,
-      {
-        headers: { ...this.authHeaders, ...form.getHeaders() },
-        timeout: this.config.timeout,
-      },
-    );
+    const res = await axios.post(`${this.base}/pinning/pinFileToIPFS`, form, {
+      headers: { ...this.authHeaders, ...form.getHeaders() },
+      timeout: this.config.timeout,
+    });
 
     return res.data.IpfsHash || res.data.cid || res.data.hash;
   }
@@ -96,7 +92,10 @@ export class PinataProvider implements IIpfsProvider {
             `${this.base}/pinning/pinByHash`,
             { hashToPin: cid },
             {
-              headers: { ...this.authHeaders, 'Content-Type': 'application/json' },
+              headers: {
+                ...this.authHeaders,
+                'Content-Type': 'application/json',
+              },
               timeout: this.config.timeout,
             },
           );

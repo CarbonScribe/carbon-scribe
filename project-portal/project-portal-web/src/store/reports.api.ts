@@ -1,4 +1,7 @@
 import { getReportsApiBase } from '@/lib/api';
+import api from '@/lib/api/apiClient';
+import axios from 'axios';
+import type { AxiosRequestConfig } from 'axios';
 import type {
   CreateReportRequest,
   UpdateReportRequest,
@@ -17,42 +20,48 @@ import type {
   BenchmarkDataset,
   WidgetConfig,
 } from './reports.types';
-import type { ApiError } from '@/lib/api';
 
-const base = () => getReportsApiBase();
-const reportsPath = () => `${base()}/reports`;
-
-function defaultHeaders(): HeadersInit {
-  const h: HeadersInit = { 'Content-Type': 'application/json' };
-  return h;
-}
-
-async function handleResponse<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  if (!res.ok) {
-    let message = res.statusText || `Request failed (${res.status})`;
-    try {
-      const j = JSON.parse(text) as ApiError;
-      if (j.error) message = j.error;
-    } catch {
-      // Avoid storing HTML error pages as the error message
-      if (text && !text.trim().startsWith('<!') && !text.trim().startsWith('<html')) {
-        message = text.length > 200 ? text.slice(0, 200) + '...' : text;
+async function reportsRequest<T>(config: AxiosRequestConfig): Promise<T> {
+  try {
+    const response = await api.request<T>({
+      ...config,
+      baseURL: getReportsApiBase(),
+    });
+    return response.data;
+  } catch (err: any) {
+    if (axios.isAxiosError(err)) {
+      const res = err.response;
+      if (res) {
+        let message = res.statusText || `Request failed (${res.status})`;
+        const data = res.data;
+        if (data) {
+          if (typeof data === 'object') {
+            const errData = data as any;
+            if (errData.error) {
+              message = errData.error;
+            } else if (errData.message) {
+              message = errData.message;
+            }
+          } else if (typeof data === 'string') {
+            const text = data.trim();
+            if (text && !text.startsWith('<!') && !text.startsWith('<html')) {
+              message = text.length > 200 ? text.slice(0, 200) + '...' : text;
+            }
+          }
+        }
+        throw new Error(message);
       }
     }
-    throw new Error(message);
+    throw err;
   }
-  if (!text) return undefined as T;
-  return JSON.parse(text) as T;
 }
 
 export async function apiCreateReport(body: CreateReportRequest): Promise<ReportDefinition> {
-  const res = await fetch(`${reportsPath()}/builder`, {
+  return reportsRequest<ReportDefinition>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify(body),
+    url: 'reports/builder',
+    data: body,
   });
-  return handleResponse<ReportDefinition>(res);
 }
 
 export async function apiListReports(params?: {
@@ -70,57 +79,63 @@ export async function apiListReports(params?: {
   if (params?.search) q.set('search', params.search);
   if (params?.page !== undefined) q.set('page', String(params.page));
   if (params?.page_size !== undefined) q.set('page_size', String(params.page_size));
-  const url = `${reportsPath()}?${q.toString()}`;
-  const res = await fetch(url, { headers: defaultHeaders() });
-  return handleResponse<ListReportsResponse>(res);
+  return reportsRequest<ListReportsResponse>({
+    method: 'GET',
+    url: `reports?${q.toString()}`,
+  });
 }
 
 export async function apiGetReport(id: string): Promise<ReportDefinition> {
-  const res = await fetch(`${reportsPath()}/${id}`, { headers: defaultHeaders() });
-  return handleResponse<ReportDefinition>(res);
+  return reportsRequest<ReportDefinition>({
+    method: 'GET',
+    url: `reports/${id}`,
+  });
 }
 
 export async function apiUpdateReport(id: string, body: UpdateReportRequest): Promise<ReportDefinition> {
-  const res = await fetch(`${reportsPath()}/${id}`, {
+  return reportsRequest<ReportDefinition>({
     method: 'PUT',
-    headers: defaultHeaders(),
-    body: JSON.stringify(body),
+    url: `reports/${id}`,
+    data: body,
   });
-  return handleResponse<ReportDefinition>(res);
 }
 
 export async function apiDeleteReport(id: string): Promise<void> {
-  const res = await fetch(`${reportsPath()}/${id}`, { method: 'DELETE' });
-  if (!res.ok) await handleResponse<ApiError>(res);
+  await reportsRequest<void>({
+    method: 'DELETE',
+    url: `reports/${id}`,
+  });
 }
 
 export async function apiCloneReport(id: string, name: string): Promise<ReportDefinition> {
-  const res = await fetch(`${reportsPath()}/${id}/clone`, {
+  return reportsRequest<ReportDefinition>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify({ name }),
+    url: `reports/${id}/clone`,
+    data: { name },
   });
-  return handleResponse<ReportDefinition>(res);
 }
 
 export async function apiListTemplates(): Promise<ReportDefinition[]> {
-  const res = await fetch(`${reportsPath()}/templates`, { headers: defaultHeaders() });
-  const data = await handleResponse<{ templates: ReportDefinition[] }>(res);
-  return data.templates ?? [];
+  const data = await reportsRequest<{ templates: ReportDefinition[] }>({
+    method: 'GET',
+    url: 'reports/templates',
+  });
+  return data?.templates ?? [];
 }
 
 export async function apiExecuteReport(id: string, body?: ExecuteReportRequest): Promise<ReportExecution> {
-  const res = await fetch(`${reportsPath()}/${id}/execute`, {
+  return reportsRequest<ReportExecution>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: body ? JSON.stringify(body) : undefined,
+    url: `reports/${id}/execute`,
+    data: body,
   });
-  return handleResponse<ReportExecution>(res);
 }
 
 export async function apiExportReport(id: string, format: string = 'csv'): Promise<{ execution_id: string; status: string }> {
-  const res = await fetch(`${reportsPath()}/${id}/export?format=${format}`, { method: 'GET' });
-  return handleResponse<{ execution_id: string; status: string }>(res);
+  return reportsRequest<{ execution_id: string; status: string }>({
+    method: 'GET',
+    url: `reports/${id}/export?format=${format}`,
+  });
 }
 
 export async function apiListExecutions(params?: {
@@ -136,29 +151,39 @@ export async function apiListExecutions(params?: {
   if (params?.status) q.set('status', params.status);
   if (params?.page !== undefined) q.set('page', String(params.page));
   if (params?.page_size !== undefined) q.set('page_size', String(params.page_size));
-  const res = await fetch(`${reportsPath()}/executions?${q.toString()}`, { headers: defaultHeaders() });
-  return handleResponse<ListExecutionsResponse>(res);
+  return reportsRequest<ListExecutionsResponse>({
+    method: 'GET',
+    url: `reports/executions?${q.toString()}`,
+  });
 }
 
 export async function apiGetExecution(executionId: string): Promise<ReportExecution> {
-  const res = await fetch(`${reportsPath()}/executions/${executionId}`, { headers: defaultHeaders() });
-  return handleResponse<ReportExecution>(res);
+  return reportsRequest<ReportExecution>({
+    method: 'GET',
+    url: `reports/executions/${executionId}`,
+  });
 }
 
 export async function apiCancelExecution(executionId: string): Promise<void> {
-  const res = await fetch(`${reportsPath()}/executions/${executionId}/cancel`, { method: 'POST' });
-  if (!res.ok) await handleResponse<ApiError>(res);
+  await reportsRequest<void>({
+    method: 'POST',
+    url: `reports/executions/${executionId}/cancel`,
+  });
 }
 
 export async function apiGetDatasets(): Promise<DatasetMetadata[]> {
-  const res = await fetch(`${reportsPath()}/datasets`, { headers: defaultHeaders() });
-  const data = await handleResponse<{ datasets: DatasetMetadata[] }>(res);
-  return data.datasets ?? [];
+  const data = await reportsRequest<{ datasets: DatasetMetadata[] }>({
+    method: 'GET',
+    url: 'reports/datasets',
+  });
+  return data?.datasets ?? [];
 }
 
 export async function apiGetDashboardSummary(): Promise<DashboardSummary> {
-  const res = await fetch(`${reportsPath()}/dashboard/summary`, { headers: defaultHeaders() });
-  return handleResponse<DashboardSummary>(res);
+  return reportsRequest<DashboardSummary>({
+    method: 'GET',
+    url: 'reports/dashboard/summary',
+  });
 }
 
 export async function apiGetTimeSeriesData(params: {
@@ -173,47 +198,50 @@ export async function apiGetTimeSeriesData(params: {
     end_time: params.end_time,
     ...(params.interval && { interval: params.interval }),
   });
-  const res = await fetch(`${reportsPath()}/dashboard/timeseries?${q.toString()}`, { headers: defaultHeaders() });
-  return handleResponse<{ data: Array<{ time: string; value: number; label?: string }> }>(res);
+  return reportsRequest<{ data: Array<{ time: string; value: number; label?: string }> }>({
+    method: 'GET',
+    url: `reports/dashboard/timeseries?${q.toString()}`,
+  });
 }
 
 export async function apiGetWidgets(section?: string): Promise<DashboardWidget[]> {
-  const url = section ? `${reportsPath()}/dashboard/widgets?section=${encodeURIComponent(section)}` : `${reportsPath()}/dashboard/widgets`;
-  const res = await fetch(url, { headers: defaultHeaders() });
-  const data = await handleResponse<{ widgets: DashboardWidget[] }>(res);
-  return data.widgets ?? [];
+  const url = section ? `reports/dashboard/widgets?section=${encodeURIComponent(section)}` : 'reports/dashboard/widgets';
+  const data = await reportsRequest<{ widgets: DashboardWidget[] }>({
+    method: 'GET',
+    url,
+  });
+  return data?.widgets ?? [];
 }
 
 export async function apiCreateWidget(widget: Omit<DashboardWidget, 'id' | 'created_at' | 'updated_at'>): Promise<DashboardWidget> {
-  const res = await fetch(`${reportsPath()}/dashboard/widgets`, {
+  return reportsRequest<DashboardWidget>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify(widget),
+    url: 'reports/dashboard/widgets',
+    data: widget,
   });
-  return handleResponse<DashboardWidget>(res);
 }
 
 export async function apiUpdateWidget(widgetId: string, widget: Partial<DashboardWidget> & { config: WidgetConfig }): Promise<DashboardWidget> {
-  const res = await fetch(`${reportsPath()}/dashboard/widgets/${widgetId}`, {
+  return reportsRequest<DashboardWidget>({
     method: 'PUT',
-    headers: defaultHeaders(),
-    body: JSON.stringify({ ...widget, id: widgetId }),
+    url: `reports/dashboard/widgets/${widgetId}`,
+    data: { ...widget, id: widgetId },
   });
-  return handleResponse<DashboardWidget>(res);
 }
 
 export async function apiDeleteWidget(widgetId: string): Promise<void> {
-  const res = await fetch(`${reportsPath()}/dashboard/widgets/${widgetId}`, { method: 'DELETE' });
-  if (!res.ok) await handleResponse<ApiError>(res);
+  await reportsRequest<void>({
+    method: 'DELETE',
+    url: `reports/dashboard/widgets/${widgetId}`,
+  });
 }
 
 export async function apiCreateSchedule(body: CreateScheduleRequest): Promise<ReportSchedule> {
-  const res = await fetch(`${reportsPath()}/schedules`, {
+  return reportsRequest<ReportSchedule>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify(body),
+    url: 'reports/schedules',
+    data: body,
   });
-  return handleResponse<ReportSchedule>(res);
 }
 
 export async function apiListSchedules(params?: {
@@ -227,45 +255,48 @@ export async function apiListSchedules(params?: {
   if (params?.is_active !== undefined) q.set('is_active', String(params.is_active));
   if (params?.page !== undefined) q.set('page', String(params.page));
   if (params?.page_size !== undefined) q.set('page_size', String(params.page_size));
-  const res = await fetch(`${reportsPath()}/schedules?${q.toString()}`, { headers: defaultHeaders() });
-  return handleResponse<{ schedules: ReportSchedule[]; total: number }>(res);
+  return reportsRequest<{ schedules: ReportSchedule[]; total: number }>({
+    method: 'GET',
+    url: `reports/schedules?${q.toString()}`,
+  });
 }
 
 export async function apiGetSchedule(scheduleId: string): Promise<ReportSchedule> {
-  const res = await fetch(`${reportsPath()}/schedules/${scheduleId}`, { headers: defaultHeaders() });
-  return handleResponse<ReportSchedule>(res);
+  return reportsRequest<ReportSchedule>({
+    method: 'GET',
+    url: `reports/schedules/${scheduleId}`,
+  });
 }
 
 export async function apiUpdateSchedule(scheduleId: string, body: CreateScheduleRequest): Promise<ReportSchedule> {
-  const res = await fetch(`${reportsPath()}/schedules/${scheduleId}`, {
+  return reportsRequest<ReportSchedule>({
     method: 'PUT',
-    headers: defaultHeaders(),
-    body: JSON.stringify(body),
+    url: `reports/schedules/${scheduleId}`,
+    data: body,
   });
-  return handleResponse<ReportSchedule>(res);
 }
 
 export async function apiDeleteSchedule(scheduleId: string): Promise<void> {
-  const res = await fetch(`${reportsPath()}/schedules/${scheduleId}`, { method: 'DELETE' });
-  if (!res.ok) await handleResponse<ApiError>(res);
+  await reportsRequest<void>({
+    method: 'DELETE',
+    url: `reports/schedules/${scheduleId}`,
+  });
 }
 
 export async function apiToggleSchedule(scheduleId: string, active: boolean): Promise<{ message: string; active: boolean }> {
-  const res = await fetch(`${reportsPath()}/schedules/${scheduleId}/toggle`, {
+  return reportsRequest<{ message: string; active: boolean }>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify({ active }),
+    url: `reports/schedules/${scheduleId}/toggle`,
+    data: { active },
   });
-  return handleResponse<{ message: string; active: boolean }>(res);
 }
 
 export async function apiBenchmarkComparison(body: BenchmarkComparisonRequest): Promise<BenchmarkComparisonResponse> {
-  const res = await fetch(`${reportsPath()}/benchmark/comparison`, {
+  return reportsRequest<BenchmarkComparisonResponse>({
     method: 'POST',
-    headers: defaultHeaders(),
-    body: JSON.stringify(body),
+    url: 'reports/benchmark/comparison',
+    data: body,
   });
-  return handleResponse<BenchmarkComparisonResponse>(res);
 }
 
 export async function apiListBenchmarks(params?: {
@@ -279,7 +310,9 @@ export async function apiListBenchmarks(params?: {
   if (params?.methodology) q.set('methodology', params.methodology);
   if (params?.region) q.set('region', params.region);
   if (params?.year !== undefined) q.set('year', String(params.year));
-  const res = await fetch(`${reportsPath()}/benchmarks?${q.toString()}`, { headers: defaultHeaders() });
-  const data = await handleResponse<{ benchmarks: BenchmarkDataset[] }>(res);
-  return data.benchmarks ?? [];
+  const data = await reportsRequest<{ benchmarks: BenchmarkDataset[] }>({
+    method: 'GET',
+    url: `reports/benchmarks?${q.toString()}`,
+  });
+  return data?.benchmarks ?? [];
 }

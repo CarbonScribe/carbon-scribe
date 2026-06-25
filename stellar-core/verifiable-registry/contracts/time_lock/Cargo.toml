@@ -1,5 +1,5 @@
 [package]
-name = "time-lock"
+name = "time_lock"
 version = "0.1.0"
 edition = "2021"
 description = "Time lock contract for vintage locking mechanisms"

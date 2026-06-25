@@ -7,12 +7,7 @@ import { IpfsModule } from '../ipfs/ipfs.module';
 import { StellarModule } from '../stellar/stellar.module';
 
 @Module({
-  imports: [
-    CacheModule,
-    EventBusModule,
-    IpfsModule,
-    StellarModule,
-  ],
+  imports: [CacheModule, EventBusModule, IpfsModule, StellarModule],
   controllers: [HealthController],
   providers: [HealthService],
   exports: [HealthService],

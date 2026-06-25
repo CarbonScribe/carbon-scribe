@@ -1,3 +1,4 @@
+import { getAccessToken } from '@/lib/auth/token-storage';
 import { authApiClient } from '@/lib/api/auth-http';
 import type {
   AuditEventResponse,
@@ -120,7 +121,7 @@ export async function exportAuditEvents(
   const path = queryString ? `${AUDIT_PREFIX}/export?${queryString}` : `${AUDIT_PREFIX}/export`;
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
-  const token = localStorage.getItem('cs_access_token');
+  const token = getAccessToken();
 
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'GET',

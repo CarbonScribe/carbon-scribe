@@ -1,3 +1,8 @@
+import { getAccessToken } from '@/lib/auth/token-storage';
+import { parseApiError, ParsedError, ErrorCode } from '@/lib/utils/errorParser';
+import { withRetry, isRetryableError, RetryOptions, generateIdempotencyKey } from '@/lib/utils/retry';
+import { requestQueue } from '@/lib/utils/requestQueue';
+
 /**
  * Base API Client for handling HTTP requests
  * Handles authentication, error handling, and response formatting
@@ -11,10 +16,14 @@ export interface ApiResponse<T> {
   error?: string;
   timestamp?: string;
   statusCode?: number;
+  parsedError?: ParsedError;
 }
 
 export interface ApiFetchOptions extends RequestInit {
   timeout?: number;
+  retry?: RetryOptions;
+  idempotencyKey?: string;
+  queueOffline?: boolean; // Whether to queue request when offline
 }
 
 class ApiClient {
@@ -28,10 +37,10 @@ class ApiClient {
    * Get the authorization token from localStorage
    */
   private getAuthToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('cs_access_token');
-    }
-    return null;
+  if (typeof window !== 'undefined') {
+    return getAccessToken();
+  }
+  return null;
   }
 
   /**
@@ -52,6 +61,11 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // Add idempotency key for mutation requests if provided
+    if (options?.idempotencyKey) {
+      headers['Idempotency-Key'] = options.idempotencyKey;
+    }
+
     return headers;
   }
 
@@ -65,38 +79,134 @@ class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     const timeout = options?.timeout || 30000;
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      const response = await fetch(url, {
-        ...options,
-        headers: this.buildHeaders(options),
-        signal: controller.signal,
+    // Check if offline and queueOffline is enabled for mutation requests
+    const isMutation = options?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method);
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    
+    if (isOffline && isMutation && options?.queueOffline) {
+      // Queue the request for later
+      const headers = this.buildHeaders(options);
+      const requestId = requestQueue.enqueue({
+        url,
+        method: options.method || 'GET',
+        headers,
+        body: options?.body as string,
+        maxRetries: 3,
       });
-
-      clearTimeout(timeoutId);
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || `HTTP ${response.status}: ${response.statusText}`,
-        );
-      }
-
-      return data as ApiResponse<T>;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error(`API Error [${endpoint}]:`, errorMessage);
-
+      
       return {
         success: false,
-        error: errorMessage,
+        error: 'You are offline. This request has been queued and will be retried when you reconnect.',
+        statusCode: 0,
         timestamp: new Date().toISOString(),
+        parsedError: {
+          message: 'You are offline. This request has been queued and will be retried when you reconnect.',
+          code: ErrorCode.NETWORK_ERROR,
+          statusCode: 0,
+        },
       };
     }
+
+    const executeRequest = async (): Promise<ApiResponse<T>> => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        const response = await fetch(url, {
+          ...options,
+          headers: this.buildHeaders(options),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          const parsedError = parseApiError(data, response.status);
+          
+          // Check if this is a retryable error (5xx, 408, 429)
+          const isRetryable = response.status >= 500 || response.status === 408 || response.status === 429;
+          if (isRetryable) {
+            throw new Error(parsedError.message);
+          }
+          
+          return {
+            success: false,
+            error: parsedError.message,
+            statusCode: response.status,
+            timestamp: new Date().toISOString(),
+            parsedError,
+          };
+        }
+
+        return data as ApiResponse<T>;
+      } catch (error) {
+        const parsedError = parseApiError(error);
+        
+        // Check if this is a retryable network error
+        if (isRetryableError(error, 0)) {
+          throw error; // Let retry logic handle it
+        }
+        
+        // If offline and queueOffline is enabled, queue the request
+        if (isMutation && options?.queueOffline && typeof navigator !== 'undefined' && !navigator.onLine) {
+          const headers = this.buildHeaders(options);
+          requestQueue.enqueue({
+            url,
+            method: options.method || 'GET',
+            headers,
+            body: options?.body as string,
+            maxRetries: 3,
+          });
+          
+          return {
+            success: false,
+            error: 'You are offline. This request has been queued and will be retried when you reconnect.',
+            statusCode: 0,
+            timestamp: new Date().toISOString(),
+            parsedError: {
+              message: 'You are offline. This request has been queued and will be retried when you reconnect.',
+              code: ErrorCode.NETWORK_ERROR,
+              statusCode: 0,
+            },
+          };
+        }
+        
+        console.error(`API Error [${endpoint}]:`, parsedError.message);
+
+        return {
+          success: false,
+          error: parsedError.message,
+          timestamp: new Date().toISOString(),
+          parsedError,
+        };
+      }
+    };
+
+    // Apply retry logic if retry options are provided
+    if (options?.retry) {
+      try {
+        return await withRetry(executeRequest, {
+          ...options.retry,
+          onRetry: (attempt, error) => {
+            console.log(`Retrying request to ${endpoint} (attempt ${attempt})...`);
+            options.retry?.onRetry?.(attempt, error);
+          },
+        });
+      } catch (error) {
+        const parsedError = parseApiError(error);
+        console.error(`API Error [${endpoint}] after retries:`, parsedError.message);
+        return {
+          success: false,
+          error: parsedError.message,
+          timestamp: new Date().toISOString(),
+          parsedError,
+        };
+      }
+    }
+
+    return executeRequest();
   }
 
   /**

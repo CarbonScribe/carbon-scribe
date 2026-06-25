@@ -237,3 +237,18 @@ export async function getPayoutStatus(payoutId: string): Promise<RevenueDistribu
   const res = await api.get(`/financing/payouts/${payoutId}`);
   return res.data;
 }
+
+export async function getProjectForwardSales(projectId: string): Promise<ForwardSaleAgreement[]> {
+  const res = await api.get(`/financing/projects/${projectId}/forward-sales`);
+  return res.data;
+}
+
+export async function getProjectPayments(projectId: string): Promise<PaymentTransaction[]> {
+  const res = await api.get(`/financing/projects/${projectId}/payments`);
+  return res.data;
+}
+
+export async function getProjectPayouts(projectId: string): Promise<RevenueDistribution[]> {
+  const res = await api.get(`/financing/projects/${projectId}/payouts`);
+  return res.data;
+}

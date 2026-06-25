@@ -9,6 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 )
 
 type Repository interface {
@@ -46,6 +48,11 @@ type MongoRepository struct {
 	templates     *mongo.Collection
 	rules         *mongo.Collection
 	connections   *mongo.Collection
+	ddbClient     aws.DynamoDBClient
+}
+
+func (r *MongoRepository) SetDynamoDBClient(ddb aws.DynamoDBClient) {
+	r.ddbClient = ddb
 }
 
 func NewMongoRepository(client *mongo.Client, dbName string) *MongoRepository {
@@ -281,6 +288,9 @@ func (r *MongoRepository) GetRuleByID(ctx context.Context, id string) (*Notifica
 }
 
 func (r *MongoRepository) UpsertConnection(ctx context.Context, conn *WebSocketConnection) error {
+	if r.ddbClient != nil {
+		return r.ddbClient.PutConnection(ctx, toConnectionRecord(conn))
+	}
 	_, err := r.connections.UpdateByID(ctx, conn.ConnectionID, bson.M{"$set": conn}, options.Update().SetUpsert(true))
 	if err != nil {
 		return fmt.Errorf("upsert connection: %w", err)
@@ -289,6 +299,9 @@ func (r *MongoRepository) UpsertConnection(ctx context.Context, conn *WebSocketC
 }
 
 func (r *MongoRepository) DeleteConnection(ctx context.Context, connectionID string) error {
+	if r.ddbClient != nil {
+		return r.ddbClient.DeleteConnection(ctx, connectionID)
+	}
 	_, err := r.connections.DeleteOne(ctx, bson.M{"_id": connectionID})
 	if err != nil {
 		return fmt.Errorf("delete connection: %w", err)
@@ -297,6 +310,41 @@ func (r *MongoRepository) DeleteConnection(ctx context.Context, connectionID str
 }
 
 func (r *MongoRepository) ListConnections(ctx context.Context, projectID string, userID string) ([]WebSocketConnection, error) {
+	if r.ddbClient != nil {
+		var records []aws.ConnectionRecord
+		var err error
+		if userID != "" {
+			records, err = r.ddbClient.ListConnectionsByUser(ctx, userID)
+		} else if projectID != "" {
+			records, err = r.ddbClient.ListConnectionsByProject(ctx, projectID)
+		} else {
+			// Scan/list all if both empty (highly generic fallback)
+			records, err = r.ddbClient.ListConnectionsByUser(ctx, "")
+		}
+		if err != nil {
+			return nil, fmt.Errorf("list connections from DynamoDB: %w", err)
+		}
+
+		conns := make([]WebSocketConnection, 0, len(records))
+		for _, rec := range records {
+			// In case we listed by project and need to double-check matching on projectID filter
+			if projectID != "" {
+				matched := false
+				for _, pid := range rec.ProjectIDs {
+					if pid == projectID {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+			conns = append(conns, *toWebSocketConnection(&rec))
+		}
+		return conns, nil
+	}
+
 	filter := bson.M{}
 	if userID != "" {
 		filter["user_id"] = userID
@@ -323,6 +371,37 @@ func (r *MongoRepository) ListConnections(ctx context.Context, projectID string,
 		return nil, fmt.Errorf("iterate connections: %w", err)
 	}
 	return items, nil
+}
+
+// Helpers for mappings
+func toConnectionRecord(conn *WebSocketConnection) *aws.ConnectionRecord {
+	if conn == nil {
+		return nil
+	}
+	return &aws.ConnectionRecord{
+		ConnectionID: conn.ConnectionID,
+		UserID:       conn.UserID,
+		ProjectIDs:   conn.ProjectIDs,
+		ConnectedAt:  conn.ConnectedAt,
+		LastActivity: conn.LastActivity,
+		UserAgent:    conn.UserAgent,
+		IPAddress:    conn.IPAddress,
+	}
+}
+
+func toWebSocketConnection(rec *aws.ConnectionRecord) *WebSocketConnection {
+	if rec == nil {
+		return nil
+	}
+	return &WebSocketConnection{
+		ConnectionID: rec.ConnectionID,
+		UserID:       rec.UserID,
+		ProjectIDs:   rec.ProjectIDs,
+		ConnectedAt:  rec.ConnectedAt,
+		LastActivity: rec.LastActivity,
+		UserAgent:    rec.UserAgent,
+		IPAddress:    rec.IPAddress,
+	}
 }
 
 func (r *MongoRepository) Metrics(ctx context.Context) (*DeliveryMetrics, error) {

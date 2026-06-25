@@ -91,6 +91,11 @@ type NotificationsConfig struct {
 	MongoDatabase     string
 	MongoEnabled      bool
 	ReconnectQueueMax int
+	SMSProvider       string
+	AWSSNSSenderID    string
+	TwilioAccountSID  string
+	TwilioAuthToken   string
+	TwilioFromNumber  string
 }
 
 // Load loads configuration from environment variables
@@ -193,6 +198,11 @@ func Load() (*Config, error) {
 			MongoDatabase:     getEnvOrDefault("NOTIFICATIONS_MONGO_DB", "carbon_scribe_notifications"),
 			MongoEnabled:      getEnvOrDefault("NOTIFICATIONS_STORAGE", "mongo") == "mongo",
 			ReconnectQueueMax: getIntOrDefault("NOTIFICATIONS_RECONNECT_QUEUE_MAX", 100),
+			SMSProvider:       getEnvOrDefault("SMS_PROVIDER", "mock"),
+			AWSSNSSenderID:    getEnvOrDefault("AWS_SNS_SMS_SENDER_ID", "CarbonScribe"),
+			TwilioAccountSID:  os.Getenv("TWILIO_ACCOUNT_SID"),
+			TwilioAuthToken:   os.Getenv("TWILIO_AUTH_TOKEN"),
+			TwilioFromNumber:  os.Getenv("TWILIO_FROM_NUMBER"),
 		},
 	}, nil
 }

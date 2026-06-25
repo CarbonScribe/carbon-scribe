@@ -1,14 +1,33 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class IpfsConfig {
-  readonly apiKey = process.env.PINATA_API_KEY || 'mock-pinata-api-key';
-  readonly secretKey =
-    process.env.PINATA_SECRET_KEY || 'mock-pinata-secret-key';
-  readonly jwt = process.env.PINATA_JWT || 'mock-pinata-jwt';
-  readonly gateway =
-    process.env.PINATA_GATEWAY || 'https://gateway.pinata.cloud/ipfs/';
-  readonly fallback =
-    process.env.IPFS_GATEWAY_FALLBACK || 'https://ipfs.io/ipfs/';
-  readonly timeout = Number(process.env.PINATA_TIMEOUT_MS || 20000);
+  constructor(private readonly configService: ConfigService) {}
+
+  get apiKey(): string {
+    return this.configService.get<string>('PINATA_API_KEY');
+  }
+
+  get secretKey(): string {
+    return this.configService.get<string>('PINATA_SECRET_KEY');
+  }
+
+  get jwt(): string {
+    return this.configService.get<string>('PINATA_JWT');
+  }
+
+  get gateway(): string {
+    return this.configService.get<string>('PINATA_GATEWAY');
+  }
+
+  get fallback(): string {
+    return (
+      this.configService.get<string>('IPFS_GATEWAY') || 'https://ipfs.io/ipfs/'
+    );
+  }
+
+  get timeout(): number {
+    return this.configService.get<number>('PINATA_TIMEOUT_MS');
+  }
 }

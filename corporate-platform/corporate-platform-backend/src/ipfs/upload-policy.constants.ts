@@ -83,7 +83,9 @@ export const CRITICAL_DOCUMENT_TYPES: ReadonlySet<string> = new Set([
 /**
  * Resolve the storage class for a given document type.
  */
-export function resolveStorageClass(documentType: string): DocumentStorageClass {
+export function resolveStorageClass(
+  documentType: string,
+): DocumentStorageClass {
   return CRITICAL_DOCUMENT_TYPES.has(documentType)
     ? DocumentStorageClass.CRITICAL
     : DocumentStorageClass.NON_CRITICAL;

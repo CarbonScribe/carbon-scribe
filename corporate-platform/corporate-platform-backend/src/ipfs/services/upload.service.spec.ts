@@ -2,6 +2,20 @@ import { createHash } from 'crypto';
 import { UploadService } from './upload.service';
 import { IpfsConfig } from '../ipfs.config';
 
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const config: Record<string, any> = {
+      PINATA_API_KEY: 'test-key',
+      PINATA_SECRET_KEY: 'test-secret',
+      PINATA_JWT: 'test-jwt',
+      PINATA_GATEWAY: 'https://gateway.pinata.cloud/ipfs/',
+      IPFS_GATEWAY: 'https://ipfs.io/ipfs/',
+      PINATA_TIMEOUT_MS: 20000,
+    };
+    return config[key];
+  }),
+} as any;
+
 jest.mock('clamscan', () => {
   return jest.fn().mockImplementation(() => ({
     init: jest.fn().mockResolvedValue({
@@ -35,7 +49,11 @@ describe('UploadService hash persistence', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new UploadService(new IpfsConfig(), mockPrisma, mockProvider);
+    service = new UploadService(
+      new IpfsConfig(mockConfigService),
+      mockPrisma,
+      mockProvider,
+    );
     mockPrisma.ipfsDocument.findFirst.mockResolvedValue(null);
     mockPrisma.ipfsDocument.create.mockResolvedValue({
       id: 'doc1',

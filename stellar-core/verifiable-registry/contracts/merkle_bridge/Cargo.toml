@@ -1,5 +1,5 @@
 [package]
-name = "merkle-bridge"
+name = "merkle_bridge"
 version = "0.1.0"
 edition = "2021"
 description = "MerkleBridge contract for verifiable tokenization of carbon credits from external registries"

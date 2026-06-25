@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   apiListReports,
@@ -28,26 +29,50 @@ import {
   apiBenchmarkComparison,
   apiListBenchmarks,
 } from '@/store/reports.api';
+import api from '@/lib/api/apiClient';
+
+vi.mock('@/lib/api/apiClient', () => ({
+  default: {
+    request: vi.fn(),
+  },
+}));
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 function mockFetch(body: unknown, status = 200) {
-  const text = status === 204 ? '' : JSON.stringify(body);
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
+  vi.mocked(api.request).mockResolvedValue({
     status,
     statusText: status === 200 ? 'OK' : 'Error',
-    text: () => Promise.resolve(text),
+    data: body,
+    headers: {},
+    config: {},
   });
 }
 
 function mockFetchError(message: string, status = 400) {
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: false,
+  const error = new Error('Request failed');
+  (error as any).response = {
     status,
     statusText: 'Bad Request',
-    text: () => Promise.resolve(JSON.stringify({ error: message })),
-  });
+    data: { error: message },
+    headers: {},
+    config: {},
+  };
+  (error as any).isAxiosError = true;
+  vi.mocked(api.request).mockRejectedValue(error);
+}
+
+function mockFetchRawError(status: number, statusText: string, data: string) {
+  const error = new Error('Request failed');
+  (error as any).response = {
+    status,
+    statusText,
+    data,
+    headers: {},
+    config: {},
+  };
+  (error as any).isAxiosError = true;
+  vi.mocked(api.request).mockRejectedValue(error);
 }
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
@@ -124,13 +149,15 @@ describe('Reports API client', () => {
       const result = await apiListReports({ page: 1, page_size: 20 });
       expect(result.reports).toHaveLength(1);
       expect(result.total).toBe(1);
-      expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('/reports?');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('reports?');
     });
 
     it('passes filter params in query string', async () => {
       mockFetch({ reports: [], total: 0, page: 1, page_size: 20, total_pages: 0 });
       await apiListReports({ category: 'financial', is_template: true, search: 'foo' });
-      const url = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      const url = config.url as string;
       expect(url).toContain('category=financial');
       expect(url).toContain('is_template=true');
       expect(url).toContain('search=foo');
@@ -158,9 +185,9 @@ describe('Reports API client', () => {
         config: { dataset: 'projects', fields: [{ name: 'id' }] },
       });
       expect(result.id).toBe('r-1');
-      const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/builder');
-      expect(opts.method).toBe('POST');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('builder');
+      expect(config.method).toBe('POST');
     });
   });
 
@@ -169,8 +196,8 @@ describe('Reports API client', () => {
       mockFetch({ ...REPORT, name: 'Updated' });
       const result = await apiUpdateReport('r-1', { name: 'Updated' });
       expect(result.name).toBe('Updated');
-      const [, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(opts.method).toBe('PUT');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.method).toBe('PUT');
     });
   });
 
@@ -191,8 +218,8 @@ describe('Reports API client', () => {
       mockFetch({ ...REPORT, id: 'r-2', name: 'Copy' }, 201);
       const result = await apiCloneReport('r-1', 'Copy');
       expect(result.id).toBe('r-2');
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/r-1/clone');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('r-1/clone');
     });
   });
 
@@ -220,9 +247,9 @@ describe('Reports API client', () => {
       mockFetch(EXECUTION, 202);
       const result = await apiExecuteReport('r-1', { format: 'csv' });
       expect(result.id).toBe('e-1');
-      const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/r-1/execute');
-      expect(opts.method).toBe('POST');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('r-1/execute');
+      expect(config.method).toBe('POST');
     });
   });
 
@@ -231,8 +258,8 @@ describe('Reports API client', () => {
       mockFetch({ execution_id: 'e-1', status: 'pending' }, 202);
       const result = await apiExportReport('r-1', 'pdf');
       expect(result.execution_id).toBe('e-1');
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('format=pdf');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('format=pdf');
     });
   });
 
@@ -241,8 +268,8 @@ describe('Reports API client', () => {
       mockFetch({ executions: [EXECUTION], total: 1, page: 1, page_size: 20, total_pages: 1 });
       const result = await apiListExecutions({ report_id: 'r-1' });
       expect(result.executions).toHaveLength(1);
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('report_id=r-1');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('report_id=r-1');
     });
   });
 
@@ -258,8 +285,8 @@ describe('Reports API client', () => {
     it('posts to /cancel', async () => {
       mockFetch({ message: 'cancelled' });
       await expect(apiCancelExecution('e-1')).resolves.toBeUndefined();
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/e-1/cancel');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('e-1/cancel');
     });
   });
 
@@ -297,9 +324,9 @@ describe('Reports API client', () => {
         interval: 'month',
       });
       expect(result.data).toHaveLength(1);
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('metric=carbon_sequestered');
-      expect(url).toContain('interval=month');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('metric=carbon_sequestered');
+      expect(config.url).toContain('interval=month');
     });
   });
 
@@ -315,8 +342,8 @@ describe('Reports API client', () => {
     it('passes section param', async () => {
       mockFetch({ widgets: [] });
       await apiGetWidgets('main');
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('section=main');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('section=main');
     });
   });
 
@@ -334,9 +361,9 @@ describe('Reports API client', () => {
       mockFetch({ ...WIDGET, title: 'Updated' });
       const result = await apiUpdateWidget('w-1', { ...WIDGET, config: WIDGET.config });
       expect(result.title).toBe('Updated');
-      const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/w-1');
-      expect(opts.method).toBe('PUT');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('w-1');
+      expect(config.method).toBe('PUT');
     });
   });
 
@@ -361,9 +388,9 @@ describe('Reports API client', () => {
         delivery_config: {},
       });
       expect(result.id).toBe('s-1');
-      const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/schedules');
-      expect(opts.method).toBe('POST');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('schedules');
+      expect(config.method).toBe('POST');
     });
   });
 
@@ -373,8 +400,8 @@ describe('Reports API client', () => {
       const result = await apiListSchedules({ is_active: true });
       expect(result.schedules).toHaveLength(1);
       expect(result.total).toBe(1);
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('is_active=true');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('is_active=true');
     });
   });
 
@@ -413,10 +440,10 @@ describe('Reports API client', () => {
       mockFetch({ message: 'schedule updated', active: false });
       const result = await apiToggleSchedule('s-1', false);
       expect(result.active).toBe(false);
-      const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/s-1/toggle');
-      expect(opts.method).toBe('POST');
-      expect(JSON.parse(opts.body)).toEqual({ active: false });
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('s-1/toggle');
+      expect(config.method).toBe('POST');
+      expect(config.data).toEqual({ active: false });
     });
   });
 
@@ -434,8 +461,8 @@ describe('Reports API client', () => {
       mockFetch(response);
       const result = await apiBenchmarkComparison({ project_id: 'p-1', category: 'carbon' });
       expect(result.project_id).toBe('p-1');
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('/benchmark/comparison');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('benchmark/comparison');
     });
   });
 
@@ -445,8 +472,8 @@ describe('Reports API client', () => {
       mockFetch({ benchmarks: [bm] });
       const result = await apiListBenchmarks({ category: 'carbon' });
       expect(result).toHaveLength(1);
-      const [url] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-      expect(url).toContain('category=carbon');
+      const config = vi.mocked(api.request).mock.calls[0][0];
+      expect(config.url).toContain('category=carbon');
     });
   });
 
@@ -459,22 +486,12 @@ describe('Reports API client', () => {
     });
 
     it('throws with statusText when body is not JSON', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        text: () => Promise.resolve(''),
-      });
+      mockFetchRawError(500, 'Internal Server Error', '');
       await expect(apiGetReport('r-1')).rejects.toThrow('Internal Server Error');
     });
 
     it('does not expose HTML error pages as error message', async () => {
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 502,
-        statusText: 'Bad Gateway',
-        text: () => Promise.resolve('<!DOCTYPE html><html><body>Bad Gateway</body></html>'),
-      });
+      mockFetchRawError(502, 'Bad Gateway', '<!DOCTYPE html><html><body><h1>502 Bad Gateway</h1></body></html>');
       await expect(apiGetReport('r-1')).rejects.toThrow('Bad Gateway');
     });
   });

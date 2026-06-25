@@ -1,20 +1,23 @@
 package notifications
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"regexp"
-	"strings"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "regexp"
+    "strings"
+    "time"
 
-	"github.com/google/uuid"
+    "carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+
+    "github.com/google/uuid"
 )
 
 type Service struct {
-	repo          Repository
-	retryLimit    int
-	defaultLocale string
+    repo          Repository
+    retryLimit    int
+    defaultLocale string
+    smsSender     channels.SMSSender
 }
 
 func NewService(repo Repository) *Service {
@@ -22,7 +25,12 @@ func NewService(repo Repository) *Service {
 		repo:          repo,
 		retryLimit:    3,
 		defaultLocale: "en",
+		smsSender:     &channels.MockSMSSender{},
 	}
+}
+
+func (s *Service) SetSMSSender(sender channels.SMSSender) {
+	s.smsSender = sender
 }
 
 func (s *Service) ListUserNotifications(ctx context.Context, userID string, limit int64) ([]Notification, error) {
@@ -73,12 +81,54 @@ func (s *Service) SendNotification(ctx context.Context, req SendNotificationRequ
 
 	finalStatus := StatusSent
 	for _, channel := range req.Channels {
-		attemptStatus, providerResponse := s.mockDeliver(channel, req.Destinations, subject, content)
+		chUpper := strings.ToUpper(channel)
+		var attemptStatus string
+		var providerResponse map[string]interface{}
+		var providerMsgID string
+
+		if chUpper == ChannelSMS {
+			to := ""
+			if req.Destinations != nil {
+				to = req.Destinations[ChannelSMS]
+			}
+			if to == "" {
+				attemptStatus = StatusFailed
+				providerResponse = map[string]interface{}{"error": "missing SMS destination number"}
+			} else {
+				var err error
+				var msgID string
+				// Call SMSSender with retry logic
+				for attempt := 0; attempt <= s.retryLimit; attempt++ {
+					msgID, err = s.smsSender.Send(ctx, to, content)
+					if err == nil {
+						break
+					}
+					if attempt < s.retryLimit {
+						time.Sleep(time.Duration((attempt+1)*100) * time.Millisecond)
+					}
+				}
+				if err != nil {
+					attemptStatus = StatusFailed
+					providerResponse = map[string]interface{}{"error": err.Error()}
+				} else {
+					attemptStatus = StatusDelivered
+					providerResponse = map[string]interface{}{
+						"message_id": msgID,
+						"provider":   "sms",
+						"delivered":  true,
+					}
+					providerMsgID = msgID
+				}
+			}
+		} else {
+			attemptStatus, providerResponse = s.mockDeliver(channel, req.Destinations, subject, content)
+		}
+
 		attempt := &DeliveryAttempt{
 			AttemptID:        uuid.NewString(),
 			NotificationID:   n.ID,
 			UserID:           req.UserID,
-			Channel:          strings.ToUpper(channel),
+			Channel:          chUpper,
 			Status:           attemptStatus,
 			ProviderResponse: providerResponse,
 			RetryCount:       0,
@@ -86,7 +136,11 @@ func (s *Service) SendNotification(ctx context.Context, req SendNotificationRequ
 		}
 
 		if attemptStatus == StatusSent || attemptStatus == StatusDelivered {
-			attempt.ProviderMessageID = uuid.NewString()
+			if providerMsgID != "" {
+				attempt.ProviderMessageID = providerMsgID
+			} else {
+				attempt.ProviderMessageID = uuid.NewString()
+			}
 			attempt.FinalStatus = StatusDelivered
 		} else {
 			attempt.FinalStatus = StatusFailed

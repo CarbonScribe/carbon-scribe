@@ -14,6 +14,9 @@ pub enum Error {
     TokenNotFound = 5,
     MetadataMismatch = 6,
     InvalidTransfer = 7,
+    ProposalNotFound = 8,
+    DelayNotMet = 9,
+    ProposalAlreadyExists = 10,
 }
 
 #[contracttype]
@@ -29,6 +32,22 @@ pub struct MethodologyMeta {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProposalType {
+    AddAuthority,
+    RemoveAuthority,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AuthorityProposal {
+    pub proposal_type: ProposalType,
+    pub authority: Address,
+    pub proposed_at: u64,
+    pub executable_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     Name,
@@ -38,6 +57,9 @@ pub enum DataKey {
     Methodology(u32),
     Owner(u32),
     Approved(u32),
+    DelayPeriod,
+    NextProposalId,
+    AuthorityProposal(u32),
 }
 
 #[contract]
@@ -47,6 +69,7 @@ pub struct MethodologyLibrary;
 impl MethodologyLibrary {
    
     pub fn initialize(env: Env, admin: Address, name: String, symbol: String) -> Result<(), Error> {
+    pub fn initialize(env: Env, admin: Address, name: String, symbol: String, delay_period: u64) -> Result<(), Error> {
 
         admin.require_auth();
 
@@ -58,6 +81,8 @@ impl MethodologyLibrary {
         env.storage().persistent().set(&DataKey::Symbol, &symbol);
         env.storage().persistent().set(&DataKey::NextTokenId, &1u32);
         env.storage().persistent().set(&DataKey::Authorities, &Vec::<Address>::new(&env));
+        env.storage().persistent().set(&DataKey::DelayPeriod, &delay_period);
+        env.storage().persistent().set(&DataKey::NextProposalId, &1u32);
         Ok(())
     }
 
@@ -183,6 +208,40 @@ impl MethodologyLibrary {
         Ok(())
     }
 
+    pub fn propose_add_authority(env: Env, admin_caller: Address, authority: Address) -> Result<u32, Error> {
+        admin_caller.require_auth();
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        if admin_caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap_or_else(|| Vec::new(&env));
+        if authorities.contains(&authority) {
+            return Err(Error::ProposalAlreadyExists);
+        }
+
+        let delay_period: u64 = env.storage().persistent().get(&DataKey::DelayPeriod).ok_or(Error::NotInitialized)?;
+        let current_ledger = env.ledger().sequence() as u64;
+        let proposal_id: u32 = env.storage().persistent().get(&DataKey::NextProposalId).ok_or(Error::NotInitialized)?;
+
+        let proposal = AuthorityProposal {
+            proposal_type: ProposalType::AddAuthority,
+            authority: authority.clone(),
+            proposed_at: current_ledger,
+            executable_at: current_ledger + delay_period,
+        };
+
+        env.storage().persistent().set(&DataKey::AuthorityProposal(proposal_id), &proposal);
+        env.storage().persistent().set(&DataKey::NextProposalId, &(proposal_id + 1));
+
+        env.events().publish(
+            (symbol_short!("prop_add"),),
+            (proposal_id, authority)
+        );
+
+        Ok(proposal_id)
+    }
+
     pub fn remove_authority(env: Env, admin_caller: Address, authority: Address) -> Result<(), Error> {
         admin_caller.require_auth();
         let admin: Address = env.storage().persistent().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
@@ -199,6 +258,125 @@ impl MethodologyLibrary {
         }
         env.storage().persistent().set(&DataKey::Authorities, &new_authorities);
         env.events().publish((symbol_short!("auth_rem"),), authority);
+        Ok(())
+    }
+
+    pub fn propose_remove_authority(env: Env, admin_caller: Address, authority: Address) -> Result<u32, Error> {
+        admin_caller.require_auth();
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        if admin_caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap_or_else(|| Vec::new(&env));
+        if !authorities.contains(&authority) {
+            return Err(Error::NotAuthorizedAuthority);
+        }
+
+        let delay_period: u64 = env.storage().persistent().get(&DataKey::DelayPeriod).ok_or(Error::NotInitialized)?;
+        let current_ledger = env.ledger().sequence() as u64;
+        let proposal_id: u32 = env.storage().persistent().get(&DataKey::NextProposalId).ok_or(Error::NotInitialized)?;
+
+        let proposal = AuthorityProposal {
+            proposal_type: ProposalType::RemoveAuthority,
+            authority: authority.clone(),
+            proposed_at: current_ledger,
+            executable_at: current_ledger + delay_period,
+        };
+
+        env.storage().persistent().set(&DataKey::AuthorityProposal(proposal_id), &proposal);
+        env.storage().persistent().set(&DataKey::NextProposalId, &(proposal_id + 1));
+
+        env.events().publish(
+            (symbol_short!("prop_rem"),),
+            (proposal_id, authority)
+        );
+
+        Ok(proposal_id)
+    }
+
+    pub fn execute_authority_change(env: Env, proposal_id: u32) -> Result<(), Error> {
+        let proposal: AuthorityProposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AuthorityProposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        let current_ledger = env.ledger().sequence() as u64;
+        if current_ledger < proposal.executable_at {
+            return Err(Error::DelayNotMet);
+        }
+
+        match proposal.proposal_type {
+            ProposalType::AddAuthority => {
+                let mut authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap_or_else(|| Vec::new(&env));
+                if !authorities.contains(&proposal.authority) {
+                    authorities.push_back(proposal.authority.clone());
+                    env.storage().persistent().set(&DataKey::Authorities, &authorities);
+                }
+            },
+            ProposalType::RemoveAuthority => {
+                let authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap_or_else(|| Vec::new(&env));
+                let mut new_authorities = Vec::new(&env);
+                for auth in authorities.iter() {
+                    if auth != proposal.authority {
+                        new_authorities.push_back(auth);
+                    }
+                }
+                env.storage().persistent().set(&DataKey::Authorities, &new_authorities);
+            }
+        }
+
+        env.storage().persistent().remove(&DataKey::AuthorityProposal(proposal_id));
+        env.events().publish(
+            (symbol_short!("exec_chg"),),
+            (proposal_id, proposal.authority)
+        );
+
+        Ok(())
+    }
+
+    pub fn cancel_authority_change(env: Env, admin_caller: Address, proposal_id: u32) -> Result<(), Error> {
+        admin_caller.require_auth();
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        if admin_caller != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let proposal: AuthorityProposal = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AuthorityProposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)?;
+
+        env.storage().persistent().remove(&DataKey::AuthorityProposal(proposal_id));
+        env.events().publish(
+            (symbol_short!("cancel_p"),),
+            (proposal_id, proposal.authority)
+        );
+
+        Ok(())
+    }
+
+    pub fn get_pending_proposal(env: Env, proposal_id: u32) -> Result<AuthorityProposal, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::AuthorityProposal(proposal_id))
+            .ok_or(Error::ProposalNotFound)
+    }
+
+    pub fn get_delay_period(env: Env) -> Result<u64, Error> {
+        env.storage().persistent().get(&DataKey::DelayPeriod).ok_or(Error::NotInitialized)
+    }
+
+    pub fn set_delay_period(env: Env, admin_caller: Address, new_delay: u64) -> Result<(), Error> {
+        admin_caller.require_auth();
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).ok_or(Error::NotInitialized)?;
+        if admin_caller != admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().persistent().set(&DataKey::DelayPeriod, &new_delay);
+        env.events().publish((symbol_short!("delay_upd"),), new_delay);
         Ok(())
     }
 
@@ -221,7 +399,7 @@ impl MethodologyLibrary {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
     use soroban_sdk::{Env, String};
 
     #[test]
@@ -240,6 +418,7 @@ mod test {
             &admin,
             &String::from_str(&env, "Carbon methodology"),
             &String::from_str(&env, "CSC-METH"),
+            &7u64,
         );
 
         let meta = MethodologyMeta {
@@ -275,6 +454,149 @@ mod test {
     }
 
     #[test]
+    fn test_two_step_add_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let new_authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        let delay = client.get_delay_period();
+        assert_eq!(delay, 7u64);
+
+        let proposal_id = client.propose_add_authority(&admin, &new_authority);
+        assert_eq!(proposal_id, 1u32);
+
+        let proposal = client.get_pending_proposal(&proposal_id);
+        assert_eq!(proposal.authority, new_authority);
+        assert_eq!(proposal.proposal_type, ProposalType::AddAuthority);
+
+        env.ledger().set_sequence_number(8);
+
+        client.execute_authority_change(&proposal_id);
+
+        let result = client.try_get_pending_proposal(&proposal_id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_two_step_remove_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        client.add_authority(&admin, &authority);
+
+        let proposal_id = client.propose_remove_authority(&admin, &authority);
+        assert_eq!(proposal_id, 1u32);
+
+        let proposal = client.get_pending_proposal(&proposal_id);
+        assert_eq!(proposal.authority, authority);
+        assert_eq!(proposal.proposal_type, ProposalType::RemoveAuthority);
+
+        env.ledger().set_sequence_number(8);
+
+        client.execute_authority_change(&proposal_id);
+    }
+
+    #[test]
+    fn test_cancel_authority_proposal() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let new_authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        let proposal_id = client.propose_add_authority(&admin, &new_authority);
+
+        client.cancel_authority_change(&admin, &proposal_id);
+
+        let result = client.try_get_pending_proposal(&proposal_id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delay_enforcement() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let new_authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        let proposal_id = client.propose_add_authority(&admin, &new_authority);
+
+        let result = client.try_execute_authority_change(&proposal_id);
+        assert!(result.is_err());
+
+        env.ledger().set_sequence_number(8);
+        client.execute_authority_change(&proposal_id);
+    }
+
+    #[test]
+    fn test_set_delay_period() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        client.set_delay_period(&admin, &14u64);
+        let new_delay = client.get_delay_period();
+        assert_eq!(new_delay, 14u64);
+    }
+
+    #[test]
     fn test_errors() {
         let env = Env::default();
         env.mock_all_auths();
@@ -290,6 +612,7 @@ mod test {
             &admin,
             &String::from_str(&env, "Carbon methodology"),
             &String::from_str(&env, "CSC-METH"),
+            &7u64,
         );
 
         let meta = MethodologyMeta {

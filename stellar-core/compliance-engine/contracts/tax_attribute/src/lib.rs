@@ -1,5 +1,7 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, String, Symbol, Vec,
+};
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
@@ -12,6 +14,21 @@ pub struct TaxAttributeTag {
     pub valid_from: u64,
     pub valid_until: u64,
     pub attached_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct IssuerProof {
+    pub issuer: Address,
+    pub is_authorized: bool,
+    pub ledger_sequence: u32,
+    pub proof_hash: BytesN<32>,
+}
+
+#[contracttype]
+pub enum Event {
+    IssuerAdded(Address),
+    IssuerRemoved(Address),
 }
 
 #[contracttype]
@@ -68,10 +85,12 @@ impl TaxAttributeContract {
                 .instance()
                 .get(&DataKey::AllIssuers)
                 .unwrap_or(Vec::new(&env));
-            all_issuers.push_back(issuer);
+            all_issuers.push_back(issuer.clone());
             env.storage()
                 .instance()
                 .set(&DataKey::AllIssuers, &all_issuers);
+
+            env.events().publish((Symbol::short("iss_add"),), issuer.clone());
         }
     }
 
@@ -100,6 +119,8 @@ impl TaxAttributeContract {
                     .instance()
                     .set(&DataKey::AllIssuers, &all_issuers);
             }
+
+            env.events().publish((Symbol::short("iss_rem"),), issuer.clone());
         }
     }
 
@@ -120,6 +141,12 @@ impl TaxAttributeContract {
             panic!("Caller is not an authorized issuer");
         }
 
+        // Verify the attribute window is not already expired
+        let current_time = env.ledger().timestamp();
+        if current_time > definition.valid_until {
+            panic!("Cannot attach an expired attribute");
+        }
+
         // Verify tag_id uniqueness
         if env
             .storage()
@@ -137,7 +164,7 @@ impl TaxAttributeContract {
             issuing_authority: issuer,
             valid_from: definition.valid_from,
             valid_until: definition.valid_until,
-            attached_at: env.ledger().timestamp(),
+            attached_at: current_time,
         };
 
         // Store attribute
@@ -257,5 +284,65 @@ impl TaxAttributeContract {
             .instance()
             .get(&DataKey::AllIssuers)
             .unwrap_or(Vec::new(&env))
+    }
+
+    pub fn generate_issuer_proof(env: Env, issuer: Address) -> IssuerProof {
+        let is_authorized = env
+            .storage()
+            .instance()
+            .has(&DataKey::Issuer(issuer.clone()));
+
+        let ledger_sequence = env.ledger().sequence();
+
+        // Create deterministic proof using a simple approach
+        // The proof hash is based on the ledger sequence and authorization status
+        // We'll use a simple u64-based hash converted to BytesN<32>
+        let hash_input = (ledger_sequence as u64) * 1000 + (if is_authorized { 1u64 } else { 0u64 });
+        
+        // Create a BytesN<32> from the hash input
+        let hash_bytes = hash_input.to_be_bytes();
+        let mut proof_bytes = [0u8; 32];
+        for i in 0..8 {
+            proof_bytes[i] = hash_bytes[i];
+        }
+        
+        let proof_hash = BytesN::from_array(&env, &proof_bytes);
+
+        IssuerProof {
+            issuer,
+            is_authorized,
+            ledger_sequence,
+            proof_hash,
+        }
+    }
+
+    pub fn generate_batch_issuer_proofs(env: Env, issuers: Vec<Address>) -> Vec<IssuerProof> {
+        let mut proofs: Vec<IssuerProof> = Vec::new(&env);
+        for issuer in issuers.iter() {
+            proofs.push_back(Self::generate_issuer_proof(env.clone(), issuer));
+        }
+        proofs
+    }
+
+    pub fn verify_issuer_proof(env: Env, proof: IssuerProof) -> bool {
+        // Recompute the proof to verify it matches
+        let computed_proof = Self::generate_issuer_proof(env, proof.issuer.clone());
+
+        // Verify the proof hash matches
+        if computed_proof.proof_hash != proof.proof_hash {
+            return false;
+        }
+
+        // Verify the authorization status matches current state
+        if computed_proof.is_authorized != proof.is_authorized {
+            return false;
+        }
+
+        // Verify ledger sequence matches current state
+        if computed_proof.ledger_sequence != proof.ledger_sequence {
+            return false;
+        }
+
+        true
     }
 }

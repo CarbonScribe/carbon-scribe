@@ -40,4 +40,22 @@ export const configSchema = Joi.object({
   IPFS_GATEWAY: Joi.string().uri().allow(''),
   CONFIG_FILE: Joi.string().allow(''),
   CONFIG_WATCH_FILE: Joi.string().allow(''),
+
+  // Pinata IPFS Configuration Validation
+  PINATA_API_KEY: Joi.string().required().messages({
+    'any.required':
+      'PINATA_API_KEY is missing. Please configure valid Pinata credentials.',
+  }),
+  PINATA_SECRET_KEY: Joi.string().required().messages({
+    'any.required':
+      'PINATA_SECRET_KEY is missing. Please configure valid Pinata credentials.',
+  }),
+  PINATA_JWT: Joi.string().required().messages({
+    'any.required':
+      'PINATA_JWT is missing. Please configure valid Pinata credentials.',
+  }),
+  PINATA_GATEWAY: Joi.string()
+    .uri()
+    .default('https://gateway.pinata.cloud/ipfs/'),
+  PINATA_TIMEOUT_MS: Joi.number().integer().min(1000).default(20000),
 });

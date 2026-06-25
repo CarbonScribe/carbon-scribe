@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Coins, Calculator, FileText, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowRight, Sparkles } from 'lucide-react';
-import { calculateCredits, mintCredits, getCreditStatus, type CarbonCredit, type CalculateCreditsRequest, type MintCreditsRequest, type CreditStatusResponse } from '@/lib/api/financing.api';
+import { type CarbonCredit, type CalculateCreditsRequest, type CreditStatusResponse } from '@/lib/api/financing.api';
+import { useStore } from '@/lib/store/store';
+import type { FinancingCredit } from '@/lib/store/financing/financing.types';
 
 interface TokenizationWizardProps {
   projectId: string;
@@ -24,12 +26,21 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
     data_quality: 0.8,
   });
 
-  const [calculatedCredit, setCalculatedCredit] = useState<CarbonCredit | null>(null);
-  const [mintedCredit, setMintedCredit] = useState<CarbonCredit | null>(null);
+  const [calculatedCredit, setCalculatedCredit] = useState<FinancingCredit | null>(null);
+  const [mintedCredit, setMintedCredit] = useState<FinancingCredit | null>(null);
   const [creditStatus, setCreditStatus] = useState<CreditStatusResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const isCalculating = useStore((s) => s.financingLoading.isCalculatingCredits);
+  const isMinting = useStore((s) => s.financingLoading.isMintingCredits);
+  const error = useStore(
+    (s) =>
+      s.financingErrors.calculateCredits ||
+      s.financingErrors.mintCredits ||
+      s.financingErrors.creditStatus,
+  );
+  const calculateProjectCredits = useStore((s) => s.calculateProjectCredits);
+  const mintCreditsOptimistic = useStore((s) => s.mintCreditsOptimistic);
+  const fetchCreditStatus = useStore((s) => s.fetchCreditStatus);
 
   useEffect(() => {
     // Set default dates to current year
@@ -59,42 +70,33 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
 
   const handleCalculateCredits = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
 
     try {
-      const credit = await calculateCredits(projectId, formData);
+      const credit = await calculateProjectCredits(projectId, formData);
+      if (!credit) return;
       setCalculatedCredit(credit);
       setCurrentStep('review');
-      onCreditCreated?.(credit);
+      onCreditCreated?.(credit as unknown as CarbonCredit);
       setSuccess('Credits calculated successfully!');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to calculate credits. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch {
     }
   };
 
   const handleMintCredits = async () => {
     if (!calculatedCredit) return;
 
-    setLoading(true);
-    setError(null);
-
     try {
-      const mintRequest: MintCreditsRequest = {
-        credit_id: calculatedCredit.id,
-        batch_size: Math.floor(calculatedCredit.issued_tons), // 1 token per ton
-      };
-      const credit = await mintCredits(mintRequest);
+      const credit = await mintCreditsOptimistic({
+        projectId,
+        creditId: calculatedCredit.id,
+        batchSize: Math.floor(calculatedCredit.issued_tons),
+      });
+      if (!credit) return;
       setMintedCredit(credit);
       setCurrentStep('mint');
-      onCreditMinted?.(credit);
+      onCreditMinted?.(credit as unknown as CarbonCredit);
       setSuccess('Credits minted successfully!');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to mint credits. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch {
     }
   };
 
@@ -102,13 +104,13 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
     if (!mintedCredit) return;
 
     try {
-      const status = await getCreditStatus(mintedCredit.id);
+      const status = await fetchCreditStatus(mintedCredit.id);
+      if (!status) return;
       setCreditStatus(status);
       if (status.status === 'minted') {
         setCurrentStep('complete');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to check credit status.');
+    } catch {
     }
   };
 
@@ -293,10 +295,10 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={isCalculating}
         className="w-full py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center"
       >
-        {loading ? (
+        {isCalculating ? (
           <>
             <Clock className="w-5 h-5 mr-2 animate-spin" />
             Calculating...
@@ -360,10 +362,10 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
           </button>
           <button
             onClick={handleMintCredits}
-            disabled={loading}
+            disabled={isMinting}
             className="flex-1 py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center"
           >
-            {loading ? (
+            {isMinting ? (
               <>
                 <Clock className="w-5 h-5 mr-2 animate-spin" />
                 Minting...

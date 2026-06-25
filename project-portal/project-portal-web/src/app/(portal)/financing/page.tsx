@@ -1,15 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Coins, DollarSign, ArrowUpRight, TrendingUp, CreditCard, Wallet } from 'lucide-react';
 import TokenizationWizard from '@/components/financing/TokenizationWizard';
 import ForwardSale from '@/components/financing/ForwardSale';
 import TokenizationStatus from '@/components/financing/TokenizationStatus';
 import PaymentManagement from '@/components/financing/PaymentManagement';
+import { useStore } from '@/lib/store/store';
 
 const FinancingPage = () => {
   const [activeSection, setActiveSection] = useState('overview');
   const projectId = 'demo-project-1'; // This would come from router/context
+  const startFinancingBackgroundRefresh = useStore((s) => s.startFinancingBackgroundRefresh);
+  const stopFinancingBackgroundRefresh = useStore((s) => s.stopFinancingBackgroundRefresh);
+  const fetchCredits = useStore((s) => s.fetchFinancingCredits);
+  const fetchForwardSales = useStore((s) => s.fetchFinancingForwardSales);
+  const fetchPayments = useStore((s) => s.fetchFinancingPayments);
+  const fetchPayouts = useStore((s) => s.fetchFinancingPayouts);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchCredits(projectId).catch(() => {});
+    fetchForwardSales(projectId).catch(() => {});
+    fetchPayments(projectId).catch(() => {});
+    fetchPayouts(projectId).catch(() => {});
+    startFinancingBackgroundRefresh(projectId);
+    return () => {
+      stopFinancingBackgroundRefresh(projectId);
+    };
+  }, [
+    projectId,
+    fetchCredits,
+    fetchForwardSales,
+    fetchPayments,
+    fetchPayouts,
+    startFinancingBackgroundRefresh,
+    stopFinancingBackgroundRefresh,
+  ]);
 
   const financialMetrics = [
     { label: 'Total Credits Minted', value: '2,630', change: '+24%', icon: Coins, color: 'bg-emerald-500' },

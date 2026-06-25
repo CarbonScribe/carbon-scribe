@@ -8,6 +8,7 @@ import { ProjectComparisonService } from './services/project-comparison.service'
 import { RegionalService } from './services/regional.service';
 import { TeamPerformanceService } from './services/team-performance.service';
 import { TimelineService } from './services/timeline.service';
+import { RetirementAggregationService } from './services/retirement-aggregation.service';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { Reflector } from '@nestjs/core';
 import { RbacService } from '../rbac/rbac.service';
@@ -122,6 +123,13 @@ describe('AnalyticsController', () => {
           milestones: [],
         }),
       },
+      RetirementAggregationService: {
+        getSummary: jest
+          .fn()
+          .mockResolvedValue({ totalRetired: 0, byEntity: [] }),
+        getTrends: jest.fn().mockResolvedValue([]),
+        getBreakdown: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -158,6 +166,10 @@ describe('AnalyticsController', () => {
         {
           provide: TimelineService,
           useValue: mockServices.TimelineService,
+        },
+        {
+          provide: RetirementAggregationService,
+          useValue: mockServices.RetirementAggregationService,
         },
         {
           provide: Reflector,

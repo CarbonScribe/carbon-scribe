@@ -22,6 +22,12 @@ pub fn emit_auto_deposit_event(env: &Env, token_id: u32, project_id: &String) {
         .publish((symbol_short!("auto_dep"),), (token_id, project_id));
 }
 
+pub fn emit_duplicate_auto_deposit_event(env: &Env, token_id: u32, project_id: &String) {
+    #[allow(deprecated)]
+    env.events()
+        .publish((symbol_short!("dup_dep"),), (token_id, project_id));
+}
+
 #[allow(dead_code)]
 pub fn emit_config_update_event(env: &Env, param_name: &Symbol, new_value: i64) {
     #[allow(deprecated)]

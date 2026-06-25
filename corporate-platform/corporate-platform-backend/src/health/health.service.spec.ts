@@ -160,7 +160,9 @@ describe('HealthService', () => {
 
       expect(readiness.status).toBe('healthy');
       expect(readiness.checks.ipfs.status).toBe('healthy');
-      expect(readiness.checks.ipfs.details).toContain('Reachable (HTTP Status: 401)');
+      expect(readiness.checks.ipfs.details).toContain(
+        'Reachable (HTTP Status: 401)',
+      );
     });
   });
 });

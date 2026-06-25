@@ -1,4 +1,5 @@
 import { getIntegrationsApiBase } from '@/lib/api';
+import { showErrorToast } from '@/lib/utils/toast';
 import type {
   IntegrationConnection,
   WebhookConfig,
@@ -42,7 +43,16 @@ async function handleResponse<T>(res: Response): Promise<T> {
         message = text.length > 200 ? text.slice(0, 200) + '...' : text;
       }
     }
-    throw new Error(message);
+    if (res.status >= 500 && res.status <= 599) {
+      showErrorToast('CarbonScribe is having trouble', {
+        description: 'A server error occurred. Please try again in a moment.',
+        retryable: true,
+        id: 'global-5xx',
+      });
+    }
+    const err = new Error(message);
+    (err as any).status = res.status;
+    throw err;
   }
   if (!text) return undefined as T;
   return JSON.parse(text) as T;

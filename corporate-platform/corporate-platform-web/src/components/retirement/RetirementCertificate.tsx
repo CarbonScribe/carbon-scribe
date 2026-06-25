@@ -1,5 +1,6 @@
 'use client';
 
+import { getAccessToken } from '@/lib/auth/token-storage';
 import { useEffect, useState } from 'react';
 import {
   FileText,
@@ -51,15 +52,15 @@ export default function RetirementCertificate({
   }, [retirementId]);
 
   async function handleDownload() {
-    if (!record) return;
-    const url = retirementService.getCertificateDownloadUrl(record.id);
-    const token =
-      typeof window !== 'undefined' ? localStorage.getItem('cs_access_token') : null;
+  if (!record) return;
+  const url = retirementService.getCertificateDownloadUrl(record.id);
+  const token = getAccessToken();
 
-    const res = await fetch(url, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) return;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) return;
 
     const blob = await res.blob();
     const blobUrl = URL.createObjectURL(blob);

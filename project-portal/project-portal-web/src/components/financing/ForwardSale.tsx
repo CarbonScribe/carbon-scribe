@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { ArrowRight, DollarSign, Calendar, Users, FileText, TrendingUp, AlertCircle, CheckCircle, Clock } from 'lucide-react';
-import { createForwardSale, getPriceQuote, type ForwardSaleAgreement, type CreateForwardSaleRequest, type PricingQuoteResponse } from '@/lib/api/financing.api';
+import { getPriceQuote, type ForwardSaleAgreement, type CreateForwardSaleRequest, type PricingQuoteResponse } from '@/lib/api/financing.api';
+import { useStore, type StoreState } from '@/lib/store/store';
 
 interface ForwardSaleProps {
   projectId: string;
@@ -25,14 +26,24 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
   });
 
   const [quote, setQuote] = useState<PricingQuoteResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isQuoteLoading, setIsQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [sales, setSales] = useState<ForwardSaleAgreement[]>([]);
+  const sales = useStore((s: StoreState) => s.financingForwardSalesByProjectId[projectId] ?? []);
+  const isCreating = useStore((s: StoreState) => s.financingLoading.isCreatingForwardSale);
+  const createError = useStore((s: StoreState) => s.financingErrors.createForwardSale);
+  const createForwardSaleOptimistic = useStore((s: StoreState) => s.createForwardSaleOptimistic);
+  const fetchForwardSales = useStore((s: StoreState) => s.fetchFinancingForwardSales);
+  const error = quoteError || createError;
 
   useEffect(() => {
     setFormData(prev => ({ ...prev, project_id: projectId }));
   }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchForwardSales(projectId).catch(() => {});
+  }, [projectId, fetchForwardSales]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -54,8 +65,8 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
   const fetchPriceQuote = async () => {
     if (!formData.project_id) return;
     
-    setLoading(true);
-    setError(null);
+    setIsQuoteLoading(true);
+    setQuoteError(null);
     try {
       const quoteData = await getPriceQuote({
         methodology_code: 'AM001', // Default methodology, should come from project data
@@ -65,9 +76,9 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
       setQuote(quoteData);
       setFormData(prev => ({ ...prev, price_per_ton: quoteData.price_per_ton }));
     } catch (err) {
-      setError('Failed to fetch price quote. Please try again.');
+      setQuoteError('Failed to fetch price quote. Please try again.');
     } finally {
-      setLoading(false);
+      setIsQuoteLoading(false);
     }
   };
 
@@ -81,13 +92,11 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
     setSuccess(null);
 
     try {
-      const saleData = await createForwardSale(formData);
-      setSales(prev => [...prev, saleData]);
+      const saleData = await createForwardSaleOptimistic(formData);
+      if (!saleData) return;
       setSuccess('Forward sale agreement created successfully!');
       onSaleCreated?.(saleData);
       
@@ -106,10 +115,7 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
         deposit_paid: false,
       });
       setQuote(null);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to create forward sale. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch {
     }
   };
 
@@ -225,10 +231,10 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
                 <button
                   type="button"
                   onClick={fetchPriceQuote}
-                  disabled={loading}
+                  disabled={isQuoteLoading}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {loading ? 'Loading...' : 'Get Quote'}
+                  {isQuoteLoading ? 'Loading...' : 'Get Quote'}
                 </button>
               </div>
             </div>
@@ -316,10 +322,10 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isCreating}
             className="w-full py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Creating...' : 'Create Forward Sale'}
+            {isCreating ? 'Creating...' : 'Create Forward Sale'}
           </button>
         </form>
       </div>
@@ -329,7 +335,7 @@ const ForwardSale: React.FC<ForwardSaleProps> = ({ projectId, onSaleCreated }) =
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
           <h3 className="text-xl font-bold text-gray-900 mb-4">Forward Sale Agreements</h3>
           <div className="space-y-3">
-            {sales.map((sale) => (
+            {sales.map((sale: ForwardSaleAgreement) => (
               <div key={sale.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
                 <div className="flex items-center justify-between">
                   <div>

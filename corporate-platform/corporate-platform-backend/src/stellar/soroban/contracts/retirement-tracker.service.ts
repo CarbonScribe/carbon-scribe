@@ -65,4 +65,37 @@ export class RetirementTrackerService {
 
     return null;
   }
+
+  async getRecentRetirementEvents(): Promise<any[]> {
+    try {
+      // 1. Simulate a call to a batch retrieval method on your Soroban smart contract
+      const response = await this.simulate({
+        methodName: 'get_recent_retirements', // ◄ Ensure this matches your Rust/Soroban contract method name
+        args: [
+          {
+            type: 'u32',
+            value: '100', // Fetch latest 100 entries, or handle paging dynamically
+          },
+        ],
+      });
+
+      // 2. Extract and parse the raw event structures
+      const result = (response as any).result;
+      if (Array.isArray(result)) {
+        return result.map((event: any) => ({
+          // Normalize contract keys to the camelCase fields your aggregation service expects
+          retiredAt:
+            event.retired_at || event.timestamp || new Date().toISOString(),
+          entity: event.entity || event.retired_by,
+          assetType: event.asset_type || 'CARBON',
+          project: event.project_id || event.project || 'Unknown',
+          amount: Number(event.amount || 0),
+        }));
+      }
+
+      return [];
+    } catch {
+      return [];
+    }
+  }
 }

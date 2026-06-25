@@ -11,7 +11,7 @@ export const API_BASE_URL = RAW_API_BASE_URL.endsWith("/api/v1")
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 20_000,
+  timeout: 10_000,
 });
 
 // Dynamically import the Zustand store to avoid circular imports
@@ -138,7 +138,15 @@ api.interceptors.response.use(
     }
     
     // Prevent duplicate error toasts within cooldown period (for non-401 errors)
-    const errorMessage = (err.response?.data as any)?.message || err.message;
+    const isTimeout = err.code === 'ECONNABORTED' || err.message?.toLowerCase().includes('timeout');
+    const errorMessage = isTimeout
+      ? "Request timed out"
+      : ((err.response?.data as any)?.message || err.message);
+    const errorDescription = isTimeout
+      ? "The server took too long to respond. Please check your connection and try again."
+      : getErrorDescription(status);
+    const retryable = isTimeout ? true : isRetryableStatus(status);
+
     const errorKey = `${status}-${errorMessage}`;
     const shouldShowToast = !shownErrors.has(errorKey);
     
@@ -149,8 +157,8 @@ api.interceptors.response.use(
       // Don't show toast for expected errors (forbidden, not found)
       if (status !== 403 && status !== 404) {
         showErrorToast(errorMessage, {
-          description: getErrorDescription(status),
-          retryable: isRetryableStatus(status),
+          description: errorDescription,
+          retryable,
         });
       }
     }

@@ -35,7 +35,7 @@ export function useAuctionList(): UseAuctionListState & UseAuctionListActions {
       if (response.success && response.data) {
         setAuctions(response.data);
       } else {
-        setError(response.error || 'Failed to load auctions');
+        setError(response.parsedError?.message || response.error || 'Failed to load auctions');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load auctions');
@@ -96,7 +96,7 @@ export function useAuctionDetail(
       if (response.success && response.data) {
         setAuction(response.data);
       } else {
-        setError(response.error || 'Failed to load auction');
+        setError(response.parsedError?.message || response.error || 'Failed to load auction');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load auction');
@@ -170,7 +170,7 @@ export function useAuctionDetail(
           setBidSuccess('Bid placed successfully!');
           await Promise.all([fetchAuction(), fetchBids()]);
         } else {
-          setBidError(response.error || 'Failed to place bid');
+          setBidError(response.parsedError?.message || response.error || 'Failed to place bid');
         }
       } catch (err) {
         setBidError(
