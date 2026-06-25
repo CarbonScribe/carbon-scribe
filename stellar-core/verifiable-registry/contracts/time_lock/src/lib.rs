@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, symbol_short,
-    token::Client as TokenClient, vec, Address, Env, Map, Vec,
+    token::Client as TokenClient, vec, Address, Env, Map, String, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,10 @@ pub enum TimeLockError {
     EmptyBatch = 8,
     /// Contract initialization has already completed.
     AlreadyInitialized = 9,
+    /// Invalid TTL configuration (must be positive).
+    InvalidTtlConfig = 10,
+    /// TTL not configured.
+    TtlNotConfigured = 11,
 }
 
 // ---------------------------------------------------------------------------
@@ -38,6 +42,15 @@ pub struct LockRecord {
     pub deposited_at: u64,
 }
 
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TtlConfig {
+    /// Time-to-live for lock records after unlock expiration (in seconds)
+    pub ttl_seconds: u64,
+    /// Timestamp when this TTL configuration was set
+    pub configured_at: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Storage keys
 // ---------------------------------------------------------------------------
@@ -49,6 +62,7 @@ enum DataKey {
     ValidateVintage,
     VintageCheckContract,
     LockRecords,
+    TtlConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +92,23 @@ pub struct ForceRelease {
     pub admin: Address,
     pub bypassed_unlock_timestamp: u64,
     pub released_at: u64,
+}
+
+#[contractevent]
+pub struct RecordPruned {
+    pub token_id: u32,
+    pub owner: Address,
+    pub unlock_timestamp: u64,
+    pub deposited_at: u64,
+    pub pruned_at: u64,
+    pub reason: String,
+}
+
+#[contractevent]
+pub struct TtlConfigured {
+    pub ttl_seconds: u64,
+    pub configured_at: u64,
+    pub configured_by: Address,
 }
 
 // ---------------------------------------------------------------------------
@@ -121,6 +152,34 @@ fn emit_force_release(
     .publish(env);
 }
 
+fn emit_record_pruned(
+    env: &Env,
+    token_id: u32,
+    owner: Address,
+    unlock_timestamp: u64,
+    deposited_at: u64,
+    reason: String,
+) {
+    RecordPruned {
+        token_id,
+        owner,
+        unlock_timestamp,
+        deposited_at,
+        pruned_at: env.ledger().timestamp(),
+        reason,
+    }
+    .publish(env);
+}
+
+fn emit_ttl_configured(env: &Env, ttl_seconds: u64, configured_by: Address) {
+    TtlConfigured {
+        ttl_seconds,
+        configured_at: env.ledger().timestamp(),
+        configured_by,
+    }
+    .publish(env);
+}
+
 // ---------------------------------------------------------------------------
 // Contract
 // ---------------------------------------------------------------------------
@@ -143,12 +202,15 @@ impl TimeLock {
     ///                             aligns with the token's vintage year.
     /// * `vintage_check_contract`– Optional override contract for the metadata
     ///                             check (defaults to `carbon_asset_contract`).
+    /// * `default_ttl_seconds`   – Default TTL for lock records after unlock expiration
+    ///                             (in seconds). Set to 0 to disable automatic pruning.
     pub fn initialize(
         env: Env,
         admin: Address,
         carbon_asset_contract: Address,
         validate_vintage: bool,
         vintage_check_contract: Option<Address>,
+        default_ttl_seconds: u64,
     ) -> Result<(), TimeLockError> {
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(TimeLockError::AlreadyInitialized);
@@ -171,6 +233,15 @@ impl TimeLock {
         env.storage()
             .persistent()
             .set(&DataKey::LockRecords, &records);
+
+        // Set default TTL configuration
+        let ttl_config = TtlConfig {
+            ttl_seconds: default_ttl_seconds,
+            configured_at: env.ledger().timestamp(),
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::TtlConfig, &ttl_config);
 
         Ok(())
     }
@@ -334,7 +405,6 @@ impl TimeLock {
     }
 
     /// Admin-only override to release a token before its unlock time.
-
     pub fn force_release(env: Env, token_id: u32) -> Result<(), TimeLockError> {
         Self::require_initialized(&env)?;
 
@@ -400,6 +470,133 @@ impl TimeLock {
         result
     }
 
+    pub fn get_record_count(env: Env) -> u32 {
+        let records = Self::load_records(&env);
+        records.len()
+    }
+
+    pub fn get_ttl_config(env: Env) -> Option<TtlConfig> {
+        env.storage().instance().get(&DataKey::TtlConfig)
+    }
+
+    // -----------------------------------------------------------------------
+    // TTL and Pruning functions
+    // -----------------------------------------------------------------------
+
+    /// Prune a single lock record that has exceeded its TTL.
+    ///
+    /// This function removes lock records that have expired beyond their TTL window.
+    /// A record is eligible for pruning if:
+    /// - The current time is greater than (unlock_timestamp + ttl_seconds)
+    /// - The TTL is configured (ttl_seconds > 0)
+    ///
+    /// This is permissionless to allow keepers/relayers to maintain storage.
+    pub fn prune_expired(env: Env, token_id: u32) -> Result<(), TimeLockError> {
+        Self::require_initialized(&env)?;
+
+        let ttl_config: TtlConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::TtlConfig)
+            .ok_or(TimeLockError::TtlNotConfigured)?;
+
+        if ttl_config.ttl_seconds == 0 {
+            return Err(TimeLockError::TtlNotConfigured);
+        }
+
+        let mut records = Self::load_records(&env);
+        let record = records.get(token_id).ok_or(TimeLockError::NotLocked)?;
+
+        let now = env.ledger().timestamp();
+        let expiry_threshold = record
+            .unlock_timestamp
+            .saturating_add(ttl_config.ttl_seconds);
+
+        if now < expiry_threshold {
+            return Err(TimeLockError::LockNotExpired);
+        }
+
+        // Record has exceeded TTL, prune it
+        records.remove(token_id);
+        Self::save_records(&env, &records);
+
+        emit_record_pruned(
+            &env,
+            token_id,
+            record.owner,
+            record.unlock_timestamp,
+            record.deposited_at,
+            String::from_str(&env, "ttl_expired"),
+        );
+
+        Ok(())
+    }
+
+    /// Batch prune multiple lock records that have exceeded their TTL.
+    ///
+    /// This gas-efficient function processes multiple records in a single transaction.
+    /// Skips records that are not yet eligible for pruning or not locked.
+    /// Returns the list of token IDs that were successfully pruned.
+    ///
+    /// # Arguments
+    /// * `token_ids` - List of token IDs to check for pruning eligibility
+    /// * `max_prune` - Maximum number of records to prune in this transaction (gas limit)
+    pub fn batch_prune_expired(
+        env: Env,
+        token_ids: Vec<u32>,
+        max_prune: u32,
+    ) -> Result<Vec<u32>, TimeLockError> {
+        Self::require_initialized(&env)?;
+
+        if token_ids.is_empty() {
+            return Err(TimeLockError::EmptyBatch);
+        }
+
+        let ttl_config: TtlConfig = env
+            .storage()
+            .instance()
+            .get(&DataKey::TtlConfig)
+            .ok_or(TimeLockError::TtlNotConfigured)?;
+
+        if ttl_config.ttl_seconds == 0 {
+            return Err(TimeLockError::TtlNotConfigured);
+        }
+
+        let mut records = Self::load_records(&env);
+        let now = env.ledger().timestamp();
+        let mut pruned: Vec<u32> = vec![&env];
+        let mut pruned_count = 0u32;
+
+        for token_id in token_ids.iter() {
+            if pruned_count >= max_prune {
+                break;
+            }
+
+            if let Some(record) = records.get(token_id) {
+                let expiry_threshold = record
+                    .unlock_timestamp
+                    .saturating_add(ttl_config.ttl_seconds);
+
+                if now >= expiry_threshold {
+                    records.remove(token_id);
+                    emit_record_pruned(
+                        &env,
+                        token_id,
+                        record.owner.clone(),
+                        record.unlock_timestamp,
+                        record.deposited_at,
+                        String::from_str(&env, "ttl_expired"),
+                    );
+                    pruned.push_back(token_id);
+                    pruned_count += 1;
+                }
+            }
+        }
+
+        Self::save_records(&env, &records);
+        Ok(pruned)
+    }
+
     // -----------------------------------------------------------------------
     // Admin helpers
     // -----------------------------------------------------------------------
@@ -434,6 +631,28 @@ impl TimeLock {
         env.storage()
             .instance()
             .set(&DataKey::VintageCheckContract, &vintage_check_contract);
+        Ok(())
+    }
+
+    pub fn set_ttl(env: Env, ttl_seconds: u64) -> Result<(), TimeLockError> {
+        Self::require_initialized(&env)?;
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TimeLockError::NotInitialized)?;
+        admin.require_auth();
+
+        let ttl_config = TtlConfig {
+            ttl_seconds,
+            configured_at: env.ledger().timestamp(),
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::TtlConfig, &ttl_config);
+
+        emit_ttl_configured(&env, ttl_seconds, admin);
+
         Ok(())
     }
 
@@ -510,7 +729,7 @@ impl TimeLock {
 #[cfg(test)]
 mod test {
     use super::{TimeLock, TimeLockClient, TimeLockError};
-    use soroban_sdk::{testutils::Address as _, Address, Env};
+    use soroban_sdk::{testutils::Address as _, vec, Address, Env, Vec};
 
     fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
         let env = Env::default();
@@ -528,7 +747,7 @@ mod test {
     fn test_initialize_success() {
         let (_env, admin, carbon_asset_contract, client) = setup();
 
-        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None);
+        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
 
         assert_eq!(result, Ok(Ok(())));
     }
@@ -537,9 +756,86 @@ mod test {
     fn test_initialize_twice_returns_already_initialized() {
         let (_env, admin, carbon_asset_contract, client) = setup();
 
-        client.initialize(&admin, &carbon_asset_contract, &false, &None);
-        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None);
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
 
+        let result = client.try_initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
         assert_eq!(result, Err(Ok(TimeLockError::AlreadyInitialized)));
+    }
+
+    #[test]
+    fn test_get_ttl_config() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
+
+        let ttl_config = client.get_ttl_config();
+        assert!(ttl_config.is_some());
+        assert_eq!(ttl_config.unwrap().ttl_seconds, 86400);
+    }
+
+    #[test]
+    fn test_set_ttl() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
+
+        client.set_ttl(&172800);
+
+        let ttl_config = client.get_ttl_config();
+        assert!(ttl_config.is_some());
+        assert_eq!(ttl_config.unwrap().ttl_seconds, 172800);
+    }
+
+    #[test]
+    fn test_get_record_count() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
+
+        let count = client.get_record_count();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_prune_expired_not_configured() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &0);
+
+        let result = client.try_prune_expired(&1);
+        assert_eq!(result, Err(Ok(TimeLockError::TtlNotConfigured)));
+    }
+
+    #[test]
+    fn test_prune_expired_not_locked() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
+
+        let result = client.try_prune_expired(&1);
+        assert_eq!(result, Err(Ok(TimeLockError::NotLocked)));
+    }
+
+    #[test]
+    fn test_batch_prune_expired_empty_batch() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &86400);
+
+        let token_ids: Vec<u32> = vec![&_env];
+        let result = client.try_batch_prune_expired(&token_ids, &10);
+        assert_eq!(result, Err(Ok(TimeLockError::EmptyBatch)));
+    }
+
+    #[test]
+    fn test_batch_prune_expired_not_configured() {
+        let (_env, admin, carbon_asset_contract, client) = setup();
+
+        client.initialize(&admin, &carbon_asset_contract, &false, &None, &0);
+
+        let mut token_ids: Vec<u32> = vec![&_env];
+        token_ids.push_back(1);
+        let result = client.try_batch_prune_expired(&token_ids, &10);
+        assert_eq!(result, Err(Ok(TimeLockError::TtlNotConfigured)));
     }
 }
