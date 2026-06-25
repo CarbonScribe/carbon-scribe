@@ -68,6 +68,7 @@ pub struct MethodologyLibrary;
 #[contractimpl]
 impl MethodologyLibrary {
    
+    pub fn initialize(env: Env, admin: Address, name: String, symbol: String) -> Result<(), Error> {
     pub fn initialize(env: Env, admin: Address, name: String, symbol: String, delay_period: u64) -> Result<(), Error> {
 
         admin.require_auth();

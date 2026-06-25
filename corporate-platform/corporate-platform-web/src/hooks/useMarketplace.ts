@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { marketplaceService } from '@/services/marketplace.service';
 import {
   MarketplaceCredit,
@@ -56,8 +57,13 @@ export function useMarketplace(): UseMarketplaceState & UseMarketplaceActions {
     useState<MarketplaceFiltersData | null>(null);
   const [filtersLoading, setFiltersLoading] = useState(false);
 
+  const latestRequestId = useRef(0);
+
   const fetchCredits = useCallback(
+
+
     async (currentFilters: LocalFilterState, currentPage: number) => {
+      const requestId = ++latestRequestId.current;
       setLoading(true);
       setError(null);
 
@@ -88,19 +94,34 @@ export function useMarketplace(): UseMarketplaceState & UseMarketplaceActions {
       try {
         const response = await marketplaceService.searchCredits(query);
         if (response.success && response.data) {
+
+          if (requestId !== latestRequestId.current) {
+            return;
+          }
+
           setCredits(response.data.data);
           setTotal(response.data.total);
         } else {
-          setError(response.error || 'Failed to load marketplace credits');
-          setCredits([]);
+                  setError(response.error || 'Failed to load marketplace credits');
+                  if (requestId === latestRequestId.current) {
+                       setCredits([]);
+                  }
         }
       } catch (err) {
+
+        if (requestId !== latestRequestId.current) {
+          return;
+        }
+
         setError(
           err instanceof Error ? err.message : 'Failed to load credits',
         );
+
         setCredits([]);
       } finally {
-        setLoading(false);
+              if (requestId === latestRequestId.current) {
+          setLoading(false);
+        }
       }
     },
     [],

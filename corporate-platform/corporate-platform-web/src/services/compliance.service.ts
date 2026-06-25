@@ -50,16 +50,15 @@ class ComplianceService {
    * Export compliance report as PDF
    * GET /compliance/report/:entityId?format=pdf
    */
-  async exportComplianceReportPdf(
-    entityId: string,
-  ): Promise<Blob | null> {
-    try {
-      const token =
-        getAccessToken();
-      const headers: HeadersInit = {
-        Authorization: token ? `Bearer ${token}` : '',
-      };
+ async exportComplianceReportPdf(
+  entityId: string,
+): Promise<Blob | null> {
+  try {
+    const token = getAccessToken();
 
+    const headers: HeadersInit = {
+      Authorization: token ? `Bearer ${token}` : '',
+    };
       const baseUrl =
         process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
       const url = `${baseUrl}/compliance/report/${encodeURIComponent(entityId)}?format=pdf`;

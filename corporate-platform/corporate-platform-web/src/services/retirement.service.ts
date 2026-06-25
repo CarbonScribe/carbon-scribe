@@ -138,6 +138,9 @@ class RetirementService {
    */
   async exportCsv(): Promise<Blob | null> {
     const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('cs_access_token')
+        : null;
       getAccessToken();
     const base =
       process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';

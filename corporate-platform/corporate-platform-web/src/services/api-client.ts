@@ -37,10 +37,10 @@ class ApiClient {
    * Get the authorization token from localStorage
    */
   private getAuthToken(): string | null {
-    if (typeof window !== 'undefined') {
-      return getAccessToken();
-    }
-    return null;
+  if (typeof window !== 'undefined') {
+    return getAccessToken();
+  }
+  return null;
   }
 
   /**

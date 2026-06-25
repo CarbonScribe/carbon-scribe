@@ -19,8 +19,8 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'
 const TEAM_BASE = `${BASE_URL}/api/v1/team`
 
 function getAuthHeaders(): HeadersInit {
-  const token =
-    getAccessToken()
+  const token = getAccessToken()
+
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
