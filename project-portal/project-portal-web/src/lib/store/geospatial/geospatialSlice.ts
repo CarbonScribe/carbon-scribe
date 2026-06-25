@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import type { GeospatialSlice, ProjectGeometry, Geofence, MapTile, Geometry, SatelliteImage, NDVIDataPoint } from './geospatial.types';
+import type { GeospatialSlice, ProjectGeometry, Geofence, MapTile, Geometry, SatelliteImage, NDVIDataPoint, TimeRange, SatelliteInsightsData, WeatherForecast } from './geospatial.types';
 import {
   fetchProjectGeometryApi,
   fetchAllProjectGeometriesApi,
@@ -11,6 +11,7 @@ import {
   fetchMapTilesApi,
 } from './geospatial.api';
 import { geospatialApi } from '@/lib/geospatial/satellite';
+import * as satelliteInsightsApi from './satelliteInsights.api';
 import { getErrorMessage } from '@/lib/utils/errorMessage';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 
@@ -29,20 +30,7 @@ const initialTimeLapseState = {
   exportInProgress: false,
 };
 
-const initialState: Pick<
-  GeospatialSlice,
-  | 'projectGeometries'
-  | 'geofences'
-  | 'mapTiles'
-  | 'selectedGeometry'
-  | 'selectedGeofence'
-  | 'geospatialLoading'
-  | 'geospatialErrors'
-  | 'timeLapse'
-  | 'satelliteImages'
-  | 'ndviData'
-  | 'selectedSatelliteImage'
-> = {
+const initialState: Partial<GeospatialSlice> = {
   projectGeometries: [],
   geofences: [],
   mapTiles: [],
@@ -65,10 +53,18 @@ const initialState: Pick<
   satelliteImages: [],
   ndviData: [],
   selectedSatelliteImage: null,
+  // Satellite insights state
+  insightsData: null,
+  weatherData: [],
+  insightsLoading: false,
+  insightsError: null,
+  selectedTimeRange: 'month',
+  lastRefreshed: null,
+  isRefreshing: false,
 };
 
 export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) => ({
-  ...initialState,
+  ...initialState as GeospatialSlice,
 
   fetchProjectGeometry: async (projectId: string) => {
     set((state) => ({
@@ -269,7 +265,7 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
       },
     }),
 
-  resetGeospatialState: () => set({ ...initialState }),
+  resetGeospatialState: () => set({ ...initialState as GeospatialSlice }),
 
   // ===================== SATELLITE TIME-LAPSE METHODS =====================
 
@@ -510,5 +506,105 @@ export const createGeospatialSlice: StateCreator<GeospatialSlice> = (set, get) =
       console.warn('Failed to check data availability:', errorMessage);
       return null;
     }
+  },
+
+  // ===================== SATELLITE INSIGHTS METHODS =====================
+
+  /**
+   * Fetch satellite insights for a project
+   */
+  fetchSatelliteInsights: async (projectId: string, timeRange?: TimeRange) => {
+    const range = timeRange || get().selectedTimeRange || 'month';
+    set((state: GeospatialSlice) => ({
+      insightsLoading: true,
+      insightsError: null,
+      selectedTimeRange: range,
+    }));
+
+    try {
+      const response = await satelliteInsightsApi.fetchSatelliteInsightsApi(
+        projectId,
+        range
+      );
+
+      set((state: GeospatialSlice) => ({
+        insightsData: response.data,
+        insightsLoading: false,
+        lastRefreshed: new Date().toISOString(),
+      }));
+    } catch (error: unknown) {
+      set((state: GeospatialSlice) => ({
+        insightsLoading: false,
+        insightsError: getErrorMessage(error),
+      }));
+      showErrorToast('Failed to load satellite insights');
+    }
+  },
+
+  /**
+   * Fetch weather forecast for a project
+   */
+  fetchWeatherForecast: async (projectId: string, days: number = 4) => {
+    try {
+      const weatherData = await satelliteInsightsApi.fetchWeatherForecastApi(
+        projectId,
+        days
+      );
+      set({ weatherData });
+    } catch (error: unknown) {
+      console.warn('Failed to fetch weather forecast:', error);
+      // Weather is non-critical, don't show error toast
+    }
+  },
+
+  /**
+   * Refresh satellite insights (force refresh)
+   */
+  refreshSatelliteInsights: async (projectId: string) => {
+    set((state: GeospatialSlice) => ({
+      isRefreshing: true,
+    }));
+
+    try {
+      const response = await satelliteInsightsApi.refreshSatelliteInsightsApi(
+        projectId
+      );
+
+      set((state: GeospatialSlice) => ({
+        insightsData: response.data,
+        isRefreshing: false,
+        lastRefreshed: new Date().toISOString(),
+        insightsError: null,
+      }));
+      showSuccessToast('Satellite insights refreshed');
+    } catch (error: unknown) {
+      set((state: GeospatialSlice) => ({
+        isRefreshing: false,
+        insightsError: getErrorMessage(error),
+      }));
+      showErrorToast('Failed to refresh insights');
+    }
+  },
+
+  /**
+   * Set time range for insights
+   */
+  setInsightsTimeRange: (timeRange: TimeRange) => {
+    set((state: GeospatialSlice) => ({
+      selectedTimeRange: timeRange,
+    }));
+  },
+
+  /**
+   * Clear insights data
+   */
+  clearInsightsData: () => {
+    set((state: GeospatialSlice) => ({
+      insightsData: null,
+      weatherData: [],
+      insightsLoading: false,
+      insightsError: null,
+      isRefreshing: false,
+    }));
   },
 });

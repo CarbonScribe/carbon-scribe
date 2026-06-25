@@ -28,6 +28,7 @@ import CommentSection from '@/components/collaboration/CommentSection';
 import TaskBoard from '@/components/collaboration/TaskBoard';
 import ResourceLibrary from '@/components/collaboration/ResourceLibrary';
 import { ROLES_CAN_MANAGE } from '@/lib/store/collaboration/collaboration.types';
+import SatelliteInsights from '@/components/insights/SatelliteInsights';
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -334,10 +335,16 @@ export default function ProjectDetailPage() {
           )}
 
           {activeTab === 'monitoring' && (
-            <div className="text-center py-12">
-              <Droplets className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Monitoring Dashboard</h3>
-              <p className="text-gray-600">Real-time monitoring data will be available here once sensors are connected.</p>
+            <div className="space-y-6">
+              {/* Satellite Insights */}
+              <SatelliteInsights projectId={project.id} />
+              
+              {/* Additional monitoring content */}
+              <div className="text-center py-12 bg-gray-50 rounded-xl">
+                <Droplets className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <h3 className="text-lg font-bold text-gray-900 mb-2">Monitoring Dashboard</h3>
+                <p className="text-gray-600">Real-time monitoring data will be available here once sensors are connected.</p>
+              </div>
             </div>
           )}
 

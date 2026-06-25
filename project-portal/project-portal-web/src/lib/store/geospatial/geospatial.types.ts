@@ -93,6 +93,56 @@ export interface ExportOptions {
   includeNDVI?: boolean;
 }
 
+// ===================== SATELLITE INSIGHTS TYPES =====================
+
+export type TimeRange = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type TrendDirection = 'up' | 'down' | 'stable';
+
+export interface InsightMetric {
+  metric: string;
+  value: string | number;
+  change: string;
+  trend: TrendDirection;
+  icon: string;
+  rawValue?: number;
+  unit?: string;
+}
+
+export interface WeatherForecast {
+  day: string;
+  date: string;
+  icon: 'sun' | 'cloud' | 'cloud-rain' | 'cloud-snow' | 'wind';
+  temp: number;
+  tempMin?: number;
+  tempMax?: number;
+  rain: number; // percentage
+  humidity?: number;
+  windSpeed?: number;
+  uvIndex?: number;
+}
+
+export interface SatelliteInsightsData {
+  insights: InsightMetric[];
+  weather: WeatherForecast[];
+  lastUpdated: string; // ISO timestamp
+  projectId: string;
+  timeRange: TimeRange;
+  dataQuality: {
+    confidence: number;
+    sources: string[];
+    cloudCoverage: number;
+  };
+}
+
+export interface SatelliteInsightsResponse {
+  data: SatelliteInsightsData;
+  meta: {
+    cached: boolean;
+    cacheExpiry: string;
+    requestId: string;
+  };
+}
+
 export interface GeospatialLoadingState {
   isFetchingGeometry: boolean;
   isFetchingGeofences: boolean;
@@ -127,6 +177,15 @@ export interface GeospatialSlice {
   ndviData: NDVIDataPoint[];
   selectedSatelliteImage: SatelliteImage | null;
 
+  // Satellite Insights State
+  insightsData: SatelliteInsightsData | null;
+  weatherData: WeatherForecast[];
+  insightsLoading: boolean;
+  insightsError: string | null;
+  selectedTimeRange: TimeRange;
+  lastRefreshed: string | null;
+  isRefreshing: boolean;
+
   // Existing Actions
   fetchProjectGeometry: (projectId: string) => Promise<void>;
   fetchAllProjectGeometries: () => Promise<void>;
@@ -141,7 +200,7 @@ export interface GeospatialSlice {
   clearGeospatialErrors: () => void;
   resetGeospatialState: () => void;
 
-  // New Satellite Actions
+  // Satellite Actions (Time-Lapse)
   fetchSatelliteTimeSeries: (
     projectId: string,
     startDate: string,
@@ -174,4 +233,11 @@ export interface GeospatialSlice {
     earliestDate: string | null;
     latestDate: string | null;
   } | null>;
+
+  // Satellite Insights Actions
+  fetchSatelliteInsights: (projectId: string, timeRange?: TimeRange) => Promise<void>;
+  fetchWeatherForecast: (projectId: string, days?: number) => Promise<void>;
+  refreshSatelliteInsights: (projectId: string) => Promise<void>;
+  setInsightsTimeRange: (timeRange: TimeRange) => void;
+  clearInsightsData: () => void;
 }
