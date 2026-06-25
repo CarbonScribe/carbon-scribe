@@ -1,7 +1,6 @@
 'use client';
 
 
-git
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { marketplaceService } from '@/services/marketplace.service';
 import {
