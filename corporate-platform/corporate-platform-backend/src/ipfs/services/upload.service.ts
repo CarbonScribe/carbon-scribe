@@ -172,31 +172,13 @@ export class UploadService {
         `${this.provider.providerName} upload failed`,
         err?.message || err,
       );
-      const cid = `mockcid-${Date.now()}`;
-      const record = await this.prisma.ipfsDocument.create({
-        data: {
-          companyId,
-          documentType,
-          referenceId: metadata.referenceId || '',
-          ipfsCid: cid,
-          ipfsGateway: this.config.fallback,
-          fileName: file.originalname,
-          fileSize: file.size,
-          mimeType: file.mimetype,
-          pinned: false,
-          pinnedAt: new Date(),
-          metadata: { ...metadata, storageClass, policy },
-          idempotencyKey: idempotencyKey || null,
-          contentHash,
-        },
-      });
-      if (file.path) unlink(file.path, () => {});
-      return {
-        cid,
-        record: { ...record, contentHash },
-        storageClass,
-        warning: 'pinning-failed-mock-cid',
-      };
+      // Transaction rollback: never persist a mock CID on failure.
+      // Callers must handle the thrown error and prevent database writes.
+      throw new Error(
+        `IPFS upload failed: ${
+          err?.message || err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 

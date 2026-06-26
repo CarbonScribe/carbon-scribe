@@ -58,4 +58,10 @@ export const configSchema = Joi.object({
     .uri()
     .default('https://gateway.pinata.cloud/ipfs/'),
   PINATA_TIMEOUT_MS: Joi.number().integer().min(1000).default(20000),
+
+  // Pinata upload retry tuning
+  PINATA_RETRY_MAX_ATTEMPTS: Joi.number().integer().min(1).default(3),
+  PINATA_RETRY_INITIAL_DELAY_MS: Joi.number().integer().min(0).default(1000),
+  PINATA_RETRY_MAX_DELAY_MS: Joi.number().integer().min(1).default(30000),
+  PINATA_RETRY_BACKOFF_MULTIPLIER: Joi.number().min(1).default(2),
 });
