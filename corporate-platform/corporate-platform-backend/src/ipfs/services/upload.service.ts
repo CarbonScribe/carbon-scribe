@@ -13,6 +13,7 @@ import {
   STORAGE_CLASS_POLICIES,
   DocumentStorageClass,
 } from '../upload-policy.constants';
+import { RetrievalService } from './retrieval.service';
 import * as NodeClam from 'clamscan';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class UploadService {
     private readonly config: IpfsConfig,
     private readonly prisma: PrismaService,
     @Inject(IPFS_PROVIDER) private readonly provider: IIpfsProvider,
+    private readonly retrieval: RetrievalService,
   ) {}
 
   private async computeSha256(file: any): Promise<string> {
@@ -147,6 +149,13 @@ export class UploadService {
         storageClass,
       });
 
+      const verification = await this.retrieval.verifyPin(cid);
+      if (!verification.verified) {
+        throw new Error(
+          `Pin verification failed for CID ${cid}: ${verification.error}`,
+        );
+      }
+
       const record = await this.prisma.ipfsDocument.create({
         data: {
           companyId,
@@ -159,7 +168,14 @@ export class UploadService {
           mimeType: file.mimetype,
           pinned: true,
           pinnedAt: new Date(),
-          metadata: { ...metadata, storageClass, policy },
+          metadata: {
+            ...metadata,
+            storageClass,
+            policy,
+            pinVerified: true,
+            pinVerifiedAt: new Date().toISOString(),
+            pinVerifyAttempts: verification.attempts,
+          },
           idempotencyKey: idempotencyKey || null,
           contentHash,
         },

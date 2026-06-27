@@ -4,7 +4,7 @@ import { RetrievalService } from './retrieval.service';
 import { IpfsConfig } from '../ipfs.config';
 
 const mockConfigService = {
-  get: jest.fn((key: string) => {
+  get: jest.fn((key: string, defaultValue?: any) => {
     const config: Record<string, any> = {
       PINATA_API_KEY: 'test-key',
       PINATA_SECRET_KEY: 'test-secret',
@@ -13,7 +13,7 @@ const mockConfigService = {
       IPFS_GATEWAY: 'https://ipfs.io/ipfs/',
       PINATA_TIMEOUT_MS: 20000,
     };
-    return config[key];
+    return config[key] ?? defaultValue;
   }),
 } as any;
 
@@ -128,5 +128,73 @@ describe('RetrievalService hash verification', () => {
     expect(result.error).toBeUndefined();
     expect(result.integrityVerified).toBe(false);
     expect(result.data).toBe(payload.toString('base64'));
+  });
+});
+
+describe('RetrievalService verifyPin', () => {
+  const mockIpfs = {
+    validateCid: jest.fn(),
+    gatewayForCid: jest
+      .fn()
+      .mockReturnValue('https://gateway.pinata.cloud/ipfs/cid123'),
+  } as any;
+
+  const mockPrisma = {
+    ipfsDocument: { findUnique: jest.fn() },
+  } as any;
+
+  let service: RetrievalService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useFakeTimers();
+    service = new RetrievalService(
+      mockIpfs,
+      new IpfsConfig(mockConfigService),
+      mockPrisma,
+    );
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns verified=true on first successful HEAD request', async () => {
+    jest.spyOn(axios, 'head').mockResolvedValueOnce({ status: 200 } as any);
+
+    const result = await service.verifyPin('cid123');
+
+    expect(result.verified).toBe(true);
+    expect(result.attempts).toBe(1);
+    expect(result.error).toBeUndefined();
+    expect(axios.head).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries on failure and returns verified=true when a later attempt succeeds', async () => {
+    jest
+      .spyOn(axios, 'head')
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce({ status: 200 } as any);
+
+    const verifyPromise = service.verifyPin('cid123');
+    await jest.runAllTimersAsync();
+    const result = await verifyPromise;
+
+    expect(result.verified).toBe(true);
+    expect(result.attempts).toBe(2);
+    expect(axios.head).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns verified=false with error after all attempts are exhausted', async () => {
+    jest.spyOn(axios, 'head').mockRejectedValue(new Error('gateway down'));
+
+    const verifyPromise = service.verifyPin('cid123');
+    await jest.runAllTimersAsync();
+    const result = await verifyPromise;
+
+    expect(result.verified).toBe(false);
+    expect(result.attempts).toBe(3);
+    expect(result.error).toMatch(/3 attempt/);
+    expect(axios.head).toHaveBeenCalledTimes(3);
   });
 });

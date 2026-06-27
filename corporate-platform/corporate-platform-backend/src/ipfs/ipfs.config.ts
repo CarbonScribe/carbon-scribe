@@ -46,4 +46,20 @@ export class IpfsConfig {
   get retryBackoffMultiplier(): number {
     return this.configService.get<number>('PINATA_RETRY_BACKOFF_MULTIPLIER');
   }
+
+  get verifyRetryAttempts(): number {
+    return this.configService.get<number>('PINATA_VERIFY_RETRY_ATTEMPTS', 3);
+  }
+
+  get verifyRetryDelayMs(): number {
+    return this.configService.get<number>('PINATA_VERIFY_RETRY_DELAY_MS', 1000);
+  }
+
+  get verifyTimeoutMs(): number {
+    return (
+      this.configService.get<number>('PINATA_VERIFY_TIMEOUT_MS') ||
+      this.timeout ||
+      10000
+    );
+  }
 }
