@@ -30,8 +30,18 @@ import {
   storeUser,
   getUser,
   hasRefreshToken,
+  getTokenExpiry,
 } from '@/lib/auth/token-storage';
 import { reportError } from '@/lib/telemetry/errorReporter';
+
+export type SessionExpiryState = 'active' | 'warning' | 'grace' | 'expired';
+
+const SESSION_WARNING_SECONDS =
+  parseInt(process.env.NEXT_PUBLIC_SESSION_EXPIRY_WARNING_MINUTES || '5', 10) * 60;
+const SESSION_GRACE_SECONDS =
+  parseInt(process.env.NEXT_PUBLIC_SESSION_GRACE_SECONDS || '30', 10);
+const TOKEN_REFRESH_BUFFER =
+  parseInt(process.env.NEXT_PUBLIC_TOKEN_REFRESH_BUFFER || '60', 10);
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -39,6 +49,8 @@ interface AuthContextType {
   permissions: AuthPermission[];
   isLoading: boolean;
   isAuthenticated: boolean;
+  sessionExpiryState: SessionExpiryState;
+  secondsUntilExpiry: number;
   hasRole: (role: AuthRole) => boolean;
   hasAnyRole: (roles: AuthRole[]) => boolean;
   hasPermission: (permission: AuthPermission) => boolean;
@@ -47,6 +59,7 @@ interface AuthContextType {
   register: (credentials: RegisterCredentials) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
+  renewSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,6 +75,8 @@ function isPublicRoute(path: string): boolean {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionExpiryState, setSessionExpiryState] = useState<SessionExpiryState>('active');
+  const [secondsUntilExpiry, setSecondsUntilExpiry] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -153,6 +168,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [syncProfile]);
 
+  // Renew session — same as refreshToken but semantically scoped to expiry UX
+  const renewSession = useCallback(async (): Promise<boolean> => {
+    const success = await refreshTokenSilently();
+    if (success) {
+      setSessionExpiryState('active');
+    }
+    return success;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncProfile]);
+
   // Login function
   const login = useCallback(async (credentials: LoginCredentials) => {
     setIsLoading(true)
@@ -229,27 +254,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
-  // Auto-refresh token before expiry
+  // Session expiry tracking: drives countdown banner and auto-refresh
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setSessionExpiryState('active');
+      setSecondsUntilExpiry(0);
+      return;
+    }
 
-    // Check every minute if token needs refresh
-    const interval = setInterval(async () => {
-      if (isTokenExpired(60)) { // 60 seconds buffer
-        const success = await refreshTokenSilently();
-        if (!success) {
-          // Refresh failed - clear auth and redirect to login
+    let graceStartTime: number | null = null;
+    let lastRefreshAttempt = 0;
+
+    const tick = async () => {
+      const expiry = getTokenExpiry();
+      if (!expiry) return;
+
+      const now = Date.now();
+      const remaining = Math.floor((expiry - now) / 1000);
+
+      if (remaining > SESSION_WARNING_SECONDS) {
+        setSessionExpiryState('active');
+        setSecondsUntilExpiry(remaining);
+        graceStartTime = null;
+      } else if (remaining > 0) {
+        setSessionExpiryState('warning');
+        setSecondsUntilExpiry(remaining);
+        graceStartTime = null;
+
+        // Attempt silent auto-refresh within the refresh buffer window
+        if (remaining <= TOKEN_REFRESH_BUFFER && now - lastRefreshAttempt > 30000) {
+          lastRefreshAttempt = now;
+          await refreshTokenSilently();
+          // If successful the expiry timestamp updates; next tick clears the warning
+        }
+      } else {
+        // Access token has expired — start / continue grace period
+        if (!graceStartTime) graceStartTime = now;
+        const graceRemaining = Math.max(
+          0,
+          SESSION_GRACE_SECONDS - Math.floor((now - graceStartTime) / 1000),
+        );
+
+        if (graceRemaining > 0) {
+          setSessionExpiryState('grace');
+          setSecondsUntilExpiry(graceRemaining);
+        } else {
+          // Grace period over — force logout
+          setSessionExpiryState('expired');
           clearAuthData();
           setUser(null);
-          
           if (!isPublicRoute(pathname)) {
             router.push('/login');
           }
         }
       }
-    }, 60000); // Check every minute
+    };
 
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, pathname, router]);
 
   // Protect routes
@@ -296,6 +360,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     permissions,
     isLoading,
     isAuthenticated: !!user,
+    sessionExpiryState,
+    secondsUntilExpiry,
     hasRole,
     hasAnyRole,
     hasPermission,
@@ -304,6 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     refreshToken,
+    renewSession,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

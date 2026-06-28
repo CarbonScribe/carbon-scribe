@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, CalendarRange, Filter, RefreshCcw, TrendingUp } from 'lucide-react'
 import {
   Area,
@@ -53,6 +53,10 @@ export default function RetirementAnalyticsDashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Race-condition guard: each time the query changes a new requestId is issued.
+  // Responses that arrive after a newer request has started are discarded.
+  const requestIdRef = useRef(0)
+
   const query = useMemo<RetirementAnalyticsQuery | null>(() => {
     if (!user?.companyId) return null
     const { startDate, endDate } = resolveDateRange(range)
@@ -71,10 +75,18 @@ export default function RetirementAnalyticsDashboard() {
       return
     }
 
+    // Stamp this invocation so stale responses can be detected and dropped.
+    const requestId = ++requestIdRef.current
+
     setLoading(true)
     setError(null)
 
     const response = await retirementAnalyticsService.getSummary(query)
+
+    // A newer request (triggered by a range/aggregation change) has already
+    // started — discard this response to prevent out-of-order data rendering.
+    if (requestId !== requestIdRef.current) return
+
     if (!response.success || !response.data) {
       setError(response.error || 'Unable to load retirement analytics.')
       setSummary(null)
@@ -88,6 +100,7 @@ export default function RetirementAnalyticsDashboard() {
 
   useEffect(() => {
     void fetchSummary()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query?.companyId, query?.startDate, query?.endDate, query?.aggregation])
 
   if (loading && !summary) {

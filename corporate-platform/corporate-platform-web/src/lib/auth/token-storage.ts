@@ -168,3 +168,13 @@ export function isAuthenticated(): boolean {
   const notExpired = !isTokenExpired();
   return hasToken && notExpired;
 }
+
+/**
+ * Get seconds remaining until token expiry.
+ * Returns 0 if token is already expired or not found.
+ */
+export function getTimeUntilExpiry(): number {
+  const expiry = getTokenExpiry();
+  if (!expiry) return 0;
+  return Math.max(0, Math.floor((expiry - Date.now()) / 1000));
+}

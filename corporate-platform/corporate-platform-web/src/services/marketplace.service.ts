@@ -17,9 +17,14 @@ import {
 class MarketplaceService {
   // ── Discovery / Listing ─────────────────────────────────────────────────
 
-  /** GET /marketplace/search – search and filter available credits */
+  /**
+   * GET /marketplace/search – search and filter available credits.
+   * Pass an AbortSignal to cancel the request when the caller is superseded
+   * by a newer filter selection (race-condition protection).
+   */
   async searchCredits(
     query: MarketplaceSearchQuery,
+    signal?: AbortSignal,
   ): Promise<ApiResponse<MarketplaceSearchResult>> {
     const params = new URLSearchParams();
 
@@ -42,9 +47,14 @@ class MarketplaceService {
     if (query.limit != null) params.set('limit', String(query.limit));
 
     const qs = params.toString();
-    return apiClient.get<MarketplaceSearchResult>(
-      `/marketplace/search${qs ? `?${qs}` : ''}`,
-    );
+    const url = `/marketplace/search${qs ? `?${qs}` : ''}`;
+
+    // Only pass options object when a signal is provided to avoid breaking
+    // callers that assert the exact argument list (e.g. unit tests).
+    if (signal !== undefined) {
+      return apiClient.get<MarketplaceSearchResult>(url, { signal });
+    }
+    return apiClient.get<MarketplaceSearchResult>(url);
   }
 
   /** GET /credits/:id – get a single credit's full details */

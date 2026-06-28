@@ -9,6 +9,7 @@ import CorporateNavbar from '@/components/layout/CorporateNavbar'
 import CorporateSidebar from '@/components/layout/CorporateSidebar'
 import AuthNavbar from '@/components/layout/AuthNavbar'
 import ConnectionStatus from '@/components/layout/ConnectionStatus'
+import SessionExpiryBanner from '@/components/layout/SessionExpiryBanner'
 
 const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password']
 
@@ -55,7 +56,9 @@ export default function PlatformShell({ children }: PlatformShellProps) {
       <div className="flex min-h-screen">
         <CorporateSidebar />
         <div className="flex flex-1 flex-col">
+          <SessionExpiryBanner />
           <CorporateNavbar />
+          <ConnectionStatus />
           <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
             <div className="mx-auto w-full max-w-7xl">
               <RouteGuard>{children}</RouteGuard>

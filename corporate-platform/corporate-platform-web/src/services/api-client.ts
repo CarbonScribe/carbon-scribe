@@ -83,11 +83,11 @@ class ApiClient {
     // Check if offline and queueOffline is enabled for mutation requests
     const isMutation = options?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method);
     const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-    
+
     if (isOffline && isMutation && options?.queueOffline) {
       // Queue the request for later
       const headers = this.buildHeaders(options);
-      const requestId = requestQueue.enqueue({
+      requestQueue.enqueue({
         url,
         method: options.method || 'GET',
         headers,
@@ -112,6 +112,23 @@ class ApiClient {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        // Forward any caller-supplied AbortSignal so explicit cancellations
+        // (e.g. rapid filter changes) abort the underlying fetch immediately
+        // without waiting for the timeout to expire.
+        const externalSignal = options?.signal;
+        if (externalSignal) {
+          if (externalSignal.aborted) {
+            clearTimeout(timeoutId);
+            controller.abort();
+          } else {
+            externalSignal.addEventListener(
+              'abort',
+              () => { clearTimeout(timeoutId); controller.abort(); },
+              { once: true },
+            );
+          }
+        }
 
         const response = await fetch(url, {
           ...options,
