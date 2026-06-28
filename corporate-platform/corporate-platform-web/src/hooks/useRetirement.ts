@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { retirementService } from '@/services/retirement.service';
+import type { ApiFetchOptions } from '@/services/api-client';
 import type {
   RetireCreditsPayload,
   RetirementRecord,
@@ -23,9 +24,9 @@ export interface UseRetirementState {
 }
 
 export interface UseRetirementActions {
-  retire: (payload: RetireCreditsPayload) => Promise<RetirementRecord | null>;
-  fetchHistory: (query?: RetirementHistoryQuery) => Promise<void>;
-  fetchStats: () => Promise<void>;
+  retire: (payload: RetireCreditsPayload, options?: ApiFetchOptions) => Promise<RetirementRecord | null>;
+  fetchHistory: (query?: RetirementHistoryQuery, options?: ApiFetchOptions) => Promise<void>;
+  fetchStats: (options?: ApiFetchOptions) => Promise<void>;
   clearRetireError: () => void;
   clearLastRetirement: () => void;
 }
@@ -54,41 +55,52 @@ export function useRetirement(
     useState<RetirementRecord | null>(null);
 
   const fetchHistory = useCallback(
-    async (query: RetirementHistoryQuery = initialQuery) => {
+    async (query: RetirementHistoryQuery = initialQuery, options?: ApiFetchOptions) => {
       setHistoryLoading(true);
       setHistoryError(null);
-      const res = await retirementService.getHistory(query);
-      if (res.success && res.data) {
-        setHistory(res.data);
-      } else {
-        // Use parentheses to clarify operator precedence
-        const errorMsg = (res.parsedError?.message || res.error) ?? 'Failed to fetch retirement history';
-        setHistoryError(errorMsg);
+      try {
+        const res = await retirementService.getHistory(query, options);
+        if (res.isCancelled) return; // Skip state update if cancelled
+        if (res.success && res.data) {
+          setHistory(res.data);
+        } else {
+          const errorMsg = (res.parsedError?.message || res.error) ?? 'Failed to fetch retirement history';
+          setHistoryError(errorMsg);
+        }
+      } finally {
+        setHistoryLoading(false);
       }
-      setHistoryLoading(false);
     },
     // intentionally omit initialQuery so callers can pass ad-hoc queries
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (options?: ApiFetchOptions) => {
     setStatsLoading(true);
     setStatsError(null);
-    const res = await retirementService.getStats();
-    if (res.success && res.data) {
-      setStats(res.data);
-    } else {
-      setStatsError(res.parsedError?.message ?? res.error ?? 'Failed to fetch retirement stats');
+    try {
+      const res = await retirementService.getStats(options);
+      if (res.isCancelled) return; // Skip state update if cancelled
+      if (res.success && res.data) {
+        setStats(res.data);
+      } else {
+        setStatsError(res.parsedError?.message ?? res.error ?? 'Failed to fetch retirement stats');
+      }
+    } finally {
+      setStatsLoading(false);
     }
-    setStatsLoading(false);
   }, []);
 
   const retire = useCallback(
-    async (payload: RetireCreditsPayload): Promise<RetirementRecord | null> => {
+    async (payload: RetireCreditsPayload, options?: ApiFetchOptions): Promise<RetirementRecord | null> => {
       setRetiring(true);
       setRetireError(null);
-      const res = await retirementService.retire(payload);
+      const res = await retirementService.retire(payload, options);
+      if (res.isCancelled) {
+        setRetiring(false);
+        return null;
+      }
       setRetiring(false);
       if (res.success && res.data) {
         setLastRetirement(res.data);
@@ -104,10 +116,16 @@ export function useRetirement(
   const clearLastRetirement = useCallback(() => setLastRetirement(null), []);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    
     if (autoFetch) {
-      fetchHistory(initialQuery);
-      fetchStats();
+      fetchHistory(initialQuery, { signal: abortController.signal });
+      fetchStats({ signal: abortController.signal });
     }
+    
+    return () => {
+      abortController.abort('useRetirement unmounted');
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFetch]);
 

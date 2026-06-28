@@ -3,6 +3,7 @@ import { parseApiError, ParsedError, ErrorCode } from '@/lib/utils/errorParser';
 import { withRetry, isRetryableError, RetryOptions, generateIdempotencyKey } from '@/lib/utils/retry';
 import { requestQueue } from '@/lib/utils/requestQueue';
 import { reportError } from '@/lib/telemetry/errorReporter';
+import { requestManager } from '@/lib/api/requestManager';
 
 /**
  * Base API Client for handling HTTP requests
@@ -15,6 +16,7 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  isCancelled?: boolean;
   timestamp?: string;
   statusCode?: number;
   parsedError?: ParsedError;
@@ -25,6 +27,9 @@ export interface ApiFetchOptions extends RequestInit {
   retry?: RetryOptions;
   idempotencyKey?: string;
   queueOffline?: boolean; // Whether to queue request when offline
+  signal?: AbortSignal;
+  cancelOnRouteChange?: boolean;
+  deduplicate?: boolean;
 }
 
 class ApiClient {
@@ -108,6 +113,12 @@ class ApiClient {
       };
     }
 
+    const method = options?.method ?? 'GET';
+    const isQuery = method === 'GET';
+    const cancelOnRouteChange = options?.cancelOnRouteChange ?? isQuery;
+    const deduplicate = options?.deduplicate ?? isQuery;
+    const requestKey = requestManager.generateKey(method, url, options?.body);
+
     const executeRequest = async (): Promise<ApiResponse<T>> => {
       try {
         const controller = new AbortController();
@@ -120,14 +131,21 @@ class ApiClient {
         if (externalSignal) {
           if (externalSignal.aborted) {
             clearTimeout(timeoutId);
-            controller.abort();
+            controller.abort(externalSignal.reason);
           } else {
             externalSignal.addEventListener(
               'abort',
-              () => { clearTimeout(timeoutId); controller.abort(); },
+              () => {
+                clearTimeout(timeoutId);
+                controller.abort(externalSignal.reason || 'Caller aborted');
+              },
               { once: true },
             );
           }
+        }
+
+        if (cancelOnRouteChange) {
+          requestManager.registerRequest(requestKey, controller, deduplicate);
         }
 
         const response = await fetch(url, {
@@ -137,6 +155,9 @@ class ApiClient {
         });
 
         clearTimeout(timeoutId);
+        if (cancelOnRouteChange) {
+          requestManager.unregisterRequest(requestKey);
+        }
 
         const data = await response.json();
 
@@ -159,7 +180,21 @@ class ApiClient {
         }
 
         return data as ApiResponse<T>;
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log(`[ApiClient] Request to ${endpoint} cancelled`);
+          if (cancelOnRouteChange) {
+            requestManager.unregisterRequest(requestKey);
+          }
+          return {
+            success: false,
+            isCancelled: true,
+            error: 'Request cancelled',
+            statusCode: 0,
+            timestamp: new Date().toISOString(),
+          };
+        }
+        
         const parsedError = parseApiError(error);
         
         // Check if this is a retryable network error

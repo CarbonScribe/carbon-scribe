@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import { CorporateProvider } from '@/contexts/CorporateContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import PlatformShell from '@/components/layout/PlatformShell'
+import { RouteCancellationProvider } from '@/components/common/RouteCancellationProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -27,11 +28,13 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <CorporateProvider>
-              <PlatformShell>{children}</PlatformShell>
-            </CorporateProvider>
-          </AuthProvider>
+          <RouteCancellationProvider>
+            <AuthProvider>
+              <CorporateProvider>
+                <PlatformShell>{children}</PlatformShell>
+              </CorporateProvider>
+            </AuthProvider>
+          </RouteCancellationProvider>
         </ThemeProvider>
       </body>
     </html>
