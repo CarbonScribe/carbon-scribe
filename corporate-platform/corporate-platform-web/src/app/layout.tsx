@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
@@ -28,16 +29,17 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <RouteCancellationProvider>
-            <AuthProvider>
-              <CorporateProvider>
-                <PlatformShell>{children}</PlatformShell>
-              </CorporateProvider>
-            </AuthProvider>
-          </RouteCancellationProvider>
+          <Suspense fallback={null}>
+            <RouteCancellationProvider>
+              <AuthProvider>
+                <CorporateProvider>
+                  <PlatformShell>{children}</PlatformShell>
+                </CorporateProvider>
+              </AuthProvider>
+            </RouteCancellationProvider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>
   )
 }
-
