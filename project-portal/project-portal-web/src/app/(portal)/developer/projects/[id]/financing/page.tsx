@@ -60,9 +60,13 @@ export default function DeveloperProjectFinancingPage() {
   const startFinancingBackgroundRefresh = useStore((s) => s.startFinancingBackgroundRefresh);
   const stopFinancingBackgroundRefresh = useStore((s) => s.stopFinancingBackgroundRefresh);
 
-  const financingCredits = useStore((s) => s.financingCreditsByProjectId[projectId] ?? []);
-  const financingForwardSales = useStore((s) => s.financingForwardSalesByProjectId[projectId] ?? []);
-  const financingPayments = useStore((s) => s.financingPaymentsByProjectId[projectId] ?? []);
+  const financingCredits = useStore((s) => s.financingCreditsByProjectId[projectId]);
+  const financingForwardSales = useStore((s) => s.financingForwardSalesByProjectId[projectId]);
+  const financingPayments = useStore((s) => s.financingPaymentsByProjectId[projectId]);
+
+  const credits = financingCredits ?? [];
+  const forwardSales = financingForwardSales ?? [];
+  const payments = financingPayments ?? [];
 
   // Fetch initial data and start refresh polling
   useEffect(() => {
@@ -90,19 +94,19 @@ export default function DeveloperProjectFinancingPage() {
   ]);
 
   // Derived financial metrics
-  const totalMintedTons = financingCredits
+  const totalMintedTons = credits
     .filter((c) => c.status === 'minted' || c.status === 'minting')
     .reduce((sum, c) => sum + c.issued_tons, 0);
 
-  const totalForwardSaleRevenue = financingForwardSales
+  const totalForwardSaleRevenue = forwardSales
     .filter((s) => s.status === 'signed' || s.status === 'completed')
     .reduce((sum, s) => sum + s.total_amount, 0);
 
-  const avgPricePerTon = financingForwardSales.length > 0
-    ? financingForwardSales.reduce((sum, s) => sum + s.price_per_ton, 0) / financingForwardSales.length
+  const avgPricePerTon = forwardSales.length > 0
+    ? forwardSales.reduce((sum, s) => sum + s.price_per_ton, 0) / forwardSales.length
     : 15; // default estimate if no sales
 
-  const pendingVerificationTons = financingCredits
+  const pendingVerificationTons = credits
     .filter((c) => c.status === 'pending' || c.status === 'verified')
     .reduce((sum, c) => sum + c.issued_tons, 0);
 
@@ -114,7 +118,7 @@ export default function DeveloperProjectFinancingPage() {
   ];
 
   // Loading State
-  if (isProjectLoading || !selectedProject) {
+  if (isProjectLoading) {
     return (
       <div className="space-y-6 max-w-[1600px] mx-auto p-4 md:p-6 pb-20 bg-gray-50/50 min-h-screen">
         {/* Breadcrumb Skeleton */}
@@ -175,6 +179,47 @@ export default function DeveloperProjectFinancingPage() {
           >
             Try Again
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback Loading/Not-found if project is not selected
+  if (!selectedProject) {
+    return (
+      <div className="space-y-6 max-w-[1600px] mx-auto p-4 md:p-6 pb-20 bg-gray-50/50 min-h-screen">
+        {/* Breadcrumb Skeleton */}
+        <div className="flex gap-2 items-center text-sm">
+          <Skeleton className="h-4 w-16" />
+          <span>/</span>
+          <Skeleton className="h-4 w-16" />
+          <span>/</span>
+          <Skeleton className="h-4 w-24" />
+          <span>/</span>
+          <Skeleton className="h-4 w-16" />
+        </div>
+        {/* Header Skeleton */}
+        <div className="bg-white rounded-2xl p-8 border border-gray-100 shadow-xs space-y-3">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-96" />
+        </div>
+        {/* Metric Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="bg-white rounded-xl p-6 shadow-xs border border-gray-100 space-y-3">
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          ))}
+        </div>
+        {/* Content Skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <SectionSkeleton rows={4} />
+          </div>
+          <div>
+            <SectionSkeleton rows={3} />
+          </div>
         </div>
       </div>
     );

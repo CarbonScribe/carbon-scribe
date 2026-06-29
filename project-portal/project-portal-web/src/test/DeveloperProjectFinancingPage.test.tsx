@@ -40,11 +40,11 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: 'project-123' }),
 }));
 
-const mockFetchProjectById = vi.fn();
-const mockFetchCredits = vi.fn();
-const mockFetchForwardSales = vi.fn();
-const mockFetchPayments = vi.fn();
-const mockFetchPayouts = vi.fn();
+const mockFetchProjectById = vi.fn(() => Promise.resolve() as Promise<void>);
+const mockFetchCredits = vi.fn(() => Promise.resolve(null) as Promise<any>);
+const mockFetchForwardSales = vi.fn(() => Promise.resolve(null) as Promise<any>);
+const mockFetchPayments = vi.fn(() => Promise.resolve(null) as Promise<any>);
+const mockFetchPayouts = vi.fn(() => Promise.resolve(null) as Promise<any>);
 const mockStartFinancingBackgroundRefresh = vi.fn();
 const mockStopFinancingBackgroundRefresh = vi.fn();
 
@@ -218,7 +218,7 @@ describe('DeveloperProjectFinancingPage', () => {
     // Switch to Forward Sales tab
     const salesTab = screen.getByRole('button', { name: /^forward sales$/i });
     fireEvent.click(salesTab);
-    expect(screen.getByTestId('mock-mock-forward-sale') || screen.getByTestId('mock-forward-sale')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-forward-sale')).toBeInTheDocument();
 
     // Switch to Payments & Payouts tab
     const paymentsTab = screen.getByRole('button', { name: /payments & payouts/i });
