@@ -105,7 +105,14 @@ jobs:
       # ----------------------------------
       # Production Build (Hard Gate)
       # ----------------------------------
+      # Public NEXT_PUBLIC_* config is validated at build time (see
+      # ENVIRONMENT.md). Provide non-secret placeholder URLs so the build-time
+      # validation runs and passes in CI. Override these in real deployments.
       - name: Build Next.js
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+          NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL: https://stellar.expert/explorer/testnet/tx
         run: |
           if [ "${{ steps.detect.outputs.manager }}" = "pnpm" ]; then
             pnpm run build
