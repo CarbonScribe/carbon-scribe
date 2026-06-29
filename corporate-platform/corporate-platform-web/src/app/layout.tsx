@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import { CorporateProvider } from '@/contexts/CorporateContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import PlatformShell from '@/components/layout/PlatformShell'
+import { RouteCancellationProvider } from '@/components/common/RouteCancellationProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -27,14 +29,17 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <CorporateProvider>
-              <PlatformShell>{children}</PlatformShell>
-            </CorporateProvider>
-          </AuthProvider>
+          <Suspense fallback={null}>
+            <RouteCancellationProvider>
+              <AuthProvider>
+                <CorporateProvider>
+                  <PlatformShell>{children}</PlatformShell>
+                </CorporateProvider>
+              </AuthProvider>
+            </RouteCancellationProvider>
+          </Suspense>
         </ThemeProvider>
       </body>
     </html>
   )
 }
-
