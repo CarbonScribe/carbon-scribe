@@ -650,6 +650,18 @@ func runGeospatialDDL(db *gorm.DB) error {
 		)`,
 	}
 
+	indexStmts := []string{
+		"CREATE INDEX IF NOT EXISTS idx_geofence_events_location ON geofence_events USING GIST (location)",
+		"CREATE INDEX IF NOT EXISTS idx_geofence_events_geofence_location ON geofence_events USING GIST (geofence_id, location)",
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_bounding_box ON project_geometries USING GIST (bounding_box)",
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_is_valid_geometry ON project_geometries USING GIST (is_valid, geometry)",
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_area_hectares_brin ON project_geometries USING BRIN (area_hectares) WITH (pages_per_range = 32)",
+		"CREATE INDEX IF NOT EXISTS idx_admin_boundaries_admin_level ON administrative_boundaries (admin_level)",
+		"CREATE INDEX IF NOT EXISTS idx_admin_boundaries_admin_level_country ON administrative_boundaries (admin_level, country_code)",
+		"CREATE INDEX IF NOT EXISTS idx_project_geometries_created_at ON project_geometries (created_at DESC)",
+	}
+	stmts = append(stmts, indexStmts...)
+
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {
 			return fmt.Errorf("geospatial ddl failed: %w", err)
