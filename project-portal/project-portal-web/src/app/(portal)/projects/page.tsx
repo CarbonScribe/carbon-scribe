@@ -28,6 +28,7 @@ const STATUSES = ['All', 'active', 'completed', 'pending'];
 export default function ProjectsPage() {
   const router = useRouter();
   const fetchProjects = useStore((state) => state.fetchProjects);
+  const refreshProjects = useStore((state) => state.refreshProjects);
   const loading = useStore((state) => state.loading);
   const errors = useStore((state) => state.errors);
   const filters = useStore((state) => state.filters);
@@ -76,16 +77,30 @@ export default function ProjectsPage() {
       <div className="bg-linear-to-r from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
         <div className="flex flex-col md:flex-row md:items-center justify-between">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold mb-2">Project Portfolio</h1>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2 flex items-center gap-2">
+              Project Portfolio
+              {loading.isRefreshing && (
+                <Loader2 className="w-5 h-5 animate-spin" aria-label="Refreshing projects" />
+              )}
+            </h1>
             <p className="text-emerald-100">Manage all your regenerative agriculture projects in one place</p>
           </div>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="mt-4 md:mt-0 px-6 py-3 bg-white text-emerald-700 rounded-xl font-semibold hover:bg-gray-100 transition-colors flex items-center"
-          >
-            <span>+ New Project</span>
-            <ChevronRight className="w-5 h-5 ml-2" />
-          </button>
+          <div className="flex items-center gap-3 mt-4 md:mt-0">
+            <button
+              onClick={() => refreshProjects()}
+              disabled={loading.isFetching}
+              className="px-4 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-colors flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span>Refresh</span>
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-6 py-3 bg-white text-emerald-700 rounded-xl font-semibold hover:bg-gray-100 transition-colors flex items-center"
+            >
+              <span>+ New Project</span>
+              <ChevronRight className="w-5 h-5 ml-2" />
+            </button>
+          </div>
         </div>
       </div>
 

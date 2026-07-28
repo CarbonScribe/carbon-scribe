@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   TrendingUp,
@@ -15,10 +15,10 @@ import {
   Droplets,
   Loader2,
   AlertCircle,
-} from 'lucide-react';
-import { useReportsStore } from '@/store/store';
-import { toast } from 'sonner';
-import * as api from '@/store/reports.api';
+} from "lucide-react";
+import { useStore } from "@/lib/store/store";
+import { toast } from "sonner";
+import * as api from "@/lib/store/reports/reports.api";
 
 export default function AnalyticsPage() {
   const {
@@ -26,11 +26,13 @@ export default function AnalyticsPage() {
     dashboardSummaryLoading,
     dashboardSummaryError,
     fetchDashboardSummary,
-  } = useReportsStore();
+  } = useStore();
 
-  const [timeRange, setTimeRange] = useState('year');
-  const [selectedMetric, setSelectedMetric] = useState('carbon_sequestered');
-  const [timeSeriesData, setTimeSeriesData] = useState<Array<{ time: string; value: number; label?: string }>>([]);
+  const [timeRange, setTimeRange] = useState("year");
+  const [selectedMetric, setSelectedMetric] = useState("carbon_sequestered");
+  const [timeSeriesData, setTimeSeriesData] = useState<
+    Array<{ time: string; value: number; label?: string }>
+  >([]);
   const [timeSeriesLoading, setTimeSeriesLoading] = useState(false);
 
   useEffect(() => {
@@ -41,19 +43,32 @@ export default function AnalyticsPage() {
     const now = new Date();
     const end = now.toISOString();
     const start = new Date(
-      timeRange === 'week' ? now.getTime() - 7 * 86400000 :
-      timeRange === 'month' ? now.getTime() - 30 * 86400000 :
-      timeRange === 'quarter' ? now.getTime() - 90 * 86400000 :
-      now.getTime() - 365 * 86400000
+      timeRange === "week"
+        ? now.getTime() - 7 * 86400000
+        : timeRange === "month"
+          ? now.getTime() - 30 * 86400000
+          : timeRange === "quarter"
+            ? now.getTime() - 90 * 86400000
+            : now.getTime() - 365 * 86400000,
     ).toISOString();
 
     const interval =
-      timeRange === 'week' ? 'day' :
-      timeRange === 'month' ? 'day' :
-      timeRange === 'quarter' ? 'week' : 'month';
+      timeRange === "week"
+        ? "day"
+        : timeRange === "month"
+          ? "day"
+          : timeRange === "quarter"
+            ? "week"
+            : "month";
 
     setTimeSeriesLoading(true);
-    api.apiGetTimeSeriesData({ metric: selectedMetric, start_time: start, end_time: end, interval })
+    api
+      .apiGetTimeSeriesData({
+        metric: selectedMetric,
+        start_time: start,
+        end_time: end,
+        interval,
+      })
       .then((res) => setTimeSeriesData(res.data ?? []))
       .catch(() => setTimeSeriesData([]))
       .finally(() => setTimeSeriesLoading(false));
@@ -61,11 +76,11 @@ export default function AnalyticsPage() {
 
   const handleRefresh = () => {
     fetchDashboardSummary(true);
-    toast.success('Data refreshed');
+    toast.success("Data refreshed");
   };
 
   const handleExport = async () => {
-    toast.info('Export started — check Execution History in Reports');
+    toast.info("Export started — check Execution History in Reports");
   };
 
   const summary = dashboardSummary;
@@ -74,36 +89,39 @@ export default function AnalyticsPage() {
 
   const kpiCards = [
     {
-      title: 'Total Carbon Credits',
-      value: summary ? `${summary.total_credits.toLocaleString()} tCO₂` : '—',
-      change: summary?.performance_metrics?.['carbon_credits']?.change_percent,
+      title: "Total Carbon Credits",
+      value: summary ? `${summary.total_credits.toLocaleString()} tCO₂` : "—",
+      change: summary?.performance_metrics?.["carbon_credits"]?.change_percent,
       icon: TreePine,
-      color: 'from-emerald-500 to-green-500',
+      color: "from-emerald-500 to-green-500",
     },
     {
-      title: 'Total Revenue',
-      value: summary ? `$${summary.total_revenue.toLocaleString()}` : '—',
-      change: summary?.performance_metrics?.['revenue']?.change_percent,
+      title: "Total Revenue",
+      value: summary ? `$${summary.total_revenue.toLocaleString()}` : "—",
+      change: summary?.performance_metrics?.["revenue"]?.change_percent,
       icon: Coins,
-      color: 'from-amber-500 to-orange-500',
+      color: "from-amber-500 to-orange-500",
     },
     {
-      title: 'Active Projects',
-      value: summary ? String(summary.total_projects) : '—',
-      change: summary?.performance_metrics?.['projects']?.change_percent,
+      title: "Active Projects",
+      value: summary ? String(summary.total_projects) : "—",
+      change: summary?.performance_metrics?.["projects"]?.change_percent,
       icon: Users,
-      color: 'from-blue-500 to-cyan-500',
+      color: "from-blue-500 to-cyan-500",
     },
     {
-      title: 'Monitoring Areas',
-      value: summary ? String(summary.active_monitoring_areas) : '—',
-      change: summary?.performance_metrics?.['monitoring']?.change_percent,
+      title: "Monitoring Areas",
+      value: summary ? String(summary.active_monitoring_areas) : "—",
+      change: summary?.performance_metrics?.["monitoring"]?.change_percent,
       icon: Droplets,
-      color: 'from-cyan-500 to-teal-500',
+      color: "from-cyan-500 to-teal-500",
     },
   ];
 
-  const maxValue = timeSeriesData.length > 0 ? Math.max(...timeSeriesData.map((d) => d.value)) : 1;
+  const maxValue =
+    timeSeriesData.length > 0
+      ? Math.max(...timeSeriesData.map((d) => d.value))
+      : 1;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -116,7 +134,9 @@ export default function AnalyticsPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
-              <p className="text-cyan-100 mt-1">Live insights from your carbon projects</p>
+              <p className="text-cyan-100 mt-1">
+                Live insights from your carbon projects
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -125,8 +145,10 @@ export default function AnalyticsPage() {
               disabled={loading}
               className="px-4 py-2 bg-white/20 rounded-lg font-medium hover:bg-white/30 transition-colors disabled:opacity-50 flex items-center"
             >
-              <RefreshCw className={`w-5 h-5 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              {loading ? 'Refreshing…' : 'Refresh'}
+              <RefreshCw
+                className={`w-5 h-5 mr-2 ${loading ? "animate-spin" : ""}`}
+              />
+              {loading ? "Refreshing…" : "Refresh"}
             </button>
             <button
               onClick={handleExport}
@@ -179,10 +201,18 @@ export default function AnalyticsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" aria-busy={loading} aria-label="KPI metrics">
+      <div
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        aria-busy={loading}
+        aria-label="KPI metrics"
+      >
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse" aria-hidden="true">
+              <div
+                key={i}
+                className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse"
+                aria-hidden="true"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <div className="w-12 h-12 bg-gray-200 rounded-lg" />
                   <div className="w-16 h-5 bg-gray-200 rounded" />
@@ -195,19 +225,35 @@ export default function AnalyticsPage() {
               const Icon = kpi.icon;
               const pct = kpi.change;
               return (
-                <div key={kpi.title} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                <div
+                  key={kpi.title}
+                  className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                >
                   <div className="flex items-center justify-between mb-4">
-                    <div className={`p-3 rounded-lg bg-linear-to-r ${kpi.color}`}>
+                    <div
+                      className={`p-3 rounded-lg bg-linear-to-r ${kpi.color}`}
+                    >
                       <Icon className="w-6 h-6 text-white" />
                     </div>
                     {pct !== undefined && (
-                      <div className={`flex items-center ${pct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {pct >= 0 ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}
-                        <span className="font-medium">{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
+                      <div
+                        className={`flex items-center ${pct >= 0 ? "text-emerald-600" : "text-red-600"}`}
+                      >
+                        {pct >= 0 ? (
+                          <TrendingUp className="w-4 h-4 mr-1" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 mr-1" />
+                        )}
+                        <span className="font-medium">
+                          {pct >= 0 ? "+" : ""}
+                          {pct.toFixed(1)}%
+                        </span>
                       </div>
                     )}
                   </div>
-                  <div className="text-2xl font-bold text-gray-900 mb-1">{kpi.value}</div>
+                  <div className="text-2xl font-bold text-gray-900 mb-1">
+                    {kpi.value}
+                  </div>
                   <div className="text-sm text-gray-600">{kpi.title}</div>
                 </div>
               );
@@ -215,14 +261,27 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Time Series Chart */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100" aria-busy={timeSeriesLoading}>
+      <div
+        className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+        aria-busy={timeSeriesLoading}
+      >
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-bold text-gray-900">Performance Over Time</h3>
-          {timeSeriesLoading && <Loader2 className="w-5 h-5 animate-spin text-emerald-600" aria-label="Loading chart data" />}
+          <h3 className="text-xl font-bold text-gray-900">
+            Performance Over Time
+          </h3>
+          {timeSeriesLoading && (
+            <Loader2
+              className="w-5 h-5 animate-spin text-emerald-600"
+              aria-label="Loading chart data"
+            />
+          )}
         </div>
 
         {timeSeriesLoading ? (
-          <div className="h-48 flex items-end gap-1 animate-pulse" aria-hidden="true">
+          <div
+            className="h-48 flex items-end gap-1 animate-pulse"
+            aria-hidden="true"
+          >
             {Array.from({ length: 12 }).map((_, i) => (
               <div
                 key={i}
@@ -239,15 +298,24 @@ export default function AnalyticsPage() {
           <div className="h-48 flex items-end gap-1">
             {timeSeriesData.map((point, i) => {
               const height = maxValue > 0 ? (point.value / maxValue) * 100 : 0;
-              const label = new Date(point.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+              const label = new Date(point.time).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+              });
               return (
-                <div key={i} className="flex flex-col items-center flex-1 min-w-0" title={`${label}: ${point.value}`}>
+                <div
+                  key={i}
+                  className="flex flex-col items-center flex-1 min-w-0"
+                  title={`${label}: ${point.value}`}
+                >
                   <div
                     className="w-full rounded-t-sm bg-emerald-500 transition-all duration-500"
                     style={{ height: `${height}%` }}
                   />
                   {timeSeriesData.length <= 14 && (
-                    <div className="text-xs text-gray-500 mt-1 truncate w-full text-center">{label}</div>
+                    <div className="text-xs text-gray-500 mt-1 truncate w-full text-center">
+                      {label}
+                    </div>
                   )}
                 </div>
               );
@@ -259,10 +327,15 @@ export default function AnalyticsPage() {
       {/* Recent Activity */}
       {summary?.recent_activity && summary.recent_activity.length > 0 && (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Recent Activity</h3>
+          <h3 className="text-xl font-bold text-gray-900 mb-4">
+            Recent Activity
+          </h3>
           <div className="space-y-3">
             {summary.recent_activity.slice(0, 8).map((item) => (
-              <div key={item.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+              <div
+                key={item.id}
+                className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0"
+              >
                 <div className="w-2 h-2 mt-2 rounded-full bg-emerald-500 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-900">{item.description}</p>
@@ -277,31 +350,39 @@ export default function AnalyticsPage() {
       )}
 
       {/* Performance Metrics */}
-      {summary?.performance_metrics && Object.keys(summary.performance_metrics).length > 0 && (
-        <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
-          <h3 className="text-xl font-bold mb-6">Performance Metrics</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Object.entries(summary.performance_metrics).map(([key, metric]) => (
-              <div key={key} className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium capitalize">{key.replace(/_/g, ' ')}</span>
-                  <div className="flex items-center gap-1">
-                    <span className="font-bold text-lg">{metric.value.toLocaleString()}</span>
-                    {metric.trend === 'up' ? (
-                      <TrendingUp className="w-4 h-4 text-emerald-200" />
-                    ) : metric.trend === 'down' ? (
-                      <TrendingDown className="w-4 h-4 text-amber-200" />
-                    ) : null}
+      {summary?.performance_metrics &&
+        Object.keys(summary.performance_metrics).length > 0 && (
+          <div className="bg-linear-to-br from-emerald-500 to-teal-600 rounded-2xl p-6 text-white">
+            <h3 className="text-xl font-bold mb-6">Performance Metrics</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Object.entries(summary.performance_metrics).map(
+                ([key, metric]) => (
+                  <div key={key} className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium capitalize">
+                        {key.replace(/_/g, " ")}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-lg">
+                          {metric.value.toLocaleString()}
+                        </span>
+                        {metric.trend === "up" ? (
+                          <TrendingUp className="w-4 h-4 text-emerald-200" />
+                        ) : metric.trend === "down" ? (
+                          <TrendingDown className="w-4 h-4 text-amber-200" />
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="text-sm text-emerald-200">
+                      {metric.change_percent >= 0 ? "+" : ""}
+                      {metric.change_percent.toFixed(1)}% · {metric.period}
+                    </div>
                   </div>
-                </div>
-                <div className="text-sm text-emerald-200">
-                  {metric.change_percent >= 0 ? '+' : ''}{metric.change_percent.toFixed(1)}% · {metric.period}
-                </div>
-              </div>
-            ))}
+                ),
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

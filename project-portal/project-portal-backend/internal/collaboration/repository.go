@@ -11,7 +11,8 @@ type Repository interface {
 	// Project Member
 	AddMember(ctx context.Context, member *ProjectMember) error
 	GetMember(ctx context.Context, projectID, userID string) (*ProjectMember, error)
-	ListMembers(ctx context.Context, projectID string) ([]EnrichedProjectMember, error)
+	ListMembers(ctx context.Context, projectID string, limit, offset int) ([]EnrichedProjectMember, error)
+	CountMembers(ctx context.Context, projectID string) (int64, error)
 	UpdateMember(ctx context.Context, member *ProjectMember) error
 	RemoveMember(ctx context.Context, projectID, userID string) error
 
@@ -22,26 +23,31 @@ type Repository interface {
 	CreateInvitation(ctx context.Context, invite *ProjectInvitation) error
 	GetInvitation(ctx context.Context, invitationID string) (*ProjectInvitation, error)
 	GetInvitationByToken(ctx context.Context, token string) (*ProjectInvitation, error)
-	ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error)
+	ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]ProjectInvitation, error)
+	CountInvitations(ctx context.Context, projectID string) (int64, error)
 	UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error
 
 	// Activity
 	CreateActivity(ctx context.Context, activity *ActivityLog) error
 	ListActivities(ctx context.Context, projectID string, limit, offset int) ([]ActivityLog, error)
+	CountActivities(ctx context.Context, projectID string) (int64, error)
 
 	// Comment
 	CreateComment(ctx context.Context, comment *Comment) error
-	ListComments(ctx context.Context, projectID string) ([]Comment, error)
+	ListComments(ctx context.Context, projectID string, limit, offset int) ([]Comment, error)
+	CountComments(ctx context.Context, projectID string) (int64, error)
 
 	// Task
 	CreateTask(ctx context.Context, task *Task) error
 	GetTask(ctx context.Context, taskID string) (*Task, error)
-	ListTasks(ctx context.Context, projectID string) ([]Task, error)
+	ListTasks(ctx context.Context, projectID string, limit, offset int) ([]Task, error)
+	CountTasks(ctx context.Context, projectID string) (int64, error)
 	UpdateTask(ctx context.Context, task *Task) error
 
 	// Resource
 	CreateResource(ctx context.Context, resource *SharedResource) error
-	ListResources(ctx context.Context, projectID string) ([]SharedResource, error)
+	ListResources(ctx context.Context, projectID string, limit, offset int) ([]SharedResource, error)
+	CountResources(ctx context.Context, projectID string) (int64, error)
 }
 
 type repository struct {
@@ -98,20 +104,35 @@ type EnrichedProjectMember struct {
 	Bio         string    `json:"bio,omitempty"`
 }
 
-func (r *repository) ListMembers(ctx context.Context, projectID string) ([]EnrichedProjectMember, error) {
+func (r *repository) ListMembers(ctx context.Context, projectID string, limit, offset int) ([]EnrichedProjectMember, error) {
 	var members []EnrichedProjectMember
-	// Custom SQL join for project_members + users
+	// Custom SQL join for project_members + users with pagination
 	err := r.db.WithContext(ctx).Raw(`
 		 SELECT pm.id, pm.user_id, pm.role, pm.joined_at,
 			 u.full_name AS display_name, u.email, u.avatar_url, u.phone, u.location, u.title, u.bio
 		 FROM project_members pm
 		 JOIN users u ON pm.user_id = u.id
 		 WHERE pm.project_id = ?
-	`, projectID).Scan(&members).Error
+		 ORDER BY pm.joined_at DESC
+		 LIMIT ? OFFSET ?
+	`, projectID, limit, offset).Scan(&members).Error
 	if err != nil {
 		 return nil, err
 	}
 	return members, nil
+}
+
+func (r *repository) CountMembers(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	row := r.db.WithContext(ctx).Raw(`
+		SELECT COUNT(*) FROM project_members pm
+		JOIN users u ON pm.user_id = u.id
+		WHERE pm.project_id = ?
+	`, projectID).Row()
+	if err := row.Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *repository) UpdateMember(ctx context.Context, member *ProjectMember) error {
@@ -144,12 +165,23 @@ func (r *repository) GetInvitationByToken(ctx context.Context, token string) (*P
 	return &invite, nil
 }
 
-func (r *repository) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
+func (r *repository) ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]ProjectInvitation, error) {
 	var invites []ProjectInvitation
-	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&invites).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).
+		Order("created_at desc").
+		Limit(limit).Offset(offset).
+		Find(&invites).Error; err != nil {
 		return nil, err
 	}
 	return invites, nil
+}
+
+func (r *repository) CountInvitations(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&ProjectInvitation{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *repository) UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error {
@@ -170,18 +202,37 @@ func (r *repository) ListActivities(ctx context.Context, projectID string, limit
 	return activities, nil
 }
 
+func (r *repository) CountActivities(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&ActivityLog{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // Comment
 
 func (r *repository) CreateComment(ctx context.Context, comment *Comment) error {
 	return r.db.WithContext(ctx).Create(comment).Error
 }
 
-func (r *repository) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
+func (r *repository) ListComments(ctx context.Context, projectID string, limit, offset int) ([]Comment, error) {
 	var comments []Comment
-	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Order("created_at asc").Find(&comments).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).
+		Order("created_at asc").
+		Limit(limit).Offset(offset).
+		Find(&comments).Error; err != nil {
 		return nil, err
 	}
 	return comments, nil
+}
+
+func (r *repository) CountComments(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&Comment{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // Task
@@ -198,12 +249,23 @@ func (r *repository) GetTask(ctx context.Context, taskID string) (*Task, error) 
 	return &task, nil
 }
 
-func (r *repository) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
+func (r *repository) ListTasks(ctx context.Context, projectID string, limit, offset int) ([]Task, error) {
 	var tasks []Task
-	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Order("created_at desc").Find(&tasks).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).
+		Order("created_at desc").
+		Limit(limit).Offset(offset).
+		Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 	return tasks, nil
+}
+
+func (r *repository) CountTasks(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&Task{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *repository) UpdateTask(ctx context.Context, task *Task) error {
@@ -216,10 +278,21 @@ func (r *repository) CreateResource(ctx context.Context, resource *SharedResourc
 	return r.db.WithContext(ctx).Create(resource).Error
 }
 
-func (r *repository) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
+func (r *repository) ListResources(ctx context.Context, projectID string, limit, offset int) ([]SharedResource, error) {
 	var resources []SharedResource
-	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&resources).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).
+		Order("created_at desc").
+		Limit(limit).Offset(offset).
+		Find(&resources).Error; err != nil {
 		return nil, err
 	}
 	return resources, nil
+}
+
+func (r *repository) CountResources(ctx context.Context, projectID string) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&SharedResource{}).Where("project_id = ?", projectID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

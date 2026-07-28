@@ -20,6 +20,8 @@ import type { FinancingSlice } from "./financing/financing.types";
 import { createFinancingSlice } from "./financing/financingSlice";
 import type { GeospatialSlice } from "./geospatial/geospatial.types";
 import { createGeospatialSlice } from "./geospatial/geospatialSlice";
+import type { ReportsSlice } from "./reports/reports.slice";
+import { createReportsSlice } from "./reports/reports.slice";
 
 // Unified store state type
 export type StoreState = AuthSlice &
@@ -29,7 +31,8 @@ export type StoreState = AuthSlice &
   HealthSlice &
   NotificationsSlice &
   FinancingSlice &
-  GeospatialSlice;
+  GeospatialSlice &
+  ReportsSlice;
 
 // Helper to check if token is expired or about to expire (60s buffer)
 const isTokenExpiringSoon = (expiresIn: number | null): boolean => {
@@ -49,6 +52,7 @@ export const useStore = create<StoreState>()(
       ...createNotificationsSlice(...args),
       ...createFinancingSlice(...args),
       ...createGeospatialSlice(...args),
+      ...createReportsSlice(...args),
     }),
     {
       name: "project-portal-store",
@@ -78,12 +82,12 @@ export const useStore = create<StoreState>()(
             }));
           }
 
-          
           const path = window.location.pathname;
           const isAuthPage = path === "/login" || path === "/register";
           const isAuthenticated = state?.isAuthenticated === true;
           const expiresIn = state?.expiresIn ?? null;
-          const shouldRefresh = !isAuthPage && isAuthenticated && isTokenExpiringSoon(expiresIn);
+          const shouldRefresh =
+            !isAuthPage && isAuthenticated && isTokenExpiringSoon(expiresIn);
 
           if (shouldRefresh) {
             state?.refreshSession?.().catch((error: unknown) => {
@@ -101,3 +105,55 @@ export const useStore = create<StoreState>()(
   ),
 );
 
+// Re-export reports types
+export type {
+  ReportCategory,
+  ReportVisibility,
+  ExportFormat,
+  DeliveryMethod,
+  ExecutionStatus,
+  WidgetType,
+  WidgetSize,
+  AggregateFunction,
+  FieldConfig,
+  FilterConfig,
+  GroupConfig,
+  SortConfig,
+  CalculationConfig,
+  ReportConfig,
+  ReportDefinition,
+  ReportSchedule,
+  ReportExecution,
+  BenchmarkDataset,
+  DashboardWidget,
+  WidgetConfig,
+  MetricSummary,
+  TimeSeriesPoint,
+  ActivityItem,
+  DashboardSummary,
+  DatasetMetadata,
+  FieldMetadata,
+  BenchmarkResult,
+  GapAnalysisResult,
+  BenchmarkComparisonResponse,
+  CreateReportRequest,
+  UpdateReportRequest,
+  ExecuteReportRequest,
+  CreateScheduleRequest,
+  BenchmarkComparisonRequest,
+  ListReportsResponse,
+  ListExecutionsResponse,
+} from "./reports/reports.types";
+
+// Re-export reports selectors
+export {
+  selectReportById,
+  selectExecutionById,
+  selectScheduleById,
+  selectWidgetById,
+  selectReportsStatus,
+  selectDashboardSummaryWithCache,
+  selectExecutionsForReport,
+  selectSchedulesForReport,
+} from "./reports/reports.selectors";
+export type { ReportsState } from "./reports/reports.selectors";

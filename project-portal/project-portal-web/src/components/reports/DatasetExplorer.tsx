@@ -1,12 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useReportsStore } from '@/store/store';
-import { Database, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect } from "react";
+import { useStore } from "@/lib/store/store";
+import { Database, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
 
 export default function DatasetExplorer() {
-  const { datasets, datasetsLoading, datasetsError, fetchDatasets } = useReportsStore();
+  const { datasets, datasetsLoading, datasetsError, fetchDatasets } =
+    useStore();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,7 +46,10 @@ export default function DatasetExplorer() {
         {datasets.map((ds) => {
           const isOpen = expanded === ds.name;
           return (
-            <div key={ds.name} className="border-b border-gray-100 last:border-b-0">
+            <div
+              key={ds.name}
+              className="border-b border-gray-100 last:border-b-0"
+            >
               <button
                 type="button"
                 onClick={() => setExpanded(isOpen ? null : ds.name)}
@@ -57,30 +61,50 @@ export default function DatasetExplorer() {
                   <ChevronRight className="w-5 h-5 text-gray-500" />
                 )}
                 <Database className="w-5 h-5 text-emerald-600" />
-                <span className="font-medium text-gray-900">{ds.display_name}</span>
+                <span className="font-medium text-gray-900">
+                  {ds.display_name}
+                </span>
                 <span className="text-sm text-gray-500">({ds.name})</span>
               </button>
               {isOpen && (
                 <div className="px-4 pb-4 pt-0">
                   {ds.description && (
-                    <p className="text-sm text-gray-600 mb-3">{ds.description}</p>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {ds.description}
+                    </p>
                   )}
                   <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="text-left py-2 px-3 font-medium text-gray-700">Field</th>
-                        <th className="text-left py-2 px-3 font-medium text-gray-700">Type</th>
-                        <th className="text-left py-2 px-3 font-medium text-gray-700">Aggregatable</th>
-                        <th className="text-left py-2 px-3 font-medium text-gray-700">Filterable</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700">
+                          Field
+                        </th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700">
+                          Type
+                        </th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700">
+                          Aggregatable
+                        </th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700">
+                          Filterable
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {ds.fields.map((f) => (
                         <tr key={f.name} className="border-b border-gray-100">
-                          <td className="py-2 px-3 font-medium">{f.display_name}</td>
-                          <td className="py-2 px-3 text-gray-600">{f.data_type}</td>
-                          <td className="py-2 px-3">{f.is_aggregatable ? 'Yes' : 'No'}</td>
-                          <td className="py-2 px-3">{f.is_filterable ? 'Yes' : 'No'}</td>
+                          <td className="py-2 px-3 font-medium">
+                            {f.display_name}
+                          </td>
+                          <td className="py-2 px-3 text-gray-600">
+                            {f.data_type}
+                          </td>
+                          <td className="py-2 px-3">
+                            {f.is_aggregatable ? "Yes" : "No"}
+                          </td>
+                          <td className="py-2 px-3">
+                            {f.is_filterable ? "Yes" : "No"}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

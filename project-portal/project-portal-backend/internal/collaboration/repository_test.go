@@ -154,7 +154,7 @@ func TestRepository_ListMembers_Success(t *testing.T) {
 	}
 
 	// Act
-	found, err := repo.ListMembers(ctx, projectID)
+	found, err := repo.ListMembers(ctx, projectID, 20, 0)
 
 	// Assert
 	require.NoError(t, err)
@@ -179,7 +179,7 @@ func TestRepository_ListMembers_Empty(t *testing.T) {
 	ctx := context.Background()
 
 	// Act
-	found, err := repo.ListMembers(ctx, "project-123")
+	found, err := repo.ListMembers(ctx, "project-123", 20, 0)
 
 	// Assert
 	require.NoError(t, err)
@@ -332,7 +332,7 @@ func TestRepository_ListInvitations_Success(t *testing.T) {
 	}
 
 	// Act
-	found, err := repo.ListInvitations(ctx, projectID)
+	found, err := repo.ListInvitations(ctx, projectID, 20, 0)
 
 	// Assert
 	require.NoError(t, err)
@@ -486,7 +486,7 @@ func TestRepository_ListComments_Success(t *testing.T) {
 	}
 
 	// Act
-	found, err := repo.ListComments(ctx, projectID)
+	found, err := repo.ListComments(ctx, projectID, 20, 0)
 
 	// Assert
 	require.NoError(t, err)
@@ -652,7 +652,7 @@ func TestRepository_ListResources_Success(t *testing.T) {
 	}
 
 	// Act
-	found, err := repo.ListResources(ctx, projectID)
+	found, err := repo.ListResources(ctx, projectID, 20, 0)
 
 	// Assert
 	require.NoError(t, err)

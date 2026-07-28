@@ -1,20 +1,20 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useReportsStore } from '@/store/store';
-import type { DashboardWidget } from '@/store/reports.types';
+import { useEffect } from "react";
+import { useStore } from "@/lib/store/store";
+import type { DashboardWidget } from "@/lib/store/store";
 
 interface GaugeWidgetProps {
   widget: DashboardWidget;
 }
 
 export default function GaugeWidget({ widget }: GaugeWidgetProps) {
-  const { dashboardSummary, fetchDashboardSummary } = useReportsStore();
+  const { dashboardSummary, fetchDashboardSummary } = useStore();
   const config = widget.config ?? {};
   const title = widget.title;
   const min = config.min_value ?? 0;
   const max = config.max_value ?? 100;
-  const metricKey = config.metric_field ?? 'total_credits';
+  const metricKey = config.metric_field ?? "total_credits";
 
   useEffect(() => {
     fetchDashboardSummary();
@@ -23,7 +23,10 @@ export default function GaugeWidget({ widget }: GaugeWidgetProps) {
   const metrics = dashboardSummary?.performance_metrics ?? {};
   const meta = metrics[metricKey];
   const value = meta?.value ?? 0;
-  const pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0;
+  const pct =
+    max > min
+      ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100))
+      : 0;
 
   return (
     <div className="p-4 h-full min-h-[160px] flex flex-col">

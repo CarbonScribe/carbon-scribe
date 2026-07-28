@@ -52,10 +52,11 @@ const defaultStoreState = {
   // Projects slice
   selectedProject: null,
   loading: {
-    isFetching: false,
-    isCreating: false,
-    isUpdating: false,
-    isDeleting: false,
+      isFetching: false,
+      isRefreshing: false,
+      isCreating: false,
+      isUpdating: false,
+      isDeleting: false,
   },
   errors: {
     fetch: null,

@@ -1,11 +1,15 @@
-export type ReportCategory = 'financial' | 'operational' | 'compliance' | 'custom';
-export type ReportVisibility = 'private' | 'shared' | 'public';
-export type ExportFormat = 'csv' | 'excel' | 'pdf' | 'json';
-export type DeliveryMethod = 'email' | 's3' | 'webhook';
-export type ExecutionStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type WidgetType = 'chart' | 'metric' | 'table' | 'gauge';
-export type WidgetSize = 'small' | 'medium' | 'large' | 'full';
-export type AggregateFunction = 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX';
+export type ReportCategory =
+  | "financial"
+  | "operational"
+  | "compliance"
+  | "custom";
+export type ReportVisibility = "private" | "shared" | "public";
+export type ExportFormat = "csv" | "excel" | "pdf" | "json";
+export type DeliveryMethod = "email" | "s3" | "webhook";
+export type ExecutionStatus = "pending" | "processing" | "completed" | "failed";
+export type WidgetType = "chart" | "metric" | "table" | "gauge";
+export type WidgetSize = "small" | "medium" | "large" | "full";
+export type AggregateFunction = "SUM" | "AVG" | "COUNT" | "MIN" | "MAX";
 
 export interface FieldConfig {
   name: string;
@@ -22,7 +26,7 @@ export interface FilterConfig {
   field: string;
   operator: string;
   value: unknown;
-  logic?: 'AND' | 'OR';
+  logic?: "AND" | "OR";
 }
 
 export interface GroupConfig {
@@ -33,7 +37,7 @@ export interface GroupConfig {
 
 export interface SortConfig {
   field: string;
-  direction: 'asc' | 'desc';
+  direction: "asc" | "desc";
   order: number;
 }
 
@@ -174,7 +178,7 @@ export interface MetricSummary {
   change: number;
   change_percent: number;
   period: string;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
 }
 
 export interface TimeSeriesPoint {
@@ -227,13 +231,13 @@ export interface BenchmarkResult {
   benchmark_value: number;
   difference: number;
   difference_percent: number;
-  performance_level: 'above' | 'at' | 'below';
+  performance_level: "above" | "at" | "below";
 }
 
 export interface GapAnalysisResult {
   metric: string;
   gap: number;
-  priority: 'high' | 'medium' | 'low';
+  priority: "high" | "medium" | "low";
   recommendation: string;
 }
 

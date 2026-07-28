@@ -71,13 +71,50 @@ func (f *FakeCollaborationRepo) GetMember(ctx context.Context, projectID, userID
 	}, nil
 }
 
-func (f *FakeCollaborationRepo) ListMembers(ctx context.Context, projectID string) ([]EnrichedProjectMember, error) {
+func (f *FakeCollaborationRepo) ListMembers(ctx context.Context, projectID string, limit, offset int) ([]EnrichedProjectMember, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
-	if f.Members != nil {
-		return f.Members, nil
+
+	var filtered []EnrichedProjectMember
+	for _, m := range f.Members {
+		if m.ProjectID == projectID {
+			filtered = append(filtered, m)
+		}
 	}
-	return []EnrichedProjectMember{}, nil
+
+	// Sort by joined_at desc
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].JoinedAt.After(filtered[j].JoinedAt)
+	})
+
+	// Apply pagination
+	if offset >= len(filtered) {
+		return []EnrichedProjectMember{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = len(filtered) - offset
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[offset:end], nil
+}
+
+func (f *FakeCollaborationRepo) CountMembers(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, m := range f.Members {
+		if m.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (f *FakeCollaborationRepo) UpdateMember(ctx context.Context, member *ProjectMember) error {
@@ -127,17 +164,50 @@ func (f *FakeCollaborationRepo) GetInvitationByToken(ctx context.Context, token 
 	return nil, errors.New("invitation not found")
 }
 
-func (f *FakeCollaborationRepo) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
+func (f *FakeCollaborationRepo) ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]ProjectInvitation, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	var invitations []ProjectInvitation
+	var filtered []ProjectInvitation
 	for _, invitation := range f.Invitations {
 		if invitation.ProjectID == projectID {
-			invitations = append(invitations, invitation)
+			filtered = append(filtered, invitation)
 		}
 	}
-	return invitations, nil
+
+	// Sort by created_at desc
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+
+	// Apply pagination
+	if offset >= len(filtered) {
+		return []ProjectInvitation{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = len(filtered) - offset
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[offset:end], nil
+}
+
+func (f *FakeCollaborationRepo) CountInvitations(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, invitation := range f.Invitations {
+		if invitation.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (f *FakeCollaborationRepo) UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error {
@@ -195,6 +265,19 @@ func (f *FakeCollaborationRepo) ListActivities(ctx context.Context, projectID st
 	return filtered[offset:end], nil
 }
 
+func (f *FakeCollaborationRepo) CountActivities(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, activity := range f.Activities {
+		if activity.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (f *FakeCollaborationRepo) CreateComment(ctx context.Context, comment *Comment) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -208,17 +291,50 @@ func (f *FakeCollaborationRepo) CreateComment(ctx context.Context, comment *Comm
 	return nil
 }
 
-func (f *FakeCollaborationRepo) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
+func (f *FakeCollaborationRepo) ListComments(ctx context.Context, projectID string, limit, offset int) ([]Comment, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	comments := make([]Comment, 0, len(f.Comments))
+	var filtered []Comment
 	for _, comment := range f.Comments {
 		if comment.ProjectID == projectID {
-			comments = append(comments, comment)
+			filtered = append(filtered, comment)
 		}
 	}
-	return comments, nil
+
+	// Sort by created_at asc
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
+	})
+
+	// Apply pagination
+	if offset >= len(filtered) {
+		return []Comment{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = len(filtered) - offset
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[offset:end], nil
+}
+
+func (f *FakeCollaborationRepo) CountComments(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, comment := range f.Comments {
+		if comment.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (f *FakeCollaborationRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -271,17 +387,50 @@ func (f *FakeCollaborationRepo) GetTask(ctx context.Context, taskID string) (*Ta
 	return nil, errors.New("task not found")
 }
 
-func (f *FakeCollaborationRepo) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
+func (f *FakeCollaborationRepo) ListTasks(ctx context.Context, projectID string, limit, offset int) ([]Task, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	tasks := make([]Task, 0, len(f.Tasks))
+	var filtered []Task
 	for _, task := range f.Tasks {
 		if task.ProjectID == projectID {
-			tasks = append(tasks, task)
+			filtered = append(filtered, task)
 		}
 	}
-	return tasks, nil
+
+	// Sort by created_at desc
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+
+	// Apply pagination
+	if offset >= len(filtered) {
+		return []Task{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = len(filtered) - offset
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[offset:end], nil
+}
+
+func (f *FakeCollaborationRepo) CountTasks(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, task := range f.Tasks {
+		if task.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (f *FakeCollaborationRepo) UpdateTask(ctx context.Context, task *Task) error {
@@ -317,15 +466,48 @@ func (f *FakeCollaborationRepo) CreateResource(ctx context.Context, resource *Sh
 	return nil
 }
 
-func (f *FakeCollaborationRepo) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
+func (f *FakeCollaborationRepo) ListResources(ctx context.Context, projectID string, limit, offset int) ([]SharedResource, error) {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 
-	resources := make([]SharedResource, 0, len(f.Resources))
+	var filtered []SharedResource
 	for _, resource := range f.Resources {
 		if resource.ProjectID == projectID {
-			resources = append(resources, resource)
+			filtered = append(filtered, resource)
 		}
 	}
-	return resources, nil
+
+	// Sort by created_at desc
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+
+	// Apply pagination
+	if offset >= len(filtered) {
+		return []SharedResource{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = len(filtered) - offset
+	}
+	end := offset + limit
+	if end > len(filtered) {
+		end = len(filtered)
+	}
+	return filtered[offset:end], nil
+}
+
+func (f *FakeCollaborationRepo) CountResources(ctx context.Context, projectID string) (int64, error) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	var count int64
+	for _, resource := range f.Resources {
+		if resource.ProjectID == projectID {
+			count++
+		}
+	}
+	return count, nil
 }

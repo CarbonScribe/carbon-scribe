@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import type { StateCreator } from "zustand";
 import type {
   ReportDefinition,
   ReportExecution,
@@ -13,8 +13,8 @@ import type {
   BenchmarkComparisonResponse,
   DatasetMetadata,
   WidgetConfig,
-} from './reports.types';
-import * as api from './reports.api';
+} from "./reports.types";
+import * as api from "./reports.api";
 
 const DASHBOARD_SUMMARY_CACHE_MS = 60 * 1000;
 
@@ -25,7 +25,9 @@ export interface ReportsSlice {
   reportsLoading: boolean;
   reportsError: string | null;
   currentReport: ReportDefinition | null;
-  fetchReports: (params?: Parameters<typeof api.apiListReports>[0]) => Promise<void>;
+  fetchReports: (
+    params?: Parameters<typeof api.apiListReports>[0],
+  ) => Promise<void>;
   fetchReport: (id: string) => Promise<void>;
   createReport: (body: CreateReportRequest) => Promise<ReportDefinition>;
   updateReport: (id: string, body: UpdateReportRequest) => Promise<void>;
@@ -43,17 +45,27 @@ export interface ReportsSlice {
   executionsTotal: number;
   executionsLoading: boolean;
   executionsError: string | null;
-  fetchExecutions: (params?: Parameters<typeof api.apiListExecutions>[0]) => Promise<void>;
-  executeReport: (id: string, body?: ExecuteReportRequest) => Promise<ReportExecution>;
+  fetchExecutions: (
+    params?: Parameters<typeof api.apiListExecutions>[0],
+  ) => Promise<void>;
+  executeReport: (
+    id: string,
+    body?: ExecuteReportRequest,
+  ) => Promise<ReportExecution>;
   fetchExecution: (executionId: string) => Promise<ReportExecution>;
   cancelExecution: (executionId: string) => Promise<void>;
-  pollExecutionUntilDone: (executionId: string, onProgress?: (e: ReportExecution) => void) => Promise<ReportExecution>;
+  pollExecutionUntilDone: (
+    executionId: string,
+    onProgress?: (e: ReportExecution) => void,
+  ) => Promise<ReportExecution>;
 
   schedules: ReportSchedule[];
   schedulesTotal: number;
   schedulesLoading: boolean;
   schedulesError: string | null;
-  fetchSchedules: (params?: Parameters<typeof api.apiListSchedules>[0]) => Promise<void>;
+  fetchSchedules: (
+    params?: Parameters<typeof api.apiListSchedules>[0],
+  ) => Promise<void>;
   createSchedule: (body: CreateScheduleRequest) => Promise<ReportSchedule>;
   updateSchedule: (id: string, body: CreateScheduleRequest) => Promise<void>;
   deleteSchedule: (id: string) => Promise<void>;
@@ -69,8 +81,13 @@ export interface ReportsSlice {
   widgetsLoading: boolean;
   widgetsError: string | null;
   fetchWidgets: (section?: string) => Promise<void>;
-  createWidget: (widget: Omit<DashboardWidget, 'id' | 'created_at' | 'updated_at'>) => Promise<DashboardWidget>;
-  updateWidget: (widgetId: string, widget: Partial<DashboardWidget> & { config: WidgetConfig }) => Promise<void>;
+  createWidget: (
+    widget: Omit<DashboardWidget, "id" | "created_at" | "updated_at">,
+  ) => Promise<DashboardWidget>;
+  updateWidget: (
+    widgetId: string,
+    widget: Partial<DashboardWidget> & { config: WidgetConfig },
+  ) => Promise<void>;
   deleteWidget: (widgetId: string) => Promise<void>;
 
   datasets: DatasetMetadata[];
@@ -120,7 +137,12 @@ const initialState = {
   benchmarkError: null as string | null,
 };
 
-export const useReportsStore = create<ReportsSlice>((set, get) => ({
+export const createReportsSlice: StateCreator<
+  ReportsSlice,
+  [],
+  [],
+  ReportsSlice
+> = (set, get) => ({
   ...initialState,
 
   fetchReports: async (params) => {
@@ -151,7 +173,11 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
 
   createReport: async (body) => {
     const report = await api.apiCreateReport(body);
-    set((s) => ({ reports: [report, ...s.reports], reportsTotal: s.reportsTotal + 1, currentReport: report }));
+    set((s) => ({
+      reports: [report, ...s.reports],
+      reportsTotal: s.reportsTotal + 1,
+      currentReport: report,
+    }));
     return report;
   },
 
@@ -174,7 +200,11 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
 
   cloneReport: async (id, name) => {
     const report = await api.apiCloneReport(id, name);
-    set((s) => ({ reports: [report, ...s.reports], reportsTotal: s.reportsTotal + 1, currentReport: report }));
+    set((s) => ({
+      reports: [report, ...s.reports],
+      reportsTotal: s.reportsTotal + 1,
+      currentReport: report,
+    }));
     return report;
   },
 
@@ -208,7 +238,10 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
 
   executeReport: async (id, body) => {
     const execution = await api.apiExecuteReport(id, body);
-    set((s) => ({ executions: [execution, ...s.executions], executionsTotal: s.executionsTotal + 1 }));
+    set((s) => ({
+      executions: [execution, ...s.executions],
+      executionsTotal: s.executionsTotal + 1,
+    }));
     return execution;
   },
 
@@ -220,7 +253,7 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     await api.apiCancelExecution(executionId);
     set((s) => ({
       executions: s.executions.map((e) =>
-        e.id === executionId ? { ...e, status: 'failed' as const } : e
+        e.id === executionId ? { ...e, status: "failed" as const } : e,
       ),
     }));
   },
@@ -229,7 +262,7 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     const poll = async (): Promise<ReportExecution> => {
       const e = await api.apiGetExecution(executionId);
       onProgress?.(e);
-      if (e.status === 'completed' || e.status === 'failed') return e;
+      if (e.status === "completed" || e.status === "failed") return e;
       await new Promise((r) => setTimeout(r, 1500));
       return poll();
     };
@@ -257,14 +290,19 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
 
   createSchedule: async (body) => {
     const schedule = await api.apiCreateSchedule(body);
-    set((s) => ({ schedules: [schedule, ...s.schedules], schedulesTotal: s.schedulesTotal + 1 }));
+    set((s) => ({
+      schedules: [schedule, ...s.schedules],
+      schedulesTotal: s.schedulesTotal + 1,
+    }));
     return schedule;
   },
 
   updateSchedule: async (id, body) => {
     const updated = await api.apiUpdateSchedule(id, body);
     set((s) => ({
-      schedules: s.schedules.map((sched) => (sched.id === id ? updated : sched)),
+      schedules: s.schedules.map((sched) =>
+        sched.id === id ? updated : sched,
+      ),
     }));
   },
 
@@ -279,13 +317,19 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
   toggleSchedule: async (id, active) => {
     await api.apiToggleSchedule(id, active);
     set((s) => ({
-      schedules: s.schedules.map((sched) => (sched.id === id ? { ...sched, is_active: active } : sched)),
+      schedules: s.schedules.map((sched) =>
+        sched.id === id ? { ...sched, is_active: active } : sched,
+      ),
     }));
   },
 
   fetchDashboardSummary: async (force = false) => {
     const { dashboardSummaryCachedAt } = get();
-    if (!force && dashboardSummaryCachedAt && Date.now() - dashboardSummaryCachedAt < DASHBOARD_SUMMARY_CACHE_MS) {
+    if (
+      !force &&
+      dashboardSummaryCachedAt &&
+      Date.now() - dashboardSummaryCachedAt < DASHBOARD_SUMMARY_CACHE_MS
+    ) {
       return;
     }
     set({ dashboardSummaryLoading: true, dashboardSummaryError: null });
@@ -298,7 +342,10 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
         dashboardSummaryCachedAt: Date.now(),
       });
     } catch (e) {
-      set({ dashboardSummaryLoading: false, dashboardSummaryError: (e as Error).message });
+      set({
+        dashboardSummaryLoading: false,
+        dashboardSummaryError: (e as Error).message,
+      });
     }
   },
 
@@ -314,7 +361,9 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
 
   createWidget: async (widget) => {
     const created = await api.apiCreateWidget(widget);
-    set((s) => ({ widgets: [...s.widgets, created].sort((a, b) => a.position - b.position) }));
+    set((s) => ({
+      widgets: [...s.widgets, created].sort((a, b) => a.position - b.position),
+    }));
     return created;
   },
 
@@ -344,7 +393,11 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
     set({ benchmarkLoading: true, benchmarkError: null });
     try {
       const result = await api.apiBenchmarkComparison(body);
-      set({ benchmarkResult: result, benchmarkLoading: false, benchmarkError: null });
+      set({
+        benchmarkResult: result,
+        benchmarkLoading: false,
+        benchmarkError: null,
+      });
     } catch (e) {
       set({ benchmarkLoading: false, benchmarkError: (e as Error).message });
     }
@@ -353,4 +406,4 @@ export const useReportsStore = create<ReportsSlice>((set, get) => ({
   clearBenchmark: () => set({ benchmarkResult: null, benchmarkError: null }),
 
   clearReports: () => set(initialState),
-}));
+});

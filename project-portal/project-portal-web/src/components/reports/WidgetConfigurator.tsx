@@ -1,9 +1,14 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import type { DashboardWidget, WidgetConfig, WidgetType, WidgetSize } from '@/store/reports.types';
+import { useState } from "react";
+import type {
+  DashboardWidget,
+  WidgetConfig,
+  WidgetType,
+  WidgetSize,
+} from "@/lib/store/store";
 
-const SIZES: WidgetSize[] = ['small', 'medium', 'large', 'full'];
+const SIZES: WidgetSize[] = ["small", "medium", "large", "full"];
 const REFRESH_OPTIONS = [60, 300, 600, 3600];
 
 interface WidgetConfiguratorProps {
@@ -12,18 +17,26 @@ interface WidgetConfiguratorProps {
   onCancel: () => void;
 }
 
-export default function WidgetConfigurator({ widget, onSave, onCancel }: WidgetConfiguratorProps) {
-  const [title, setTitle] = useState(widget?.title ?? '');
-  const [size, setSize] = useState<WidgetSize>(widget?.size ?? 'medium');
+export default function WidgetConfigurator({
+  widget,
+  onSave,
+  onCancel,
+}: WidgetConfiguratorProps) {
+  const [title, setTitle] = useState(widget?.title ?? "");
+  const [size, setSize] = useState<WidgetSize>(widget?.size ?? "medium");
   const [refreshInterval, setRefreshInterval] = useState(
-    widget?.config?.refresh_rate ?? widget?.refresh_interval_seconds ?? 300
+    widget?.config?.refresh_rate ?? widget?.refresh_interval_seconds ?? 300,
   );
-  const [dataSource, setDataSource] = useState(widget?.config?.data_source ?? 'dashboard_summary');
-  const [metricField, setMetricField] = useState(widget?.config?.metric_field ?? 'total_credits');
+  const [dataSource, setDataSource] = useState(
+    widget?.config?.data_source ?? "dashboard_summary",
+  );
+  const [metricField, setMetricField] = useState(
+    widget?.config?.metric_field ?? "total_credits",
+  );
 
   const handleSave = () => {
     onSave({
-      title: title || 'Untitled Widget',
+      title: title || "Untitled Widget",
       size,
       refresh_interval_seconds: refreshInterval,
       config: {
@@ -38,7 +51,9 @@ export default function WidgetConfigurator({ widget, onSave, onCancel }: WidgetC
     <div className="space-y-4 p-4 bg-white rounded-xl border border-gray-200">
       <h4 className="font-semibold text-gray-900">Widget settings</h4>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Title
+        </label>
         <input
           type="text"
           value={title}
@@ -48,19 +63,25 @@ export default function WidgetConfigurator({ widget, onSave, onCancel }: WidgetC
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Size</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Size
+        </label>
         <select
           value={size}
           onChange={(e) => setSize(e.target.value as WidgetSize)}
           className="w-full border border-gray-300 rounded-lg px-3 py-2"
         >
           {SIZES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>
+              {s}
+            </option>
           ))}
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Refresh (seconds)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Refresh (seconds)
+        </label>
         <select
           value={refreshInterval}
           onChange={(e) => setRefreshInterval(Number(e.target.value))}
@@ -68,13 +89,21 @@ export default function WidgetConfigurator({ widget, onSave, onCancel }: WidgetC
         >
           {REFRESH_OPTIONS.map((s) => (
             <option key={s} value={s}>
-              {s === 60 ? '1 min' : s === 300 ? '5 min' : s === 600 ? '10 min' : '1 hour'}
+              {s === 60
+                ? "1 min"
+                : s === 300
+                  ? "5 min"
+                  : s === 600
+                    ? "10 min"
+                    : "1 hour"}
             </option>
           ))}
         </select>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Data source</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Data source
+        </label>
         <input
           type="text"
           value={dataSource}
@@ -83,7 +112,9 @@ export default function WidgetConfigurator({ widget, onSave, onCancel }: WidgetC
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Metric field</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Metric field
+        </label>
         <select
           value={metricField}
           onChange={(e) => setMetricField(e.target.value)}

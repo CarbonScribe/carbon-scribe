@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useReportsStore } from '@/store/store';
-import type { DashboardWidget as Widget } from '@/store/reports.types';
-import ChartWidget from './widgets/ChartWidget';
-import MetricWidget from './widgets/MetricWidget';
-import TableWidget from './widgets/TableWidget';
-import GaugeWidget from './widgets/GaugeWidget';
-import { Loader2 } from 'lucide-react';
+import { useEffect } from "react";
+import { useStore } from "@/lib/store/store";
+import type { DashboardWidget as Widget } from "@/lib/store/store";
+import ChartWidget from "./widgets/ChartWidget";
+import MetricWidget from "./widgets/MetricWidget";
+import TableWidget from "./widgets/TableWidget";
+import GaugeWidget from "./widgets/GaugeWidget";
+import { Loader2 } from "lucide-react";
 
 interface DashboardGridProps {
   section?: string;
@@ -15,13 +15,13 @@ interface DashboardGridProps {
 
 function WidgetRenderer({ widget }: { widget: Widget }) {
   switch (widget.widget_type) {
-    case 'chart':
+    case "chart":
       return <ChartWidget widget={widget} />;
-    case 'metric':
+    case "metric":
       return <MetricWidget widget={widget} />;
-    case 'table':
+    case "table":
       return <TableWidget widget={widget} />;
-    case 'gauge':
+    case "gauge":
       return <GaugeWidget widget={widget} />;
     default:
       return (
@@ -33,7 +33,7 @@ function WidgetRenderer({ widget }: { widget: Widget }) {
 }
 
 export default function DashboardGrid({ section }: DashboardGridProps) {
-  const { widgets, widgetsLoading, widgetsError, fetchWidgets } = useReportsStore();
+  const { widgets, widgetsLoading, widgetsError, fetchWidgets } = useStore();
 
   useEffect(() => {
     fetchWidgets(section);
@@ -61,15 +61,17 @@ export default function DashboardGrid({ section }: DashboardGridProps) {
     <div
       className="grid gap-4 w-full"
       style={{
-        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
       }}
     >
       {sorted.map((widget) => (
         <div
           key={widget.id}
           className={`rounded-xl border border-gray-200 bg-white overflow-hidden ${
-            widget.size === 'large' || widget.size === 'full' ? 'md:col-span-2' : ''
-          } ${widget.size === 'full' ? 'md:col-span-3' : ''}`}
+            widget.size === "large" || widget.size === "full"
+              ? "md:col-span-2"
+              : ""
+          } ${widget.size === "full" ? "md:col-span-3" : ""}`}
         >
           <WidgetRenderer widget={widget} />
         </div>

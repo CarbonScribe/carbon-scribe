@@ -245,8 +245,11 @@ func TestCollaborationPagination_ParameterValidation(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, resp.Code)
 
 			if tt.expectedStatus == http.StatusOK {
+				var wrapper collaboration.PaginationResponse
+				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrapper))
+				dataBytes, _ := json.Marshal(wrapper.Data)
 				var body []map[string]any
-				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+				json.Unmarshal(dataBytes, &body)
 				assert.NotNil(t, body)
 			}
 		})
@@ -338,8 +341,11 @@ func TestCollaborationPagination_LargeDataset(t *testing.T) {
 
 			assert.Equal(t, http.StatusOK, resp.Code)
 
+			var wrapper collaboration.PaginationResponse
+			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrapper))
+			dataBytes, _ := json.Marshal(wrapper.Data)
 			var body []map[string]any
-			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+			json.Unmarshal(dataBytes, &body)
 			assert.Len(t, body, tt.expectedCount)
 		})
 	}
@@ -392,8 +398,11 @@ func TestCollaborationE2E_InvitationWorkflow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var invWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &invWrapper))
+		invDataBytes, _ := json.Marshal(invWrapper.Data)
 		var invitations []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &invitations))
+		json.Unmarshal(invDataBytes, &invitations)
 		assert.NotEmpty(t, invitations)
 
 		// Find our invitation
@@ -452,12 +461,15 @@ func TestCollaborationE2E_MemberManagementWorkflow(t *testing.T) {
 		       resp := httptest.NewRecorder()
 		       router.ServeHTTP(resp, req)
 
-		       assert.Equal(t, http.StatusOK, resp.Code)
+	       assert.Equal(t, http.StatusOK, resp.Code)
 
-		       var members []map[string]any
-		       require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &members))
-		       // Should be empty initially
-		       assert.Empty(t, members)
+	       var memWrapper collaboration.PaginationResponse
+	       require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &memWrapper))
+	       memDataBytes, _ := json.Marshal(memWrapper.Data)
+	       var members []map[string]any
+	       json.Unmarshal(memDataBytes, &members)
+	       // Should be empty initially
+	       assert.Empty(t, members)
 	       })
 
 	t.Run("remove member as manager", func(t *testing.T) {

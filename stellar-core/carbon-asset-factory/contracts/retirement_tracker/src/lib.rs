@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, Address, BytesN, Env,
+    contract, contractevent, contractimpl, contracttype, Address, BytesN, Env,
     IntoVal, String, Symbol, Vec,
 };
 
@@ -35,17 +35,8 @@ pub enum DataKey {
 // Contract Errors
 // ========================================================================
 
-#[derive(Clone, Copy)]
-#[contracterror]
-pub enum ContractError {
-    NotAuthorized = 1,
-    TokenNotOwned = 2,
-    TokenAlreadyRetired = 3,
-    InvalidTokenId = 4,
-    BurnFailed = 5,
-    ContractNotInitialized = 6,
-    EventNonceOverflow = 7,
-}
+pub mod errors;
+pub use errors::ContractError;
 
 // ========================================================================
 // Events
@@ -67,6 +58,17 @@ pub struct ContractUpdatedEvent {
     pub updated_by: Address,
 }
 
+#[contractevent]
+pub struct InitializationEvent {
+    pub admin: Address,
+    pub carbon_asset_contract: Address,
+}
+
+#[contractevent]
+pub struct ReinitializationBlockedEvent {
+    pub attempted_admin: Address,
+}
+
 // ========================================================================
 // Contract Implementation
 // ========================================================================
@@ -81,12 +83,20 @@ impl RetirementTracker {
     /// # Arguments
     /// * `admin` - CarbonScribe admin address
     /// * `carbon_asset_contract` - Address of the CarbonAsset contract
-    pub fn initialize(env: Env, admin: Address, carbon_asset_contract: Address) {
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        carbon_asset_contract: Address,
+    ) -> Result<(), ContractError> {
         admin.require_auth();
 
         // Check if already initialized
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Contract already initialized");
+            ReinitializationBlockedEvent {
+                attempted_admin: admin,
+            }
+            .publish(&env);
+            return Err(ContractError::AlreadyInitialized);
         }
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -94,6 +104,19 @@ impl RetirementTracker {
             .instance()
             .set(&DataKey::CarbonAssetContract, &carbon_asset_contract);
         env.storage().instance().set(&DataKey::EventNonce, &0u64);
+
+        InitializationEvent {
+            admin,
+            carbon_asset_contract,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Check if the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Admin)
     }
 
     /// Retire a single carbon credit token
@@ -500,5 +523,25 @@ mod test {
         assert_eq!(records.get(1).unwrap().tx_hash, Some(second_hash));
         assert_eq!(records.get(1).unwrap().event_nonce, 2);
         assert_eq!(client.get_event_nonce(), 2);
+    }
+
+    #[test]
+    fn test_initialize_twice_fails() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let asset_contract = Address::generate(&env);
+        let tracker_contract = env.register(RetirementTracker, ());
+        let client = RetirementTrackerClient::new(&env, &tracker_contract);
+
+        // First initialization succeeds
+        assert!(!client.is_initialized());
+        client.initialize(&admin, &asset_contract);
+        assert!(client.is_initialized());
+
+        // Second initialization fails
+        let result = client.try_initialize(&admin, &asset_contract);
+        assert!(result.is_err());
     }
 }

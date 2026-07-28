@@ -3,6 +3,8 @@ package collaboration
 import (
 	"context"
 	"errors"
+	"os"
+	"strconv"
 	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/collaboration/dto"
@@ -90,8 +92,16 @@ func (s *Service) InviteUser(ctx context.Context, projectID, invitedByUserID, em
 	return invite, nil
 }
 
-func (s *Service) ListProjectActivities(ctx context.Context, projectID string, limit, offset int) ([]ActivityLog, error) {
-	return s.repo.ListActivities(ctx, projectID, limit, offset)
+func (s *Service) ListProjectActivities(ctx context.Context, projectID string, limit, offset int) ([]ActivityLog, int64, error) {
+	activities, err := s.repo.ListActivities(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountActivities(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return activities, total, nil
 }
 
 func (s *Service) AddComment(ctx context.Context, req CreateCommentRequest, actorUserID string) (*Comment, error) {
@@ -151,30 +161,32 @@ func (s *Service) CreateTask(ctx context.Context, req CreateTaskRequest, actorUs
 	return task, nil
 }
 
-
-
-func (s *Service) ListMembers(ctx context.Context, projectID string) ([]dto.EnrichedProjectMemberResponse, error) {
-       enriched, err := s.repo.ListMembers(ctx, projectID)
-       if err != nil {
-	       return nil, err
-       }
-       // Map to DTO
-       var resp []dto.EnrichedProjectMemberResponse
-       for _, m := range enriched {
-	       resp = append(resp, dto.EnrichedProjectMemberResponse{
-		       UserID:      m.UserID,
-		       DisplayName: m.DisplayName,
-		       Email:       m.Email,
-		       AvatarURL:   m.AvatarURL,
-		       Phone:       m.Phone,
-		       Location:    m.Location,
-		       Title:       m.Title,
-		       Bio:         m.Bio,
-		       Role:        m.Role,
-		       JoinedAt:    m.JoinedAt,
-	       })
-       }
-       return resp, nil
+func (s *Service) ListMembers(ctx context.Context, projectID string, limit, offset int) ([]dto.EnrichedProjectMemberResponse, int64, error) {
+	enriched, err := s.repo.ListMembers(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountMembers(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	// Map to DTO
+	var resp []dto.EnrichedProjectMemberResponse
+	for _, m := range enriched {
+		resp = append(resp, dto.EnrichedProjectMemberResponse{
+			UserID:      m.UserID,
+			DisplayName: m.DisplayName,
+			Email:       m.Email,
+			AvatarURL:   m.AvatarURL,
+			Phone:       m.Phone,
+			Location:    m.Location,
+			Title:       m.Title,
+			Bio:         m.Bio,
+			Role:        m.Role,
+			JoinedAt:    m.JoinedAt,
+		})
+	}
+	return resp, total, nil
 }
 
 func (s *Service) RemoveMember(ctx context.Context, projectID, requestingUserID, targetUserID string) error {
@@ -186,8 +198,16 @@ func (s *Service) RemoveMember(ctx context.Context, projectID, requestingUserID,
 	return s.repo.RemoveMember(ctx, projectID, targetUserID)
 }
 
-func (s *Service) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
-	return s.repo.ListInvitations(ctx, projectID)
+func (s *Service) ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]ProjectInvitation, int64, error) {
+	invitations, err := s.repo.ListInvitations(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountInvitations(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return invitations, total, nil
 }
 
 // ResendInvitation resends an existing pending invitation
@@ -339,12 +359,28 @@ func (s *Service) DeclineInvitation(ctx context.Context, invitationID string) (*
 	return invite, nil
 }
 
-func (s *Service) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
-	return s.repo.ListComments(ctx, projectID)
+func (s *Service) ListComments(ctx context.Context, projectID string, limit, offset int) ([]Comment, int64, error) {
+	comments, err := s.repo.ListComments(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountComments(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return comments, total, nil
 }
 
-func (s *Service) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
-	return s.repo.ListTasks(ctx, projectID)
+func (s *Service) ListTasks(ctx context.Context, projectID string, limit, offset int) ([]Task, int64, error) {
+	tasks, err := s.repo.ListTasks(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountTasks(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return tasks, total, nil
 }
 
 func (s *Service) GetTask(ctx context.Context, taskID string) (*Task, error) {
@@ -355,8 +391,16 @@ func (s *Service) UpdateTask(ctx context.Context, task *Task) error {
 	return s.repo.UpdateTask(ctx, task)
 }
 
-func (s *Service) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
-	return s.repo.ListResources(ctx, projectID)
+func (s *Service) ListResources(ctx context.Context, projectID string, limit, offset int) ([]SharedResource, int64, error) {
+	resources, err := s.repo.ListResources(ctx, projectID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.repo.CountResources(ctx, projectID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return resources, total, nil
 }
 
 func (s *Service) AddResource(ctx context.Context, req CreateResourceRequest, actorUserID string) (*SharedResource, error) {
@@ -384,4 +428,65 @@ func (s *Service) AddResource(ctx context.Context, req CreateResourceRequest, ac
 		CreatedAt: time.Now(),
 	})
 	return resource, nil
+}
+
+// DefaultMaxLimit is the default maximum limit for paginated list endpoints
+const DefaultMaxLimit = 100
+
+// GetMaxLimit returns the configured maximum page limit from the environment
+// variable COLLABORATION_MAX_PAGE_LIMIT, falling back to DefaultMaxLimit.
+func GetMaxLimit() int {
+	if v := os.Getenv("COLLABORATION_MAX_PAGE_LIMIT"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return DefaultMaxLimit
+}
+
+// ValidatePagination validates and normalizes limit and offset values.
+// Returns sanitized limit, offset and an error if values are invalid.
+func ValidatePagination(limit, offset int) (int, int, error) {
+	// Treat negative values as defaults
+	if limit < 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	maxLimit := GetMaxLimit()
+	if limit > maxLimit {
+		return 0, 0, errors.New("limit exceeds maximum allowed value")
+	}
+	// Clamp to reasonable defaults for zero values
+	if limit == 0 {
+		limit = 20
+	}
+	return limit, offset, nil
+}
+
+// BuildPaginationMeta creates pagination metadata for a response
+func BuildPaginationMeta(total int64, limit, offset int) PaginationMeta {
+	meta := PaginationMeta{
+		Total:  int(total),
+		Limit:  limit,
+		Offset: offset,
+	}
+
+	// Calculate next offset
+	if offset+limit < int(total) {
+		next := offset + limit
+		meta.NextOffset = &next
+	}
+
+	// Calculate previous offset
+	if offset > 0 {
+		prev := offset - limit
+		if prev < 0 {
+			prev = 0
+		}
+		meta.PreviousOffset = &prev
+	}
+
+	return meta
 }

@@ -1,16 +1,15 @@
 /**
- * Unified store entry. Reports and integrations slices are registered here.
+ * Unified store entry. Integrations and notifications slices are registered here.
  * Extend with auth, projects, collaboration, search as needed.
  */
 
-export { useReportsStore } from './reportsSlice';
-export type { ReportsSlice } from './reportsSlice';
-export * from './reports.selectors';
-export * from './reports.types';
+export { useIntegrationStore } from "./integrationSlice";
+export type { IntegrationSlice } from "./integrationSlice";
+export * from "./integration.selectors";
+export * from "./integration.types";
 
-export { useIntegrationStore } from './integrationSlice';
-export type { IntegrationSlice } from './integrationSlice';
-export * from './integration.selectors';
-export * from './integration.types';
-
-export type { Notification, NotificationType, NotificationsSlice } from './notification.types';
+export type {
+  Notification,
+  NotificationType,
+  NotificationsSlice,
+} from "./notification.types";

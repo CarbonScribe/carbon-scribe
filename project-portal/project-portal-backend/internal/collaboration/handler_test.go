@@ -41,9 +41,10 @@ func TestCollaborationHandler_ListMembers_ResponseContract(t *testing.T) {
 	router.ServeHTTP(resp, req)
 
 	assert.Equal(t, http.StatusOK, resp.Code)
-	var body []map[string]any
+	var body PaginationResponse
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
-	assert.NotNil(t, body)
+	assert.NotNil(t, body.Data)
+	assert.GreaterOrEqual(t, body.Pagination.Total, 0)
 }
 
 func TestCollaborationHandler_UnauthenticatedRequestsReturn401(t *testing.T) {
@@ -507,9 +508,10 @@ func TestCollaborationHandler_GetActivities_Pagination(t *testing.T) {
 
 			assert.Equal(t, tt.wantStatus, resp.Code)
 			if tt.wantStatus == http.StatusOK {
-				var body []map[string]any
+				var body PaginationResponse
 				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
-				assert.NotNil(t, body)
+				assert.NotNil(t, body.Data)
+				assert.GreaterOrEqual(t, body.Pagination.Total, 0)
 			}
 		})
 	}

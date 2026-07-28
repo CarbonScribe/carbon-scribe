@@ -6,9 +6,9 @@ import type {
   DashboardSummary,
   BenchmarkComparisonResponse,
   DatasetMetadata,
-} from './reports.types';
+} from "./reports.types";
 
-export type ReportsState = {
+export interface ReportsState {
   reports: ReportDefinition[];
   reportsTotal: number;
   reportsPage: number;
@@ -39,28 +39,44 @@ export type ReportsState = {
   templates: ReportDefinition[];
   templatesLoading: boolean;
   templatesError: string | null;
-};
+}
 
-export function selectReportById(state: ReportsState, id: string): ReportDefinition | undefined {
+export function selectReportById(
+  state: ReportsState,
+  id: string,
+): ReportDefinition | undefined {
   const fromList = state.reports.find((r) => r.id === id);
   if (fromList) return fromList;
-  if (state.currentReport && state.currentReport.id === id) return state.currentReport;
+  if (state.currentReport && state.currentReport.id === id)
+    return state.currentReport;
   return undefined;
 }
 
-export function selectExecutionById(state: ReportsState, id: string): ReportExecution | undefined {
+export function selectExecutionById(
+  state: ReportsState,
+  id: string,
+): ReportExecution | undefined {
   return state.executions.find((e) => e.id === id);
 }
 
-export function selectScheduleById(state: ReportsState, id: string): ReportSchedule | undefined {
+export function selectScheduleById(
+  state: ReportsState,
+  id: string,
+): ReportSchedule | undefined {
   return state.schedules.find((s) => s.id === id);
 }
 
-export function selectWidgetById(state: ReportsState, id: string): DashboardWidget | undefined {
+export function selectWidgetById(
+  state: ReportsState,
+  id: string,
+): DashboardWidget | undefined {
   return state.widgets.find((w) => w.id === id);
 }
 
-export function selectReportsStatus(state: ReportsState): { loading: boolean; error: string | null } {
+export function selectReportsStatus(state: ReportsState): {
+  loading: boolean;
+  error: string | null;
+} {
   return { loading: state.reportsLoading, error: state.reportsError };
 }
 
@@ -78,10 +94,16 @@ export function selectDashboardSummaryWithCache(state: ReportsState): {
   };
 }
 
-export function selectExecutionsForReport(state: ReportsState, reportId: string): ReportExecution[] {
+export function selectExecutionsForReport(
+  state: ReportsState,
+  reportId: string,
+): ReportExecution[] {
   return state.executions.filter((e) => e.report_definition_id === reportId);
 }
 
-export function selectSchedulesForReport(state: ReportsState, reportId: string): ReportSchedule[] {
+export function selectSchedulesForReport(
+  state: ReportsState,
+  reportId: string,
+): ReportSchedule[] {
   return state.schedules.filter((s) => s.report_definition_id === reportId);
 }
