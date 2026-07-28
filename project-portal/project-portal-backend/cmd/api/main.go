@@ -18,6 +18,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/documents"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization/minting"
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial"
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
@@ -42,6 +43,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -109,6 +111,12 @@ func main() {
 	authRepo := auth.NewRepository(db)
 	authService := auth.NewService(authRepo, tokenManager, stellarAuth, cfg.Auth.PasswordHashCost)
 	authHandler := auth.NewHandler(authService)
+
+	rateLimiter, err := middleware.NewRateLimiter(cfg.Redis, cfg.RateLimit)
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize rate limiter: %v", err)
+	}
+	log.Println("✅ Redis rate limiter initialized")
 
 	healthRepo := health.NewRepository(db)
 	healthService := health.NewService(healthRepo)
@@ -264,6 +272,9 @@ func main() {
 	// Add CORS middleware
 	router.Use(corsMiddleware())
 
+	// Prometheus metrics endpoint
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
+
 	// Health check endpoint
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -304,7 +315,7 @@ func main() {
 	{
 		// Register auth routes under v1
 		authGroup := v1.Group("/auth")
-		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager)
+		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager, rateLimiter, cfg.RateLimit)
 
 		// Register all project and quality routes (no duplicates)
 		project.RegisterRoutes(router, projectHandler, qualityHandler)
@@ -343,8 +354,8 @@ func main() {
 		notifications.RegisterRoutes(v1, notificationsHandler, tokenManager)
 
 		// Register financing routes under v1
-		financingHandler.RegisterRoutes(v1)
-		mintingHandler.RegisterRoutes(v1)
+		financingHandler.RegisterRoutes(v1, rateLimiter, cfg.RateLimit)
+		mintingHandler.RegisterRoutes(v1, rateLimiter, cfg.RateLimit)
 
 		// ============================================================================
 		// Register Monitoring Routes under v1

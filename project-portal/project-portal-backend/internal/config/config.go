@@ -20,6 +20,7 @@ type Config struct {
 	Settings      SettingsConfig
 	Auth          AuthConfig
 	Redis         RedisConfig
+	RateLimit     RateLimitConfig
 	Soroban       SorobanConfig
 	Notifications NotificationsConfig
 }
@@ -77,6 +78,26 @@ type RedisConfig struct {
 	Port     string
 	Password string
 	DB       int
+}
+
+type RateLimitConfig struct {
+	LoginLimit             int
+	LoginWindow            string
+	RegisterLimit          int
+	RegisterWindow         string
+	RefreshLimit           int
+	RefreshWindow          string
+	PasswordResetLimit     int
+	PasswordResetWindow    string
+	MintLimit              int
+	MintWindow             string
+	PaymentLimit           int
+	PaymentWindow          string
+	WalletChallengeLimit   int
+	WalletChallengeWindow  string
+	WhitelistIPs           []string
+	ViolationCooldownBase  string
+	MaxCooldownMultiplier  int
 }
 
 type SorobanConfig struct {
@@ -187,6 +208,25 @@ func Load() (*Config, error) {
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDBAbc,
 		},
+		RateLimit: RateLimitConfig{
+			LoginLimit:             getIntOrDefault("RATE_LIMIT_LOGIN_LIMIT", 5),
+			LoginWindow:            getEnvOrDefault("RATE_LIMIT_LOGIN_WINDOW", "15m"),
+			RegisterLimit:          getIntOrDefault("RATE_LIMIT_REGISTER_LIMIT", 3),
+			RegisterWindow:         getEnvOrDefault("RATE_LIMIT_REGISTER_WINDOW", "1h"),
+			RefreshLimit:           getIntOrDefault("RATE_LIMIT_REFRESH_LIMIT", 10),
+			RefreshWindow:          getEnvOrDefault("RATE_LIMIT_REFRESH_WINDOW", "1h"),
+			PasswordResetLimit:     getIntOrDefault("RATE_LIMIT_PASSWORD_RESET_LIMIT", 3),
+			PasswordResetWindow:    getEnvOrDefault("RATE_LIMIT_PASSWORD_RESET_WINDOW", "1h"),
+			MintLimit:              getIntOrDefault("RATE_LIMIT_MINT_LIMIT", 10),
+			MintWindow:             getEnvOrDefault("RATE_LIMIT_MINT_WINDOW", "1m"),
+			PaymentLimit:           getIntOrDefault("RATE_LIMIT_PAYMENT_LIMIT", 5),
+			PaymentWindow:          getEnvOrDefault("RATE_LIMIT_PAYMENT_WINDOW", "1m"),
+			WalletChallengeLimit:   getIntOrDefault("RATE_LIMIT_WALLET_CHALLENGE_LIMIT", 5),
+			WalletChallengeWindow:  getEnvOrDefault("RATE_LIMIT_WALLET_CHALLENGE_WINDOW", "1m"),
+			WhitelistIPs:           splitAndTrim(os.Getenv("RATE_LIMIT_WHITELIST_IPS")),
+			ViolationCooldownBase:  getEnvOrDefault("RATE_LIMIT_VIOLATION_COOLDOWN_BASE", "15m"),
+			MaxCooldownMultiplier:  getIntOrDefault("RATE_LIMIT_MAX_COOLDOWN_MULTIPLIER", 5),
+		},
 		Soroban: SorobanConfig{
 			RPCURL:              getEnvOrDefault("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
 			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
@@ -224,4 +264,19 @@ func getIntOrDefault(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return parsed
+}
+
+func splitAndTrim(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
