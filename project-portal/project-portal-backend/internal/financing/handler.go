@@ -5,6 +5,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/config"
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,7 +22,18 @@ func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
 }
 
-func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
+func parseWindow(window string, defaultWindow time.Duration) time.Duration {
+	if window == "" {
+		return defaultWindow
+	}
+	d, err := time.ParseDuration(window)
+	if err != nil {
+		return defaultWindow
+	}
+	return d
+}
+
+func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup, rateLimiter *middleware.RateLimiter, rateLimitCfg config.RateLimitConfig) {
 	financing := v1.Group("/financing")
 	financing.Use(authRequired())
 	{
@@ -28,7 +43,7 @@ func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
 		financing.GET("/credits/:id/status", requirePermission("financing:read"), h.creditStatus)
 		financing.POST("/credits/forward-sale", requirePermission("financing:sell"), h.createForwardSale)
 		financing.GET("/pricing/quote", requirePermission("financing:read"), h.getPriceQuote)
-		financing.POST("/payments/initiate", requirePermission("financing:pay"), h.initiatePayment)
+		financing.POST("/payments/initiate", requirePermission("financing:pay"), rateLimiter.LimitByUserIP("financing_initiate_payment", rateLimitCfg.PaymentLimit, parseWindow(rateLimitCfg.PaymentWindow, 1*time.Minute)), h.initiatePayment)
 		financing.POST("/payouts/distribute", requirePermission("financing:distribute"), h.distributeRevenue)
 		financing.GET("/payouts/:id", requirePermission("financing:read"), h.getPayoutStatus)
 	}

@@ -2,6 +2,10 @@ package minting
 
 import (
 	"net/http"
+	"time"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/config"
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -59,11 +63,22 @@ func (h *Handler) GetMintingStatus(c *gin.Context) {
 	})
 }
 
+func parseWindow(window string, defaultWindow time.Duration) time.Duration {
+	if window == "" {
+		return defaultWindow
+	}
+	d, err := time.ParseDuration(window)
+	if err != nil {
+		return defaultWindow
+	}
+	return d
+}
+
 // RegisterRoutes registers the minting routes
-func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
+func (h *Handler) RegisterRoutes(rg *gin.RouterGroup, rateLimiter *middleware.RateLimiter, rateLimitCfg config.RateLimitConfig) {
 	projects := rg.Group("/projects/:id")
 	{
-		projects.POST("/mint", h.ManualMint)
+		projects.POST("/mint", rateLimiter.LimitByUserIP("project_mint", rateLimitCfg.MintLimit, parseWindow(rateLimitCfg.MintWindow, 1*time.Minute)), h.ManualMint)
 		projects.GET("/minting-status", h.GetMintingStatus)
 	}
 }
