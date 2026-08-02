@@ -5,6 +5,9 @@ import { StartupValidator } from './config/validation/startup-validator';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from '@nestjs/common';
+import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
+import { ExceptionMappingInterceptor } from './shared/interceptors/exception-mapping.interceptor';
+import { LoggerService } from './logger/logger.service';
 
 function parseCorsOrigins(value?: string): string[] {
   const defaults = ['http://localhost:3000', 'http://127.0.0.1:3000'];
@@ -47,6 +50,23 @@ async function bootstrap() {
     logger.error(`❌ Startup validation error: ${err.message}`);
     process.exit(1);
   }
+
+  // ============================================================================
+  // Global Exception Handling
+  // ============================================================================
+
+  /**
+   * Register global exception filter for centralized error handling
+   * This filter catches all exceptions and transforms them into consistent error responses
+   */
+  const loggerService = app.get(LoggerService);
+  app.useGlobalFilters(new HttpExceptionFilter(loggerService));
+
+  /**
+   * Register global interceptor for mapping exceptions
+   * This interceptor translates Prisma errors and other exceptions before they reach the filter
+   */
+  app.useGlobalInterceptors(new ExceptionMappingInterceptor());
 
   // ============================================================================
   // Helmet HTTP Hardening Middleware
@@ -399,7 +419,78 @@ async function bootstrap() {
     `📚 Swagger UI available at http://localhost:${appConfig.port}/api/docs`,
   );
 
-  await app.listen(appConfig.port);
+  const server = await app.listen(appConfig.port);
+
+  // ============================================================================
+  // Graceful Shutdown
+  // ============================================================================
+
+  const shutdownGracePeriod = parseInt(
+    process.env.SHUTDOWN_GRACE_PERIOD || '30000',
+    10,
+  );
+
+  /**
+   * Gracefully shutdown the application on SIGTERM
+   * - Stops accepting new connections
+   * - Waits for in-flight requests to complete
+   * - Closes all connections and exits
+   */
+  process.on('SIGTERM', async () => {
+    logger.log(
+      `Received SIGTERM, waiting ${shutdownGracePeriod}ms for in-flight requests...`,
+    );
+
+    // Close the HTTP server first to stop accepting new connections
+    server.close(() => {
+      logger.log('HTTP server closed');
+    });
+
+    // Wait for grace period
+    await new Promise((resolve) => setTimeout(resolve, shutdownGracePeriod));
+
+    // Close the application
+    await app.close();
+    logger.log('Application shutdown complete');
+    process.exit(0);
+  });
+
+  /**
+   * Gracefully shutdown the application on SIGINT (Ctrl+C)
+   */
+  process.on('SIGINT', async () => {
+    logger.log(
+      `Received SIGINT, waiting ${shutdownGracePeriod}ms for in-flight requests...`,
+    );
+
+    server.close(() => {
+      logger.log('HTTP server closed');
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, shutdownGracePeriod));
+    await app.close();
+    logger.log('Application shutdown complete');
+    process.exit(0);
+  });
+
+  /**
+   * Handle uncaught exceptions during shutdown
+   */
+  process.on('uncaughtException', (error) => {
+    logger.error(
+      `Uncaught exception during shutdown: ${error.message}`,
+      error.stack,
+    );
+    process.exit(1);
+  });
+
+  /**
+   * Handle unhandled promise rejections during shutdown
+   */
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`Unhandled rejection during shutdown: ${reason}`);
+    process.exit(1);
+  });
 }
 
 bootstrap();

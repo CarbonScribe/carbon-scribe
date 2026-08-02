@@ -6,9 +6,11 @@ import { ConsumerService } from './consumer.service';
 import { DeadLetterService } from './dead-letter/dead-letter.service';
 import { KafkaHealthController } from './kafka-health.controller';
 import { CacheModule } from '../cache/cache.module';
+import { EventValidatorService } from './event-validator.service';
+import { EventValidatorModule } from './event-validator.module';
 
 @Module({
-  imports: [CacheModule],
+  imports: [CacheModule, EventValidatorModule],
   controllers: [KafkaHealthController],
   providers: [
     KafkaService,
@@ -16,7 +18,14 @@ import { CacheModule } from '../cache/cache.module';
     ProducerService,
     ConsumerService,
     DeadLetterService,
+    EventValidatorService,
   ],
-  exports: [KafkaService, ProducerService, ConsumerService],
+  exports: [
+    KafkaService,
+    ProducerService,
+    ConsumerService,
+    EventValidatorService,
+    DeadLetterService,
+  ],
 })
 export class EventBusModule {}

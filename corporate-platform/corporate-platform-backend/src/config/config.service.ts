@@ -15,6 +15,8 @@ import {
   LoggingConfig,
 } from './interfaces/logging-config.interface';
 import { ServicesConfig } from './interfaces/services-config.interface';
+import { TimeoutConfig } from './interfaces/timeout-config.interface';
+import { CircuitBreakerConfig } from './interfaces/circuit-breaker-config.interface';
 
 export interface RateLimitConfig {
   enabled: boolean;
@@ -88,6 +90,45 @@ export class ConfigService {
     return this.config.rateLimit;
   }
 
+  /**
+   * Get timeout configuration
+   */
+  getTimeoutConfig(): TimeoutConfig {
+    return {
+      defaultTimeout: parseInt(process.env.DEFAULT_TIMEOUT || '30000', 10),
+      shutdownGracePeriod: parseInt(
+        process.env.SHUTDOWN_GRACE_PERIOD || '30000',
+        10,
+      ),
+      healthCheckTimeout: parseInt(
+        process.env.HEALTH_CHECK_TIMEOUT || '5000',
+        10,
+      ),
+    };
+  }
+
+  /**
+   * Get circuit breaker configuration
+   */
+  getCircuitBreakerConfig(): CircuitBreakerConfig {
+    return {
+      enabled: process.env.CIRCUIT_BREAKER_ENABLED !== 'false',
+      failureThreshold: parseInt(
+        process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || '5',
+        10,
+      ),
+      successThreshold: parseInt(
+        process.env.CIRCUIT_BREAKER_SUCCESS_THRESHOLD || '2',
+        10,
+      ),
+      timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT || '30000', 10),
+      resetTimeout: parseInt(
+        process.env.CIRCUIT_BREAKER_RESET_TIMEOUT || '60000',
+        10,
+      ),
+    };
+  }
+
   private loadEnvFile(): void {
     const explicitPath = process.env.CONFIG_FILE;
     if (explicitPath && existsSync(explicitPath)) {
@@ -140,6 +181,16 @@ export class ConfigService {
       host: value.REDIS_HOST,
       port: value.REDIS_PORT,
       password: value.REDIS_PASSWORD || undefined,
+      // Timeout properties with defaults
+      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      timeout: parseInt(process.env.REDIS_TIMEOUT || '5000', 10),
+      maxRetries: parseInt(process.env.REDIS_MAX_RETRIES || '3', 10),
+      retryDelay: parseInt(process.env.REDIS_RETRY_DELAY || '1000', 10),
+      connectionTimeout: parseInt(
+        process.env.REDIS_CONNECTION_TIMEOUT || '5000',
+        10,
+      ),
+      idleTimeout: parseInt(process.env.REDIS_IDLE_TIMEOUT || '30000', 10),
     };
 
     const kafka: KafkaConfig = {
@@ -161,12 +212,46 @@ export class ConfigService {
         initialRetryTime: value.KAFKA_RETRY_INITIAL,
         retries: value.KAFKA_RETRY_MAX,
       },
+      // Timeout properties with defaults
+      groupId: process.env.KAFKA_GROUP_ID || 'corporate-platform-backend-group',
+      producerTimeout: parseInt(
+        process.env.KAFKA_PRODUCER_TIMEOUT || '10000',
+        10,
+      ),
+      consumerTimeout: parseInt(
+        process.env.KAFKA_CONSUMER_TIMEOUT || '30000',
+        10,
+      ),
+      maxRetries: parseInt(process.env.KAFKA_MAX_RETRIES || '3', 10),
+      retryDelay: parseInt(process.env.KAFKA_RETRY_DELAY || '1000', 10),
+      connectionTimeout: parseInt(
+        process.env.KAFKA_CONNECTION_TIMEOUT || '5000',
+        10,
+      ),
     };
 
     const stellar: StellarConfig = {
       network: value.STELLAR_NETWORK,
       horizonUrl: value.HORIZON_URL || undefined,
       sorobanRpcUrl: value.SOROBAN_RPC_URL || undefined,
+      // Timeout properties with defaults
+      simulateTimeout: parseInt(
+        process.env.STELLAR_SIMULATE_TIMEOUT || '30000',
+        10,
+      ),
+      sendTimeout: parseInt(process.env.STELLAR_SEND_TIMEOUT || '60000', 10),
+      getTransactionTimeout: parseInt(
+        process.env.STELLAR_GET_TX_TIMEOUT || '10000',
+        10,
+      ),
+      getEventsTimeout: parseInt(
+        process.env.STELLAR_GET_EVENTS_TIMEOUT || '15000',
+        10,
+      ),
+      getLatestLedgerTimeout: parseInt(
+        process.env.STELLAR_GET_LEDGER_TIMEOUT || '10000',
+        10,
+      ),
     };
 
     const auth: AuthConfig = {

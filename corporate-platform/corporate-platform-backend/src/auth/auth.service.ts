@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../shared/database/prisma.service';
@@ -18,15 +13,19 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { randomBytes } from 'crypto';
 import { SecurityService } from '../security/security.service';
 import { SecurityEvents } from '../security/constants/security-events.constants';
+import {
+  InvalidCredentialsError,
+  UserNotFoundError,
+  InvalidRefreshTokenError,
+  SessionExpiredError,
+  EmailAlreadyInUseError,
+  ValidationError,
+  AccountInactiveError,
+} from '../shared/exceptions/error-classes';
 
 interface RequestMetadata {
   ipAddress?: string;
   userAgent?: string;
-}
-
-interface BruteForceState {
-  count: number;
-  lockUntil?: Date;
 }
 
 type User = {
@@ -42,9 +41,16 @@ type User = {
 
 @Injectable()
 export class AuthService {
-  private readonly loginAttempts = new Map<string, BruteForceState>();
-  private readonly maxAttempts = 5;
-  private readonly lockMinutes = 15;
+  // ============================================================================
+  // REMOVED: In-memory brute force protection (loginAttempts Map, maxAttempts,
+  // lockMinutes, ensureNotLocked, registerFailedAttempt, clearFailedAttempts)
+  //
+  // REPLACED BY: Redis-backed RateLimitGuard with distributed rate limiting
+  // - Login: 5 attempts per 15 minutes per IP + email
+  // - Register: 3 attempts per hour per IP
+  // - Forgot password: 3 attempts per hour per IP + email
+  // - Reset password: 3 attempts per hour per IP + token
+  // ============================================================================
 
   constructor(
     private readonly prisma: PrismaService,
@@ -60,7 +66,7 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) {
-      throw new BadRequestException('Email already in use');
+      throw new EmailAlreadyInUseError(dto.email);
     }
 
     const company = await this.prisma.company.create({
@@ -140,11 +146,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, metadata: RequestMetadata): Promise<AuthResponse> {
-    this.ensureNotLocked(dto.email);
+    // Rate limiting is now handled by RateLimitGuard
+    // No in-memory brute force protection here
 
     const user = await this.validateUser(dto.email, dto.password);
     if (!user) {
-      this.registerFailedAttempt(dto.email);
       await this.securityService.logEvent({
         eventType: SecurityEvents.AuthLoginFailed,
         companyId: undefined,
@@ -156,10 +162,8 @@ export class AuthService {
         status: 'failure',
         statusCode: 401,
       });
-      throw new UnauthorizedException('Invalid credentials');
+      throw new InvalidCredentialsError();
     }
-
-    this.clearFailedAttempts(dto.email);
 
     const session = await this.createSession(user.id, metadata);
     const { accessToken, refreshToken } = this.generateTokens(user, session.id);
@@ -210,7 +214,7 @@ export class AuthService {
     try {
       payload = this.jwtService.verify<JwtPayload>(dto.refreshToken);
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new InvalidRefreshTokenError();
     }
 
     const session = await this.prisma.session.findUnique({
@@ -218,11 +222,11 @@ export class AuthService {
     });
 
     if (!session || !session.isValid) {
-      throw new UnauthorizedException('Invalid session');
+      throw new InvalidRefreshTokenError();
     }
 
     if (session.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Session expired');
+      throw new SessionExpiredError();
     }
 
     const matches = await bcrypt.compare(
@@ -230,15 +234,19 @@ export class AuthService {
       session.refreshToken,
     );
     if (!matches) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new InvalidRefreshTokenError();
     }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('User not found');
+    if (!user) {
+      throw new UserNotFoundError(payload.sub);
+    }
+
+    if (!user.isActive) {
+      throw new AccountInactiveError();
     }
 
     const { accessToken, refreshToken } = this.generateTokens(user, session.id);
@@ -273,7 +281,7 @@ export class AuthService {
     try {
       payload = this.jwtService.verify<JwtPayload>(dto.refreshToken);
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new InvalidRefreshTokenError();
     }
 
     const session = await this.prisma.session.findUnique({
@@ -317,12 +325,12 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UserNotFoundError(userId);
     }
 
     const matches = await bcrypt.compare(dto.currentPassword, user.password);
     if (!matches) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new InvalidCredentialsError();
     }
 
     const newHash = await bcrypt.hash(dto.newPassword, 10);
@@ -359,7 +367,7 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UserNotFoundError(userId);
     }
     return this.toAuthUser(user);
   }
@@ -448,7 +456,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new BadRequestException('Invalid or expired reset token');
+      throw new ValidationError('Invalid or expired reset token');
     }
 
     const newHash = await bcrypt.hash(dto.newPassword, 10);
@@ -521,31 +529,5 @@ export class AuthService {
       role: user.role,
       companyId: user.companyId,
     };
-  }
-
-  private ensureNotLocked(email: string) {
-    const state = this.loginAttempts.get(email);
-    if (!state || !state.lockUntil) {
-      return;
-    }
-    if (state.lockUntil > new Date()) {
-      throw new UnauthorizedException(
-        'Too many failed attempts, please try again later',
-      );
-    }
-    this.loginAttempts.delete(email);
-  }
-
-  private registerFailedAttempt(email: string) {
-    const state = this.loginAttempts.get(email) || { count: 0 };
-    state.count += 1;
-    if (state.count >= this.maxAttempts) {
-      state.lockUntil = new Date(Date.now() + this.lockMinutes * 60 * 1000);
-    }
-    this.loginAttempts.set(email, state);
-  }
-
-  private clearFailedAttempts(email: string) {
-    this.loginAttempts.delete(email);
   }
 }

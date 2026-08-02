@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RedisService } from '../cache/redis.service';
+import { RedisService } from '../shared/cache/redis.service';
 import {
   RateLimitConfig,
   RateLimitResult,
   RateLimitViolation,
+  RateLimitMetrics,
 } from './rate-limit.types';
 
 @Injectable()
@@ -170,32 +171,103 @@ export class RateLimitService {
   /**
    * Get metrics for an endpoint
    */
-  async getMetrics(endpoint: string): Promise<{
-    requests: number;
-    blocked: number;
-    violations: number;
-  }> {
+  async getMetrics(endpoint: string): Promise<RateLimitMetrics> {
     const client = this.redisService.getClient();
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
 
     try {
-      const [requests, blocked] = await Promise.all([
-        client.get(`rate-limit:requests:${endpoint}:${today}`),
-        client.get(`rate-limit:blocked:${endpoint}:${today}`),
-      ]);
+      const [requests, blocked, violations, totalRequests, allowedRequests] =
+        await Promise.all([
+          client.get(`rate-limit:requests:${endpoint}:${today}`),
+          client.get(`rate-limit:blocked:${endpoint}:${today}`),
+          client.llen(`rate-limit:violations:${endpoint}`),
+          client.get(`rate-limit:total-requests:${endpoint}:${today}`),
+          client.get(`rate-limit:allowed-requests:${endpoint}:${today}`),
+        ]);
 
-      const violations = await client.llen(`rate-limit:violations:${endpoint}`);
+      const requestsCount = parseInt(requests || '0', 10);
+      const blockedCount = parseInt(blocked || '0', 10);
+      const violationsCount = violations || 0;
+      const total = parseInt(totalRequests || '0', 10);
+      const allowed = parseInt(allowedRequests || '0', 10);
 
       return {
-        requests: parseInt(requests || '0', 10),
-        blocked: parseInt(blocked || '0', 10),
-        violations,
+        totalRequests: total || requestsCount + blockedCount,
+        allowedRequests: allowed || requestsCount,
+        blockedRequests: blockedCount,
+        violations: violationsCount,
+        byEndpoint: {
+          [endpoint]: {
+            requests: requestsCount,
+            blocked: blockedCount,
+          },
+        },
       };
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to get metrics: ${err.message}`);
-      return { requests: 0, blocked: 0, violations: 0 };
+      return {
+        totalRequests: 0,
+        allowedRequests: 0,
+        blockedRequests: 0,
+        violations: 0,
+        byEndpoint: {},
+      };
+    }
+  }
+
+  /**
+   * Get all metrics for all endpoints
+   */
+  async getAllMetrics(): Promise<RateLimitMetrics> {
+    const client = this.redisService.getClient();
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+
+    try {
+      // Get all keys matching pattern
+      const keys = await client.keys(`rate-limit:requests:*:${today}`);
+      const metrics: RateLimitMetrics = {
+        totalRequests: 0,
+        allowedRequests: 0,
+        blockedRequests: 0,
+        violations: 0,
+        byEndpoint: {},
+      };
+
+      for (const key of keys) {
+        const endpoint = key.split(':')[2];
+        const [requests, blocked, violations] = await Promise.all([
+          client.get(key),
+          client.get(`rate-limit:blocked:${endpoint}:${today}`),
+          client.llen(`rate-limit:violations:${endpoint}`),
+        ]);
+
+        const requestsCount = parseInt(requests || '0', 10);
+        const blockedCount = parseInt(blocked || '0', 10);
+
+        metrics.totalRequests += requestsCount + blockedCount;
+        metrics.allowedRequests += requestsCount;
+        metrics.blockedRequests += blockedCount;
+        metrics.violations += violations || 0;
+        metrics.byEndpoint[endpoint] = {
+          requests: requestsCount,
+          blocked: blockedCount,
+        };
+      }
+
+      return metrics;
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error(`Failed to get all metrics: ${err.message}`);
+      return {
+        totalRequests: 0,
+        allowedRequests: 0,
+        blockedRequests: 0,
+        violations: 0,
+        byEndpoint: {},
+      };
     }
   }
 

@@ -13,12 +13,30 @@ import {
   ContractSimulation,
 } from './contracts/contract.interface';
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { TimeoutError } from '../../shared/exceptions/timeout-error';
 
+/**
+ * Soroban Service with timeout and retry configuration
+ *
+ * Timeout defaults:
+ * - simulateTransaction: 30s
+ * - sendTransaction: 60s
+ * - getTransaction: 10s
+ * - getEvents: 15s
+ * - getLatestLedger: 10s
+ */
 @Injectable()
 export class SorobanService {
   private readonly logger = new Logger(SorobanService.name);
   private readonly rpc: StellarSdk.rpc.Server;
   private readonly networkPassphrase: string;
+
+  // Timeout configurations (in milliseconds)
+  private readonly simulateTimeout: number;
+  private readonly sendTimeout: number;
+  private readonly getTransactionTimeout: number;
+  private readonly getEventsTimeout: number;
+  private readonly getLatestLedgerTimeout: number;
 
   constructor(
     private readonly configService: ConfigService,
@@ -32,14 +50,26 @@ export class SorobanService {
       stellarConfig.network === 'public'
         ? StellarSdk.Networks.PUBLIC
         : StellarSdk.Networks.TESTNET;
+
+    // Load timeouts from config with defaults
+    this.simulateTimeout = stellarConfig.simulateTimeout || 30000;
+    this.sendTimeout = stellarConfig.sendTimeout || 60000;
+    this.getTransactionTimeout = stellarConfig.getTransactionTimeout || 10000;
+    this.getEventsTimeout = stellarConfig.getEventsTimeout || 15000;
+    this.getLatestLedgerTimeout = stellarConfig.getLatestLedgerTimeout || 10000;
   }
 
   getRpcClient() {
     return this.rpc;
   }
 
+  /**
+   * Simulate a contract call with timeout
+   * Default timeout: 30 seconds
+   */
   async simulateContractCall(
     payload: ContractSimulation,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     this.ensureCallInput(payload.contractId, payload.methodName);
 
@@ -58,7 +88,13 @@ export class SorobanService {
       .setTimeout(30)
       .build();
 
-    const simulation = await this.rpc.simulateTransaction(tx as any);
+    const simulation = await this.executeWithTimeout(
+      this.rpc.simulateTransaction(tx as any),
+      this.simulateTimeout,
+      `simulateContractCall for ${payload.contractId}.${payload.methodName}`,
+      signal,
+    );
+
     const retval = this.extractReturnValue(simulation);
 
     return {
@@ -69,8 +105,13 @@ export class SorobanService {
     };
   }
 
+  /**
+   * Invoke a contract with timeout
+   * Default timeout: 60 seconds
+   */
   async invokeContract(
     payload: ContractInvocation,
+    signal?: AbortSignal,
   ): Promise<ContractExecutionResult> {
     this.ensureCallInput(payload.contractId, payload.methodName);
 
@@ -78,11 +119,14 @@ export class SorobanService {
     const secret = process.env.STELLAR_SECRET_KEY;
 
     if (!secret) {
-      const simulated = await this.simulateContractCall({
-        contractId: payload.contractId,
-        methodName: payload.methodName,
-        args,
-      });
+      const simulated = await this.simulateContractCall(
+        {
+          contractId: payload.contractId,
+          methodName: payload.methodName,
+          args,
+        },
+        signal,
+      );
 
       const txHash = `sim_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
       const submittedAt = new Date();
@@ -114,7 +158,13 @@ export class SorobanService {
     }
 
     const keypair = StellarSdk.Keypair.fromSecret(secret);
-    const sourceAccount = await this.rpc.getAccount(keypair.publicKey());
+    const sourceAccount = await this.executeWithTimeout(
+      this.rpc.getAccount(keypair.publicKey()),
+      this.simulateTimeout,
+      `getAccount for ${keypair.publicKey()}`,
+      signal,
+    );
+
     const contract = new StellarSdk.Contract(payload.contractId);
     const scArgs = args.map((arg) => this.toScVal(arg));
 
@@ -126,11 +176,23 @@ export class SorobanService {
       .setTimeout(60)
       .build();
 
-    const prepared = await this.rpc.prepareTransaction(tx as any);
+    const prepared = await this.executeWithTimeout(
+      this.rpc.prepareTransaction(tx as any),
+      this.simulateTimeout,
+      `prepareTransaction for ${payload.contractId}.${payload.methodName}`,
+      signal,
+    );
+
     prepared.sign(keypair);
 
     const submittedAt = new Date();
-    const sendResponse = await this.rpc.sendTransaction(prepared as any);
+    const sendResponse = await this.executeWithTimeout(
+      this.rpc.sendTransaction(prepared as any),
+      this.sendTimeout,
+      `sendTransaction for ${payload.contractId}.${payload.methodName}`,
+      signal,
+    );
+
     const txHash = (sendResponse as any).hash || this.fallbackHash();
 
     if ((sendResponse as any).status === 'ERROR') {
@@ -156,7 +218,7 @@ export class SorobanService {
     let txDetails: unknown = null;
 
     try {
-      txDetails = await this.getTransaction(txHash);
+      txDetails = await this.getTransaction(txHash, signal);
       const txStatus = String((txDetails as any)?.status || '').toUpperCase();
       if (txStatus === 'SUCCESS') {
         status = 'CONFIRMED';
@@ -194,31 +256,51 @@ export class SorobanService {
     };
   }
 
-  async getTransaction(txHash: string): Promise<unknown> {
+  /**
+   * Get transaction with timeout
+   * Default timeout: 10 seconds
+   */
+  async getTransaction(txHash: string, signal?: AbortSignal): Promise<unknown> {
     if (!txHash) {
       throw new BadRequestException('Transaction hash is required');
     }
-    return this.rpc.getTransaction(txHash);
+
+    return this.executeWithTimeout(
+      this.rpc.getTransaction(txHash),
+      this.getTransactionTimeout,
+      `getTransaction ${txHash}`,
+      signal,
+    );
   }
 
+  /**
+   * Get contract events with timeout
+   * Default timeout: 15 seconds
+   */
   async getContractEvents(
     contractId: string,
     startLedger: number,
+    signal?: AbortSignal,
   ): Promise<any[]> {
     const safeStartLedger = Number.isFinite(startLedger)
       ? Math.max(1, Math.floor(startLedger))
       : 1;
 
     try {
-      const response = await this.rpc.getEvents({
-        startLedger: safeStartLedger,
-        filters: [
-          {
-            type: 'contract',
-            contractIds: [contractId],
-          },
-        ],
-      });
+      const response = await this.executeWithTimeout(
+        this.rpc.getEvents({
+          startLedger: safeStartLedger,
+          filters: [
+            {
+              type: 'contract',
+              contractIds: [contractId],
+            },
+          ],
+        }),
+        this.getEventsTimeout,
+        `getContractEvents for ${contractId}`,
+        signal,
+      );
 
       return response.events || [];
     } catch (error) {
@@ -229,9 +311,18 @@ export class SorobanService {
     }
   }
 
-  async getLatestLedgerSequence(): Promise<number> {
+  /**
+   * Get latest ledger sequence with timeout
+   * Default timeout: 10 seconds
+   */
+  async getLatestLedgerSequence(signal?: AbortSignal): Promise<number> {
     try {
-      const latest = await this.rpc.getLatestLedger();
+      const latest = await this.executeWithTimeout(
+        this.rpc.getLatestLedger(),
+        this.getLatestLedgerTimeout,
+        'getLatestLedger',
+        signal,
+      );
       return Number((latest as any)?.sequence || 0);
     } catch (error) {
       this.logger.warn(
@@ -247,6 +338,37 @@ export class SorobanService {
     } catch {
       return scVal;
     }
+  }
+
+  /**
+   * Execute an operation with timeout and cancellation support
+   */
+  private async executeWithTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    operationName: string,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(
+          new TimeoutError(`${operationName} timed out after ${timeoutMs}ms`),
+        );
+      }, timeoutMs);
+
+      if (signal) {
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timeoutId);
+            reject(new Error(`${operationName} cancelled`));
+          },
+          { once: true },
+        );
+      }
+    });
+
+    return Promise.race([promise, timeoutPromise]);
   }
 
   private ensureCallInput(contractId: string, methodName: string) {

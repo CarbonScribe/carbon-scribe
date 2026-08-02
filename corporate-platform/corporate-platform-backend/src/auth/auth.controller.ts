@@ -19,33 +19,73 @@ import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import {
+  LoginRateLimit,
+  RegisterRateLimit,
+  RefreshRateLimit,
+  ForgotPasswordRateLimit,
+  ResetPasswordRateLimit,
+  ChangePasswordRateLimit,
+  MeRateLimit,
+  SessionsRateLimit,
+  TerminateSessionRateLimit,
+} from '../rate-limit/rate-limit.decorator';
+import { RateLimitGuard } from '../rate-limit/rate-limit.guard';
 
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /**
+   * Register a new user
+   * Rate limit: 3 attempts per hour per IP
+   */
   @Post('register')
+  @UseGuards(RateLimitGuard)
+  @RegisterRateLimit()
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
     return this.authService.register(dto, this.getMetadata(req));
   }
 
-  @UseGuards(LocalAuthGuard)
+  /**
+   * Login user
+   * Rate limit: 5 attempts per 15 minutes per IP + email
+   */
+  @UseGuards(LocalAuthGuard, RateLimitGuard)
+  @LoginRateLimit()
   @Post('login')
   async login(@Req() req: Request, @Body() dto: LoginDto) {
     return this.authService.login(dto, this.getMetadata(req));
   }
 
+  /**
+   * Refresh access token
+   * Rate limit: 10 attempts per hour
+   */
   @Post('refresh')
+  @UseGuards(RateLimitGuard)
+  @RefreshRateLimit()
   async refresh(@Body() dto: RefreshTokenDto) {
     return this.authService.refresh(dto);
   }
 
+  /**
+   * Logout user
+   * Rate limit: 10 attempts per hour (no rate limit needed but keep consistent)
+   */
   @Post('logout')
+  @UseGuards(RateLimitGuard)
+  @RefreshRateLimit()
   async logout(@Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * Change password
+   * Rate limit: 5 attempts per hour (authenticated)
+   */
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @ChangePasswordRateLimit()
   @Post('change-password')
   async changePassword(
     @CurrentUser() user: JwtPayload,
@@ -54,29 +94,56 @@ export class AuthController {
     return this.authService.changePassword(user.sub, dto);
   }
 
+  /**
+   * Forgot password
+   * Rate limit: 3 attempts per hour per IP + email
+   */
   @Post('forgot-password')
+  @UseGuards(RateLimitGuard)
+  @ForgotPasswordRateLimit()
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
 
+  /**
+   * Reset password
+   * Rate limit: 3 attempts per hour per IP + token
+   */
   @Post('reset-password')
+  @UseGuards(RateLimitGuard)
+  @ResetPasswordRateLimit()
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * Get current user profile
+   * Rate limit: 30 attempts per minute (authenticated)
+   */
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @MeRateLimit()
   @Get('me')
   async me(@CurrentUser() user: JwtPayload) {
     return { user: await this.authService.me(user.sub) };
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * List user sessions
+   * Rate limit: 10 attempts per minute (authenticated)
+   */
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @SessionsRateLimit()
   @Get('sessions')
   async sessions(@CurrentUser() user: JwtPayload) {
     return this.authService.listSessions(user.sub);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * Terminate a session
+   * Rate limit: 5 attempts per minute (authenticated)
+   */
+  @UseGuards(JwtAuthGuard, RateLimitGuard)
+  @TerminateSessionRateLimit()
   @Delete('sessions/:id')
   async terminateSession(@CurrentUser() user: JwtPayload, @Req() req: Request) {
     const sessionId = Array.isArray(req.params.id)

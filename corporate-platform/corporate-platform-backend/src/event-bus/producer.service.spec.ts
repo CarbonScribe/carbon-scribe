@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProducerService } from './producer.service';
 import { KafkaService } from './kafka.service';
+import { ConfigService } from '../config/config.service';
+import { EventValidatorService } from './event-validator.service';
+import { DeadLetterService } from './dead-letter/dead-letter.service';
 
 describe('ProducerService', () => {
   let service: ProducerService;
@@ -17,6 +20,33 @@ describe('ProducerService', () => {
           provide: KafkaService,
           useValue: {
             getProducer: jest.fn().mockReturnValue(mockProducer),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            getKafkaConfig: jest.fn().mockReturnValue({
+              producerTimeout: 10000,
+              maxRetries: 3,
+              retryDelay: 1000,
+            }),
+          },
+        },
+        {
+          provide: EventValidatorService,
+          useValue: {
+            validate: jest.fn().mockReturnValue({ valid: true }),
+            validateBatch: jest
+              .fn()
+              .mockImplementation((events: unknown[]) =>
+                events.map(() => ({ valid: true })),
+              ),
+          },
+        },
+        {
+          provide: DeadLetterService,
+          useValue: {
+            sendToDeadLetter: jest.fn(),
           },
         },
       ],

@@ -14,6 +14,19 @@ import { RateLimitDecoratorOptions } from './rate-limit.types';
 import { SecurityService } from '../security/security.service';
 import { SecurityEvents } from '../security/constants/security-events.constants';
 
+/**
+ * Rate limit guard with Redis-backed distributed rate limiting
+ *
+ * Features:
+ * - IP-based rate limiting
+ * - User-based rate limiting (authenticated users)
+ * - Endpoint-specific rate limits
+ * - Distributed storage across instances via Redis
+ * - Rate limit headers (X-RateLimit-*)
+ * - Graduated cooldown for repeated violations
+ * - IP whitelist for internal services
+ * - Security event logging
+ */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   private readonly logger = new Logger(RateLimitGuard.name);
@@ -34,11 +47,27 @@ export class RateLimitGuard implements CanActivate {
       context.getHandler(),
     );
 
-    // If no config, allow the request
+    // If no config, check if endpoint should have default rate limit
     if (!config) {
-      return true;
+      // Apply default rate limit for auth endpoints
+      const defaultConfig = this.getDefaultConfig(request);
+      if (!defaultConfig) {
+        return true;
+      }
+      return this.applyRateLimit(request, response, defaultConfig);
     }
 
+    return this.applyRateLimit(request, response, config);
+  }
+
+  /**
+   * Apply rate limit with configuration
+   */
+  private async applyRateLimit(
+    request: Request,
+    response: Response,
+    config: RateLimitDecoratorOptions,
+  ): Promise<boolean> {
     // Build rate limit key
     const key = this.buildKey(request, config);
 
@@ -48,7 +77,6 @@ export class RateLimitGuard implements CanActivate {
       return true;
     }
 
-    // Get default config
     const defaultConfig = {
       windowMs: config.windowMs || 60000,
       maxRequests: config.max || 10,
@@ -60,11 +88,21 @@ export class RateLimitGuard implements CanActivate {
     };
 
     try {
+      // Check if graduated cooldown should be applied
+      let effectiveWindowMs = defaultConfig.windowMs;
+      if (defaultConfig.enableGraduatedCooldown) {
+        const cooldown = await this.rateLimitService.getGraduatedCooldown(
+          key,
+          defaultConfig.windowMs,
+        );
+        effectiveWindowMs = cooldown;
+      }
+
       // Check rate limit
-      const result = await this.rateLimitService.checkRateLimit(
-        key,
-        defaultConfig,
-      );
+      const result = await this.rateLimitService.checkRateLimit(key, {
+        ...defaultConfig,
+        windowMs: effectiveWindowMs,
+      });
 
       // Set rate limit headers
       this.setRateLimitHeaders(response, result);
@@ -105,13 +143,80 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /**
+   * Get default rate limit configuration for auth endpoints
+   */
+  private getDefaultConfig(request: Request): RateLimitDecoratorOptions | null {
+    const path = request.path || request.url;
+
+    if (path.includes('/login')) {
+      return {
+        windowMs: 15 * 60 * 1000,
+        max: 5,
+        keyPrefix: 'login',
+        message: 'Too many login attempts. Please try again after 15 minutes.',
+        enableGraduatedCooldown: true,
+      };
+    }
+
+    if (path.includes('/register')) {
+      return {
+        windowMs: 60 * 60 * 1000,
+        max: 3,
+        keyPrefix: 'register',
+        message:
+          'Too many registration attempts. Please try again after 1 hour.',
+      };
+    }
+
+    if (path.includes('/refresh')) {
+      return {
+        windowMs: 60 * 60 * 1000,
+        max: 10,
+        keyPrefix: 'refresh',
+        message: 'Too many refresh attempts. Please try again after 1 hour.',
+      };
+    }
+
+    if (path.includes('/forgot-password')) {
+      return {
+        windowMs: 60 * 60 * 1000,
+        max: 3,
+        keyPrefix: 'forgot-password',
+        message:
+          'Too many password reset requests. Please try again after 1 hour.',
+        enableGraduatedCooldown: true,
+      };
+    }
+
+    if (path.includes('/reset-password')) {
+      return {
+        windowMs: 60 * 60 * 1000,
+        max: 3,
+        keyPrefix: 'reset-password',
+        message:
+          'Too many password reset attempts. Please try again after 1 hour.',
+      };
+    }
+
+    return null;
+  }
+
+  /**
    * Build rate limit key from request and config
+   * Includes: IP, user ID (if authenticated), and endpoint
    */
   private buildKey(
     request: Request,
     config: RateLimitDecoratorOptions,
   ): string {
     const parts: string[] = [];
+
+    // Add IP address (always included)
+    const ip = this.rateLimitService.getClientIp(
+      request.headers,
+      request.connection,
+    );
+    parts.push(`ip:${ip}`);
 
     // Add user ID if authenticated
     const user = (request as any).user;
@@ -124,21 +229,23 @@ export class RateLimitGuard implements CanActivate {
       parts.push(`company:${user.companyId}`);
     }
 
-    // Add IP address
-    const ip = this.rateLimitService.getClientIp(
-      request.headers,
-      request.connection,
-    );
-    parts.push(`ip:${ip}`);
-
-    // Add endpoint-specific parts
+    // Add endpoint prefix
     if (config.keyPrefix) {
       parts.push(`endpoint:${config.keyPrefix}`);
     }
 
-    // Add auction ID for bidding endpoints
-    if (request.params?.id) {
-      parts.push(`auction:${request.params.id}`);
+    // Add email for login/forgot-password endpoints
+    const body = request.body as any;
+    if (
+      body?.email &&
+      (config.keyPrefix === 'login' || config.keyPrefix === 'forgot-password')
+    ) {
+      parts.push(`email:${body.email}`);
+    }
+
+    // Add token for reset-password endpoint
+    if (body?.token && config.keyPrefix === 'reset-password') {
+      parts.push(`token:${body.token}`);
     }
 
     return parts.join(':');
@@ -192,10 +299,11 @@ export class RateLimitGuard implements CanActivate {
       request.headers,
       request.connection,
     );
+    const body = request.body as any;
 
     // Log violation
     await this.rateLimitService.logViolation({
-      endpoint: request.path || request.url,
+      endpoint: request.path || request.url || 'unknown',
       userId: user?.sub,
       companyId: user?.companyId,
       ip,
@@ -210,27 +318,27 @@ export class RateLimitGuard implements CanActivate {
     await this.trackBlockedRequest(request, config);
 
     // Log security event
-    if (user?.sub) {
-      await this.securityService.logEvent({
-        eventType: SecurityEvents.RateLimitExceeded,
-        userId: user.sub,
-        companyId: user.companyId,
-        ipAddress: ip,
-        userAgent: request.headers['user-agent'] as string,
-        resource: request.path || request.url,
-        method: request.method,
-        status: 'blocked',
-        statusCode: 429,
-        details: {
-          rateLimit: {
-            key,
-            current: result.current,
-            max: result.max,
-            resetTime: new Date(result.resetTime).toISOString(),
-          },
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.RateLimitExceeded,
+      userId: user?.sub,
+      companyId: user?.companyId,
+      ipAddress: ip,
+      userAgent: request.headers['user-agent'] as string,
+      resource: request.path || request.url || 'unknown',
+      method: request.method,
+      status: 'blocked',
+      statusCode: 429,
+      details: {
+        rateLimit: {
+          key,
+          current: result.current,
+          max: result.max,
+          resetTime: new Date(result.resetTime).toISOString(),
+          endpoint: config.keyPrefix,
+          email: body?.email,
         },
-      });
-    }
+      },
+    });
   }
 
   /**
