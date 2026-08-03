@@ -26,7 +26,6 @@
         }
       ]
     ],
-    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -261,5 +260,51 @@
       ]
     ]
   },
-  "events": []
+  "events": [
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "provenance_validation_failed"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "attempted_event_type"
+                  },
+                  "val": {
+                    "string": "SHOULD_FAIL"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "caller"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": "0"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": true
+    }
+  ]
 }

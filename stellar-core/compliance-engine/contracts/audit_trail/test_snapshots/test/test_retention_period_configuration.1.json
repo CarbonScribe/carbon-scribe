@@ -1,31 +1,12 @@
 {
   "generators": {
-    "address": 3,
+    "address": 2,
     "nonce": 0,
     "mux_id": 0
   },
   "auth": [
     [],
     [],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "authorize_emitter",
-              "args": [
-                {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                }
-              ]
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
     [],
     [
       [
@@ -34,10 +15,10 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "revoke_emitter",
+              "function_name": "set_retention_period",
               "args": [
                 {
-                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  "u64": "2592000"
                 }
               ]
             }
@@ -114,16 +95,7 @@
                           ]
                         },
                         "val": {
-                          "map": [
-                            {
-                              "key": {
-                                "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                              },
-                              "val": {
-                                "bool": false
-                              }
-                            }
-                          ]
+                          "map": []
                         }
                       },
                       {
@@ -135,7 +107,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "7776000"
+                          "u64": "2592000"
                         }
                       },
                       {
@@ -194,39 +166,6 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": "801925984706572462"
-                  }
-                },
-                "durability": "temporary",
-                "val": "void"
-              }
-            },
-            "ext": "v0"
-          },
-          6311999
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": {
-              "ledger_key_nonce": {
-                "nonce": "5541220902715666415"
-              }
-            },
-            "durability": "temporary"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": {
-                  "ledger_key_nonce": {
-                    "nonce": "5541220902715666415"
                   }
                 },
                 "durability": "temporary",
