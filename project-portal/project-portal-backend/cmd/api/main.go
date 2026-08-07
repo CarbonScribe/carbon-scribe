@@ -669,6 +669,8 @@ func runGeospatialDDL(db *gorm.DB) error {
 			alert_id UUID,
 			created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 		)`,
+		"ALTER TABLE projects ADD COLUMN IF NOT EXISTS geometry GEOGRAPHY(GEOMETRY, 4326)",
+		"CREATE INDEX IF NOT EXISTS idx_projects_geometry ON projects USING GIST (geometry)",
 	}
 
 	for _, stmt := range stmts {
