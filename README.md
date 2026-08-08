@@ -880,3 +880,18 @@ timeline
 
 ---
 **CarbonScribe**: Making every ton of carbon count. Transparent, verifiable, and accessible to all.
+
+## Documentation & CI Boost
+
+### Quick Start
+```bash
+git clone https://github.com/CarbonScribe/carbon-scribe.git
+cd carbon-scribe
+```
+
+### Enhanced Features
+- Comprehensive inline documentation
+- Automated CI pipeline with GitHub Actions
+- Test coverage for core modules
+
+*Boost contributed by Bounty Hunter*
