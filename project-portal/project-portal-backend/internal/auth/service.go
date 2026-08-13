@@ -65,7 +65,7 @@ func (s *Service) Register(email, password, fullName, organization string) (*Use
 		Organization:  organization,
 		Role:          "farmer",
 		EmailVerified: false,
-		IsActive:      true,
+		IsActive:      false, // pending email verification — cannot log in until verified (#470)
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -98,6 +98,11 @@ func (s *Service) Login(email, password string, ipAddress, userAgent string) (*A
 	// Verify password
 	if err := utils.VerifyPassword(user.PasswordHash, password); err != nil {
 		return nil, errors.New("invalid email or password")
+	}
+
+	// Reject unverified users — they must confirm email ownership before login (#470)
+	if !user.EmailVerified {
+		return nil, errors.New("email not verified — please check your inbox for the verification link")
 	}
 
 	// Check if user is active
@@ -329,8 +334,9 @@ func (s *Service) VerifyEmail(token string) error {
 		return errors.New("user not found")
 	}
 
-	// Update email verified
+	// Update email verified and activate the account
 	user.EmailVerified = true
+	user.IsActive = true
 	user.UpdatedAt = time.Now()
 
 	if err := s.repository.UpdateUser(user); err != nil {
