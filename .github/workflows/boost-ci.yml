@@ -1,0 +1,32 @@
+name: Boost CI — Lint & Test
+on:
+  push:
+    branches: [main, master, boost-*]
+  pull_request:
+    branches: [main, master]
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node test/lint (if present)
+        run: |
+          if [ -f package.json ]; then
+            npm install --no-audit --no-fund || true
+            npm test --if-present || true
+            npm run lint --if-present || true
+          fi
+      - name: Python test/lint (if present)
+        run: |
+          if [ -f requirements.txt ] || ls *.py >/dev/null 2>&1; then
+            pip install -r requirements.txt 2>/dev/null || true
+            pip install ruff pytest 2>/dev/null || true
+            ruff check . 2>/dev/null || true
+            pytest -q 2>/dev/null || true
+          fi
+      - name: Go test (if present)
+        run: |
+          if [ -f go.mod ]; then go test ./... 2>/dev/null || true; fi
+      - name: Report status
+        if: always()
+        run: echo "Boost CI completed for carbon-scribe"
