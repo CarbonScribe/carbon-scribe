@@ -7,8 +7,7 @@ mod types;
 mod validation;
 
 use events::{
-    emit_anchorer_index_compacted_event, emit_document_anchored_event,
-    emit_owner_transferred_event,
+    emit_anchorer_index_compacted_event, emit_document_anchored_event, emit_owner_transferred_event,
 };
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use storage::extend_instance_ttl;
@@ -149,10 +148,7 @@ impl ProjectRegistry {
     }
 
     /// View the pending ownership transfer target for a project.
-    pub fn get_pending_ownership_transfer(
-        env: Env,
-        project_id: String,
-    ) -> Result<Address, Error> {
+    pub fn get_pending_ownership_transfer(env: Env, project_id: String) -> Result<Address, Error> {
         storage::get_pending_transfer(&env, &project_id)
     }
 

@@ -1,9 +1,15 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, log, Address, Bytes,
-    BytesN, Env, String, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, log, symbol_short, Address,
+    Bytes, BytesN, Env, IntoVal, String, Vec,
 };
+
+mod carbon_asset {
+    soroban_sdk::contractimport!(
+        file = "../../../carbon-asset-factory/contracts/carbon_asset/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
+    );
+}
 
 /// Storage keys for the contract's persistent data
 #[contracttype]
@@ -21,10 +27,10 @@ pub enum DataKey {
     MerkleRoot(u64),
     /// Whether a registry credit has been minted (registry_credit_id -> bool)
     MintedCredit(String),
+    /// The real CarbonAsset token ID assigned to a registry credit
+    TokenId(String),
     /// Whether a registry credit has been retired (registry_credit_id -> bool)
     RetiredCredit(String),
-    /// Next token ID for minting
-    NextTokenId,
 }
 
 /// Credit status enum for leaf node construction
@@ -89,6 +95,8 @@ pub enum MerkleBridgeError {
     InvalidProofLength = 10,
     /// CarbonAsset contract not set
     CarbonAssetNotSet = 11,
+    /// CarbonAsset mint failed
+    MintFailed = 16,
     /// Epoch must be sequential
     NonSequentialEpoch = 12,
     /// registry_credit_id is too short (minimum 8 characters)
@@ -137,19 +145,6 @@ fn validate_registry_credit_id(id: &String) -> Result<(), MerkleBridgeError> {
     Ok(())
 }
 
-// Note: CarbonAsset contract integration will be added once the CarbonAsset
-// contract is implemented (Issue #1). The mint_wrapped function currently
-// tracks token IDs internally and emits events for indexing.
-//
-// Future integration will include:
-// ```rust
-// mod carbon_asset {
-//     soroban_sdk::contractimport!(
-//         file = "../carbon_asset/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
-//     );
-// }
-// ```
-
 /// The MerkleBridge contract for bridging carbon credits from external registries
 #[contract]
 pub struct MerkleBridge;
@@ -175,7 +170,6 @@ impl MerkleBridge {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Updater, &updater);
         env.storage().instance().set(&DataKey::CurrentEpoch, &0u64);
-        env.storage().instance().set(&DataKey::NextTokenId, &1u32);
 
         log!(&env, "MerkleBridge initialized with admin: {}", admin);
 
@@ -359,20 +353,30 @@ impl MerkleBridge {
             }
         }
 
-        // Mark credit as minted
+        let carbon_asset_contract = Self::get_carbon_asset_contract(env.clone())?;
+        let metadata = carbon_asset::CarbonAssetMetadata {
+            project_id: registry_credit_id.clone(),
+            vintage_year: 0,
+            methodology_id: 0,
+            geo_hash: BytesN::from_array(&env, &[0u8; 32]),
+            max_supply: None,
+        };
+        let mint_result = env.try_invoke_contract::<u32, carbon_asset::ContractError>(
+            &carbon_asset_contract,
+            &symbol_short!("mint"),
+            (env.current_contract_address(), caller.clone(), metadata).into_val(&env),
+        );
+        let token_id = match mint_result {
+            Ok(Ok(token_id)) => token_id,
+            _ => return Err(MerkleBridgeError::MintFailed),
+        };
+
         env.storage()
             .persistent()
             .set(&DataKey::MintedCredit(registry_credit_id.clone()), &true);
-
-        // Get and increment token ID
-        let token_id: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextTokenId)
-            .unwrap_or(1);
         env.storage()
-            .instance()
-            .set(&DataKey::NextTokenId, &(token_id + 1));
+            .persistent()
+            .set(&DataKey::TokenId(registry_credit_id.clone()), &token_id);
 
         // Emit bridged event
         CreditBridgedEvent {
@@ -481,6 +485,14 @@ impl MerkleBridge {
             .instance()
             .get(&DataKey::CarbonAssetContract)
             .ok_or(MerkleBridgeError::CarbonAssetNotSet)
+    }
+
+    /// Get the CarbonAsset token ID assigned to a registry credit
+    pub fn get_token_id(env: Env, registry_credit_id: String) -> Result<u32, MerkleBridgeError> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::TokenId(registry_credit_id))
+            .ok_or(MerkleBridgeError::AlreadyMinted)
     }
 
     // ============ Internal Helper Functions ============
@@ -654,6 +666,7 @@ impl MerkleBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use carbon_asset::CarbonAssetClient;
     use soroban_sdk::{testutils::Address as _, Bytes, Env};
 
     fn setup_env() -> (Env, Address, Address) {
@@ -666,6 +679,19 @@ mod tests {
 
     fn create_contract(env: &Env) -> Address {
         env.register(MerkleBridge, ())
+    }
+
+    fn configure_carbon_asset(env: &Env, bridge: &Address) -> CarbonAssetClient<'_> {
+        let asset_id = env.register(carbon_asset::CarbonAsset, ());
+        let asset_client = CarbonAssetClient::new(env, &asset_id);
+        asset_client.initialize(
+            bridge,
+            &String::from_str(env, "Carbon Asset"),
+            &String::from_str(env, "CARB"),
+            &Address::generate(env),
+            &String::from_str(env, "US"),
+        );
+        asset_client
     }
 
     /// Helper to compute a leaf hash for testing
@@ -809,6 +835,8 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
 
         // Create a single-leaf Merkle tree
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
@@ -823,6 +851,8 @@ mod tests {
 
         let token_id = client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
         assert_eq!(token_id, 1);
+        assert_eq!(asset_client.owner_of(&token_id), user);
+        assert_eq!(client.get_token_id(&registry_id), token_id);
 
         // Verify credit is marked as minted
         assert!(client.is_minted(&registry_id));
@@ -835,6 +865,8 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
 
         // Create a 2-leaf Merkle tree
         let registry_id_1 = "VER-123-ABC-456";
@@ -864,6 +896,7 @@ mod tests {
         let registry_id_2_str = String::from_str(&env, registry_id_2);
         let token_id_2 = client.mint_wrapped(&user, &registry_id_2_str, &proof_2, &1, &1);
         assert_eq!(token_id_2, 2);
+        assert_eq!(asset_client.owner_of(&token_id_2), user);
     }
 
     #[test]
@@ -983,12 +1016,53 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_mint_wrapped_without_carbon_asset_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+
+        let registry_id = String::from_str(&env, "VER-123-ABC-456");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
+        client.update_root(&updater, &1, &leaf_hash);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #16)")]
+    fn test_mint_wrapped_when_carbon_asset_mint_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
+        asset_client.set_max_supply(&contract_id, &0);
+
+        let registry_id = String::from_str(&env, "VER-123-ABC-456");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
+        client.update_root(&updater, &1, &leaf_hash);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
+    }
+
+    #[test]
     fn test_four_leaf_merkle_tree() {
         let (env, admin, updater) = setup_env();
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
 
         // Create 4-leaf tree
         let ids = ["VER-0001", "VER-0002", "VER-0003", "VER-0004"];
@@ -1130,6 +1204,8 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
 
         // Valid ID: alphanumeric + hyphens + underscores, 8–64 chars
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
@@ -1140,6 +1216,7 @@ mod tests {
         let proof: Vec<BytesN<32>> = Vec::new(&env);
         let token_id = client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
         assert_eq!(token_id, 1);
+        assert_eq!(asset_client.owner_of(&token_id), user);
     }
 
     #[test]
@@ -1160,6 +1237,7 @@ mod tests {
 #[cfg(test)]
 mod benchmarks {
     use super::*;
+    use carbon_asset::CarbonAssetClient;
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
 
     fn setup_bench_env() -> (Env, Address, Address, MerkleBridgeClient<'static>) {
@@ -1170,6 +1248,16 @@ mod benchmarks {
         let contract_id = env.register(MerkleBridge, ());
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        let asset_id = env.register(carbon_asset::CarbonAsset, ());
+        let asset_client = CarbonAssetClient::new(&env, &asset_id);
+        asset_client.initialize(
+            &contract_id,
+            &String::from_str(&env, "Carbon Asset"),
+            &String::from_str(&env, "CARB"),
+            &Address::generate(&env),
+            &String::from_str(&env, "US"),
+        );
+        client.set_carbon_asset_contract(&admin, &asset_id);
         (env, admin, updater, client)
     }
 

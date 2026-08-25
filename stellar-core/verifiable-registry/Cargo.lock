@@ -208,6 +208,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "carbon_asset"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -857,6 +864,7 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "merkle_bridge"
 version = "0.1.0"
 dependencies = [
+ "carbon_asset",
  "soroban-sdk",
 ]
 

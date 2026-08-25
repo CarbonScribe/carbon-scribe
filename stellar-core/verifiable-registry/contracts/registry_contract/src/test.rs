@@ -6,9 +6,9 @@ use soroban_sdk::{
     Address, Env, String as SorobanString, Vec,
 };
 
+use crate::storage;
 use crate::types::{CompactionConfig, Error, PaginatedProjects};
 use crate::validation::{validate_address, validate_ipfs_cid};
-use crate::storage;
 use crate::{ProjectRegistry, ProjectRegistryClient};
 
 fn create_contract() -> (Env, Address, ProjectRegistryClient<'static>) {
@@ -476,7 +476,7 @@ fn test_manual_compaction_removes_duplicates() {
 
     client.initialize(&admin);
     client.register_project(&project_id, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
@@ -520,7 +520,7 @@ fn test_manual_compaction_emits_event() {
 
     client.initialize(&admin);
     client.register_project(&project_id, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
@@ -549,7 +549,7 @@ fn test_compaction_prunes_inactive_projects() {
     // Set short pruning age for testing
     let config = CompactionConfig {
         max_index_size: 100,
-        pruning_age_seconds: 500,  // 500 seconds
+        pruning_age_seconds: 500, // 500 seconds
         auto_compaction_enabled: false,
     };
     client.set_compaction_config(&config);
@@ -618,9 +618,7 @@ fn test_get_projects_by_anchorer_paginated() {
 
     // Create 5 projects and anchor docs to them
     let mut project_ids = Vec::new(&env);
-    let names = [
-        "PROJ-001", "PROJ-002", "PROJ-003", "PROJ-004", "PROJ-005"
-    ];
+    let names = ["PROJ-001", "PROJ-002", "PROJ-003", "PROJ-004", "PROJ-005"];
     for name in names {
         let pid = SorobanString::from_str(&env, name);
         project_ids.push_back(pid);
@@ -634,9 +632,8 @@ fn test_get_projects_by_anchorer_paginated() {
     }
 
     // Query with page_size = 2, starting at cursor 0
-    let page1: PaginatedProjects = client
-        .get_anchorer_projects_page(&anchorer, &Some(0), &Some(2));
-    
+    let page1: PaginatedProjects = client.get_anchorer_projects_page(&anchorer, &Some(0), &Some(2));
+
     assert_eq!(page1.projects.len(), 2);
     assert_eq!(page1.total, 5);
     assert_eq!(page1.next_cursor, Some(2));
@@ -644,9 +641,8 @@ fn test_get_projects_by_anchorer_paginated() {
     assert_eq!(page1.projects.get(1).unwrap(), project_ids.get(1).unwrap());
 
     // Second page
-    let page2: PaginatedProjects = client
-        .get_anchorer_projects_page(&anchorer, &Some(2), &Some(2));
-    
+    let page2: PaginatedProjects = client.get_anchorer_projects_page(&anchorer, &Some(2), &Some(2));
+
     assert_eq!(page2.projects.len(), 2);
     assert_eq!(page2.total, 5);
     assert_eq!(page2.next_cursor, Some(4));
@@ -654,9 +650,8 @@ fn test_get_projects_by_anchorer_paginated() {
     assert_eq!(page2.projects.get(1).unwrap(), project_ids.get(3).unwrap());
 
     // Third page (last partial page)
-    let page3: PaginatedProjects = client
-        .get_anchorer_projects_page(&anchorer, &Some(4), &Some(2));
-    
+    let page3: PaginatedProjects = client.get_anchorer_projects_page(&anchorer, &Some(4), &Some(2));
+
     assert_eq!(page3.projects.len(), 1);
     assert_eq!(page3.total, 5);
     assert_eq!(page3.next_cursor, None);
@@ -678,9 +673,8 @@ fn test_get_projects_by_anchorer_paginated_default_page_size() {
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
     // Query with no cursor and no page_size — uses defaults
-    let result: PaginatedProjects = client
-        .get_anchorer_projects_page(&anchorer, &None, &None);
-    
+    let result: PaginatedProjects = client.get_anchorer_projects_page(&anchorer, &None, &None);
+
     assert_eq!(result.projects.len(), 1);
     assert_eq!(result.total, 1);
     assert_eq!(result.next_cursor, None);
@@ -702,9 +696,9 @@ fn test_get_projects_by_anchorer_paginated_beyond_end() {
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
     // Query with cursor beyond the total
-    let result: PaginatedProjects = client
-        .get_anchorer_projects_page(&anchorer, &Some(10), &Some(5));
-    
+    let result: PaginatedProjects =
+        client.get_anchorer_projects_page(&anchorer, &Some(10), &Some(5));
+
     assert_eq!(result.projects.len(), 0);
     assert_eq!(result.total, 1);
     assert_eq!(result.next_cursor, None);
@@ -729,10 +723,10 @@ fn test_get_anchorer_index_size() {
     // Add some projects
     let p1 = SorobanString::from_str(&env, "PROJ-001");
     let p2 = SorobanString::from_str(&env, "PROJ-002");
-    
+
     client.register_project(&p1, &anchorer);
     client.register_project(&p2, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&p1, &ipfs_cid, &doc_type);
     client.anchor_document(&p2, &ipfs_cid, &doc_type);
@@ -773,7 +767,7 @@ fn test_auto_compaction_triggers_when_exceeding_threshold() {
     env.ledger().set_timestamp(1000);
     client.anchor_document(&p1, &ipfs_cid, &doc_type);
     client.anchor_document(&p2, &ipfs_cid, &doc_type);
-    
+
     // The third anchor should trigger auto-compaction (size check happens after add)
     // Since all projects are active, compaction keeps them all
     env.ledger().set_timestamp(1001);
@@ -814,7 +808,10 @@ fn test_auto_compaction_disabled_does_not_trigger() {
     client.anchor_document(&p2, &ipfs_cid, &doc_type);
 
     let size = client.get_anchorer_index_size(&anchorer);
-    assert_eq!(size, 2, "Auto-compaction disabled so size should still be 2");
+    assert_eq!(
+        size, 2,
+        "Auto-compaction disabled so size should still be 2"
+    );
 }
 
 // ========== Address Validation Tests ==========

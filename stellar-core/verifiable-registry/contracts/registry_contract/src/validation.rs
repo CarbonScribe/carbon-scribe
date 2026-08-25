@@ -90,9 +90,7 @@ fn is_base32_byte(b: u8) -> bool {
 /// valid accounts in the future).
 pub fn validate_address(address: &Address) -> Result<(), Error> {
     match address.executable() {
-        Some(Executable::Wasm(_)) | Some(Executable::StellarAsset) => {
-            Err(Error::InvalidAddress)
-        }
+        Some(Executable::Wasm(_)) | Some(Executable::StellarAsset) => Err(Error::InvalidAddress),
         _ => Ok(()),
     }
 }
