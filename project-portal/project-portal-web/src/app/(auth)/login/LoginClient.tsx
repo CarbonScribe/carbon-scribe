@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, ChevronRight, AlertCircle, Loader2, Eye, EyeOff, Shield } from 'lucide-react';
+import { Mail, Lock, ChevronRight, AlertCircle, Loader2, Eye, EyeOff, Shield, Wallet } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
 import { showToast } from '@/components/ui/Toast';
 import AuthNavigation from '@/components/AuthNavigation';
+import { walletChallengeApi } from '@/lib/api/auth.api';
+import { isWalletInstalled } from '@/lib/stellar/wallet';
 
 export default function LoginClient() {
   const router = useRouter();
@@ -14,6 +16,10 @@ export default function LoginClient() {
   const next = params.get('next') || '/';
 
   const login = useStore((s) => s.login);
+  const loginWithWallet = useStore((s) => s.loginWithWallet);
+  const connectWallet = useStore((s) => s.connectWallet);
+  const disconnectWallet = useStore((s) => s.disconnectWallet);
+  const wallet = useStore((s) => s.wallet);
   const serverError = useStore((s) => s.authError);
   const loading = useStore((s) => s.authLoading.login);
   const isHydrated = useStore((s) => s.isHydrated);
@@ -26,8 +32,14 @@ export default function LoginClient() {
   const [showPassword, setShowPassword] = useState(false);
   const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
   const [emailVerificationError, setEmailVerificationError] = useState<string | null>(null);
+  const [walletExtensionInstalled, setWalletExtensionInstalled] = useState<boolean | null>(null);
+  const [walletSigning, setWalletSigning] = useState(false);
 
   const hasFormErrors = Object.values(formErrors).some((msg) => !!msg);
+
+  useEffect(() => {
+    isWalletInstalled().then(setWalletExtensionInstalled);
+  }, []);
 
   useEffect(() => {
     if (isHydrated && isAuthenticated && user?.email_verified) {
@@ -68,7 +80,6 @@ export default function LoginClient() {
     try {
       await login(email, password);
       
-      // Check if user is verified after login
       const currentUser = useStore.getState().user;
       if (currentUser && !currentUser.email_verified) {
         setEmailVerificationError(
@@ -78,7 +89,6 @@ export default function LoginClient() {
           'error',
           'Email not verified. Please check your inbox for the verification link. You can request a new verification email if needed.'
         );
-        // Don't redirect - stay on login page
         return;
       }
       
@@ -86,7 +96,6 @@ export default function LoginClient() {
     } catch (err: any) {
       console.error('Login error:', err);
       
-      // Check if error is due to unverified email
       if (err?.response?.data?.error?.includes('verify') || err?.response?.data?.verification_required) {
         setEmailVerificationError(
           'Your email is not verified. Please check your inbox for the verification link or request a new one.'
@@ -98,6 +107,36 @@ export default function LoginClient() {
       } else {
         showToast('error', err?.response?.data?.error || err?.message || 'Login failed');
       }
+    }
+  }
+
+  async function onConnectWallet() {
+    clearError();
+    setEmailVerificationError(null);
+
+    await connectWallet();
+
+    const latestWallet = useStore.getState().wallet;
+    if (latestWallet.connectionState === 'error' || !latestWallet.publicKey) {
+      return;
+    }
+
+    setWalletSigning(true);
+    try {
+      const { challenge } = await walletChallengeApi(latestWallet.publicKey);
+
+      const freighterApi = await import('@stellar/freighter-api');
+      const signedXdr = await freighterApi.signTransaction(challenge, {
+        networkPassphrase: 'Test SDF Network ; September 2015',
+      });
+
+      await loginWithWallet(latestWallet.publicKey, signedXdr);
+      router.replace(next);
+    } catch (err: any) {
+      console.error('Wallet login error:', err);
+      showToast('error', err?.message || 'Wallet login failed');
+    } finally {
+      setWalletSigning(false);
     }
   }
 
@@ -187,6 +226,74 @@ export default function LoginClient() {
             </div>
           </div>
         )}
+
+        {/* Connect Wallet Button */}
+        {walletExtensionInstalled === false && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 flex items-start gap-2">
+            <Wallet className="w-5 h-5 mt-0.5 shrink-0" aria-hidden="true" />
+            <div>
+              <span className="font-medium">No wallet detected.</span>{' '}
+              <a
+                href="https://www.freighter.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-blue-900"
+              >
+                Install Freighter
+              </a>{' '}
+              to connect with your Stellar wallet.
+            </div>
+          </div>
+        )}
+
+        {walletExtensionInstalled !== false && (
+          <button
+            type="button"
+            disabled={wallet.connectionState === 'connecting' || walletSigning}
+            onClick={
+              wallet.connectionState === 'connected' && !walletSigning
+                ? onConnectWallet
+                : wallet.connectionState === 'connected' && walletSigning
+                  ? undefined
+                  : connectWallet
+            }
+            className="w-full mb-4 px-6 py-3 border-2 border-emerald-600 text-emerald-700 rounded-lg font-medium hover:bg-emerald-50 transition-colors disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            aria-busy={wallet.connectionState === 'connecting' || walletSigning}
+          >
+            {(wallet.connectionState === 'connecting' || walletSigning) && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
+            {wallet.connectionState === 'connecting'
+              ? 'Connecting wallet...'
+              : walletSigning
+                ? 'Waiting for wallet signature...'
+                : wallet.connectionState === 'connected'
+                  ? `Sign in with ${wallet.publicKey?.slice(0, 4)}...${wallet.publicKey?.slice(-4)}`
+                  : 'Connect Stellar Wallet'}
+          </button>
+        )}
+
+        {wallet.connectionState === 'connected' && !walletSigning && (
+          <div className="mb-4 flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+            <span className="font-medium">Wallet: {wallet.publicKey?.slice(0, 8)}...{wallet.publicKey?.slice(-4)}</span>
+            <button
+              type="button"
+              onClick={disconnectWallet}
+              className="text-xs underline hover:text-emerald-900"
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="bg-white px-3 text-gray-500">or continue with email</span>
+          </div>
+        </div>
 
         <form onSubmit={onSubmit} className="space-y-4 text-black" aria-label="Login form">
           <div>

@@ -3,9 +3,9 @@
 mod errors;
 mod events;
 mod storage;
-mod types;
 #[cfg(test)]
 mod test;
+mod types;
 
 use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String, Symbol, Vec};
 
@@ -15,7 +15,9 @@ use crate::events::{
     QualityScoreUpdatedEvent, Sep41BurnEvent, Sep41TransferEvent, StatusChangeEvent, TransferEvent,
 };
 use crate::storage::DataKey;
-use crate::types::{AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
+use crate::types::{
+    AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult,
+};
 
 // ========================================================================
 // Contract
@@ -226,7 +228,11 @@ impl CarbonAsset {
 
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
         let key = DataKey::Allowance(from, spender);
-        if let Some(allowance) = env.storage().persistent().get::<DataKey, AllowanceData>(&key) {
+        if let Some(allowance) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AllowanceData>(&key)
+        {
             if allowance.live_until_ledger < env.ledger().sequence() {
                 0
             } else {
@@ -283,7 +289,12 @@ impl CarbonAsset {
         Self::balance_of(env, owner)
     }
 
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), ContractError> {
+    pub fn transfer(
+        env: Env,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
         from.require_auth();
         Self::transfer_amount_internal(env, from, to, amount)
     }
@@ -302,6 +313,41 @@ impl CarbonAsset {
         env.storage().persistent().set(&key, &allowance);
 
         Self::transfer_amount_internal(env, from, to, amount)
+    }
+
+    /// Transfer a specific token by ID. Unlike the SEP-41 `transfer` which
+    /// takes a count-based amount and greedily selects token IDs via
+    /// `collect_transferable_tokens`, this function moves exactly the specified
+    /// `token_id`.
+    pub fn transfer_token(
+        env: Env,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        Self::transfer_token_internal(env, from, to, token_id, true)
+    }
+
+    /// Transfer a specific token by ID using an allowance (SEP-41-style
+    /// `transfer_from` but token-ID-aware). The caller (`spender`) must have
+    /// been approved by `from` for at least 1 unit of allowance.
+    ///
+    /// This is the correct entry-point for contracts (e.g. `time_lock`) that
+    /// need to move exactly one specific token on behalf of a user.
+    pub fn transfer_token_from(
+        env: Env,
+        spender: Address,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        spender.require_auth();
+
+        let allowance = Self::spend_allowance(env.clone(), from.clone(), spender.clone(), 1)?;
+        let key = DataKey::Allowance(from.clone(), spender);
+        env.storage().persistent().set(&key, &allowance);
+
+        Self::transfer_token_internal(env, from, to, token_id, false)
     }
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
@@ -366,9 +412,7 @@ impl CarbonAsset {
         env.storage()
             .persistent()
             .set(&DataKey::Burned(token_id), &true);
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Owner(token_id));
+        env.storage().persistent().remove(&DataKey::Owner(token_id));
 
         Ok(())
     }
@@ -385,19 +429,15 @@ impl CarbonAsset {
     ) -> Result<bool, ContractError> {
         let _status = Self::get_status(env.clone(), token_id)?;
 
-        let regulatory_contract: Option<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::RegulatoryCheck);
+        let regulatory_contract: Option<Address> =
+            env.storage().instance().get(&DataKey::RegulatoryCheck);
 
         if regulatory_contract.is_none() {
             return Ok(true);
         }
 
-        let host_jurisdiction: Option<String> = env
-            .storage()
-            .instance()
-            .get(&DataKey::HostJurisdiction);
+        let host_jurisdiction: Option<String> =
+            env.storage().instance().get(&DataKey::HostJurisdiction);
 
         let host_jurisdiction = match host_jurisdiction {
             Some(value) => value,
@@ -580,11 +620,7 @@ impl CarbonAsset {
     /// - Only the admin may call this.
     /// - The cap can only be set **once** (immutable after first set).
     /// - The cap cannot be set below the current `TotalMinted` count.
-    pub fn set_max_supply(
-        env: Env,
-        caller: Address,
-        max_supply: u32,
-    ) -> Result<(), ContractError> {
+    pub fn set_max_supply(env: Env, caller: Address, max_supply: u32) -> Result<(), ContractError> {
         caller.require_auth();
         let admin = Self::get_admin(env.clone())?;
         if caller != admin {
@@ -639,9 +675,7 @@ impl CarbonAsset {
         }
 
         // Already frozen is a no-op to keep things idempotent, but we still emit event
-        env.storage()
-            .instance()
-            .set(&DataKey::MintingFrozen, &true);
+        env.storage().instance().set(&DataKey::MintingFrozen, &true);
 
         let sequence: u64 = env
             .storage()
@@ -694,17 +728,11 @@ impl CarbonAsset {
     }
 
     pub fn name(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Name)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Name).unwrap()
     }
 
     pub fn symbol(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Symbol)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Symbol).unwrap()
     }
 
     pub fn get_retirement_tracker(env: Env) -> Result<Address, ContractError> {
@@ -919,16 +947,18 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41TransferEvent { sequence: next_sequence, from, to, amount }.publish(&env);
+        Sep41TransferEvent {
+            sequence: next_sequence,
+            from,
+            to,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
 
-    fn burn_amount_internal(
-        env: Env,
-        from: Address,
-        amount: i128,
-    ) -> Result<(), ContractError> {
+    fn burn_amount_internal(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
         if amount <= 0 {
             return Err(ContractError::InvalidStatusTransition);
         }
@@ -948,7 +978,12 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41BurnEvent { sequence: next_sequence, from, amount }.publish(&env);
+        Sep41BurnEvent {
+            sequence: next_sequence,
+            from,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -1111,7 +1146,9 @@ impl CarbonAsset {
 
         tokens.pop_back();
         if tokens.len() == 0 {
-            env.storage().persistent().remove(&DataKey::OwnerTokens(owner));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::OwnerTokens(owner));
         } else {
             env.storage()
                 .persistent()
