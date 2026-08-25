@@ -4,7 +4,7 @@ use std::process::Command;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let asset_workspace = manifest_dir.join("../../carbon-asset-factory");
+    let asset_workspace = manifest_dir.join("../../../carbon-asset-factory");
     let asset_manifest = asset_workspace.join("Cargo.toml");
     let artifact = asset_workspace.join(
         "target/wasm32-unknown-unknown/release/carbon_asset.wasm",
