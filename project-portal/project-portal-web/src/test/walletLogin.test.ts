@@ -7,6 +7,7 @@ vi.mock("@/lib/stellar/wallet", async () => {
     ...actual,
     connectWallet: vi.fn(),
     isWalletInstalled: vi.fn(),
+    signChallengeXdr: vi.fn(),
   };
 });
 
@@ -15,7 +16,7 @@ vi.mock("@/lib/api/auth.api", () => ({
   walletLoginApi: vi.fn(),
 }));
 
-import { connectWallet, isWalletInstalled } from "@/lib/stellar/wallet";
+import { connectWallet, isWalletInstalled, signChallengeXdr } from "@/lib/stellar/wallet";
 import { walletChallengeApi, walletLoginApi } from "@/lib/api/auth.api";
 
 describe("Stellar wallet login", () => {
@@ -101,5 +102,22 @@ describe("Stellar wallet login", () => {
       public_key: "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL",
       signed_challenge: "signed-xdr",
     });
+  });
+
+  it("signChallengeXdr returns signed XDR from wallet", async () => {
+    vi.mocked(signChallengeXdr).mockResolvedValue("signed-xdr-result");
+
+    const result = await signChallengeXdr("challenge-xdr", "Test SDF Network ; September 2015");
+    expect(result).toBe("signed-xdr-result");
+  });
+
+  it("signChallengeXdr throws when user rejects", async () => {
+    vi.mocked(signChallengeXdr).mockRejectedValue(
+      new Error("Signature rejected by the user."),
+    );
+
+    await expect(
+      signChallengeXdr("challenge-xdr", "Test SDF Network ; September 2015"),
+    ).rejects.toThrow("Signature rejected by the user.");
   });
 });

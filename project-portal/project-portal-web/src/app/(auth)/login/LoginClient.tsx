@@ -8,7 +8,7 @@ import { useStore } from '@/lib/store/store';
 import { showToast } from '@/components/ui/Toast';
 import AuthNavigation from '@/components/AuthNavigation';
 import { walletChallengeApi } from '@/lib/api/auth.api';
-import { isWalletInstalled } from '@/lib/stellar/wallet';
+import { isWalletInstalled, signChallengeXdr } from '@/lib/stellar/wallet';
 
 export default function LoginClient() {
   const router = useRouter();
@@ -125,10 +125,10 @@ export default function LoginClient() {
     try {
       const { challenge } = await walletChallengeApi(latestWallet.publicKey);
 
-      const freighterApi = await import('@stellar/freighter-api');
-      const signedXdr = await freighterApi.signTransaction(challenge, {
-        networkPassphrase: 'Test SDF Network ; September 2015',
-      });
+      const signedXdr = await signChallengeXdr(
+        challenge,
+        'Test SDF Network ; September 2015',
+      );
 
       await loginWithWallet(latestWallet.publicKey, signedXdr);
       router.replace(next);

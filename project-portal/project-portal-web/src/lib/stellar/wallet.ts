@@ -25,7 +25,14 @@ async function loadFreighter(): Promise<any> {
 }
 
 export async function isWalletInstalled(): Promise<boolean> {
-  return isFreighterAvailable();
+  const api = await loadFreighter();
+  if (!api) return false;
+  try {
+    const result = await api.isConnected();
+    return result.isConnected === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function connectWallet(): Promise<string> {
@@ -35,17 +42,33 @@ export async function connectWallet(): Promise<string> {
       "No Stellar wallet extension detected. Please install Freighter to connect your wallet.",
     );
   }
-  const address = await api.requestAccess();
-  if (!address) {
-    throw new Error("Wallet connection was rejected by the user.");
+
+  const connected = await api.isConnected();
+  if (!connected.isConnected) {
+    throw new Error(
+      "No Stellar wallet extension detected. Please install Freighter to connect your wallet.",
+    );
   }
-  return address;
+
+  const result = await api.requestAccess();
+  if (result.error) {
+    throw new Error(result.error.message || "Wallet connection was rejected by the user.");
+  }
+  return result.address;
 }
 
-export async function signChallenge(
-  signedXdr: string,
+export async function signChallengeXdr(
+  xdr: string,
+  networkPassphrase: string,
 ): Promise<string> {
-  return signedXdr;
+  const api = await loadFreighter();
+  if (!api) throw new Error("Wallet not available");
+
+  const result = await api.signTransaction(xdr, { networkPassphrase });
+  if (result.error) {
+    throw new Error(result.error.message || "Signature rejected by the user.");
+  }
+  return result.signedTxXdr;
 }
 
 export function isValidStellarAddress(address: string): boolean {
