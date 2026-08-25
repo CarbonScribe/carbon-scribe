@@ -907,6 +907,8 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        let asset_client = configure_carbon_asset(&env, &contract_id);
+        client.set_carbon_asset_contract(&admin, &asset_client.address);
 
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
