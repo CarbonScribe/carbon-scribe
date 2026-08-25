@@ -308,8 +308,7 @@ impl TimeLock {
                 env.current_contract_address().into_val(&env),
                 token_id.into_val(&env),
             ],
-        )
-        .map_err(|_| TimeLockError::TokenTransferFailed)?;
+        );
 
         let record = LockRecord {
             token_id,
@@ -356,8 +355,7 @@ impl TimeLock {
                 record.owner.into_val(&env),
                 token_id.into_val(&env),
             ],
-        )
-        .map_err(|_| TimeLockError::TokenTransferFailed)?;
+        );
 
         records.remove(token_id);
         Self::save_records(&env, &records);
@@ -392,8 +390,8 @@ impl TimeLock {
         for token_id in token_ids.iter() {
             if let Some(record) = records.get(token_id) {
                 if now >= record.unlock_timestamp {
-                    let transfer_result: Result<(), TimeLockError> = env
-                        .invoke_contract::<()>(
+                    let transfer_ok = env
+                        .try_invoke_contract::<(), TimeLockError>(
                             &ca_contract,
                             &Symbol::new(&env, "transfer_token"),
                             vec![
@@ -403,9 +401,9 @@ impl TimeLock {
                                 token_id.into_val(&env),
                             ],
                         )
-                        .map_err(|_| TimeLockError::TokenTransferFailed);
+                        .map_or(false, |inner| inner.is_ok());
 
-                    if transfer_result.is_err() {
+                    if !transfer_ok {
                         continue;
                     }
 
@@ -454,8 +452,7 @@ impl TimeLock {
                 record.owner.into_val(&env),
                 token_id.into_val(&env),
             ],
-        )
-        .map_err(|_| TimeLockError::TokenTransferFailed)?;
+        );
 
         records.remove(token_id);
         Self::save_records(&env, &records);
