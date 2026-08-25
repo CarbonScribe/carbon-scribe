@@ -298,7 +298,7 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        env.invoke_contract(
+        env.invoke_contract::<()>(
             &ca_contract,
             &Symbol::new(&env, "transfer_token_from"),
             vec![
@@ -347,7 +347,7 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        env.invoke_contract(
+        env.invoke_contract::<()>(
             &ca_contract,
             &Symbol::new(&env, "transfer_token"),
             vec![
@@ -393,7 +393,7 @@ impl TimeLock {
             if let Some(record) = records.get(token_id) {
                 if now >= record.unlock_timestamp {
                     let transfer_result: Result<(), TimeLockError> = env
-                        .invoke_contract(
+                        .invoke_contract::<()>(
                             &ca_contract,
                             &Symbol::new(&env, "transfer_token"),
                             vec![
@@ -445,7 +445,7 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        env.invoke_contract(
+        env.invoke_contract::<()>(
             &ca_contract,
             &Symbol::new(&env, "transfer_token"),
             vec![
