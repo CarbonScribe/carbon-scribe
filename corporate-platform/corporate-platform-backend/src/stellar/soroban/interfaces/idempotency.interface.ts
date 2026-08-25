@@ -46,8 +46,14 @@ export interface IdempotentContractResult<T = unknown> {
   /** The idempotency key used */
   idempotencyKey: string;
 
-  /** Status of the call */
-  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'DUPLICATE';
+  /**
+   * Status of the call.
+   *
+   * Sourced from {@link ContractCallStatus} rather than restating its members,
+   * so adding a status (UNRESOLVED, for the reconciliation sweep) cannot leave
+   * this union silently out of date.
+   */
+  status: ContractCallStatus;
 
   /** Whether this is a duplicate submission */
   isDuplicate: boolean;
