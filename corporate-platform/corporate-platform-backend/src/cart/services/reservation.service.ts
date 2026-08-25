@@ -1,17 +1,30 @@
-import { Injectable, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { RESERVATION_MINUTES } from '../interfaces/cart.interface';
+import { AvailabilityService } from '../../credit/services/availability.service';
+import {
+  AvailabilityChangeType,
+  PrismaTxClient,
+} from '../../credit/interfaces/availability.interface';
 
 @Injectable()
 export class ReservationService {
   private readonly logger = new Logger(ReservationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly availability: AvailabilityService,
+  ) {}
 
   /**
    * Reserve credits for all cart items for RESERVATION_MINUTES minutes.
-   * Uses an atomic transaction to prevent overselling under concurrent load.
+   *
+   * Runs inside a Serializable transaction and takes a `SELECT ... FOR UPDATE`
+   * row lock on each credit (via {@link AvailabilityService.assertAvailableWithin})
+   * before reading its availability, so two concurrent carts can no longer both
+   * observe the same pre-reservation state and both succeed (#516).
+   *
    * Throws ConflictException if any item cannot be reserved.
    */
   async reserveCredits(
@@ -21,38 +34,22 @@ export class ReservationService {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + RESERVATION_MINUTES);
 
-    await (this.prisma as any).$transaction(async (tx: any) => {
+    await this.availability.runSerializable(async (txClient: unknown) => {
+      const tx = txClient as any;
+
       for (const item of items) {
-        // Fetch credit with row-level data inside transaction
-        const credit = await tx.credit.findUnique({
-          where: { id: item.creditId },
-        });
-
-        if (!credit) {
-          throw new ConflictException(
-            `Credit ${item.creditId} no longer exists`,
-          );
-        }
-
-        // Sum existing active reservations for this credit (excluding this cart)
-        const existing = await tx.creditReservation.aggregate({
-          where: {
+        // Locks the credit row for the rest of this transaction and validates
+        // the claim against availability minus *other* carts' active holds.
+        const headroom = await this.availability.assertAvailableWithin(
+          tx as PrismaTxClient,
+          {
             creditId: item.creditId,
-            cartId: { not: cartId },
-            expiresAt: { gt: new Date() },
+            amount: item.quantity,
+            changeType: AvailabilityChangeType.RESERVE,
+            reservationCartId: cartId,
+            respectReservations: true,
           },
-          _sum: { quantity: true },
-        });
-
-        const reserved = existing._sum.quantity ?? 0;
-        const effectivelyAvailable = (credit.availableAmount ?? 0) - reserved;
-
-        if (effectivelyAvailable < item.quantity) {
-          throw new ConflictException(
-            `Insufficient credits available for project "${credit.projectName}". ` +
-              `Requested: ${item.quantity}, Effectively available: ${effectivelyAvailable}`,
-          );
-        }
+        );
 
         // Upsert reservation for this cart+credit pair
         await tx.creditReservation.upsert({
@@ -70,6 +67,19 @@ export class ReservationService {
             expiresAt,
           },
         });
+
+        // A reservation is a hold rather than a decrement, so availableAmount
+        // is unchanged — but the movement is still recorded so cart, order, and
+        // retirement activity all show up in one ledger.
+        await this.availability.logMovementWithin(tx as PrismaTxClient, {
+          creditId: item.creditId,
+          changedBy: `cart:${cartId}`,
+          changeType: AvailabilityChangeType.RESERVE,
+          amount: item.quantity,
+          previousAmount: headroom.availableAmount,
+          newAmount: headroom.availableAmount,
+          reason: `cart reservation hold until ${expiresAt.toISOString()}`,
+        });
       }
     });
   }
@@ -81,9 +91,15 @@ export class ReservationService {
   async releaseReservations(cartId: string): Promise<void> {
     const prisma = this.prisma as any;
 
+    const held = await prisma.creditReservation.findMany({
+      where: { cartId },
+    });
+
     await prisma.creditReservation.deleteMany({
       where: { cartId },
     });
+
+    await this.logReleases(held, `cart:${cartId}`, 'cart reservation released');
   }
 
   /**
@@ -94,12 +110,55 @@ export class ReservationService {
   async releaseExpiredReservations(): Promise<void> {
     const prisma = this.prisma as any;
 
+    const expired = await prisma.creditReservation.findMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+
     const result = await prisma.creditReservation.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     });
 
     if (result.count > 0) {
       this.logger.log(`Released ${result.count} expired credit reservation(s)`);
+      await this.logReleases(expired, 'system', 'reservation expired');
+    }
+  }
+
+  /**
+   * Record released holds on CreditAvailabilityLog. Best-effort: a bookkeeping
+   * failure must not fail the release itself, which has already happened.
+   */
+  private async logReleases(
+    reservations: Array<{ creditId: string; quantity: number }> | undefined,
+    changedBy: string,
+    reason: string,
+  ): Promise<void> {
+    if (!reservations?.length) return;
+
+    const prisma = this.prisma as any;
+
+    for (const reservation of reservations) {
+      try {
+        const credit = await prisma.credit.findFirst({
+          where: { id: reservation.creditId },
+        });
+        const current = credit?.availableAmount ?? 0;
+
+        await this.availability.logMovementWithin(prisma as PrismaTxClient, {
+          creditId: reservation.creditId,
+          changedBy,
+          changeType: AvailabilityChangeType.RELEASE,
+          amount: reservation.quantity,
+          previousAmount: current,
+          newAmount: current,
+          reason,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Could not log reservation release for credit ${reservation.creditId}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   }
 }

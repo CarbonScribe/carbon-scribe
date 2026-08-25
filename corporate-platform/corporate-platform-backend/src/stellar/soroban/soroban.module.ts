@@ -12,6 +12,7 @@ import { OwnershipEventListener } from './events/ownership-event.listener';
 import { OwnershipHistoryModule } from '../../audit/ownership-history/ownership-history.module';
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyService } from './idempotency/idempotency.service';
+import { SorobanReconciliationService } from './reconciliation/soroban-reconciliation.service';
 
 @Module({
   imports: [OwnershipHistoryModule, IdempotencyModule],
@@ -27,6 +28,7 @@ import { IdempotencyService } from './idempotency/idempotency.service';
     ContractAuthGuard,
     OwnershipEventListener,
     IdempotencyService, // Add this explicitly
+    SorobanReconciliationService,
   ],
   exports: [
     SorobanService,
@@ -40,6 +42,7 @@ import { IdempotencyService } from './idempotency/idempotency.service';
     ContractAuthGuard,
     OwnershipEventListener,
     IdempotencyService,
+    SorobanReconciliationService,
   ],
 })
 export class SorobanModule {}

@@ -15,6 +15,11 @@ import {
 } from '../interfaces/checkout.interface';
 import { SERVICE_FEE_RATE } from '../interfaces/cart.interface';
 import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
+import { AvailabilityService } from '../../credit/services/availability.service';
+import {
+  AvailabilityChangeType,
+  PrismaTxClient,
+} from '../../credit/interfaces/availability.interface';
 
 @Injectable()
 export class CheckoutService {
@@ -25,6 +30,7 @@ export class CheckoutService {
     private reservationService: ReservationService,
     private auditService: AuditService,
     private postPurchaseService: PostPurchaseService,
+    private availability: AvailabilityService,
   ) {}
 
   async initiateCheckout(
@@ -51,7 +57,9 @@ export class CheckoutService {
       throw new BadRequestException('Cart is empty');
     }
 
-    // 2. Validate all items are still available
+    // 2. Advisory availability check for a fast, friendly failure. The binding
+    //    check happens in reserveCredits below, which locks each credit row
+    //    before reading it (#516).
     for (const item of cart.items) {
       if ((item.credit.availableAmount ?? 0) < item.quantity) {
         throw new BadRequestException(
@@ -154,7 +162,10 @@ export class CheckoutService {
       );
     }
 
-    // 2. Re-validate credit availability (double-check, reservation handles concurrency)
+    // 2. Advisory re-check before the (potentially slow) payment call, so an
+    //    obviously-unsatisfiable order fails without charging anyone. This read
+    //    is not authoritative: availability is re-checked under the credit's
+    //    row lock in step 4, closing the TOCTOU window the payment call opens.
     for (const item of order.items) {
       if ((item.credit.availableAmount ?? 0) < item.quantity) {
         // Release reservations and mark order as failed
@@ -213,11 +224,22 @@ export class CheckoutService {
 
     // 4. Complete the purchase in a transaction
     const completedOrder = await this.unitOfWork.run(async (tx: any) => {
-      // Decrease credit availability for each item
+      // Decrease credit availability for each item through the shared,
+      // lock-safe path (#516). It re-locks each credit row inside this
+      // transaction, re-checks availability (closing the TOCTOU window opened
+      // by the payment call above), writes the decrement behind a floor guard
+      // so availableAmount can never go negative, and records the movement on
+      // CreditAvailabilityLog. This cart's own reservation is excluded from the
+      // headroom calculation so the order can consume the units it is holding.
       for (const item of order.items) {
-        await tx.credit.update({
-          where: { id: item.creditId },
-          data: { availableAmount: { decrement: item.quantity } },
+        await this.availability.decrementWithin(tx as PrismaTxClient, {
+          creditId: item.creditId,
+          amount: item.quantity,
+          changedBy: order.userId ?? 'system',
+          changeType: AvailabilityChangeType.PURCHASE,
+          reason: `order:${orderId}`,
+          reservationCartId: order.cartId ?? undefined,
+          respectReservations: true,
         });
       }
 
