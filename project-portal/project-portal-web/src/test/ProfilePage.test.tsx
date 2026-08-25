@@ -149,9 +149,9 @@ describe("ProfilePage", () => {
     render(<ProfilePage />);
 
     // ProfilePage itself doesn't redirect — ProtectedRoute in the layout does.
-    // Verify the page renders the skeleton (loading state) rather than crashing,
+    // Verify the page renders (degrades gracefully) rather than crashing,
     // confirming it degrades gracefully when the auth guard hasn't yet redirected.
-    expect(screen.getByTestId("mock-profile-skeleton")).toBeInTheDocument();
+    expect(screen.getByText("Edit Profile")).toBeInTheDocument();
   });
 
   it("shows skeleton when not hydrated", () => {
