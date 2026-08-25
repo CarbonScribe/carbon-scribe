@@ -286,15 +286,7 @@ func main() {
 	router.Use(corsMiddleware())
 
 	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"service":   "carbon-scribe-project-portal",
-			"timestamp": time.Now().Format(time.RFC3339),
-			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing", "inventory", "notifications", "monitoring"},
-		})
-	})
+	router.GET("/health", HealthHandler(db, esClient, notificationMongoClient))
 
 	// Root API route
 	router.GET("/", func(c *gin.Context) {
