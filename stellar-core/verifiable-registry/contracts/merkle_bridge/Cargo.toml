@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "MerkleBridge contract for verifiable tokenization of carbon credits from external registries"
 license = "Apache-2.0"
+build = "build.rs"
 
 [lib]
 crate-type = ["cdylib"]

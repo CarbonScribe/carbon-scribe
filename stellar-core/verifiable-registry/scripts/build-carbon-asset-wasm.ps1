@@ -9,7 +9,7 @@ finally {
     Pop-Location
 }
 
-$artifact = Join-Path $assetWorkspace "contracts\carbon_asset\target\wasm32-unknown-unknown\release\carbon_asset.wasm"
+$artifact = Join-Path $assetWorkspace "target\wasm32-unknown-unknown\release\carbon_asset.wasm"
 if (-not (Test-Path $artifact)) {
     throw "CarbonAsset WASM was not generated at $artifact"
 }

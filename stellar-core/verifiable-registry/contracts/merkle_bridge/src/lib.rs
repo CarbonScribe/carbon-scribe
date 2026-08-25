@@ -7,7 +7,7 @@ use soroban_sdk::{
 
 mod carbon_asset {
     soroban_sdk::contractimport!(
-        file = "../../../carbon-asset-factory/contracts/carbon_asset/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
+        file = "../../../carbon-asset-factory/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
     );
 }
 
