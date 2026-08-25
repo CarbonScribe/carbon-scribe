@@ -6,6 +6,7 @@ import {
   Body,
   UseGuards,
   Put,
+  Query,
 } from '@nestjs/common';
 import { AuctionService } from './auction.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
@@ -14,29 +15,46 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { RateLimit, RateLimits } from '../rate-limit/rate-limit.decorator';
+import { PermissionsGuard } from '../rbac/guards/permissions.guard';
+import { Permissions } from '../rbac/decorators/permissions.decorator';
+import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
+import { PORTFOLIO_VIEW, CREDIT_PURCHASE } from '../rbac/constants/permissions.constants';
 
 @Controller('api/v1/auctions')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 export class AuctionController {
   constructor(private readonly auctionService: AuctionService) {}
 
   @Get()
-  async getAuctions() {
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctions(@CurrentUser() user: JwtPayload) {
     return this.auctionService.getAuctions();
   }
 
   @Get(':id')
-  async getAuctionById(@Param('id') id: string) {
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctionById(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
     return this.auctionService.getAuctionById(id);
   }
 
   @Post()
-  async createAuction(@Body() dto: CreateAuctionDto) {
+  @Permissions(CREDIT_PURCHASE)
+  async createAuction(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateAuctionDto,
+  ) {
     return this.auctionService.createAuction(dto);
   }
 
   @Put(':id/start')
-  async startAuction(@Param('id') id: string) {
+  @Permissions(CREDIT_PURCHASE)
+  async startAuction(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
     return this.auctionService.startAuction(id);
   }
 
@@ -45,6 +63,7 @@ export class AuctionController {
    * Rate limited to 5 bids per minute per user per auction
    */
   @Post(':id/bids')
+  @Permissions(CREDIT_PURCHASE)
   @RateLimit(RateLimits.BIDDING)
   @RateLimit(RateLimits.GLOBAL_AUCTION_BIDDING)
   async placeBid(
@@ -61,12 +80,20 @@ export class AuctionController {
   }
 
   @Get(':id/bids')
-  async getAuctionBids(@Param('id') auctionId: string) {
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctionBids(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') auctionId: string,
+  ) {
     return this.auctionService.getAuctionBids(auctionId);
   }
 
   @Post(':id/settle')
-  async settleAuction(@Param('id') auctionId: string) {
+  @Permissions(CREDIT_PURCHASE)
+  async settleAuction(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') auctionId: string,
+  ) {
     return this.auctionService.settleAuction(auctionId);
   }
 }
