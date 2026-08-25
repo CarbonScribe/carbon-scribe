@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,8 +12,10 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAuth } from '@/contexts/AuthContext'
 import { ipfsService } from '@/services/ipfs.service'
+import { Pagination } from '@/components/common/Pagination'
 import type { IpfsDocumentRecord, IpfsDocumentType } from '@/types/ipfs'
 
 const documentTypes: IpfsDocumentType[] = [
@@ -46,6 +48,10 @@ export default function IpfsManager() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadType, setUploadType] = useState<IpfsDocumentType>('REPORT')
   const [uploadRef, setUploadRef] = useState('')
@@ -68,11 +74,55 @@ export default function IpfsManager() {
     return documents.filter((doc) => doc.referenceId === uploadRef.trim())
   }, [documents, uploadRef])
 
+  const totalPages = Math.max(1, Math.ceil(filteredDocs.length / pageSize))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+
+  const paginatedDocs = useMemo(() => {
+    const start = (safePage - 1) * pageSize
+    return filteredDocs.slice(start, start + pageSize)
+  }, [filteredDocs, safePage, pageSize])
+
+  const rowVirtualizer = useVirtualizer({
+    count: paginatedDocs.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 48,
+    overscan: 5,
+    initialRect: { width: 1000, height: 400 },
+  })
+
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const totalSize = rowVirtualizer.getTotalSize()
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0
+
+  const rowsToRender = useMemo(() => {
+    if (virtualRows.length > 0) {
+      return virtualRows.map((vr) => ({
+        index: vr.index,
+        key: vr.key,
+        doc: paginatedDocs[vr.index],
+        measureRef: rowVirtualizer.measureElement,
+      }))
+    }
+    return paginatedDocs.map((doc, idx) => ({
+      index: idx,
+      key: doc.id || idx,
+      doc,
+      measureRef: undefined,
+    }))
+  }, [virtualRows, paginatedDocs, rowVirtualizer.measureElement])
+
   const loadDocuments = async () => {
     setLoading(true)
     setError(null)
 
-    const response = await ipfsService.listDocuments(user?.companyId)
+    const response = await ipfsService.listDocuments(user?.companyId, {
+      page: safePage,
+      limit: pageSize,
+    })
     if (!response.success) {
       setError(response.error || 'Unable to load IPFS documents')
       setDocuments([])
@@ -80,7 +130,9 @@ export default function IpfsManager() {
       return
     }
 
-    setDocuments(response.data || [])
+    const data = response.data
+    const list = Array.isArray(data) ? data : (data as any)?.data || []
+    setDocuments(list)
     setLoading(false)
   }
 
@@ -417,46 +469,82 @@ export default function IpfsManager() {
         </div>
       </div>
 
-      <div className="corporate-card p-6">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Document Records</h3>
+      <div className="corporate-card overflow-hidden">
+        <div className="p-6 pb-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Document Records</h3>
+        </div>
         {loading ? (
-          <div className="text-sm text-gray-600 dark:text-gray-400">Loading documents...</div>
+          <div className="p-6 text-sm text-gray-600 dark:text-gray-400">Loading documents...</div>
         ) : filteredDocs.length === 0 ? (
-          <div className="text-sm text-gray-600 dark:text-gray-400">No documents found for the current filter/company.</div>
+          <div className="p-6 text-sm text-gray-600 dark:text-gray-400">No documents found for the current filter/company.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                  <th className="pb-2">Type</th>
-                  <th className="pb-2">Reference</th>
-                  <th className="pb-2">File</th>
-                  <th className="pb-2">CID</th>
-                  <th className="pb-2">Pinned</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filteredDocs.map((doc) => (
-                  <tr key={doc.id}>
-                    <td className="py-3">{doc.documentType}</td>
-                    <td className="py-3">{doc.referenceId}</td>
-                    <td className="py-3">{doc.fileName}</td>
-                    <td className="py-3 max-w-40 truncate" title={doc.ipfsCid}>{doc.ipfsCid}</td>
-                    <td className="py-3">{doc.pinned ? 'Yes' : 'No'}</td>
-                    <td className="py-3">
-                      <button
-                        className="text-red-600 hover:text-red-500 inline-flex items-center"
-                        type="button"
-                        onClick={() => void onDeleteCid(doc.ipfsCid)}
-                      >
-                        <Trash2 size={14} className="mr-1" /> Delete
-                      </button>
-                    </td>
+          <div>
+            <div ref={tableContainerRef} className="overflow-x-auto max-h-[500px] overflow-y-auto px-6">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white dark:bg-gray-900 z-10">
+                  <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th className="pb-2">Type</th>
+                    <th className="pb-2">Reference</th>
+                    <th className="pb-2">File</th>
+                    <th className="pb-2">CID</th>
+                    <th className="pb-2">Pinned</th>
+                    <th className="pb-2">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {paddingTop > 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                  {rowsToRender.map(({ index, key, doc, measureRef }) => {
+                    if (!doc) return null
+                    return (
+                      <tr
+                        key={doc.id || key}
+                        data-index={index}
+                        ref={measureRef}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                      >
+                        <td className="py-3">{doc.documentType}</td>
+                        <td className="py-3">{doc.referenceId}</td>
+                        <td className="py-3">{doc.fileName}</td>
+                        <td className="py-3 max-w-40 truncate" title={doc.ipfsCid}>{doc.ipfsCid}</td>
+                        <td className="py-3">{doc.pinned ? 'Yes' : 'No'}</td>
+                        <td className="py-3">
+                          <button
+                            className="text-red-600 hover:text-red-500 inline-flex items-center"
+                            type="button"
+                            onClick={() => void onDeleteCid(doc.ipfsCid)}
+                          >
+                            <Trash2 size={14} className="mr-1" /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {paddingBottom > 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={safePage}
+              totalPages={totalPages}
+              total={filteredDocs.length}
+              pageSize={pageSize}
+              itemLabel="documents"
+              onPageChange={(newPage) => setPage(newPage)}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize)
+                setPage(1)
+              }}
+              showPageSizeSelector
+            />
           </div>
         )}
       </div>

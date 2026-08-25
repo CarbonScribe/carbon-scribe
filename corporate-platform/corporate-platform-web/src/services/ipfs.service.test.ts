@@ -27,6 +27,22 @@ describe('IpfsService', () => {
     expect(mockGet).toHaveBeenCalledWith('/ipfs/documents?companyId=company-1');
   });
 
+  it('lists documents with company scope and pagination params', async () => {
+    mockGet.mockResolvedValue({ success: true, data: [] });
+
+    await ipfsService.listDocuments('company-1', { page: 2, limit: 10 });
+
+    expect(mockGet).toHaveBeenCalledWith('/ipfs/documents?companyId=company-1&page=2&limit=10');
+  });
+
+  it('lists documents with params object', async () => {
+    mockGet.mockResolvedValue({ success: true, data: [] });
+
+    await ipfsService.listDocuments({ companyId: 'company-2', page: 3, limit: 25 });
+
+    expect(mockGet).toHaveBeenCalledWith('/ipfs/documents?companyId=company-2&page=3&limit=25');
+  });
+
   it('gets documents by reference id', async () => {
     mockGet.mockResolvedValue({ success: true, data: [] });
 
