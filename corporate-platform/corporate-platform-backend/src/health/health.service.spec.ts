@@ -42,10 +42,6 @@ describe('HealthService', () => {
       providers: [
         HealthService,
         {
-          provide: RedisService,
-          useValue: { ping: jest.fn().mockResolvedValue('PONG') }
-        },
-        {
           provide: PrismaService,
           useValue: {
             $queryRaw: jest.fn(),
