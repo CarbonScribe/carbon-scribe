@@ -666,7 +666,7 @@ impl MerkleBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use carbon_asset::CarbonAssetClient;
+    use ::carbon_asset::{CarbonAsset, CarbonAssetClient};
     use soroban_sdk::{testutils::Address as _, Bytes, Env};
 
     fn setup_env() -> (Env, Address, Address) {
@@ -681,8 +681,8 @@ mod tests {
         env.register(MerkleBridge, ())
     }
 
-    fn configure_carbon_asset(env: &Env, bridge: &Address) -> CarbonAssetClient<'_> {
-        let asset_id = env.register(carbon_asset::CarbonAsset, ());
+    fn configure_carbon_asset<'a>(env: &'a Env, bridge: &Address) -> CarbonAssetClient<'a> {
+        let asset_id = env.register(CarbonAsset, ());
         let asset_client = CarbonAssetClient::new(env, &asset_id);
         asset_client.initialize(
             bridge,
@@ -1237,7 +1237,7 @@ mod tests {
 #[cfg(test)]
 mod benchmarks {
     use super::*;
-    use carbon_asset::CarbonAssetClient;
+    use ::carbon_asset::{CarbonAsset, CarbonAssetClient};
     use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
 
     fn setup_bench_env() -> (Env, Address, Address, MerkleBridgeClient<'static>) {
@@ -1248,7 +1248,7 @@ mod benchmarks {
         let contract_id = env.register(MerkleBridge, ());
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
-        let asset_id = env.register(carbon_asset::CarbonAsset, ());
+        let asset_id = env.register(CarbonAsset, ());
         let asset_client = CarbonAssetClient::new(&env, &asset_id);
         asset_client.initialize(
             &contract_id,
