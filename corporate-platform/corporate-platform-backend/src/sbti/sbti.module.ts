@@ -5,13 +5,13 @@ import { SbtiController } from './sbti.controller';
 import { TargetValidationService } from './services/target-validation.service';
 import { ProgressTrackingService } from './services/progress-tracking.service';
 import { SubmissionService } from './services/submission.service';
-import { RetirementService } from '../retirement/retirement.service';
+import { RetirementModule } from '../retirement/retirement.module';
 import { GhgProtocolModule } from '../ghg-protocol/ghg-protocol.module';
 
 import { PrismaService } from '../shared/database/prisma.service';
 
 @Module({
-  imports: [GhgProtocolModule, AuditTrailModule],
+  imports: [GhgProtocolModule, AuditTrailModule, RetirementModule],
   controllers: [SbtiController],
   providers: [
     SbtiService,
@@ -19,7 +19,6 @@ import { PrismaService } from '../shared/database/prisma.service';
     ProgressTrackingService,
     SubmissionService,
     PrismaService,
-    RetirementService,
   ],
 })
 export class SbtiModule {}

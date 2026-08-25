@@ -6,7 +6,6 @@ import {
   Body,
   UseGuards,
   Put,
-  Query,
 } from '@nestjs/common';
 import { AuctionService } from './auction.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
@@ -18,7 +17,10 @@ import { RateLimit, RateLimits } from '../rate-limit/rate-limit.decorator';
 import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { Permissions } from '../rbac/decorators/permissions.decorator';
 import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
-import { PORTFOLIO_VIEW, CREDIT_PURCHASE } from '../rbac/constants/permissions.constants';
+import {
+  PORTFOLIO_VIEW,
+  CREDIT_PURCHASE,
+} from '../rbac/constants/permissions.constants';
 
 @Controller('api/v1/auctions')
 @UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
@@ -27,14 +29,14 @@ export class AuctionController {
 
   @Get()
   @Permissions(PORTFOLIO_VIEW)
-  async getAuctions(@CurrentUser() user: JwtPayload) {
+  async getAuctions(@CurrentUser() _user: JwtPayload) {
     return this.auctionService.getAuctions();
   }
 
   @Get(':id')
   @Permissions(PORTFOLIO_VIEW)
   async getAuctionById(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() _user: JwtPayload,
     @Param('id') id: string,
   ) {
     return this.auctionService.getAuctionById(id);
@@ -43,7 +45,7 @@ export class AuctionController {
   @Post()
   @Permissions(CREDIT_PURCHASE)
   async createAuction(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() _user: JwtPayload,
     @Body() dto: CreateAuctionDto,
   ) {
     return this.auctionService.createAuction(dto);
@@ -52,7 +54,7 @@ export class AuctionController {
   @Put(':id/start')
   @Permissions(CREDIT_PURCHASE)
   async startAuction(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() _user: JwtPayload,
     @Param('id') id: string,
   ) {
     return this.auctionService.startAuction(id);
@@ -82,7 +84,7 @@ export class AuctionController {
   @Get(':id/bids')
   @Permissions(PORTFOLIO_VIEW)
   async getAuctionBids(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() _user: JwtPayload,
     @Param('id') auctionId: string,
   ) {
     return this.auctionService.getAuctionBids(auctionId);
@@ -91,7 +93,7 @@ export class AuctionController {
   @Post(':id/settle')
   @Permissions(CREDIT_PURCHASE)
   async settleAuction(
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() _user: JwtPayload,
     @Param('id') auctionId: string,
   ) {
     return this.auctionService.settleAuction(auctionId);

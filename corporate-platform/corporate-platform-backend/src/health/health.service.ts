@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
-import { RedisService } from '../shared/cache/redis.service';
+import { RedisService } from '../cache/redis.service';
 import { KafkaService } from '../event-bus/kafka.service';
 import { IpfsConfig } from '../ipfs/ipfs.config';
 import { SorobanService } from '../stellar/soroban/soroban.service';

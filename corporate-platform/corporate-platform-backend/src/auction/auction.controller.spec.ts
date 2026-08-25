@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuctionController } from './auction.controller';
 import { AuctionService } from './auction.service';
-import { CreateAuctionDto } from './dto/create-auction.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -99,10 +98,16 @@ describe('AuctionController', () => {
     });
 
     it('should have correct permissions on methods', () => {
-      const getAuctionsPerms = Reflect.getMetadata('permissions', controller.getAuctions);
+      const getAuctionsPerms = Reflect.getMetadata(
+        'permissions',
+        controller.getAuctions,
+      );
       expect(getAuctionsPerms).toEqual(['portfolio:view']);
 
-      const placeBidPerms = Reflect.getMetadata('permissions', controller.placeBid);
+      const placeBidPerms = Reflect.getMetadata(
+        'permissions',
+        controller.placeBid,
+      );
       expect(placeBidPerms).toEqual(['credit:purchase']);
     });
   });
