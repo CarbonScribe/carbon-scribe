@@ -25,4 +25,22 @@ export const searchMarketplaceCredits = betaZodTool({
   },
 });
 
-export const discoveryTools = [searchMarketplaceCredits];
+// Buyer-preference lookup (issue #581) — grounds a recommendation in the
+// buyer's existing holdings/diversification instead of shortlisting purely
+// off the marketplace search above.
+export const getBuyerPortfolio = betaZodTool({
+  name: "get_buyer_portfolio",
+  description:
+    "Fetch a buyer's current carbon credit portfolio (summary metrics and holdings) to ground credit recommendations in their existing diversification, risk profile, and prior purchases.",
+  inputSchema: z.object({
+    companyId: z.string(),
+  }),
+  run: async (input) => {
+    const portfolio = await corporatePlatformClient.getPortfolio(
+      input.companyId,
+    );
+    return JSON.stringify(portfolio);
+  },
+});
+
+export const discoveryTools = [searchMarketplaceCredits, getBuyerPortfolio];

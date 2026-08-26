@@ -5,8 +5,6 @@ import { projectPortalClient } from "../../clients/project-portal.client.js";
 // PDD (Project Design Document) drafting agent tools — walks a farmer's raw
 // project submission, matches it to a methodology, and drafts PDD sections.
 // Bridges to project-portal's internal/project/methodology package.
-//
-// TODO: replace with the real methodology-matching endpoint once it exists.
 export const matchMethodology = betaZodTool({
   name: "match_methodology",
   description:
@@ -17,9 +15,40 @@ export const matchMethodology = betaZodTool({
     hectares: z.number().optional(),
   }),
   run: async (input) => {
-    void projectPortalClient; // TODO: wire real call, remove this line
-    void input;
-    throw new Error("not implemented");
+    const methodologies = await projectPortalClient.getMethodologies();
+    const activityType = input.activityType.trim().toLowerCase();
+    const country = input.country.trim().toLowerCase();
+
+    const match = methodologies.find((methodology) => {
+      const activityMatches = methodology.activityTypes.some(
+        (type) => type.toLowerCase() === activityType,
+      );
+      if (!activityMatches) {
+        return false;
+      }
+      // Empty countries means globally applicable; otherwise the
+      // project's country must be in the methodology's registered list.
+      return (
+        methodology.countries.length === 0 ||
+        methodology.countries.some((c) => c.toLowerCase() === country)
+      );
+    });
+
+    if (!match) {
+      return JSON.stringify({
+        matched: false,
+        activityType: input.activityType,
+        country: input.country,
+        availableMethodologies: methodologies.map((m) => m.name),
+      });
+    }
+
+    return JSON.stringify({
+      matched: true,
+      methodology: match.name,
+      methodologyId: match.id,
+      requiredDocuments: match.requiredDocuments,
+    });
   },
 });
 

@@ -321,3 +321,162 @@ fn test_existing_functionality_with_cap() {
     // Transfer does NOT affect TotalMinted
     assert_eq!(client.get_total_minted(), 1);
 }
+
+// ====================================================================
+// Two-step admin transfer tests (issue #557)
+// ====================================================================
+
+/// propose_admin_transfer() must not change get_admin() — only
+/// accept_admin_transfer() does.
+#[test]
+fn test_propose_does_not_change_admin() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    assert_eq!(client.get_pending_admin(), None);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+
+    assert_eq!(client.get_admin(), admin);
+    assert_eq!(client.get_pending_admin(), Some(new_admin));
+}
+
+/// The full propose -> accept happy path rotates Admin and clears
+/// PendingAdmin, emitting both events (verified indirectly via the shared
+/// EventSequence counter, matching the existing event-sequence test
+/// pattern in this file).
+#[test]
+fn test_propose_then_accept_rotates_admin() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+    assert_eq!(client.get_event_sequence(), 1);
+
+    client.accept_admin_transfer(&new_admin);
+    assert_eq!(client.get_event_sequence(), 2);
+
+    assert_eq!(client.get_admin(), new_admin);
+    assert_eq!(client.get_pending_admin(), None);
+}
+
+/// Only the address currently in PendingAdmin may accept — anyone else,
+/// including the current admin itself, gets NotPendingAdmin.
+#[test]
+fn test_accept_by_non_pending_address_fails() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+
+    let result = client.try_accept_admin_transfer(&stranger);
+    assert_eq!(result, Err(Ok(ContractError::NotPendingAdmin)));
+
+    // The current admin trying to "accept" its own proposal isn't the
+    // pending address either.
+    let result = client.try_accept_admin_transfer(&admin);
+    assert_eq!(result, Err(Ok(ContractError::NotPendingAdmin)));
+
+    // Admin is unchanged after both rejected attempts.
+    assert_eq!(client.get_admin(), admin);
+}
+
+/// Accepting with no proposal outstanding returns NoPendingAdmin.
+#[test]
+fn test_accept_with_no_pending_proposal_fails() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let stranger = Address::generate(&env);
+
+    let result = client.try_accept_admin_transfer(&stranger);
+    assert_eq!(result, Err(Ok(ContractError::NoPendingAdmin)));
+}
+
+/// cancel_admin_transfer() clears PendingAdmin; a subsequent accept then
+/// fails with NoPendingAdmin, and Admin never changed.
+#[test]
+fn test_cancel_clears_pending_and_blocks_accept() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+    assert_eq!(client.get_pending_admin(), Some(new_admin.clone()));
+
+    client.cancel_admin_transfer(&admin);
+    assert_eq!(client.get_pending_admin(), None);
+
+    let result = client.try_accept_admin_transfer(&new_admin);
+    assert_eq!(result, Err(Ok(ContractError::NoPendingAdmin)));
+    assert_eq!(client.get_admin(), admin);
+}
+
+/// Only the current admin may propose a transfer.
+#[test]
+fn test_propose_unauthorized() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    let result = client.try_propose_admin_transfer(&owner, &new_admin);
+    assert_eq!(result, Err(Ok(ContractError::NotAuthorized)));
+    assert_eq!(client.get_pending_admin(), None);
+}
+
+/// Only the current admin may cancel — the proposed successor cannot
+/// cancel its own pending transfer.
+#[test]
+fn test_cancel_unauthorized() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+
+    let result = client.try_cancel_admin_transfer(&new_admin);
+    assert_eq!(result, Err(Ok(ContractError::NotAuthorized)));
+
+    // Proposal survives the rejected cancel attempt.
+    assert_eq!(client.get_pending_admin(), Some(new_admin));
+}
+
+/// After a transfer is accepted, admin-gated functions (mint, set_status,
+/// set_max_supply) must gate against the new admin and reject the old one.
+#[test]
+fn test_admin_gated_functions_follow_accepted_transfer() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let new_admin = Address::generate(&env);
+
+    let meta = make_meta(&env);
+    let token_id = client.mint(&admin, &owner, &meta);
+
+    client.propose_admin_transfer(&admin, &new_admin);
+    client.accept_admin_transfer(&new_admin);
+
+    // Old admin is now rejected everywhere.
+    assert_eq!(
+        client.try_mint(&admin, &owner, &meta),
+        Err(Ok(ContractError::NotAuthorized))
+    );
+    assert_eq!(
+        client.try_set_status(&admin, &token_id, &AssetStatus::Listed),
+        Err(Ok(ContractError::NotAuthorized))
+    );
+    assert_eq!(
+        client.try_set_max_supply(&admin, &100),
+        Err(Ok(ContractError::NotAuthorized))
+    );
+
+    // New admin can now do everything the old admin used to.
+    let second_token_id = client.mint(&new_admin, &owner, &meta);
+    assert_eq!(second_token_id, 2);
+    client.set_status(&new_admin, &token_id, &AssetStatus::Listed);
+    assert_eq!(client.get_status(&token_id), AssetStatus::Listed);
+    client.set_max_supply(&new_admin, &100);
+    assert_eq!(client.get_max_supply(), Some(100));
+}
