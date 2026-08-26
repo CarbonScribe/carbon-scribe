@@ -21,4 +21,8 @@ pub enum ContractError {
     EventNonceOverflow = 7,
     /// The contract has already been initialized.
     AlreadyInitialized = 8,
+    /// The batch of token IDs (or transaction hashes) exceeds MAX_BATCH_SIZE.
+    BatchTooLarge = 9,
+    /// token_ids and tx_hashes have different lengths in a batch call.
+    BatchLengthMismatch = 10,
 }

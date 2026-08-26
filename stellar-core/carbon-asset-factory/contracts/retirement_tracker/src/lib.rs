@@ -5,11 +5,30 @@ use soroban_sdk::{
 };
 
 // ========================================================================
+// Batch Size Limits (issue #559)
+// ========================================================================
+
+/// Maximum number of tokens accepted by `batch_retire` /
+/// `batch_retire_with_tx_hashes` in a single call.
+///
+/// Each element performs a full cross-contract `burn_token` invocation
+/// (`retire_internal`), plus persistent-storage reads/writes for the
+/// retirement ledger and the per-entity index, and one event publish.
+/// Soroban transactions are capped at 100,000,000 CPU instructions; a
+/// single retirement (cross-contract call + storage I/O + event) has been
+/// budgeted at well under 1,000,000 instructions in practice, so 100
+/// elements per batch leaves comfortable headroom before the ceiling and
+/// keeps a single oversized batch from being able to exhaust the budget
+/// mid-transaction. Tune this constant (not the loop logic) if measured
+/// per-element cost changes.
+pub const MAX_BATCH_SIZE: u32 = 100;
+
+// ========================================================================
 // Data Structures
 // ========================================================================
 
 /// Core retirement record (immutable once written)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[contracttype]
 pub struct RetirementRecord {
     pub token_id: u32,               // ID of the retired CarbonAsset
@@ -239,14 +258,22 @@ impl RetirementTracker {
     /// Vector of RetirementRecords created
     ///
     /// # Errors
-    /// Returns errors for individual tokens that fail, but continues processing others
+    /// * `ContractError::BatchTooLarge` - `token_ids.len()` exceeds
+    ///   `MAX_BATCH_SIZE`; rejected before any cross-contract call is made.
+    ///
+    /// Individual tokens that fail (e.g. already retired) are otherwise
+    /// skipped, and processing continues with the rest of the batch.
     pub fn batch_retire(
         env: Env,
         token_ids: Vec<u32>,
         retiring_entity: Address,
         reason: Option<String>,
-    ) -> Vec<RetirementRecord> {
+    ) -> Result<Vec<RetirementRecord>, ContractError> {
         retiring_entity.require_auth();
+
+        if token_ids.len() > MAX_BATCH_SIZE {
+            return Err(ContractError::BatchTooLarge);
+        }
 
         let mut results = Vec::new(&env);
 
@@ -266,27 +293,38 @@ impl RetirementTracker {
             }
         }
 
-        results
+        Ok(results)
     }
 
     /// Retire multiple carbon credit tokens with caller-supplied transaction
     /// hashes. Each successful retirement receives its own event nonce.
+    ///
+    /// # Errors
+    /// * `ContractError::BatchTooLarge` - `token_ids.len()` or
+    ///   `tx_hashes.len()` exceeds `MAX_BATCH_SIZE`; rejected before any
+    ///   cross-contract call is made.
+    /// * `ContractError::BatchLengthMismatch` - `token_ids` and `tx_hashes`
+    ///   have different lengths. Previously this silently truncated to the
+    ///   shorter of the two; it is now a hard rejection instead.
     pub fn batch_retire_with_tx_hashes(
         env: Env,
         token_ids: Vec<u32>,
         retiring_entity: Address,
         reason: Option<String>,
         tx_hashes: Vec<BytesN<32>>,
-    ) -> Vec<RetirementRecord> {
+    ) -> Result<Vec<RetirementRecord>, ContractError> {
         retiring_entity.require_auth();
+
+        if token_ids.len() > MAX_BATCH_SIZE || tx_hashes.len() > MAX_BATCH_SIZE {
+            return Err(ContractError::BatchTooLarge);
+        }
+        if token_ids.len() != tx_hashes.len() {
+            return Err(ContractError::BatchLengthMismatch);
+        }
 
         let mut results = Vec::new(&env);
 
         for i in 0..token_ids.len() {
-            if i >= tx_hashes.len() {
-                break;
-            }
-
             let token_id = token_ids.get(i).unwrap();
             let tx_hash = tx_hashes.get(i).unwrap();
 
@@ -301,7 +339,7 @@ impl RetirementTracker {
             }
         }
 
-        results
+        Ok(results)
     }
 
     /// Check if a token has been retired
@@ -426,7 +464,7 @@ impl RetirementTracker {
 
 #[cfg(test)]
 mod test {
-    use super::{RetirementTracker, RetirementTrackerClient};
+    use super::{ContractError, RetirementTracker, RetirementTrackerClient, MAX_BATCH_SIZE};
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
 
@@ -523,6 +561,107 @@ mod test {
         assert_eq!(records.get(1).unwrap().tx_hash, Some(second_hash));
         assert_eq!(records.get(1).unwrap().event_nonce, 2);
         assert_eq!(client.get_event_nonce(), 2);
+    }
+
+    // ====================================================================
+    // Batch size limit tests (issue #559)
+    // ====================================================================
+
+    fn make_token_ids(env: &Env, count: u32) -> Vec<u32> {
+        let mut ids = Vec::new(env);
+        for i in 0..count {
+            ids.push_back(i + 1);
+        }
+        ids
+    }
+
+    fn make_tx_hashes(env: &Env, count: u32) -> Vec<BytesN<32>> {
+        let mut hashes = Vec::new(env);
+        for i in 0..count {
+            let byte = (i % 256) as u8;
+            hashes.push_back(BytesN::from_array(env, &[byte; 32]));
+        }
+        hashes
+    }
+
+    #[test]
+    fn batch_retire_at_exactly_max_batch_size_succeeds() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids = make_token_ids(&env, MAX_BATCH_SIZE);
+
+        let records = client.batch_retire(&token_ids, &retiring_entity, &None);
+        assert_eq!(records.len(), MAX_BATCH_SIZE);
+    }
+
+    #[test]
+    fn batch_retire_over_max_batch_size_is_rejected() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids = make_token_ids(&env, MAX_BATCH_SIZE + 1);
+
+        let result = client.try_batch_retire(&token_ids, &retiring_entity, &None);
+        assert_eq!(result, Err(Ok(ContractError::BatchTooLarge)));
+
+        // No cross-contract burn / retirement should have happened for any
+        // token in the rejected batch.
+        assert!(client.get_retirement_record(&1).is_none());
+    }
+
+    #[test]
+    fn batch_retire_empty_batch_returns_empty_vec() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids: Vec<u32> = Vec::new(&env);
+
+        let records = client.batch_retire(&token_ids, &retiring_entity, &None);
+        assert_eq!(records.len(), 0);
+    }
+
+    #[test]
+    fn batch_retire_with_tx_hashes_at_exactly_max_batch_size_succeeds() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids = make_token_ids(&env, MAX_BATCH_SIZE);
+        let tx_hashes = make_tx_hashes(&env, MAX_BATCH_SIZE);
+
+        let records =
+            client.batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
+        assert_eq!(records.len(), MAX_BATCH_SIZE);
+    }
+
+    #[test]
+    fn batch_retire_with_tx_hashes_over_max_batch_size_is_rejected() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids = make_token_ids(&env, MAX_BATCH_SIZE + 1);
+        let tx_hashes = make_tx_hashes(&env, MAX_BATCH_SIZE + 1);
+
+        let result = client.try_batch_retire_with_tx_hashes(
+            &token_ids,
+            &retiring_entity,
+            &None,
+            &tx_hashes,
+        );
+        assert_eq!(result, Err(Ok(ContractError::BatchTooLarge)));
+        assert!(client.get_retirement_record(&1).is_none());
+    }
+
+    #[test]
+    fn batch_retire_with_tx_hashes_mismatched_lengths_is_rejected() {
+        let (env, client, retiring_entity) = setup();
+        let token_ids = make_token_ids(&env, 3);
+        // Fewer tx_hashes than token_ids — previously this silently
+        // truncated to the shorter length instead of rejecting.
+        let tx_hashes = make_tx_hashes(&env, 2);
+
+        let result = client.try_batch_retire_with_tx_hashes(
+            &token_ids,
+            &retiring_entity,
+            &None,
+            &tx_hashes,
+        );
+        assert_eq!(result, Err(Ok(ContractError::BatchLengthMismatch)));
+
+        // Nothing from the rejected batch should have been recorded.
+        assert!(client.get_retirement_record(&1).is_none());
+        assert!(client.get_retirement_record(&2).is_none());
+        assert!(client.get_retirement_record(&3).is_none());
     }
 
     #[test]
