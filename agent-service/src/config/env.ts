@@ -25,4 +25,9 @@ export const env = {
     "PROJECT_PORTAL_BASE_URL",
     "http://localhost:8080",
   ),
+
+  agentAuditDatabaseUrl: required(
+    "AGENT_AUDIT_DATABASE_URL",
+    "postgres://postgres:postgres@localhost:5432/agent_service",
+  ),
 };
