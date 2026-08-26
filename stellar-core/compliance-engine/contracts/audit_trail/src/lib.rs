@@ -1,9 +1,11 @@
 #![no_std]
 
+mod errors;
 mod events;
 mod storage;
 mod test;
 
+pub use errors::AuditTrailError;
 use events::{emit_provenance_validation_failed, emit_pruning_event};
 use storage::DataKey;
 
@@ -48,9 +50,9 @@ impl AuditTrailContract {
     // -------------------------------------------------------------------------
 
     /// Initialise the contract.  Must be called exactly once.
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), AuditTrailError> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("Already initialized");
+            return Err(AuditTrailError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
 
@@ -76,6 +78,7 @@ impl AuditTrailContract {
             .set(&DataKey::RetentionPeriod, &(90u64 * 86400u64));
 
         Self::extend_instance_ttl(&env);
+        Ok(())
     }
 
     // -------------------------------------------------------------------------
@@ -83,48 +86,58 @@ impl AuditTrailContract {
     // -------------------------------------------------------------------------
 
     /// Add a contract to the authorized-emitters allowlist.
-    pub fn authorize_emitter(env: Env, emitter: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn authorize_emitter(env: Env, emitter: Address) -> Result<(), AuditTrailError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(AuditTrailError::NotInitialized)?;
         admin.require_auth();
 
         let mut emitters: Map<Address, bool> = env
             .storage()
             .instance()
             .get(&DataKey::AuthorizedEmitters)
-            .unwrap();
+            .ok_or(AuditTrailError::NotInitialized)?;
         emitters.set(emitter.clone(), true);
         env.storage()
             .instance()
             .set(&DataKey::AuthorizedEmitters, &emitters);
         Self::extend_instance_ttl(&env);
+        Ok(())
     }
 
     /// Remove a contract from the authorized-emitters allowlist.
-    pub fn revoke_emitter(env: Env, emitter: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn revoke_emitter(env: Env, emitter: Address) -> Result<(), AuditTrailError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(AuditTrailError::NotInitialized)?;
         admin.require_auth();
 
         let mut emitters: Map<Address, bool> = env
             .storage()
             .instance()
             .get(&DataKey::AuthorizedEmitters)
-            .unwrap();
+            .ok_or(AuditTrailError::NotInitialized)?;
         emitters.set(emitter.clone(), false);
         env.storage()
             .instance()
             .set(&DataKey::AuthorizedEmitters, &emitters);
         Self::extend_instance_ttl(&env);
+        Ok(())
     }
 
     /// Return whether `emitter` is currently on the authorized-emitters
     /// allowlist.
-    pub fn is_authorized(env: Env, emitter: Address) -> bool {
+    pub fn is_authorized(env: Env, emitter: Address) -> Result<bool, AuditTrailError> {
         let emitters: Map<Address, bool> = env
             .storage()
             .instance()
             .get(&DataKey::AuthorizedEmitters)
-            .unwrap();
-        emitters.get(emitter).unwrap_or(false)
+            .ok_or(AuditTrailError::NotInitialized)?;
+        Ok(emitters.get(emitter).unwrap_or(false))
     }
 
     // -------------------------------------------------------------------------
@@ -178,7 +191,7 @@ impl AuditTrailContract {
         secondary_entity_id: Option<String>,
         event_data: String,
         tx_hash: BytesN<32>,
-    ) -> BytesN<32> {
+    ) -> Result<BytesN<32>, AuditTrailError> {
         // Step 1: verify caller is in the authorized-emitters allowlist.
         // Check this BEFORE require_auth so we can emit a provenance-failure
         // event when rejecting, creating a tamper-evident violation record.
@@ -186,13 +199,14 @@ impl AuditTrailContract {
             .storage()
             .instance()
             .get(&DataKey::AuthorizedEmitters)
-            .unwrap();
+            .ok_or(AuditTrailError::NotInitialized)?;
 
         if !emitters.get(caller.clone()).unwrap_or(false) {
-            // Emit the violation before panicking so the event is flushed to
-            // the transaction's event stream even though the call reverts.
+            // Emit the violation before returning the error so the event is
+            // flushed to the transaction's event stream even though the call
+            // reverts.
             emit_provenance_validation_failed(&env, caller, event_type);
-            panic!("Caller not authorized");
+            return Err(AuditTrailError::EmitterNotAuthorized);
         }
 
         // Step 2: enforce caller identity via host-level auth.
@@ -204,10 +218,7 @@ impl AuditTrailContract {
         // Validate payload size.
         let payload_bytes = event_data.len();
         if payload_bytes > MAX_EVENT_PAYLOAD_SIZE {
-            panic!(
-                "Event payload exceeds maximum allowed size of {} bytes",
-                MAX_EVENT_PAYLOAD_SIZE
-            );
+            return Err(AuditTrailError::PayloadTooLarge);
         }
 
         let timestamp = env.ledger().timestamp();
@@ -344,7 +355,7 @@ impl AuditTrailContract {
 
         Self::extend_instance_ttl(&env);
 
-        event_id
+        Ok(event_id)
     }
 
     // -------------------------------------------------------------------------
@@ -476,13 +487,18 @@ impl AuditTrailContract {
     // Retention & pruning
     // -------------------------------------------------------------------------
 
-    pub fn set_retention_period(env: Env, period_secs: u64) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn set_retention_period(env: Env, period_secs: u64) -> Result<(), AuditTrailError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(AuditTrailError::NotInitialized)?;
         admin.require_auth();
         env.storage()
             .instance()
             .set(&DataKey::RetentionPeriod, &period_secs);
         Self::extend_instance_ttl(&env);
+        Ok(())
     }
 
     pub fn get_retention_period(env: Env) -> u64 {
@@ -493,8 +509,12 @@ impl AuditTrailContract {
     ///
     /// Only the admin may call this function.  Emits a [`PruningEvent`] if any
     /// events are removed.
-    pub fn prune_old_events(env: Env) -> u32 {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+    pub fn prune_old_events(env: Env) -> Result<u32, AuditTrailError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(AuditTrailError::NotInitialized)?;
         admin.require_auth();
 
         let retention_period = Self::get_retention_period_internal(&env);
@@ -645,7 +665,7 @@ impl AuditTrailContract {
 
         Self::extend_instance_ttl(&env);
 
-        pruned_count
+        Ok(pruned_count)
     }
 
     // -------------------------------------------------------------------------
