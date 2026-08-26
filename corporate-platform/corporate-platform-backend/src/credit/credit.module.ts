@@ -19,6 +19,6 @@ import { DatabaseModule } from '../shared/database/database.module';
     AvailabilityService,
     ComparisonService,
   ],
-  exports: [CreditService],
+  exports: [CreditService, AvailabilityService],
 })
 export class CreditModule {}

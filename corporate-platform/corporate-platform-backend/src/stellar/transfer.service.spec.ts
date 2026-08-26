@@ -57,6 +57,38 @@ describe('TransferService', () => {
     expect(prisma.creditTransfer.create).toHaveBeenCalled();
   });
 
+  /**
+   * FE-069: a transfer that was just accepted is materially different from one
+   * the network has acknowledged, and the UI renders the two distinctly.
+   */
+  it('creates transfers in the SUBMITTED state with a submittedAt stamp', async () => {
+    const dto: InitiateTransferDto = {
+      purchaseId: 'order-2',
+      companyId: 'company-1',
+      projectId: 'proj-1',
+      amount: 10,
+      contractId: 'contract123',
+      fromAddress: 'GB_FROM',
+      toAddress: 'GB_TO',
+    };
+
+    (prisma.creditTransfer.create as jest.Mock).mockResolvedValue({
+      id: 'transfer-2',
+      status: 'SUBMITTED',
+    } as any);
+    process.env.STELLAR_SECRET_KEY = '';
+
+    await service.initiateTransfer(dto);
+
+    expect(prisma.creditTransfer.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purchaseId: 'order-2',
+        status: 'SUBMITTED',
+        submittedAt: expect.any(Date),
+      }),
+    });
+  });
+
   it('should get transfer status', async () => {
     (prisma.creditTransfer.findUnique as jest.Mock).mockResolvedValue({
       id: 'transfer-1',

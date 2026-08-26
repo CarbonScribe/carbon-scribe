@@ -1,10 +1,26 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, CheckCircle2, RefreshCcw, Send, Wallet } from 'lucide-react'
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  RefreshCcw,
+  Send,
+  Wallet,
+} from 'lucide-react'
 import { ApiError } from '@/lib/api/http'
 import { StellarApiClient, stellarApiClient } from '@/lib/api/stellar'
 import type { InitiateTransferRequest, TransferRecord } from '@/types/stellar'
+import { isTerminalTransferState } from '@/types/stellar'
+import {
+  ELAPSED_TICK_MS,
+  POLL_INTERVAL_MS,
+  buildStatusView,
+  normalizeStatus,
+} from '@/lib/stellar/transfer-status'
 
 interface StellarTransferPanelProps {
   client?: StellarApiClient
@@ -13,8 +29,9 @@ interface StellarTransferPanelProps {
 
 const STATUS_ORDER: Record<string, number> = {
   FAILED: 0,
-  PENDING: 1,
-  CONFIRMED: 2,
+  SUBMITTED: 1,
+  PENDING: 2,
+  CONFIRMED: 3,
 }
 
 const STELLAR_EXPLORER_BASE_URL =
@@ -41,36 +58,86 @@ export default function StellarTransferPanel({
   const [isSubmittingSingle, setIsSubmittingSingle] = useState(false)
   const [isSubmittingBatch, setIsSubmittingBatch] = useState(false)
   const [isFetchingStatus, setIsFetchingStatus] = useState(false)
+  /**
+   * Purchase IDs this session has initiated that have not yet reached a terminal
+   * state. Drives the "submitted, awaiting confirmation" indicator so the submit
+   * controls never fall back to a neutral idle state while a transfer they
+   * started is still in flight on-chain (FE-069).
+   */
+  const [awaitingSingle, setAwaitingSingle] = useState<string | null>(null)
+  const [awaitingBatch, setAwaitingBatch] = useState<string[]>([])
+  /**
+   * Purchase IDs whose status has been observed by at least one poll. Until a
+   * poll returns, a record we just created is reported as SUBMITTED rather than
+   * borrowing the backend's generic PENDING.
+   */
+  const observedRef = useRef<Set<string>>(new Set())
+  /** Ticks once a second so elapsed-time labels stay live. */
+  const [now, setNow] = useState(() => Date.now())
 
-  const pendingPurchaseIds = useMemo(
-    () => records.filter((record) => record.status === 'PENDING').map((record) => record.purchaseId),
+  const inFlightRecords = useMemo(
+    () => records.filter((record) => !isTerminalTransferState(record.status)),
     [records],
   )
 
+  const inFlightPurchaseIds = useMemo(
+    () => inFlightRecords.map((record) => record.purchaseId),
+    [inFlightRecords],
+  )
+
+  const inFlightKey = inFlightPurchaseIds.join('|')
+
+  // Re-render elapsed labels while anything is unconfirmed. Stops entirely once
+  // every transfer is terminal, so an idle panel does not tick forever.
   useEffect(() => {
-    if (!pendingPurchaseIds.length) {
+    if (!inFlightKey) return
+
+    const interval = setInterval(() => setNow(Date.now()), ELAPSED_TICK_MS)
+    return () => clearInterval(interval)
+  }, [inFlightKey])
+
+  useEffect(() => {
+    if (!inFlightKey) {
       return
     }
 
+    const purchaseIds = inFlightKey.split('|')
+
     const interval = setInterval(async () => {
-      for (const purchaseId of pendingPurchaseIds) {
+      for (const purchaseId of purchaseIds) {
         try {
           const status = await client.getTransferStatus(purchaseId)
+          // The first poll is what promotes a record out of the local
+          // SUBMITTED state into whatever the chain actually reports.
+          observedRef.current.add(purchaseId)
           mergeRecord(status)
         } catch {
           // Polling errors should not interrupt user interactions.
         }
       }
-    }, 8000)
+    }, POLL_INTERVAL_MS)
 
     return () => clearInterval(interval)
-  }, [client, pendingPurchaseIds])
+  }, [client, inFlightKey])
+
+  /**
+   * Present a record's status, substituting SUBMITTED for the backend's generic
+   * non-terminal status until the first poll has observed it.
+   */
+  const withLocalState = useCallback((record: TransferRecord): TransferRecord => {
+    const status = normalizeStatus(record.status)
+
+    if (isTerminalTransferState(status)) return { ...record, status }
+    if (observedRef.current.has(record.purchaseId)) return { ...record, status }
+
+    return { ...record, status: 'SUBMITTED' }
+  }, [])
 
   const mergeRecord = (record: TransferRecord) => {
     setRecords((previous) => {
       const index = previous.findIndex((entry) => entry.purchaseId === record.purchaseId)
       if (index === -1) {
-        return [record, ...previous]
+        return sortRecords([record, ...previous])
       }
       const next = [...previous]
       next[index] = { ...next[index], ...record }
@@ -109,14 +176,29 @@ export default function StellarTransferPanel({
     return 'An unexpected error occurred while processing transfer data.'
   }
 
+  /**
+   * Stamp a broadcast time on a freshly-initiated record so elapsed-time and
+   * staleness indicators work even if the backend has not yet populated
+   * `submittedAt` (see the backend dependency noted on `TransferRecord`).
+   */
+  const stampSubmission = (record: TransferRecord): TransferRecord => ({
+    ...record,
+    submittedAt: record.submittedAt ?? record.initiatedAt ?? new Date().toISOString(),
+  })
+
   const submitSingle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSubmittingSingle(true)
     setError(null)
     try {
-      const record = await client.initiateTransfer(singleTransfer)
+      const record = stampSubmission(await client.initiateTransfer(singleTransfer))
       mergeRecord(record)
       setStatusPurchaseId(record.purchaseId)
+      // The POST has resolved but the transfer is still unconfirmed on-chain —
+      // hold the "awaiting confirmation" indicator rather than reverting to idle.
+      setAwaitingSingle(
+        isTerminalTransferState(record.status) ? null : record.purchaseId,
+      )
     } catch (reason) {
       setError(toErrorMessage(reason))
     } finally {
@@ -130,8 +212,15 @@ export default function StellarTransferPanel({
     setError(null)
     try {
       const parsed = JSON.parse(batchText) as InitiateTransferRequest[]
-      const records = await client.batchTransfer({ transfers: parsed })
-      mergeRecords(records)
+      const submitted = (await client.batchTransfer({ transfers: parsed })).map(
+        stampSubmission,
+      )
+      mergeRecords(submitted)
+      setAwaitingBatch(
+        submitted
+          .filter((record) => !isTerminalTransferState(record.status))
+          .map((record) => record.purchaseId),
+      )
     } catch (reason) {
       setError(toErrorMessage(reason))
     } finally {
@@ -148,7 +237,9 @@ export default function StellarTransferPanel({
     setIsFetchingStatus(true)
     setError(null)
     try {
-      const record = await client.getTransferStatus(statusPurchaseId.trim())
+      const purchaseId = statusPurchaseId.trim()
+      const record = await client.getTransferStatus(purchaseId)
+      observedRef.current.add(purchaseId)
       mergeRecord(record)
     } catch (reason) {
       setError(toErrorMessage(reason))
@@ -156,6 +247,40 @@ export default function StellarTransferPanel({
       setIsFetchingStatus(false)
     }
   }
+
+  const terminalIds = useMemo(
+    () =>
+      new Set(
+        records
+          .filter((record) => isTerminalTransferState(record.status))
+          .map((record) => record.purchaseId),
+      ),
+    [records],
+  )
+
+  // Clear the "awaiting confirmation" indicators once the underlying transfers
+  // reach a terminal state.
+  useEffect(() => {
+    if (awaitingSingle && terminalIds.has(awaitingSingle)) {
+      setAwaitingSingle(null)
+    }
+    if (awaitingBatch.some((id) => terminalIds.has(id))) {
+      setAwaitingBatch((previous) => previous.filter((id) => !terminalIds.has(id)))
+    }
+  }, [awaitingSingle, awaitingBatch, terminalIds])
+
+  const singleAwaitingRecord = awaitingSingle
+    ? records.find((record) => record.purchaseId === awaitingSingle)
+    : undefined
+
+  const stuckCount = useMemo(
+    () =>
+      inFlightRecords.filter(
+        (record) =>
+          buildStatusView(withLocalState(record), now).staleness !== 'fresh',
+      ).length,
+    [inFlightRecords, now, withLocalState],
+  )
 
   return (
     <div className="corporate-card p-6 space-y-6">
@@ -233,6 +358,14 @@ export default function StellarTransferPanel({
             <Send size={16} className="mr-2" />
             {isSubmittingSingle ? 'Submitting...' : 'Initiate Transfer'}
           </button>
+          {awaitingSingle && (
+            <AwaitingConfirmationNotice
+              purchaseIds={[awaitingSingle]}
+              record={singleAwaitingRecord}
+              now={now}
+              withLocalState={withLocalState}
+            />
+          )}
         </form>
 
         <form onSubmit={submitBatch} className="space-y-3 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
@@ -250,6 +383,14 @@ export default function StellarTransferPanel({
             <Send size={16} className="mr-2" />
             {isSubmittingBatch ? 'Sending Batch...' : 'Submit Batch Transfers'}
           </button>
+          {awaitingBatch.length > 0 && (
+            <AwaitingConfirmationNotice
+              purchaseIds={awaitingBatch}
+              record={records.find((record) => record.purchaseId === awaitingBatch[0])}
+              now={now}
+              withLocalState={withLocalState}
+            />
+          )}
         </form>
       </div>
 
@@ -277,9 +418,17 @@ export default function StellarTransferPanel({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="font-semibold text-gray-900 dark:text-white">On-Chain Activity</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-            <Activity size={14} />
-            {pendingPurchaseIds.length} pending transfer(s)
+          <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span className="flex items-center gap-1">
+              <Activity size={14} />
+              {inFlightPurchaseIds.length} unconfirmed transfer(s)
+            </span>
+            {stuckCount > 0 && (
+              <span className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
+                <AlertTriangle size={14} />
+                {stuckCount} possibly stuck
+              </span>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -306,7 +455,7 @@ export default function StellarTransferPanel({
                   <td className="py-3 pr-2 font-medium text-gray-900 dark:text-white">{record.purchaseId}</td>
                   <td className="py-3 pr-2">{record.amount.toLocaleString()} tCO2</td>
                   <td className="py-3 pr-2">
-                    <StatusPill status={record.status} />
+                    <StatusPill record={withLocalState(record)} now={now} />
                   </td>
                   <td className="py-3 pr-2">
                     {record.transactionHash ? (
@@ -333,27 +482,126 @@ export default function StellarTransferPanel({
   )
 }
 
-function StatusPill({ status }: { status: string }) {
-  if (status === 'CONFIRMED') {
+/**
+ * Inline indicator that keeps a just-submitted transfer visible on the form
+ * that started it, so the submit control never reverts to a neutral idle state
+ * while the transfer is still unconfirmed on-chain (FE-069).
+ */
+function AwaitingConfirmationNotice({
+  purchaseIds,
+  record,
+  now,
+  withLocalState,
+}: {
+  purchaseIds: string[]
+  record?: TransferRecord
+  now: number
+  withLocalState: (record: TransferRecord) => TransferRecord
+}) {
+  const view = record ? buildStatusView(withLocalState(record), now) : null
+  const stuck = view?.staleness !== 'fresh' && view != null
+
+  const tone = stuck
+    ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300'
+    : 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300'
+
+  const subject =
+    purchaseIds.length === 1
+      ? purchaseIds[0]
+      : `${purchaseIds.length} transfers`
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={`flex items-start gap-2 rounded-lg border p-3 text-xs ${tone}`}
+    >
+      {stuck ? (
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+      ) : (
+        <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin" />
+      )}
+      <span>
+        <span className="font-medium">
+          {stuck
+            ? 'Submitted — still unconfirmed'
+            : 'Submitted — awaiting on-chain confirmation'}
+        </span>
+        {': '}
+        {subject}
+        {view?.elapsedLabel ? ` · ${view.elapsedLabel} elapsed` : ''}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Status pill with a visually distinct treatment per confirmation state, an
+ * elapsed-time readout for non-terminal transfers, and an amber → red
+ * escalation once a transfer has been unconfirmed past the stuck threshold
+ * (FE-069).
+ */
+function StatusPill({ record, now }: { record: TransferRecord; now?: number }) {
+  const view = buildStatusView(record, now ?? Date.now())
+
+  if (view.status === 'CONFIRMED') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-2 py-1 text-xs font-medium">
+      <span
+        title={view.description}
+        aria-label={view.description}
+        className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-2 py-1 text-xs font-medium"
+      >
         <CheckCircle2 size={12} />
         Confirmed
       </span>
     )
   }
 
-  if (status === 'FAILED') {
+  if (view.status === 'FAILED') {
     return (
-      <span className="inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 px-2 py-1 text-xs font-medium">
+      <span
+        title={view.description}
+        aria-label={view.description}
+        className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 px-2 py-1 text-xs font-medium"
+      >
+        <AlertTriangle size={12} />
         Failed
       </span>
     )
   }
 
+  // Non-terminal. SUBMITTED reads as calm/blue and in-motion; PENDING is amber;
+  // either escalates to red once it crosses the stuck threshold.
+  const isStuck = view.staleness !== 'fresh'
+
+  const tone = isStuck
+    ? 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-300 ring-1 ring-red-400/60'
+    : view.status === 'SUBMITTED'
+      ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+      : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300'
+
+  const Icon = isStuck ? AlertTriangle : view.status === 'SUBMITTED' ? Loader2 : Clock
+
   return (
-    <span className="inline-flex items-center rounded-full bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300 px-2 py-1 text-xs font-medium">
-      Pending
+    <span className="inline-flex flex-col items-start gap-0.5">
+      <span
+        title={view.description}
+        aria-label={view.description}
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${tone}`}
+      >
+        <Icon
+          size={12}
+          className={!isStuck && view.status === 'SUBMITTED' ? 'animate-spin' : undefined}
+        />
+        {view.elapsedLabel ? `${view.label} — ${view.elapsedLabel}` : view.label}
+      </span>
+      {isStuck && (
+        <span className="text-[10px] font-medium text-red-600 dark:text-red-400">
+          {view.staleness === 'severely-stuck'
+            ? 'Likely stuck — investigate'
+            : 'Taking longer than expected'}
+        </span>
+      )}
     </span>
   )
 }

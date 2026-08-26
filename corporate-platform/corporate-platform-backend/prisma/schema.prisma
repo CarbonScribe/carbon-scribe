@@ -1372,9 +1372,15 @@ model CreditTransfer {
   projectId       String
   amount          Int
   transactionHash String?
-  status          String // PENDING, CONFIRMED, FAILED
+  // SUBMITTED — accepted by the API, broadcast not yet acknowledged on-chain.
+  // PENDING    — broadcast to the network, awaiting confirmation.
+  // CONFIRMED / FAILED — terminal.
+  status          String
   errorMessage    String?
   initiatedAt     DateTime  @default(now())
+  // Moment the transaction was broadcast. Drives the elapsed-time and
+  // "stuck" indicators in the transfer UI (FE-069).
+  submittedAt     DateTime?
   confirmedAt     DateTime?
 
   @@index([purchaseId])
@@ -1389,7 +1395,10 @@ model ContractCall {
   methodName      String
   transactionHash String    @unique
   args            Json
-  status          String // PENDING, CONFIRMED, FAILED, DUPLICATE
+  // PENDING, CONFIRMED, FAILED, DUPLICATE, UNRESOLVED
+  // UNRESOLVED is terminal: the reconciliation sweep (#515) exhausted
+  // maxRetries without the RPC ever reporting a definitive outcome.
+  status          String
   result          Json?
   submittedAt     DateTime  @default(now())
   confirmedAt     DateTime?

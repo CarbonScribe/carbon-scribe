@@ -7,6 +7,9 @@ import { AuditService } from './audit.service';
 import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PostPurchaseService } from '../../retirement/services/post-purchase.service';
+import { AvailabilityService } from '../../credit/services/availability.service';
+import { AvailabilityChangeType } from '../../credit/interfaces/availability.interface';
+import { InMemoryPrisma } from '../../credit/testing/in-memory-prisma';
 
 describe('CheckoutService', () => {
   let service: CheckoutService;
@@ -58,6 +61,10 @@ describe('CheckoutService', () => {
     handleOrderCompleted: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockAvailabilityService = {
+    decrementWithin: jest.fn().mockResolvedValue({ newAmount: 0 }),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,6 +75,7 @@ describe('CheckoutService', () => {
         { provide: ReservationService, useValue: mockReservationService },
         { provide: AuditService, useValue: mockAuditService },
         { provide: PostPurchaseService, useValue: mockPostPurchaseService },
+        { provide: AvailabilityService, useValue: mockAvailabilityService },
       ],
     }).compile();
 
@@ -196,7 +204,7 @@ describe('CheckoutService', () => {
         transactionHash: 'tx_abc',
       });
 
-      mockPrisma.credit.update.mockResolvedValue({});
+      mockAvailabilityService.decrementWithin.mockResolvedValue({ newAmount: 4000 });
       mockPrisma.order.update.mockResolvedValue({
         id: 'order1',
         orderNumber: 'ORD-2026-0001',
@@ -229,6 +237,20 @@ describe('CheckoutService', () => {
       mockPrisma.cart.update.mockResolvedValue({});
 
       const result = await service.confirmPurchase('order1', 'comp1');
+
+      // The decrement goes through the shared lock-safe path rather than a
+      // bare credit.update (#516).
+      expect(mockAvailabilityService.decrementWithin).toHaveBeenCalledWith(
+        mockPrisma,
+        expect.objectContaining({
+          creditId: 'cred1',
+          amount: 1000,
+          changeType: AvailabilityChangeType.PURCHASE,
+          reservationCartId: 'cart1',
+          respectReservations: true,
+        }),
+      );
+      expect(mockPrisma.credit.update).not.toHaveBeenCalled();
 
       expect(result.order.status).toBe('completed');
       expect(result.transactionHash).toBe('tx_abc');
@@ -263,5 +285,163 @@ describe('CheckoutService', () => {
         BadRequestException,
       );
     });
+  });
+});
+
+// ── Cross-flow inventory safety (#516) ─────────────────────────────────────
+
+/**
+ * Checkout confirmation and instant retirement compete for the same
+ * `Credit.availableAmount`. These tests drive the real AvailabilityService
+ * against a store that models `SELECT ... FOR UPDATE`, proving the two flows
+ * serialise on one shared code path instead of each reinventing a decrement.
+ */
+describe('CheckoutService – shared inventory path', () => {
+  let service: CheckoutService;
+  let availability: AvailabilityService;
+  let store: InMemoryPrisma;
+
+  const order = (quantity: number, cartId = 'cart1') => ({
+    id: 'order1',
+    companyId: 'comp1',
+    userId: 'user1',
+    status: 'pending',
+    paymentMethod: 'credit_card',
+    total: 100,
+    cartId,
+    items: [
+      {
+        id: 'oi1',
+        creditId: 'credit-1',
+        quantity,
+        price: 10,
+        subtotal: quantity * 10,
+        credit: { availableAmount: 100, projectName: 'Amazon Rainforest' },
+      },
+    ],
+  });
+
+  beforeEach(async () => {
+    store = new InMemoryPrisma([
+      {
+        id: 'credit-1',
+        projectName: 'Amazon Rainforest',
+        availableAmount: 100,
+        status: 'available',
+      },
+    ]);
+
+    // Layer the order/cart models the fake does not implement onto the same
+    // client so both the availability path and the checkout bookkeeping work,
+    // inside transactions as well as outside them.
+    const prisma: any = store;
+    store.registerModel('order', {
+      findUnique: jest.fn().mockResolvedValue(order(60)),
+      update: jest.fn().mockImplementation(({ data }: any) => ({
+        ...order(60),
+        ...data,
+        items: order(60).items,
+      })),
+      create: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+    });
+    store.registerModel('orderItem', { create: jest.fn() });
+    store.registerModel('cart', { findFirst: jest.fn(), update: jest.fn() });
+    store.registerModel('cartItem', { deleteMany: jest.fn() });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CheckoutService,
+        AvailabilityService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: UnitOfWorkService,
+          useValue: {
+            run: (cb: any) =>
+              (prisma as InMemoryPrisma).$transaction(cb, {
+                isolationLevel: 'Serializable',
+              }),
+          },
+        },
+        {
+          provide: PaymentService,
+          useValue: {
+            processPayment: jest.fn().mockResolvedValue({
+              paymentId: 'pay_1',
+              status: 'approved',
+              transactionHash: 'tx_1',
+            }),
+          },
+        },
+        {
+          provide: ReservationService,
+          useValue: {
+            reserveCredits: jest.fn(),
+            releaseReservations: jest.fn(),
+          },
+        },
+        {
+          provide: AuditService,
+          useValue: { logOrderEvent: jest.fn() },
+        },
+        {
+          provide: PostPurchaseService,
+          useValue: { handleOrderCompleted: jest.fn() },
+        },
+      ],
+    }).compile();
+
+    service = module.get(CheckoutService);
+    availability = module.get(AvailabilityService);
+  });
+
+  it('decrements availability through the shared path on confirmation', async () => {
+    await service.confirmPurchase('order1', 'comp1');
+
+    expect(store.credits.get('credit-1')!.availableAmount).toBe(40);
+    expect(store.availabilityLogs).toContainEqual(
+      expect.objectContaining({
+        creditId: 'credit-1',
+        changeType: AvailabilityChangeType.PURCHASE,
+        amount: 60,
+        previousAmount: 100,
+        newAmount: 40,
+      }),
+    );
+  });
+
+  it('cannot oversell against a concurrent retirement of the same credit', async () => {
+    const results = await Promise.allSettled([
+      service.confirmPurchase('order1', 'comp1'),
+      // Stand-in for the retirement flow: same shared decrement helper.
+      availability.decrementAvailability(
+        'credit-1',
+        60,
+        'retirer',
+        'retirement',
+        undefined,
+        {
+          changeType: AvailabilityChangeType.RETIRE,
+          respectReservations: true,
+        },
+      ),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(store.credits.get('credit-1')!.availableAmount).toBe(40);
+  });
+
+  it('never drives availableAmount negative', async () => {
+    await Promise.allSettled([
+      service.confirmPurchase('order1', 'comp1'),
+      availability.decrementAvailability('credit-1', 60, 'a'),
+      availability.decrementAvailability('credit-1', 60, 'b'),
+      availability.decrementAvailability('credit-1', 60, 'c'),
+    ]);
+
+    expect(
+      store.credits.get('credit-1')!.availableAmount,
+    ).toBeGreaterThanOrEqual(0);
   });
 });
