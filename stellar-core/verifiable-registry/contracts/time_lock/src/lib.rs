@@ -752,7 +752,8 @@ impl TimeLock {
 #[cfg(test)]
 mod test {
     use super::{TimeLock, TimeLockClient, TimeLockError};
-    use soroban_sdk::{testutils::Address as _, vec, Address, Env, Vec};
+    use soroban_sdk::{testutils::Address as _, vec, Address, Env, IntoVal, Symbol, Vec};
+    use soroban_sdk::testutils::Ledger;
 
     fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
         let env = Env::default();
@@ -957,8 +958,11 @@ mod test {
         // Lock token_id = 5 specifically
         client.lock_credit(&caller, &5, &unlock);
 
-        let mock_client = MockCarbonAssetClient::new(&env, &mock_ca_id);
-        let log = mock_client.get_transfer_log();
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
 
         // Exactly one transfer happened, and it was token_id 5
         assert_eq!(log.len(), 1);
@@ -982,8 +986,11 @@ mod test {
 
         client.release_if_eligible(&42);
 
-        let mock_client = MockCarbonAssetClient::new(&env, &mock_ca_id);
-        let log = mock_client.get_transfer_log();
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
 
         // transfer_token_from (lock) + transfer_token (release) = 2 total
         assert_eq!(log.len(), 2);
@@ -1019,8 +1026,11 @@ mod test {
         assert_eq!(released.get(0).unwrap(), 10);
         assert_eq!(released.get(1).unwrap(), 30);
 
-        let mock_client = MockCarbonAssetClient::new(&env, &mock_ca_id);
-        let log = mock_client.get_transfer_log();
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
 
         // 3 locks + 2 releases = 5 total transfers
         assert_eq!(log.len(), 5);
@@ -1044,8 +1054,11 @@ mod test {
         // Force release (admin already authorized via mock_all_auths)
         client.force_release(&77);
 
-        let mock_client = MockCarbonAssetClient::new(&env, &mock_ca_id);
-        let log = mock_client.get_transfer_log();
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
 
         // lock (token 77) + force_release (token 77)
         assert_eq!(log.len(), 2);
