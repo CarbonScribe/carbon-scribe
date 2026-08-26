@@ -752,7 +752,10 @@ impl TimeLock {
 #[cfg(test)]
 mod test {
     use super::{TimeLock, TimeLockClient, TimeLockError};
-    use soroban_sdk::{testutils::Address as _, vec, Address, Env, IntoVal, Symbol, Vec};
+    use soroban_sdk::{
+        contract, contractimpl, contracttype, testutils::Address as _, vec, Address, Env, IntoVal,
+        Symbol, Vec,
+    };
     use soroban_sdk::testutils::Ledger;
 
     fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
