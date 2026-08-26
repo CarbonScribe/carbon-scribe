@@ -20,4 +20,7 @@ pub enum ContractError {
     MintingIsFrozen = 14,
     MaxSupplyAlreadySet = 15,
     MaxSupplyBelowMinted = 16,
+    // Two-step admin transfer errors (issue #557)
+    NoPendingAdmin = 17,
+    NotPendingAdmin = 18,
 }
