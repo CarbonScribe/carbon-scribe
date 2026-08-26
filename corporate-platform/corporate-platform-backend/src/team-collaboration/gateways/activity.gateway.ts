@@ -71,7 +71,14 @@ export class ActivityGateway
 
   private async setupRedisSubscriber() {
     try {
-      this.redisSubscriber = this.redis.getClient().duplicate();
+      const client = this.redis.getClient();
+      if (!client) {
+        this.logger.warn(
+          'Redis client not available, skipping subscriber setup',
+        );
+        return;
+      }
+      this.redisSubscriber = client.duplicate();
       await this.redisSubscriber.subscribe('activity:stream');
 
       this.redisSubscriber.on('message', (channel: string, message: string) => {

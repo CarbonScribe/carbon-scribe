@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from '../config/config.service';
 
 @Injectable()
 export class IpfsConfig {
@@ -28,7 +28,7 @@ export class IpfsConfig {
   }
 
   get timeout(): number {
-    return this.configService.get<number>('PINATA_TIMEOUT_MS');
+    return this.configService.get<number>('PINATA_TIMEOUT_MS', 5000);
   }
 
   get retryMaxAttempts(): number {

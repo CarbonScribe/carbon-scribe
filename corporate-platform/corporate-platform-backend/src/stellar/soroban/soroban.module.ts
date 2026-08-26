@@ -13,8 +13,10 @@ import { OwnershipHistoryModule } from '../../audit/ownership-history/ownership-
 import { IdempotencyModule } from './idempotency/idempotency.module';
 import { IdempotencyService } from './idempotency/idempotency.service';
 
+import { ConfigModule } from '../../config/config.module';
+
 @Module({
-  imports: [OwnershipHistoryModule, IdempotencyModule],
+  imports: [OwnershipHistoryModule, IdempotencyModule, ConfigModule],
   providers: [
     SorobanService,
     CarbonAssetService,

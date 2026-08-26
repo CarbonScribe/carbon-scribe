@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { WebhooksModule } from '../webhooks/webhooks.module';
+import { SorobanModule } from '../stellar/soroban/soroban.module';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
 
@@ -26,6 +28,8 @@ import { WebhookDispatcherService } from '../webhooks/services/webhook-dispatche
 @Module({
   imports: [
     CacheModule,
+    WebhooksModule,
+    SorobanModule,
     MongooseModule.forFeature([
       { name: RetirementAggregation.name, schema: RetirementAggregationSchema },
     ]),
