@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractevent, contractimpl, contracttype, Address, BytesN, Env,
-    IntoVal, String, Symbol, Vec,
+    contract, contractevent, contractimpl, contracttype, Address, BytesN, Env, IntoVal, String,
+    Symbol, Vec,
 };
 
 // ========================================================================
@@ -58,6 +58,56 @@ pub mod errors;
 pub use errors::ContractError;
 
 // ========================================================================
+// Batch Result & Failure Reporting (issue #518)
+// ========================================================================
+
+/// Reason a single token failed during a batch retirement. Mirrors the
+/// `ContractError` discriminants but is a regular contract type, so it can be
+/// serialized in the batch return value. Use [`From<ContractError>`] to map a
+/// failure into this type.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[contracttype]
+pub enum RetirementFailureReason {
+    NotAuthorized = 1,
+    TokenNotOwned = 2,
+    TokenAlreadyRetired = 3,
+    InvalidTokenId = 4,
+    BurnFailed = 5,
+    ContractNotInitialized = 6,
+    EventNonceOverflow = 7,
+    AlreadyInitialized = 8,
+    BatchTooLarge = 9,
+    BatchLengthMismatch = 10,
+}
+
+impl From<ContractError> for RetirementFailureReason {
+    fn from(err: ContractError) -> Self {
+        match err {
+            ContractError::NotAuthorized => Self::NotAuthorized,
+            ContractError::TokenNotOwned => Self::TokenNotOwned,
+            ContractError::TokenAlreadyRetired => Self::TokenAlreadyRetired,
+            ContractError::InvalidTokenId => Self::InvalidTokenId,
+            ContractError::BurnFailed => Self::BurnFailed,
+            ContractError::ContractNotInitialized => Self::ContractNotInitialized,
+            ContractError::EventNonceOverflow => Self::EventNonceOverflow,
+            ContractError::AlreadyInitialized => Self::AlreadyInitialized,
+            ContractError::BatchTooLarge => Self::BatchTooLarge,
+            ContractError::BatchLengthMismatch => Self::BatchLengthMismatch,
+        }
+    }
+}
+
+/// Aggregate result of a batch retirement. Reports both the tokens that were
+/// successfully retired and the individual tokens that failed, together with
+/// the reason each one failed.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracttype]
+pub struct BatchRetireResult {
+    pub succeeded: Vec<RetirementRecord>,
+    pub failed: Vec<(u32, RetirementFailureReason)>,
+}
+
+// ========================================================================
 // Events
 // ========================================================================
 
@@ -68,6 +118,15 @@ pub struct RetirementEvent {
     pub timestamp: u64,
     pub tx_hash: Option<BytesN<32>>,
     pub event_nonce: u64,
+}
+
+/// Emitted for each token that fails during a batch retirement, so failures
+/// are observable on-chain even if the caller ignores the return value.
+#[contractevent(data_format = "single-value")]
+pub struct RetirementFailedEvent {
+    #[topic]
+    pub token_id: u32,
+    pub reason: RetirementFailureReason,
 }
 
 #[contractevent]
@@ -255,49 +314,63 @@ impl RetirementTracker {
     /// * `reason` - Optional reason for retirement (applied to all tokens)
     ///
     /// # Returns
-    /// Vector of RetirementRecords created
+    /// A `BatchRetireResult` containing the successful `RetirementRecord`s in
+    /// `succeeded` and, for every token that failed, a `(token_id, reason)`
+    /// pair in `failed` describing exactly which token failed and why. Each
+    /// failure also emits a `RetirementFailedEvent`. Processing continues past
+    /// individual failures, so one invalid token does not abort the batch.
     ///
     /// # Errors
     /// * `ContractError::BatchTooLarge` - `token_ids.len()` exceeds
     ///   `MAX_BATCH_SIZE`; rejected before any cross-contract call is made.
-    ///
-    /// Individual tokens that fail (e.g. already retired) are otherwise
-    /// skipped, and processing continues with the rest of the batch.
     pub fn batch_retire(
         env: Env,
         token_ids: Vec<u32>,
         retiring_entity: Address,
         reason: Option<String>,
-    ) -> Result<Vec<RetirementRecord>, ContractError> {
+    ) -> Result<BatchRetireResult, ContractError> {
         retiring_entity.require_auth();
 
         if token_ids.len() > MAX_BATCH_SIZE {
             return Err(ContractError::BatchTooLarge);
         }
 
-        let mut results = Vec::new(&env);
+        let mut succeeded = Vec::new(&env);
+        let mut failed = Vec::new(&env);
 
         for i in 0..token_ids.len() {
             let token_id = token_ids.get(i).unwrap();
 
             // Attempt to retire each token
             // Continue even if one fails
-            if let Ok(record) = Self::retire_internal(
+            match Self::retire_internal(
                 env.clone(),
                 token_id,
                 retiring_entity.clone(),
                 reason.clone(),
                 None,
             ) {
-                results.push_back(record);
+                Ok(record) => succeeded.push_back(record),
+                Err(err) => {
+                    let reason: RetirementFailureReason = err.into();
+                    RetirementFailedEvent { token_id, reason }.publish(&env);
+                    failed.push_back((token_id, reason));
+                }
             }
         }
 
-        Ok(results)
+        Ok(BatchRetireResult { succeeded, failed })
     }
 
     /// Retire multiple carbon credit tokens with caller-supplied transaction
     /// hashes. Each successful retirement receives its own event nonce.
+    ///
+    /// # Returns
+    /// A `BatchRetireResult` containing the successful `RetirementRecord`s in
+    /// `succeeded` and, for every token that failed, a `(token_id, reason)`
+    /// pair in `failed` describing exactly which token failed and why. Each
+    /// failure also emits a `RetirementFailedEvent`. Processing continues past
+    /// individual failures, so one invalid token does not abort the batch.
     ///
     /// # Errors
     /// * `ContractError::BatchTooLarge` - `token_ids.len()` or
@@ -312,7 +385,7 @@ impl RetirementTracker {
         retiring_entity: Address,
         reason: Option<String>,
         tx_hashes: Vec<BytesN<32>>,
-    ) -> Result<Vec<RetirementRecord>, ContractError> {
+    ) -> Result<BatchRetireResult, ContractError> {
         retiring_entity.require_auth();
 
         if token_ids.len() > MAX_BATCH_SIZE || tx_hashes.len() > MAX_BATCH_SIZE {
@@ -322,24 +395,32 @@ impl RetirementTracker {
             return Err(ContractError::BatchLengthMismatch);
         }
 
-        let mut results = Vec::new(&env);
+        let mut succeeded = Vec::new(&env);
+        let mut failed = Vec::new(&env);
 
         for i in 0..token_ids.len() {
             let token_id = token_ids.get(i).unwrap();
             let tx_hash = tx_hashes.get(i).unwrap();
 
-            if let Ok(record) = Self::retire_internal(
+            // Attempt to retire each token
+            // Continue even if one fails
+            match Self::retire_internal(
                 env.clone(),
                 token_id,
                 retiring_entity.clone(),
                 reason.clone(),
                 Some(tx_hash),
             ) {
-                results.push_back(record);
+                Ok(record) => succeeded.push_back(record),
+                Err(err) => {
+                    let reason: RetirementFailureReason = err.into();
+                    RetirementFailedEvent { token_id, reason }.publish(&env);
+                    failed.push_back((token_id, reason));
+                }
             }
         }
 
-        Ok(results)
+        Ok(BatchRetireResult { succeeded, failed })
     }
 
     /// Check if a token has been retired
@@ -464,9 +545,15 @@ impl RetirementTracker {
 
 #[cfg(test)]
 mod test {
-    use super::{ContractError, RetirementTracker, RetirementTrackerClient, MAX_BATCH_SIZE};
+    use super::{
+        ContractError, RetirementFailureReason, RetirementTracker, RetirementTrackerClient,
+        MAX_BATCH_SIZE,
+    };
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::testutils::Events as _;
+    use soroban_sdk::{
+        contract, contractimpl, Address, BytesN, Env, String, Symbol, TryFromVal, Vec,
+    };
 
     #[contract]
     pub struct MockCarbonAsset;
@@ -489,6 +576,26 @@ mod test {
         client.initialize(&admin, &asset_contract);
 
         (env, client, retiring_entity)
+    }
+
+    /// Collect the `(token_id, reason)` pairs from every emitted
+    /// `RetirementFailedEvent`.
+    fn failed_batch_events(env: &Env) -> Vec<(u32, RetirementFailureReason)> {
+        let failed_symbol = Symbol::new(env, "retirement_failed_event");
+        let events = env.events().all();
+        let mut failures = Vec::new(env);
+        for i in 0..events.len() {
+            let (_, topics, data) = events.get(i).unwrap();
+            if topics
+                .get(0)
+                .is_some_and(|t| Symbol::try_from_val(env, &t) == Ok(failed_symbol.clone()))
+            {
+                let token_id = u32::try_from_val(env, &topics.get(1).unwrap()).unwrap();
+                let reason = RetirementFailureReason::try_from_val(env, &data).unwrap();
+                failures.push_back((token_id, reason));
+            }
+        }
+        failures
     }
 
     #[test]
@@ -552,14 +659,15 @@ mod test {
         tx_hashes.push_back(first_hash.clone());
         tx_hashes.push_back(second_hash.clone());
 
-        let records =
+        let result =
             client.batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
 
-        assert_eq!(records.len(), 2);
-        assert_eq!(records.get(0).unwrap().tx_hash, Some(first_hash));
-        assert_eq!(records.get(0).unwrap().event_nonce, 1);
-        assert_eq!(records.get(1).unwrap().tx_hash, Some(second_hash));
-        assert_eq!(records.get(1).unwrap().event_nonce, 2);
+        assert_eq!(result.succeeded.len(), 2);
+        assert!(result.failed.is_empty());
+        assert_eq!(result.succeeded.get(0).unwrap().tx_hash, Some(first_hash));
+        assert_eq!(result.succeeded.get(0).unwrap().event_nonce, 1);
+        assert_eq!(result.succeeded.get(1).unwrap().tx_hash, Some(second_hash));
+        assert_eq!(result.succeeded.get(1).unwrap().event_nonce, 2);
         assert_eq!(client.get_event_nonce(), 2);
     }
 
@@ -589,8 +697,9 @@ mod test {
         let (env, client, retiring_entity) = setup();
         let token_ids = make_token_ids(&env, MAX_BATCH_SIZE);
 
-        let records = client.batch_retire(&token_ids, &retiring_entity, &None);
-        assert_eq!(records.len(), MAX_BATCH_SIZE);
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+        assert_eq!(result.succeeded.len(), MAX_BATCH_SIZE);
+        assert!(result.failed.is_empty());
     }
 
     #[test]
@@ -611,8 +720,9 @@ mod test {
         let (env, client, retiring_entity) = setup();
         let token_ids: Vec<u32> = Vec::new(&env);
 
-        let records = client.batch_retire(&token_ids, &retiring_entity, &None);
-        assert_eq!(records.len(), 0);
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+        assert_eq!(result.succeeded.len(), 0);
+        assert!(result.failed.is_empty());
     }
 
     #[test]
@@ -621,9 +731,10 @@ mod test {
         let token_ids = make_token_ids(&env, MAX_BATCH_SIZE);
         let tx_hashes = make_tx_hashes(&env, MAX_BATCH_SIZE);
 
-        let records =
+        let result =
             client.batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
-        assert_eq!(records.len(), MAX_BATCH_SIZE);
+        assert_eq!(result.succeeded.len(), MAX_BATCH_SIZE);
+        assert!(result.failed.is_empty());
     }
 
     #[test]
@@ -632,12 +743,8 @@ mod test {
         let token_ids = make_token_ids(&env, MAX_BATCH_SIZE + 1);
         let tx_hashes = make_tx_hashes(&env, MAX_BATCH_SIZE + 1);
 
-        let result = client.try_batch_retire_with_tx_hashes(
-            &token_ids,
-            &retiring_entity,
-            &None,
-            &tx_hashes,
-        );
+        let result =
+            client.try_batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
         assert_eq!(result, Err(Ok(ContractError::BatchTooLarge)));
         assert!(client.get_retirement_record(&1).is_none());
     }
@@ -650,18 +757,141 @@ mod test {
         // truncated to the shorter length instead of rejecting.
         let tx_hashes = make_tx_hashes(&env, 2);
 
-        let result = client.try_batch_retire_with_tx_hashes(
-            &token_ids,
-            &retiring_entity,
-            &None,
-            &tx_hashes,
-        );
+        let result =
+            client.try_batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
         assert_eq!(result, Err(Ok(ContractError::BatchLengthMismatch)));
 
         // Nothing from the rejected batch should have been recorded.
         assert!(client.get_retirement_record(&1).is_none());
         assert!(client.get_retirement_record(&2).is_none());
         assert!(client.get_retirement_record(&3).is_none());
+    }
+
+    // ====================================================================
+    // Per-token failure reporting tests (issue #518)
+    // ====================================================================
+
+    #[test]
+    fn batch_retire_all_success_reports_no_failures() {
+        let (env, client, retiring_entity) = setup();
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+        token_ids.push_back(3);
+
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+
+        assert_eq!(result.succeeded.len(), 3);
+        assert!(result.failed.is_empty());
+        assert_eq!(result.succeeded.get(0).unwrap().event_nonce, 1);
+        assert_eq!(result.succeeded.get(1).unwrap().event_nonce, 2);
+        assert_eq!(result.succeeded.get(2).unwrap().event_nonce, 3);
+        assert!(failed_batch_events(&env).is_empty());
+        assert_eq!(client.get_event_nonce(), 3);
+    }
+
+    #[test]
+    fn batch_retire_all_failures_reports_each_token_and_reason() {
+        let (env, client, retiring_entity) = setup();
+
+        client.retire(&1, &retiring_entity, &None);
+        client.retire(&2, &retiring_entity, &None);
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+
+        assert!(result.succeeded.is_empty());
+        assert_eq!(result.failed.len(), 2);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
+        assert_eq!(
+            result.failed.get(1).unwrap(),
+            (2, RetirementFailureReason::TokenAlreadyRetired)
+        );
+
+        let events = failed_batch_events(&env);
+        assert_eq!(events.len(), 2);
+        assert_eq!(
+            events.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
+        assert_eq!(
+            events.get(1).unwrap(),
+            (2, RetirementFailureReason::TokenAlreadyRetired)
+        );
+    }
+
+    #[test]
+    fn batch_retire_mixed_reports_which_ids_failed_and_succeeded() {
+        let (env, client, retiring_entity) = setup();
+
+        client.retire(&1, &retiring_entity, &None);
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+        token_ids.push_back(3);
+
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+
+        assert_eq!(result.succeeded.len(), 2);
+        assert_eq!(result.succeeded.get(0).unwrap().token_id, 2);
+        assert_eq!(result.succeeded.get(1).unwrap().token_id, 3);
+        assert_eq!(result.succeeded.get(0).unwrap().event_nonce, 2);
+        assert_eq!(result.succeeded.get(1).unwrap().event_nonce, 3);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
+
+        let events = failed_batch_events(&env);
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
+        assert_eq!(client.get_event_nonce(), 3);
+    }
+
+    #[test]
+    fn batch_retire_with_tx_hashes_reports_failures() {
+        let (env, client, retiring_entity) = setup();
+
+        client.retire(&1, &retiring_entity, &None);
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+
+        let hash = BytesN::from_array(&env, &[7u8; 32]);
+        let mut tx_hashes = Vec::new(&env);
+        tx_hashes.push_back(hash.clone());
+        tx_hashes.push_back(hash.clone());
+
+        let result =
+            client.batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
+
+        assert_eq!(result.succeeded.len(), 1);
+        assert_eq!(result.succeeded.get(0).unwrap().token_id, 2);
+        assert_eq!(result.succeeded.get(0).unwrap().tx_hash, Some(hash));
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
+
+        let events = failed_batch_events(&env);
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events.get(0).unwrap(),
+            (1, RetirementFailureReason::TokenAlreadyRetired)
+        );
     }
 
     #[test]
