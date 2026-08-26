@@ -13,4 +13,6 @@ pub enum ContractError {
     NoMatchingRule = 7,
     RuleConflict = 8,
     AlreadyInitialized = 9,
+    /// A state-mutating entrypoint was called before initialize() (issue #519).
+    NotInitialized = 10,
 }
