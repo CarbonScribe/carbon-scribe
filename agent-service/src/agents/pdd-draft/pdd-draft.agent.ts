@@ -3,6 +3,10 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
+import {
+  checkApproval,
+  PDD_DRAFT_ACTION_TYPES,
+} from "../../shared/guardrails/approval-gate.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -138,21 +142,29 @@ export async function runPddDraftAgent(
     );
   }
 
+  const citations: AgentCitation[] = parsed.citations;
+  const decision = checkApproval({
+    actionType: PDD_DRAFT_ACTION_TYPES.DRAFT_SECTIONS,
+    payload: {
+      sections: parsed.sections,
+      incompleteSections: parsed.incompleteSections,
+    },
+  });
+  const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
   await auditLog.record({
     timestamp: new Date().toISOString(),
     agent: "pdd-draft",
     requestId: req.requestId,
     requestedBy: req.requestedBy,
     toolCalls,
-    status: "drafted",
+    status,
   });
-
-  const citations: AgentCitation[] = parsed.citations;
 
   return {
     agent: "pdd-draft",
     requestId: req.requestId,
-    status: "drafted",
+    status,
     output: {
       methodology: parsed.methodology,
       sections: parsed.sections,

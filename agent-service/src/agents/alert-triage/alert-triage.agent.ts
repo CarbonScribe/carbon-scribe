@@ -3,6 +3,10 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
+import {
+  ALERT_TRIAGE_ACTION_TYPES,
+  checkApproval,
+} from "../../shared/guardrails/approval-gate.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -128,8 +132,20 @@ export async function runAlertTriageAgent(
   // that's consequential enough to require human sign-off, so it comes
   // back as "needs-approval" rather than a final "drafted" result. A
   // suppress or needs-more-data verdict doesn't trigger anything on its
-  // own, so "drafted" is sufficient there.
-  const status = parsed.verdict === "escalate" ? "needs-approval" : "drafted";
+  // own, so "drafted" is sufficient there. The verdict-to-action-type
+  // mapping and the actual approval decision both live in checkApproval,
+  // not here.
+  const actionType: string =
+    parsed.verdict === "escalate"
+      ? ALERT_TRIAGE_ACTION_TYPES.ESCALATE
+      : parsed.verdict === "suppress"
+        ? ALERT_TRIAGE_ACTION_TYPES.SUPPRESS
+        : ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA;
+  const decision = checkApproval({
+    actionType,
+    payload: { verdict: parsed.verdict, reasoning: parsed.reasoning },
+  });
+  const status = decision === "auto-approved" ? "drafted" : "needs-approval";
 
   await auditLog.record({
     timestamp: new Date().toISOString(),
