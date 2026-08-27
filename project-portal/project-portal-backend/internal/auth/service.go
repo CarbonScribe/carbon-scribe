@@ -104,6 +104,9 @@ func (s *Service) Login(email, password string, ipAddress, userAgent string) (*A
 	if !user.IsActive {
 		return nil, errors.New("user account is disabled")
 	}
+	if !user.EmailVerified {
+		return nil, ErrEmailNotVerified
+	}
 
 	// Create session and generate tokens
 	return s.createSessionAndTokens(user, ipAddress, userAgent)
@@ -143,6 +146,9 @@ func (s *Service) WalletLogin(publicKey, signedChallenge string, ipAddress, user
 	if !user.IsActive {
 		return nil, errors.New("user account is disabled")
 	}
+	if !user.EmailVerified {
+		return nil, ErrEmailNotVerified
+	}
 
 	return s.createSessionAndTokens(user, ipAddress, userAgent)
 }
@@ -169,6 +175,12 @@ func (s *Service) RefreshToken(refreshToken string) (*TokenResponse, error) {
 
 	if user == nil {
 		return nil, errors.New("user not found")
+	}
+	if !user.IsActive {
+		return nil, errors.New("user account is disabled")
+	}
+	if !user.EmailVerified {
+		return nil, ErrEmailNotVerified
 	}
 
 	// Get user permissions
@@ -318,6 +330,9 @@ func (s *Service) VerifyEmail(token string) error {
 	if authToken.TokenType != "email_verification" {
 		return errors.New("invalid token type")
 	}
+	if !authToken.ExpiresAt.After(time.Now()) {
+		return errors.New("verification token expired")
+	}
 
 	// Get user
 	user, err := s.repository.GetUserByID(authToken.UserID)
@@ -343,6 +358,26 @@ func (s *Service) VerifyEmail(token string) error {
 	}
 
 	return nil
+}
+
+// ResendVerification creates a fresh 24-hour verification token for an existing user.
+// It intentionally returns no indication of whether the email exists.
+func (s *Service) ResendVerification(email string) (string, error) {
+	user, err := s.repository.GetUserByEmail(email)
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve user: %w", err)
+	}
+	if user == nil || user.EmailVerified {
+		return "", nil
+	}
+
+	if latest, err := s.repository.GetLatestAuthToken(user.ID, "email_verification"); err != nil {
+		return "", fmt.Errorf("failed to retrieve verification token: %w", err)
+	} else if latest != nil && latest.ExpiresAt.After(time.Now()) {
+		return "", nil
+	}
+
+	return s.generateAuthToken(user.ID, "email_verification", 24*time.Hour)
 }
 
 // GetUserProfile retrieves a user's profile
@@ -494,17 +529,20 @@ func (s *Service) getUserPermissions(role string) ([]string, error) {
 	return []string(rolePerms.Permissions), nil
 }
 
+var ErrEmailNotVerified = errors.New("email not verified")
+
 func toUserResponse(user *User) *UserResponse {
 	return &UserResponse{
-		ID:            user.ID,
-		Email:         user.Email,
-		FullName:      user.FullName,
-		Organization:  user.Organization,
-		Role:          user.Role,
-		EmailVerified: user.EmailVerified,
-		IsActive:      user.IsActive,
-		WalletAddress: user.WalletAddress,
-		LastLoginAt:   user.LastLoginAt,
-		CreatedAt:     user.CreatedAt,
+		ID:                   user.ID,
+		Email:                user.Email,
+		FullName:             user.FullName,
+		Organization:         user.Organization,
+		Role:                 user.Role,
+		EmailVerified:        user.EmailVerified,
+		VerificationRequired: !user.EmailVerified,
+		IsActive:             user.IsActive,
+		WalletAddress:        user.WalletAddress,
+		LastLoginAt:          user.LastLoginAt,
+		CreatedAt:            user.CreatedAt,
 	}
 }

@@ -56,6 +56,16 @@ func RegisterAuthRoutes(router *gin.RouterGroup, handler *Handler, tokenManager 
 			handler.RequestPasswordReset,
 		)
 
+		// resend-verification: 3 attempts per hour per IP
+		router.POST("/resend-verification",
+			rl.Limit(middleware.RouteConfig{
+				MaxRequests: 3,
+				Window:      1 * time.Hour,
+				KeyPrefix:   "rl:auth:resend-verification",
+			}),
+			handler.ResendVerification,
+		)
+
 		// wallet-challenge: 5 attempts per minute per IP
 		router.POST("/wallet-challenge",
 			rl.Limit(middleware.RouteConfig{
@@ -71,6 +81,7 @@ func RegisterAuthRoutes(router *gin.RouterGroup, handler *Handler, tokenManager 
 		router.POST("/refresh", handler.RefreshToken)
 		router.POST("/request-password-reset", handler.RequestPasswordReset)
 		router.POST("/wallet-challenge", handler.GenerateWalletChallenge)
+		router.POST("/resend-verification", handler.ResendVerification)
 	}
 
 	// These routes are less sensitive — a simple limit is sufficient
@@ -80,7 +91,7 @@ func RegisterAuthRoutes(router *gin.RouterGroup, handler *Handler, tokenManager 
 
 	// Protected endpoints
 	protected := router.Group("")
-	protected.Use(AuthMiddleware(tokenManager))
+	protected.Use(AuthMiddleware(tokenManager), RequireVerifiedEmail(handler.service.repository))
 	{
 		protected.GET("/me", handler.GetProfile)
 		protected.PUT("/me", handler.UpdateProfile)
