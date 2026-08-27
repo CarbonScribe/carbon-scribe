@@ -80,8 +80,8 @@ describe("all four agent routes enforce requireInternalAuth", () => {
     }
   });
 
-  it("does not require auth for /health", async () => {
-    const res = await request(buildApp()).get("/health");
+  it("does not require auth for /health/liveness", async () => {
+    const res = await request(buildApp()).get("/health/liveness");
     expect(res.status).toBe(200);
   });
 
