@@ -10,11 +10,15 @@ import { env } from "../config/env.js";
 //   - getProject(projectId)
 //   - getMonitoringAlerts(projectId, since)
 //   - getSatelliteTimeseries(projectId, metric: "ndvi" | "biomass")
+// Outbound auth (agent-service authenticating itself to
+// project-portal-backend) is a separate, not-yet-specified concern — out
+// of scope for issue #579, which replaced the shared-secret check on
+// agent-service's own inbound routes (see
+// shared/middleware/auth.middleware.ts). project-portal-backend has no
+// service-to-service auth guard today regardless of what header this
+// client sends, so there is nothing to authenticate against yet.
 const http = axios.create({
   baseURL: env.projectPortalBaseUrl,
-  headers: env.internalServiceToken
-    ? { "x-internal-token": env.internalServiceToken }
-    : undefined,
 });
 
 // ---------------------------------------------------------------------------

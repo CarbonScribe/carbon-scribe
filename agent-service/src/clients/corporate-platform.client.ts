@@ -10,11 +10,15 @@ import { env } from "../config/env.js";
 //   - listMarketplaceCredits(filters)
 //   - getComplianceFramework(framework: "csrd" | "cbam" | "corsia" | "sbti" | "ghg-protocol")
 //   - getRetirementHistory(companyId)
+// Outbound auth (agent-service authenticating itself to
+// corporate-platform-backend) is a separate, not-yet-specified concern —
+// out of scope for issue #579, which replaced the shared-secret check on
+// agent-service's own inbound routes (see
+// shared/middleware/auth.middleware.ts). corporate-platform-backend has no
+// service-to-service auth guard today regardless of what header this
+// client sends, so there is nothing to authenticate against yet.
 const http = axios.create({
   baseURL: env.corporatePlatformBaseUrl,
-  headers: env.internalServiceToken
-    ? { "x-internal-token": env.internalServiceToken }
-    : undefined,
 });
 
 // ---------------------------------------------------------------------------

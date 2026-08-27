@@ -127,7 +127,7 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "add_rule",
+              "function_name": "update_rule",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -139,7 +139,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "desc"
+                        "string": "updated desc"
                       }
                     },
                     {
@@ -163,7 +163,7 @@
                         "symbol": "is_allowed"
                       },
                       "val": {
-                        "bool": true
+                        "bool": false
                       }
                     },
                     {
@@ -173,7 +173,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "RETIREMENT"
+                            "symbol": "TRANSFER"
                           }
                         ]
                       }
@@ -189,7 +189,7 @@
                         "symbol": "rule_id"
                       },
                       "val": {
-                        "string": "R2"
+                        "string": "R1"
                       }
                     },
                     {
@@ -208,7 +208,8 @@
           "sub_invocations": []
         }
       ]
-    ]
+    ],
+    []
   ],
   "ledger": {
     "protocol_version": 23,
@@ -262,7 +263,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "desc"
+                        "string": "updated desc"
                       }
                     },
                     {
@@ -286,7 +287,7 @@
                         "symbol": "is_allowed"
                       },
                       "val": {
-                        "bool": true
+                        "bool": false
                       }
                     },
                     {
@@ -313,118 +314,6 @@
                       },
                       "val": {
                         "string": "R1"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "source_jur"
-                      },
-                      "val": {
-                        "string": "US"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Rule"
-                },
-                {
-                  "string": "R2"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Rule"
-                    },
-                    {
-                      "string": "R2"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "description"
-                      },
-                      "val": {
-                        "string": "desc"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "dest_jur"
-                      },
-                      "val": {
-                        "string": "CA"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "host_jur"
-                      },
-                      "val": {
-                        "string": "US"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "is_allowed"
-                      },
-                      "val": {
-                        "bool": true
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "operation"
-                      },
-                      "val": {
-                        "vec": [
-                          {
-                            "symbol": "RETIREMENT"
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "required_authority"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "rule_id"
-                      },
-                      "val": {
-                        "string": "R2"
                       }
                     },
                     {
@@ -479,9 +368,6 @@
                           "vec": [
                             {
                               "string": "R1"
-                            },
-                            {
-                              "string": "R2"
                             }
                           ]
                         }
@@ -654,101 +540,5 @@
       ]
     ]
   },
-  "events": [
-    {
-      "event": {
-        "ext": "v0",
-        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-        "type_": "contract",
-        "body": {
-          "v0": {
-            "topics": [
-              {
-                "symbol": "rule_added"
-              }
-            ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "added_by"
-                  },
-                  "val": {
-                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "dest_jur"
-                  },
-                  "val": {
-                    "string": "CA"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "host_jur"
-                  },
-                  "val": {
-                    "string": "US"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "is_allowed"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "operation"
-                  },
-                  "val": {
-                    "vec": [
-                      {
-                        "symbol": "RETIREMENT"
-                      }
-                    ]
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "required_authority"
-                  },
-                  "val": "void"
-                },
-                {
-                  "key": {
-                    "symbol": "rule_id"
-                  },
-                  "val": {
-                    "string": "R2"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "source_jur"
-                  },
-                  "val": {
-                    "string": "US"
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "timestamp"
-                  },
-                  "val": {
-                    "u64": "0"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      },
-      "failed_call": false
-    }
-  ]
+  "events": []
 }
