@@ -59,7 +59,11 @@ function matches(row: Record<string, any>, where: Where | undefined): boolean {
 
     const value = row[key];
 
-    if (condition !== null && typeof condition === 'object' && !(condition instanceof Date)) {
+    if (
+      condition !== null &&
+      typeof condition === 'object' &&
+      !(condition instanceof Date)
+    ) {
       return Object.entries(condition as Record<string, any>).every(
         ([operator, operand]) => {
           switch (operator) {
@@ -319,7 +323,9 @@ export class InMemoryPrisma {
           matches(candidate, where),
         );
         if (!row) {
-          throw new Error(`Credit not found for update: ${JSON.stringify(where)}`);
+          throw new Error(
+            `Credit not found for update: ${JSON.stringify(where)}`,
+          );
         }
         const next = { ...row, ...this.applyData(row, data) };
         if (ctx) ctx.creditWrites.set(row.id, next);
@@ -393,7 +399,10 @@ export class InMemoryPrisma {
         );
         const predicate = (row: ReservationRow) => matches(row, where);
         if (ctx) ctx.reservationDeletes.push(predicate);
-        else this.reservations = this.reservations.filter((row) => !predicate(row));
+        else
+          this.reservations = this.reservations.filter(
+            (row) => !predicate(row),
+          );
         return { count: targets.length };
       },
     };

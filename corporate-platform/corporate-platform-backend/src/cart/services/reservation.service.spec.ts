@@ -98,7 +98,9 @@ describe('ReservationService', () => {
     );
 
     await expect(
-      service.reserveCredits('cart-1', [{ creditId: 'credit-1', quantity: 30 }]),
+      service.reserveCredits('cart-1', [
+        { creditId: 'credit-1', quantity: 30 },
+      ]),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -116,7 +118,9 @@ describe('ReservationService', () => {
     );
 
     await expect(
-      service.reserveCredits('cart-1', [{ creditId: 'credit-1', quantity: 90 }]),
+      service.reserveCredits('cart-1', [
+        { creditId: 'credit-1', quantity: 90 },
+      ]),
     ).resolves.toBeUndefined();
 
     expect(store.reservations[0].quantity).toBe(90);
@@ -151,7 +155,10 @@ describe('ReservationService', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
 
-    const totalHeld = store.reservations.reduce((sum, r) => sum + r.quantity, 0);
+    const totalHeld = store.reservations.reduce(
+      (sum, r) => sum + r.quantity,
+      0,
+    );
     expect(totalHeld).toBeLessThanOrEqual(100);
     expect(totalHeld).toBe(60);
   });
@@ -168,9 +175,9 @@ describe('ReservationService', () => {
       ]),
     ]);
 
-    expect(
-      store.reservations.reduce((sum, r) => sum + r.quantity, 0),
-    ).toBe(100);
+    expect(store.reservations.reduce((sum, r) => sum + r.quantity, 0)).toBe(
+      100,
+    );
   });
 
   it('releases a cart’s reservations and logs the release', async () => {

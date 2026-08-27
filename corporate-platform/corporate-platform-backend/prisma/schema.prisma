@@ -495,8 +495,12 @@ model Session {
   ipAddress    String?
   expiresAt    DateTime
   isValid      Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  lastUsedAt   DateTime?
+  createdAt            DateTime  @default(now())
+  lastUsedAt           DateTime?
+  previousRefreshToken String?
+  deviceId             String?
+  failedAttempts       Int       @default(0)
+  lockedUntil          DateTime?
 
   @@index([refreshToken])
   @@index([expiresAt])

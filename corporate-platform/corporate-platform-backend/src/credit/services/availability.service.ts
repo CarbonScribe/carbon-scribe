@@ -238,7 +238,8 @@ export class AvailabilityService {
     const newAmount = headroom.availableAmount - claim.amount;
     // `status` is non-nullable in the schema, so a fully-consumed credit flips
     // to 'reserved' and anything else keeps whatever it had (never null).
-    const newStatus = newAmount === 0 ? 'reserved' : (headroom.status ?? undefined);
+    const newStatus =
+      newAmount === 0 ? 'reserved' : (headroom.status ?? undefined);
 
     const guardedWhere: any = {
       id: claim.creditId,

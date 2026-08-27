@@ -16,7 +16,9 @@ export type PrismaTxClient = {
     updateMany: (args: unknown) => Promise<{ count: number }>;
   };
   creditReservation: {
-    aggregate: (args: unknown) => Promise<{ _sum: { quantity: number | null } }>;
+    aggregate: (
+      args: unknown,
+    ) => Promise<{ _sum: { quantity: number | null } }>;
   };
   creditAvailabilityLog: { create: (args: unknown) => Promise<unknown> };
   $queryRaw?: (...args: any[]) => Promise<unknown>;

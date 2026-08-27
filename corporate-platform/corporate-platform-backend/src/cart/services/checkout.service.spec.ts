@@ -204,7 +204,9 @@ describe('CheckoutService', () => {
         transactionHash: 'tx_abc',
       });
 
-      mockAvailabilityService.decrementWithin.mockResolvedValue({ newAmount: 4000 });
+      mockAvailabilityService.decrementWithin.mockResolvedValue({
+        newAmount: 4000,
+      });
       mockPrisma.order.update.mockResolvedValue({
         id: 'order1',
         orderNumber: 'ORD-2026-0001',
