@@ -23,4 +23,11 @@ pub enum ContractError {
     // Two-step admin transfer errors (issue #557)
     NoPendingAdmin = 17,
     NotPendingAdmin = 18,
+    // The call to the regulatory contract itself failed — it isn't
+    // deployed, doesn't export validate_transaction, its return value
+    // didn't deserialize as ValidationResult, or it returned its own
+    // error. Distinct from ComplianceFailed, which means the call
+    // succeeded and the regulatory contract responded non-compliant
+    // (issue #517).
+    ComplianceCallFailed = 19,
 }

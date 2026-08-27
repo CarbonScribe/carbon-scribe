@@ -3,6 +3,10 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
+import {
+  checkApproval,
+  DISCOVERY_ACTION_TYPES,
+} from "../../shared/guardrails/approval-gate.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -133,21 +137,26 @@ export async function runDiscoveryAgent(
     );
   }
 
+  const citations: AgentCitation[] = parsed.citations;
+  const decision = checkApproval({
+    actionType: DISCOVERY_ACTION_TYPES.RECOMMEND_CREDITS,
+    payload: { recommendations: parsed.recommendations, citations },
+  });
+  const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
   await auditLog.record({
     timestamp: new Date().toISOString(),
     agent: "discovery",
     requestId: req.requestId,
     requestedBy: req.requestedBy,
     toolCalls,
-    status: "drafted",
+    status,
   });
-
-  const citations: AgentCitation[] = parsed.citations;
 
   return {
     agent: "discovery",
     requestId: req.requestId,
-    status: "drafted",
+    status,
     output: {
       recommendations: parsed.recommendations,
       notes: parsed.notes,
