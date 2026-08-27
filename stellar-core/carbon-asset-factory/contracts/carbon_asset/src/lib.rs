@@ -391,6 +391,16 @@ impl CarbonAsset {
             .instance()
             .get(&DataKey::RegulatoryCheck);
 
+        // Fail-open by design: regulatory checking is an opt-in, per-deployment
+        // feature (see set_regulatory_check). A deployment that has never
+        // configured a regulatory contract hasn't opted into compliance
+        // gating at all, so there is no jurisdiction rule to enforce and none
+        // is being claimed — treating every transfer as non-compliant would
+        // brick transfers for every deployment that doesn't use this feature.
+        // ContractError::RegulatoryNotSet is reserved for a path that
+        // requires regulatory config to be present and finds it missing;
+        // this optional hook isn't that path. See
+        // test_before_transfer_without_regulatory_contract_is_fail_open.
         if regulatory_contract.is_none() {
             return Ok(true);
         }
@@ -419,7 +429,26 @@ impl CarbonAsset {
         args.push_back(operation.into_val(&env));
         args.push_back(host_jurisdiction.into_val(&env));
 
-        let result: ValidationResult = env.invoke_contract(&contract, &symbol, args);
+        // try_invoke_contract (rather than the trapping invoke_contract) so a
+        // missing/undeployed contract, a missing validate_transaction export,
+        // an argument mismatch, an internal panic, or a return value that
+        // doesn't deserialize as ValidationResult all surface as a typed
+        // ComplianceCallFailed instead of aborting the whole host invocation.
+        let call_result: Result<
+            Result<ValidationResult, _>,
+            Result<soroban_sdk::Error, soroban_sdk::InvokeError>,
+        > = env.try_invoke_contract::<ValidationResult, soroban_sdk::Error>(
+            &contract, &symbol, args,
+        );
+
+        let result = match call_result {
+            Ok(Ok(value)) => value,
+            // Call succeeded but the returned value didn't deserialize as
+            // ValidationResult, or the call failed outright (contract not
+            // deployed, function not found, argument mismatch, internal
+            // panic, or the contract returned its own typed error).
+            Ok(Err(_)) | Err(_) => return Err(ContractError::ComplianceCallFailed),
+        };
 
         Ok(result.is_compliant && !result.requires_authorization)
     }
@@ -978,6 +1007,10 @@ impl CarbonAsset {
             return Err(ContractError::TransferNotAllowed);
         }
 
+        // The `?` here already propagates ComplianceCallFailed (or any other
+        // ContractError from before_transfer's own storage lookups)
+        // transparently — only an `Ok(false)` (the call succeeded and
+        // responded non-compliant) reaches this explicit ComplianceFailed.
         if !Self::before_transfer(env.clone(), from.clone(), to.clone(), token_id)? {
             return Err(ContractError::ComplianceFailed);
         }

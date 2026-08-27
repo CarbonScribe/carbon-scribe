@@ -3,6 +3,10 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
+import {
+  checkApproval,
+  COMPLIANCE_REPORT_ACTION_TYPES,
+} from "../../shared/guardrails/approval-gate.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -141,24 +145,38 @@ export async function runComplianceReportAgent(
     );
   }
 
+  const citations: AgentCitation[] = parsed.citations;
+
+  // checkApproval's blocklist guarantees DRAFT_REPORT can never resolve to
+  // "auto-approved" (see shared/guardrails/approval-gate.ts and its
+  // dedicated test) — a compliance report always requires human sign-off
+  // before submission, regardless of how complete or confident the draft
+  // looks. `status` below is therefore always "needs-approval" in
+  // practice; it's still derived from checkApproval rather than
+  // hard-coded so the guarantee lives in one place.
+  const decision = checkApproval({
+    actionType: COMPLIANCE_REPORT_ACTION_TYPES.DRAFT_REPORT,
+    payload: {
+      framework: parsed.framework,
+      sections: parsed.sections,
+      gaps: parsed.gaps,
+    },
+  });
+  const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
   await auditLog.record({
     timestamp: new Date().toISOString(),
     agent: "compliance-report",
     requestId: req.requestId,
     requestedBy: req.requestedBy,
     toolCalls,
-    status: "needs-approval",
+    status,
   });
 
-  const citations: AgentCitation[] = parsed.citations;
-
-  // Hard-coded, not derived from the model's output: a compliance report
-  // always requires human sign-off before submission, regardless of how
-  // complete or confident the draft looks.
   return {
     agent: "compliance-report",
     requestId: req.requestId,
-    status: "needs-approval",
+    status,
     output: {
       framework: parsed.framework,
       sections: parsed.sections,

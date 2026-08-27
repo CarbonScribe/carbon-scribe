@@ -2,9 +2,9 @@
 
 use super::{CarbonAsset, CarbonAssetClient};
 use crate::errors::ContractError;
-use crate::types::{AssetStatus, CarbonAssetMetadata};
+use crate::types::{AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, BytesN, Env, String};
+use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, String};
 
 fn setup_env() -> (Env, Address, Address, Address) {
     let env = Env::default();
@@ -479,4 +479,224 @@ fn test_admin_gated_functions_follow_accepted_transfer() {
     assert_eq!(client.get_status(&token_id), AssetStatus::Listed);
     client.set_max_supply(&new_admin, &100);
     assert_eq!(client.get_max_supply(), Some(100));
+}
+
+// ====================================================================
+// Compliance hook: cross-contract failure handling (issue #517)
+// ====================================================================
+
+#[contract]
+pub struct MockRegulatoryCompliant;
+
+#[contractimpl]
+impl MockRegulatoryCompliant {
+    pub fn validate_transaction(
+        _env: Env,
+        _from: Address,
+        _to: Address,
+        _operation: OperationType,
+        _host_jurisdiction: String,
+    ) -> ValidationResult {
+        ValidationResult {
+            is_compliant: true,
+            rule_id: None,
+            requires_authorization: false,
+            authority_address: None,
+            error_message: None,
+        }
+    }
+}
+
+#[contract]
+pub struct MockRegulatoryNonCompliant;
+
+#[contractimpl]
+impl MockRegulatoryNonCompliant {
+    pub fn validate_transaction(
+        _env: Env,
+        _from: Address,
+        _to: Address,
+        _operation: OperationType,
+        _host_jurisdiction: String,
+    ) -> ValidationResult {
+        ValidationResult {
+            is_compliant: false,
+            rule_id: None,
+            requires_authorization: false,
+            authority_address: None,
+            error_message: None,
+        }
+    }
+}
+
+/// Deliberately does not export `validate_transaction` — exercises the
+/// "target contract missing the expected function" failure mode.
+#[contract]
+pub struct MockRegulatoryNoValidate;
+
+#[contractimpl]
+impl MockRegulatoryNoValidate {
+    pub fn ping(_env: Env) -> bool {
+        true
+    }
+}
+
+/// Same name/args as the real hook, but returns a type that cannot
+/// deserialize as ValidationResult — exercises the "malformed return
+/// value" failure mode.
+#[contract]
+pub struct MockRegulatoryBadReturn;
+
+#[contractimpl]
+impl MockRegulatoryBadReturn {
+    pub fn validate_transaction(
+        _env: Env,
+        _from: Address,
+        _to: Address,
+        _operation: OperationType,
+        _host_jurisdiction: String,
+    ) -> u32 {
+        42
+    }
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum MockRegulatoryError {
+    Denied = 1,
+}
+
+/// Always returns its own typed error — exercises the "target function
+/// itself returns an error" failure mode.
+#[contract]
+pub struct MockRegulatoryErroring;
+
+#[contractimpl]
+impl MockRegulatoryErroring {
+    pub fn validate_transaction(
+        _env: Env,
+        _from: Address,
+        _to: Address,
+        _operation: OperationType,
+        _host_jurisdiction: String,
+    ) -> Result<ValidationResult, MockRegulatoryError> {
+        Err(MockRegulatoryError::Denied)
+    }
+}
+
+/// Mints a token to `owner` and returns its id, on a contract that
+/// already has `regulatory_contract` wired in via set_regulatory_check.
+fn mint_with_regulatory(
+    env: &Env,
+    client: &CarbonAssetClient,
+    admin: &Address,
+    owner: &Address,
+    regulatory_contract: &Address,
+) -> u32 {
+    client.set_regulatory_check(admin, regulatory_contract);
+    client.mint(admin, owner, &make_meta(env))
+}
+
+/// Fail-open is a deliberate design choice, not an oversight: a
+/// deployment that never configures a regulatory contract hasn't opted
+/// into compliance gating, so transfers proceed normally. Locks in this
+/// behavior against an accidental future change to fail-closed.
+#[test]
+fn test_before_transfer_without_regulatory_contract_is_fail_open() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+
+    let token_id = client.mint(&admin, &owner, &make_meta(&env));
+    let buyer = Address::generate(&env);
+
+    client.transfer(&owner, &buyer, &1);
+    assert_eq!(client.owner_of(&token_id), buyer);
+}
+
+/// No behavior change for the healthy path: a compliant regulatory
+/// contract still allows the transfer to proceed exactly as before.
+#[test]
+fn test_transfer_with_compliant_regulatory_contract_succeeds() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let regulatory_id = env.register(MockRegulatoryCompliant, ());
+
+    let token_id = mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    client.transfer(&owner, &buyer, &1);
+    assert_eq!(client.owner_of(&token_id), buyer);
+}
+
+/// A regulatory contract that responds non-compliant is a distinct,
+/// successful call — ComplianceFailed, not ComplianceCallFailed.
+#[test]
+fn test_transfer_with_noncompliant_regulatory_contract_returns_compliance_failed() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let regulatory_id = env.register(MockRegulatoryNonCompliant, ());
+
+    mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer(&owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::ComplianceFailed)));
+}
+
+/// Target contract not deployed at all.
+#[test]
+fn test_transfer_with_undeployed_regulatory_contract_returns_compliance_call_failed() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    // Never registered as a contract — just a bare address.
+    let regulatory_id = Address::generate(&env);
+
+    mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer(&owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::ComplianceCallFailed)));
+}
+
+/// Target contract deployed but missing validate_transaction.
+#[test]
+fn test_transfer_with_regulatory_contract_missing_function_returns_compliance_call_failed() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let regulatory_id = env.register(MockRegulatoryNoValidate, ());
+
+    mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer(&owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::ComplianceCallFailed)));
+}
+
+/// Target contract's return value doesn't deserialize as ValidationResult.
+#[test]
+fn test_transfer_with_regulatory_contract_malformed_return_returns_compliance_call_failed() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let regulatory_id = env.register(MockRegulatoryBadReturn, ());
+
+    mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer(&owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::ComplianceCallFailed)));
+}
+
+/// Target function itself returns its own typed error.
+#[test]
+fn test_transfer_with_regulatory_contract_erroring_returns_compliance_call_failed() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let regulatory_id = env.register(MockRegulatoryErroring, ());
+
+    mint_with_regulatory(&env, &client, &admin, &owner, &regulatory_id);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer(&owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::ComplianceCallFailed)));
 }
