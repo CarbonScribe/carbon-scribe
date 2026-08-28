@@ -5,6 +5,7 @@ import {
   WebhookPayload,
 } from '../interfaces/webhook.interface';
 import { ProducerService } from '../../event-bus/producer.service';
+import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
 
 @Injectable()
 export class WebhookDispatcherService implements OnModuleInit {
@@ -14,6 +15,7 @@ export class WebhookDispatcherService implements OnModuleInit {
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly eventBus: ProducerService,
+    private readonly unitOfWork: UnitOfWorkService,
   ) {}
 
   onModuleInit() {
@@ -29,46 +31,42 @@ export class WebhookDispatcherService implements OnModuleInit {
   async dispatch(payload: WebhookPayload) {
     this.logger.log(`Dispatching event: ${payload.eventType}`);
 
-    // 1. Send to Kafka for external consumers
-    try {
-      await this.eventBus.publish('blockchain-events', {
-        id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        type: payload.eventType,
-        source: 'webhooks-service',
-        timestamp: payload.timestamp,
-        correlationId: `corr_${Date.now()}`,
-        data: payload.data,
-        version: '1.0',
-        companyId: payload.data.companyId,
-      });
-    } catch (error) {
-      this.logger.error('Failed to publish event to Kafka', error);
-    }
+    const event = {
+      id: `webhook:${payload.eventType}:${payload.data.hash || payload.data.transactionHash || payload.data.accountId || payload.timestamp}`,
+      type: payload.eventType,
+      source: 'webhooks-service',
+      timestamp: payload.timestamp,
+      correlationId: `corr:${payload.eventType}:${payload.timestamp}`,
+      data: payload.data,
+      version: '1.0',
+      companyId: payload.data.companyId,
+    };
 
-    // 2. Handle internally
-    const supportedHandlers = this.handlers.filter((h) =>
-      h.supports(payload.eventType),
+    const supportedHandlers = this.handlers.filter((handler) =>
+      handler.supports(payload.eventType),
+    );
+
+    await this.unitOfWork.run(async (tx: any) => {
+      await this.eventBus.publish('blockchain-events', event, undefined, { tx });
+
+      await Promise.all(
+        supportedHandlers.map(async (handler) => {
+          await handler.handle(payload.data, tx);
+        }),
+      );
+    });
+
+    await this.eventBus.publishPending(
+      'blockchain-events',
+      `blockchain-events:${event.id}:${event.type}`,
     );
 
     if (supportedHandlers.length === 0) {
       this.logger.warn(
         `No internal handlers found for event: ${payload.eventType}`,
       );
+
       return;
     }
-
-    await Promise.all(
-      supportedHandlers.map(async (handler) => {
-        try {
-          await handler.handle(payload.data);
-        } catch (error) {
-          this.logger.error(
-            `Handler ${handler.constructor.name} failed for event ${payload.eventType}`,
-            error,
-          );
-          // Retry logic would be triggered here
-        }
-      }),
-    );
   }
 }
