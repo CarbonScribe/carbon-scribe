@@ -47,7 +47,9 @@ export class WebhookDispatcherService implements OnModuleInit {
     );
 
     await this.unitOfWork.run(async (tx: any) => {
-      await this.eventBus.publish('blockchain-events', event, undefined, { tx });
+      await this.eventBus.publish('blockchain-events', event, undefined, {
+        tx,
+      });
 
       await Promise.all(
         supportedHandlers.map(async (handler) => {

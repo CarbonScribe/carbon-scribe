@@ -27,8 +27,14 @@ export class OutboxService {
     private readonly kafkaService: KafkaService,
     private readonly configService: ConfigService,
   ) {
-    this.maxAttempts = this.configService.get<number>('OUTBOX_MAX_ATTEMPTS', 10);
-    this.sendTimeout = this.configService.get<number>('KAFKA_PRODUCER_TIMEOUT', 10000);
+    this.maxAttempts = this.configService.get<number>(
+      'OUTBOX_MAX_ATTEMPTS',
+      10,
+    );
+    this.sendTimeout = this.configService.get<number>(
+      'KAFKA_PRODUCER_TIMEOUT',
+      10000,
+    );
     this.kafkaRetries = this.configService.get<number>('KAFKA_MAX_RETRIES', 3);
     this.retryDelay = this.configService.get<number>('KAFKA_RETRY_DELAY', 1000);
   }
@@ -65,7 +71,9 @@ export class OutboxService {
     if (!row || row.status !== 'pending') return row?.status === 'published';
 
     if (!this.kafkaService.isEnabled()) {
-      this.logger.warn(`Kafka disabled; leaving outbox event ${row.id} pending`);
+      this.logger.warn(
+        `Kafka disabled; leaving outbox event ${row.id} pending`,
+      );
       return false;
     }
 
@@ -169,7 +177,9 @@ export class OutboxService {
       } catch (error) {
         lastError = error;
         if (attempt < this.kafkaRetries) {
-          await this.sleep(Math.min(this.retryDelay * 2 ** (attempt - 1), 30000));
+          await this.sleep(
+            Math.min(this.retryDelay * 2 ** (attempt - 1), 30000),
+          );
         }
       }
     }

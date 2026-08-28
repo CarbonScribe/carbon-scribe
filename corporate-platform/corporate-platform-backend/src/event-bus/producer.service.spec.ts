@@ -8,17 +8,22 @@ import { OutboxService } from './outbox.service';
 
 describe('ProducerService', () => {
   let service: ProducerService;
-  let kafkaService: jest.Mocked<KafkaService>;
   let mockProducer: { send: jest.Mock };
-  let outboxService: { create: jest.Mock; createMany: jest.Mock; publish: jest.Mock };
+  let outboxService: {
+    create: jest.Mock;
+    createMany: jest.Mock;
+    publish: jest.Mock;
+  };
 
   beforeEach(async () => {
     mockProducer = { send: jest.fn() };
     outboxService = {
       create: jest.fn().mockImplementation((input) => ({ id: input.key })),
-      createMany: jest.fn().mockImplementation((inputs) =>
-        inputs.map((input: { key: string }) => ({ id: input.key })),
-      ),
+      createMany: jest
+        .fn()
+        .mockImplementation((inputs) =>
+          inputs.map((input: { key: string }) => ({ id: input.key })),
+        ),
       publish: jest.fn().mockResolvedValue(true),
     };
 
@@ -63,7 +68,6 @@ describe('ProducerService', () => {
     }).compile();
 
     service = module.get<ProducerService>(ProducerService);
-    kafkaService = module.get<KafkaService>(KafkaService) as any;
   });
 
   it('should be defined', () => {
