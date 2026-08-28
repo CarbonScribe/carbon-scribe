@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Save } from 'lucide-react';
-import { IntegrationProvider, Environment, CreateConnectionRequest } from '@/store/integration.types';
+import { IntegrationProvider, Environment, CreateConnectionRequest } from '@/lib/store/integrations/integration.types';
 
 interface ConnectionFormProps {
   onSubmit: (data: CreateConnectionRequest) => Promise<void>;
