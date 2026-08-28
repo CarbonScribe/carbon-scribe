@@ -69,7 +69,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -88,8 +92,7 @@ impl RegulatoryCheck {
             .instance()
             .get(&DataKey::ActiveRuleIds)
             .unwrap_or(Vec::new(&env));
-        for i in 0..active_rules.len() {
-            let rid = active_rules.get(i).unwrap();
+        for rid in active_rules.iter() {
             let existing_key = DataKey::Rule(rid.clone());
             if let Some(existing_rule) = env
                 .storage()
@@ -157,7 +160,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -200,7 +207,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -220,11 +231,10 @@ impl RegulatoryCheck {
             .storage()
             .instance()
             .get(&DataKey::ActiveRuleIds)
-            .unwrap();
+            .unwrap_or(Vec::new(&env));
 
         let mut new_rules = Vec::new(&env);
-        for i in 0..active_rules.len() {
-            let rid = active_rules.get(i).unwrap();
+        for rid in active_rules.iter() {
             if rid != rule_id {
                 new_rules.push_back(rid);
             }
@@ -252,7 +262,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != admin {
             return Err(ContractError::NotAuthorized);
@@ -307,8 +321,7 @@ impl RegulatoryCheck {
             .unwrap_or(Vec::new(&env));
 
         // Find matching rule
-        for i in 0..active_rules.len() {
-            let rule_id = active_rules.get(i).unwrap();
+        for rule_id in active_rules.iter() {
             let rule_key = DataKey::Rule(rule_id.clone());
 
             if let Some(rule) = env
@@ -488,7 +501,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != admin {
             return Err(ContractError::NotAuthorized);
@@ -506,7 +523,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);

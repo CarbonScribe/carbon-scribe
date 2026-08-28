@@ -38,6 +38,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
@@ -251,6 +252,17 @@ func main() {
 	notificationsService.SetSMSSender(smsSender)
 
 	notificationsHandler := notifications.NewHandler(notificationsService)
+
+	// ============================================================================
+	// Initialize Compliance Request Worker
+	// ============================================================================
+
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+
+	complianceWorker := workers.NewComplianceRequestWorker(complianceRepo, notificationsService, 5*time.Minute, log.Default())
+	go complianceWorker.Run(workerCtx)
+	log.Println("✅ Compliance request worker started")
 
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)

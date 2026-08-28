@@ -93,7 +93,6 @@ fn test_record_and_query_event() {
 }
 
 #[test]
-#[should_panic(expected = "Event payload exceeds maximum allowed size")]
 fn test_oversized_event_payload() {
     let (env, client, _admin, emitter) = setup();
 
@@ -103,11 +102,12 @@ fn test_oversized_event_payload() {
     let event_data = String::from_str(&env, &oversized);
     let tx_hash = BytesN::from_array(&env, &[1; 32]);
 
-    client.record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    let result =
+        client.try_record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    assert_eq!(result, Err(Ok(AuditTrailError::PayloadTooLarge)));
 }
 
 #[test]
-#[should_panic(expected = "Caller not authorized")]
 fn test_unauthorized_emitter() {
     let env = Env::default();
     let contract_id = env.register(AuditTrailContract, ());
@@ -125,7 +125,7 @@ fn test_unauthorized_emitter() {
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[0; 32]);
 
-    client.record_event(
+    let result = client.try_record_event(
         &unauthorized,
         &event_type,
         &primary_id,
@@ -133,6 +133,7 @@ fn test_unauthorized_emitter() {
         &event_data,
         &tx_hash,
     );
+    assert_eq!(result, Err(Ok(AuditTrailError::EmitterNotAuthorized)));
 }
 
 #[test]
@@ -264,7 +265,6 @@ fn test_emitting_contract_reflects_actual_caller() {
 /// This verifies that the allowlist check prevents a non-member from recording
 /// events even when they control the key for the address they provide.
 #[test]
-#[should_panic(expected = "Caller not authorized")]
 fn test_spoofing_unauthorized_address_is_rejected() {
     let (env, client, _admin, _authorized) = setup();
 
@@ -276,7 +276,7 @@ fn test_spoofing_unauthorized_address_is_rejected() {
     let event_data = String::from_str(&env, "{\"spoofed\": true}");
     let tx_hash = BytesN::from_array(&env, &[3; 32]);
 
-    client.record_event(
+    let result = client.try_record_event(
         &attacker,
         &event_type,
         &primary_id,
@@ -284,11 +284,11 @@ fn test_spoofing_unauthorized_address_is_rejected() {
         &event_data,
         &tx_hash,
     );
+    assert_eq!(result, Err(Ok(AuditTrailError::EmitterNotAuthorized)));
 }
 
 /// A revoked emitter must not be able to record events after revocation.
 #[test]
-#[should_panic(expected = "Caller not authorized")]
 fn test_revoked_emitter_cannot_record_events() {
     let (env, client, _admin, emitter) = setup();
 
@@ -300,7 +300,9 @@ fn test_revoked_emitter_cannot_record_events() {
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[4; 32]);
 
-    client.record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    let result =
+        client.try_record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    assert_eq!(result, Err(Ok(AuditTrailError::EmitterNotAuthorized)));
 }
 
 /// Two independently authorized contracts can each record events, and each
@@ -365,7 +367,6 @@ fn test_two_authorized_callers_produce_independent_records() {
 /// the host.  We test the un-authorized variant here to verify the allowlist
 /// itself prevents cross-identity writes.
 #[test]
-#[should_panic(expected = "Caller not authorized")]
 fn test_cannot_record_events_using_another_contracts_identity() {
     let (env, client, _admin, _emitter_a) = setup();
 
@@ -375,7 +376,7 @@ fn test_cannot_record_events_using_another_contracts_identity() {
 
     // A completely unauthorized address tries to record an event claiming to
     // be emitter_b.  The allowlist check sees the unauthorized address, emits
-    // a provenance failure event, and panics.
+    // a provenance failure event, and returns EmitterNotAuthorized.
     let unauthorized = Address::generate(&env);
 
     let event_type = String::from_str(&env, "IMPERSONATE");
@@ -383,7 +384,7 @@ fn test_cannot_record_events_using_another_contracts_identity() {
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[7; 32]);
 
-    client.record_event(
+    let result = client.try_record_event(
         &unauthorized,
         &event_type,
         &primary_id,
@@ -391,6 +392,7 @@ fn test_cannot_record_events_using_another_contracts_identity() {
         &event_data,
         &tx_hash,
     );
+    assert_eq!(result, Err(Ok(AuditTrailError::EmitterNotAuthorized)));
 }
 
 /// Verify that `get_events_by_entity_paged` returns correct pages.
@@ -419,4 +421,97 @@ fn test_paged_query() {
     // Beyond the end returns empty.
     let page2 = client.get_events_by_entity_paged(&primary_id, &10, &3);
     assert_eq!(page2.len(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Typed initialization errors (issue #520)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_double_initialize_returns_already_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&admin);
+
+    let result = client.try_initialize(&admin);
+    assert_eq!(result, Err(Ok(AuditTrailError::AlreadyInitialized)));
+}
+
+#[test]
+fn test_authorize_emitter_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let emitter = Address::generate(&env);
+
+    let result = client.try_authorize_emitter(&emitter);
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+#[test]
+fn test_revoke_emitter_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let emitter = Address::generate(&env);
+
+    let result = client.try_revoke_emitter(&emitter);
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+#[test]
+fn test_is_authorized_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let emitter = Address::generate(&env);
+
+    let result = client.try_is_authorized(&emitter);
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+#[test]
+fn test_set_retention_period_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+
+    let result = client.try_set_retention_period(&(30 * 86400));
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+#[test]
+fn test_prune_old_events_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+
+    let result = client.try_prune_old_events();
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+#[test]
+fn test_record_event_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let caller = Address::generate(&env);
+
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
+    let primary_id = String::from_str(&env, "project-123");
+    let event_data = String::from_str(&env, "{}");
+    let tx_hash = BytesN::from_array(&env, &[0; 32]);
+
+    let result = client.try_record_event(
+        &caller,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+    assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
 }

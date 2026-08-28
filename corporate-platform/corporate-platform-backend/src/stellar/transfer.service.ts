@@ -4,6 +4,29 @@ import { InitiateTransferDto } from './dto/transfer.dto';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { nativeToScVal } from '@stellar/stellar-sdk';
 
+/**
+ * On-chain lifecycle of a credit transfer (FE-069).
+ *
+ * The UI needs to distinguish "we accepted this a second ago" from "this has
+ * been sitting unconfirmed for ten minutes", which a single PENDING state
+ * cannot express.
+ *
+ *  SUBMITTED — accepted by the API; the transaction has not yet been
+ *              acknowledged by the network.
+ *  PENDING   — broadcast and acknowledged; awaiting on-chain confirmation.
+ *  CONFIRMED — landed on-chain (terminal).
+ *  FAILED    — rejected or exhausted retries (terminal).
+ */
+export const TRANSFER_STATES = {
+  SUBMITTED: 'SUBMITTED',
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  FAILED: 'FAILED',
+} as const;
+
+export type TransferState =
+  (typeof TRANSFER_STATES)[keyof typeof TRANSFER_STATES];
+
 @Injectable()
 export class TransferService {
   private readonly logger = new Logger(TransferService.name);
@@ -37,13 +60,18 @@ export class TransferService {
       'CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM';
 
     const prisma = this.prisma as any;
+    const submittedAt = new Date();
     const transfer = await prisma.creditTransfer.create({
       data: {
         purchaseId: dto.purchaseId,
         companyId: dto.companyId,
         projectId: dto.projectId,
         amount: dto.amount,
-        status: 'PENDING',
+        // The transaction has been accepted but not yet broadcast — this is
+        // materially different from "broadcast, awaiting confirmation", and the
+        // UI renders the two distinctly.
+        status: TRANSFER_STATES.SUBMITTED,
+        submittedAt,
       },
     });
 
@@ -118,11 +146,20 @@ export class TransferService {
         const hash = response.hash;
 
         const prisma = this.prisma as any;
+        // Broadcast acknowledged: SUBMITTED -> PENDING. The hash is now
+        // available so the UI can link out to the explorer while it waits.
         await prisma.creditTransfer.update({
           where: { id: transferId },
           data: {
             transactionHash: hash,
-            status: 'CONFIRMED',
+            status: TRANSFER_STATES.PENDING,
+          },
+        });
+
+        await prisma.creditTransfer.update({
+          where: { id: transferId },
+          data: {
+            status: TRANSFER_STATES.CONFIRMED,
             confirmedAt: new Date(),
           },
         });
@@ -137,7 +174,7 @@ export class TransferService {
           where: { id: transferId },
           data: {
             transactionHash: mockHash,
-            status: 'CONFIRMED',
+            status: TRANSFER_STATES.CONFIRMED,
             confirmedAt: new Date(),
           },
         });
@@ -162,7 +199,7 @@ export class TransferService {
         await prisma.creditTransfer.update({
           where: { id: transferId },
           data: {
-            status: 'FAILED',
+            status: TRANSFER_STATES.FAILED,
             errorMessage:
               error instanceof Error ? error.message : 'Unknown error',
           },

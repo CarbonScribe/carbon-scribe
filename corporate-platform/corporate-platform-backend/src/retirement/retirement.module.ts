@@ -16,6 +16,7 @@ import { IdempotencyKeyService } from './idempotency/idempotency-key.service';
 import { IdempotencyInterceptor } from './idempotency/idempotency.interceptor';
 import { CacheModule } from '../cache/cache.module';
 import { DatabaseModule } from '../shared/database/database.module';
+import { CreditModule } from '../credit/credit.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { DatabaseModule } from '../shared/database/database.module';
     SorobanModule,
     CacheModule,
     DatabaseModule,
+    CreditModule,
   ],
   providers: [
     RetirementService,
