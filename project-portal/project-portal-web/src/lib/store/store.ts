@@ -1,6 +1,7 @@
 import { setAuthToken, setUserIdGetter } from "@/lib/api/axios";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { encryptedStorage } from "./encryptedStorage";
 import { createAuthSlice } from "./auth/auth.slice";
 import type { AuthSlice } from "./auth/auth.types";
 import type { CollaborationSlice } from "./collaboration/collaboration.types";
@@ -55,13 +56,13 @@ export const useStore = create<StoreState>()(
       ...createReportsSlice(...args),
     }),
     {
-      name: "project-portal-store",
+      name: "project-portal-store-v2",
+      storage: createJSONStorage(() => encryptedStorage),
       partialize: (s: StoreState) => ({
         token: s.token,
-        refreshToken: s.refreshToken,
         expiresIn: s.expiresIn,
         tokenType: s.tokenType,
-        user: s.user,
+        user: s.user ? { id: s.user.id, full_name: s.user.full_name } : null,
         isAuthenticated: s.isAuthenticated,
       }),
       onRehydrateStorage: () => (state?: StoreState) => {
