@@ -210,7 +210,9 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
     try {
       const comment = await createCommentApi(data);
       set((s) => ({
-        comments: [...s.comments, comment],
+        comments: s.comments.some((existing) => existing.id === comment.id)
+          ? s.comments.map((existing) => existing.id === comment.id ? comment : existing)
+          : [...s.comments, comment],
         collaborationLoading: { ...s.collaborationLoading, createComment: false },
       }));
       return comment;
@@ -221,6 +223,14 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
       });
       return null;
     }
+  },
+
+  receiveComment: (comment: Comment) => {
+    set((s) => ({
+      comments: s.comments.some((existing) => existing.id === comment.id)
+        ? s.comments.map((existing) => existing.id === comment.id ? comment : existing)
+        : [...s.comments, comment],
+    }));
   },
 
   createTask: async (data: CreateTaskRequest): Promise<Task | null> => {
