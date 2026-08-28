@@ -11,7 +11,11 @@ describe('AvailabilityService', () => {
 
   beforeEach(async () => {
     prisma = {
-      credit: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      credit: {
+        findFirst: jest.fn(),
+        update: jest.fn(),
+        updateMany: jest.fn(),
+      },
       creditReservation: { aggregate: jest.fn() },
       creditAvailabilityLog: { create: jest.fn() },
       $transaction: jest.fn((cb) => cb(prisma)),
@@ -208,9 +212,16 @@ describe('AvailabilityService – concurrency', () => {
   it('records every movement on CreditAvailabilityLog with its change type', async () => {
     await build([credit(100)]);
 
-    await service.decrementAvailability('credit-1', 10, 'user-1', 'retire', undefined, {
-      changeType: AvailabilityChangeType.RETIRE,
-    });
+    await service.decrementAvailability(
+      'credit-1',
+      10,
+      'user-1',
+      'retire',
+      undefined,
+      {
+        changeType: AvailabilityChangeType.RETIRE,
+      },
+    );
 
     expect(store.availabilityLogs).toEqual([
       expect.objectContaining({
@@ -225,17 +236,14 @@ describe('AvailabilityService – concurrency', () => {
   });
 
   it('treats units held by an active cart reservation as unavailable', async () => {
-    await build(
-      [credit(100)],
-      [
-        {
-          cartId: 'cart-1',
-          creditId: 'credit-1',
-          quantity: 80,
-          expiresAt: new Date(Date.now() + 60_000),
-        },
-      ] as any,
-    );
+    await build([credit(100)], [
+      {
+        cartId: 'cart-1',
+        creditId: 'credit-1',
+        quantity: 80,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    ] as any);
 
     await expect(
       service.decrementAvailability(
@@ -262,17 +270,14 @@ describe('AvailabilityService – concurrency', () => {
   });
 
   it('ignores expired reservations when computing headroom', async () => {
-    await build(
-      [credit(100)],
-      [
-        {
-          cartId: 'cart-stale',
-          creditId: 'credit-1',
-          quantity: 90,
-          expiresAt: new Date(Date.now() - 60_000),
-        },
-      ] as any,
-    );
+    await build([credit(100)], [
+      {
+        cartId: 'cart-stale',
+        creditId: 'credit-1',
+        quantity: 90,
+        expiresAt: new Date(Date.now() - 60_000),
+      },
+    ] as any);
 
     await expect(
       service.decrementAvailability(
@@ -287,17 +292,14 @@ describe('AvailabilityService – concurrency', () => {
   });
 
   it("excludes a cart's own reservation from its headroom", async () => {
-    await build(
-      [credit(100)],
-      [
-        {
-          cartId: 'cart-1',
-          creditId: 'credit-1',
-          quantity: 100,
-          expiresAt: new Date(Date.now() + 60_000),
-        },
-      ] as any,
-    );
+    await build([credit(100)], [
+      {
+        cartId: 'cart-1',
+        creditId: 'credit-1',
+        quantity: 100,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    ] as any);
 
     await expect(
       service.decrementAvailability(

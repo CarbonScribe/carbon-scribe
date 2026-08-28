@@ -69,7 +69,9 @@ function buildPrisma(rows: ContractCallRow[]) {
   };
 }
 
-function pendingCall(overrides: Partial<ContractCallRow> = {}): ContractCallRow {
+function pendingCall(
+  overrides: Partial<ContractCallRow> = {},
+): ContractCallRow {
   return {
     id: 'call-1',
     transactionHash: 'tx_abc',
@@ -175,13 +177,11 @@ describe('SorobanReconciliationService', () => {
     soroban.getTransaction.mockResolvedValue({ status: 'NOT_FOUND' });
 
     await service.reconcilePending();
-    const firstDelay =
-      prisma.rows[0].nextRetryAt!.getTime() - Date.now();
+    const firstDelay = prisma.rows[0].nextRetryAt!.getTime() - Date.now();
 
     prisma.rows[0].nextRetryAt = null; // make it due again
     await service.reconcilePending();
-    const secondDelay =
-      prisma.rows[0].nextRetryAt!.getTime() - Date.now();
+    const secondDelay = prisma.rows[0].nextRetryAt!.getTime() - Date.now();
 
     expect(prisma.rows[0].retryCount).toBe(2);
     expect(secondDelay).toBeGreaterThan(firstDelay);

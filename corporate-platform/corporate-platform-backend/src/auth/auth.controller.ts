@@ -55,7 +55,7 @@ export class AuthController {
   @LoginRateLimit()
   @Post('login')
   async login(@Req() req: Request, @Body() dto: LoginDto) {
-    return this.authService.login(dto, this.getMetadata(req));
+    return this.authService.login(dto, this.getMetadata(req, dto.deviceId));
   }
 
   /**
@@ -65,8 +65,8 @@ export class AuthController {
   @Post('refresh')
   @UseGuards(RateLimitGuard)
   @RefreshRateLimit()
-  async refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refresh(dto);
+  async refresh(@Req() req: Request, @Body() dto: RefreshTokenDto) {
+    return this.authService.refresh(dto, this.getMetadata(req, dto.deviceId));
   }
 
   /**
@@ -152,13 +152,14 @@ export class AuthController {
     return this.authService.terminateSession(user.sub, sessionId);
   }
 
-  private getMetadata(req: Request) {
+  private getMetadata(req: Request, deviceId?: string) {
     return {
       ipAddress:
         (req.headers['x-forwarded-for'] as string) ||
         req.socket.remoteAddress ||
         undefined,
       userAgent: req.headers['user-agent'],
+      deviceId,
     };
   }
 }

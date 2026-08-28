@@ -72,6 +72,30 @@ export class AccountInactiveError extends DomainError {
   }
 }
 
+export class RefreshTokenReuseError extends DomainError {
+  constructor(details?: Record<string, unknown>) {
+    super(
+      'RefreshTokenReuseError',
+      ErrorCodes.AUTH_010,
+      'Refresh token reuse detected',
+      401,
+      details,
+    );
+  }
+}
+
+export class SessionLockedError extends DomainError {
+  constructor(details?: Record<string, unknown>) {
+    super(
+      'SessionLockedError',
+      ErrorCodes.AUTH_011,
+      'Session locked due to too many failed refresh attempts',
+      403,
+      details,
+    );
+  }
+}
+
 export class InvalidRefreshTokenError extends DomainError {
   constructor(details?: Record<string, unknown>) {
     super(
