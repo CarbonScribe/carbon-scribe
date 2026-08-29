@@ -10,6 +10,7 @@ import { PostPurchaseService } from '../../retirement/services/post-purchase.ser
 import { AvailabilityService } from '../../credit/services/availability.service';
 import { AvailabilityChangeType } from '../../credit/interfaces/availability.interface';
 import { InMemoryPrisma } from '../../credit/testing/in-memory-prisma';
+import { ProducerService } from '../../event-bus/producer.service';
 
 describe('CheckoutService', () => {
   let service: CheckoutService;
@@ -65,6 +66,11 @@ describe('CheckoutService', () => {
     decrementWithin: jest.fn().mockResolvedValue({ newAmount: 0 }),
   };
 
+  const mockProducerService = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    publishPending: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -76,6 +82,7 @@ describe('CheckoutService', () => {
         { provide: AuditService, useValue: mockAuditService },
         { provide: PostPurchaseService, useValue: mockPostPurchaseService },
         { provide: AvailabilityService, useValue: mockAvailabilityService },
+        { provide: ProducerService, useValue: mockProducerService },
       ],
     }).compile();
 
@@ -302,6 +309,10 @@ describe('CheckoutService – shared inventory path', () => {
   let service: CheckoutService;
   let availability: AvailabilityService;
   let store: InMemoryPrisma;
+  const producerService = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    publishPending: jest.fn().mockResolvedValue(undefined),
+  };
 
   const order = (quantity: number, cartId = 'cart1') => ({
     id: 'order1',
@@ -389,6 +400,10 @@ describe('CheckoutService – shared inventory path', () => {
         {
           provide: PostPurchaseService,
           useValue: { handleOrderCompleted: jest.fn() },
+        },
+        {
+          provide: ProducerService,
+          useValue: producerService,
         },
       ],
     }).compile();

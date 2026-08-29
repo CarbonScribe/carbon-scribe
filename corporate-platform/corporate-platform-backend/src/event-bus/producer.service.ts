@@ -4,6 +4,11 @@ import { Event } from './interfaces/event.interface';
 import { ConfigService } from '../config/config.service';
 import { EventValidatorService } from './event-validator.service';
 import { DeadLetterService } from './dead-letter/dead-letter.service';
+import { OutboxService } from './outbox.service';
+
+export interface PublishOptions {
+  tx?: any;
+}
 
 /**
  * Kafka Producer Service with timeout, retry, and validation support
@@ -29,6 +34,7 @@ export class ProducerService {
     private readonly configService: ConfigService,
     private readonly validator: EventValidatorService,
     private readonly deadLetterService: DeadLetterService,
+    private readonly outboxService: OutboxService,
   ) {
     const kafkaConfig = this.configService.getKafkaConfig();
     this.sendTimeout = kafkaConfig?.producerTimeout || 10000;
@@ -43,6 +49,7 @@ export class ProducerService {
     topic: string,
     event: Event,
     signal?: AbortSignal,
+    options: PublishOptions = {},
   ): Promise<void> {
     // Validate event before publishing
     const validationResult = this.validator.validate(event, {
@@ -68,30 +75,20 @@ export class ProducerService {
       throw new Error(`Event validation failed: ${errorMessages}`);
     }
 
-    // Key by companyId or userId to ensure order partitioning
-    const key = event.companyId || event.userId || event.source;
+    const key = this.getIdempotencyKey(topic, event);
+
+    const row = await this.outboxService.create(
+      { topic, payload: event, key },
+      options.tx,
+    );
+
+    if (options.tx) return;
 
     this.logger.debug(
       `Publishing event ${event.id} of type ${event.type} to topic ${topic}`,
     );
 
-    await this.executeWithRetry(async () => {
-      const producer = this.kafkaService.getProducer();
-      await this.executeWithTimeout(
-        producer.send({
-          topic,
-          messages: [
-            {
-              key,
-              value: JSON.stringify(event),
-            },
-          ],
-        }),
-        this.sendTimeout,
-        `Kafka send to ${topic}`,
-        signal,
-      );
-    }, `publish event ${event.id} to ${topic}`);
+    await this.outboxService.publish(row.id, signal);
 
     this.logger.log(
       `Successfully published event ${event.id} to topic ${topic}`,
@@ -105,6 +102,7 @@ export class ProducerService {
     topic: string,
     events: Event[],
     signal?: AbortSignal,
+    options: PublishOptions = {},
   ): Promise<void> {
     if (!events.length) {
       this.logger.debug('Empty event batch, skipping publish');
@@ -147,27 +145,22 @@ export class ProducerService {
       );
     }
 
-    const messages = events.map((event) => ({
-      key: event.companyId || event.userId || event.source,
-      value: JSON.stringify(event),
-    }));
+    const rows = await this.outboxService.createMany(
+      events.map((event) => ({
+        topic,
+        payload: event,
+        key: this.getIdempotencyKey(topic, event),
+      })),
+      options.tx,
+    );
+
+    if (options.tx) return;
 
     this.logger.debug(
       `Publishing batch of ${events.length} events to topic ${topic}`,
     );
 
-    await this.executeWithRetry(async () => {
-      const producer = this.kafkaService.getProducer();
-      await this.executeWithTimeout(
-        producer.send({
-          topic,
-          messages,
-        }),
-        this.sendTimeout,
-        `Kafka batch send to ${topic}`,
-        signal,
-      );
-    }, `publish batch of ${events.length} events to ${topic}`);
+    for (const row of rows) await this.outboxService.publish(row.id, signal);
 
     this.logger.log(
       `Successfully published batch of ${events.length} events to topic ${topic}`,
@@ -181,34 +174,34 @@ export class ProducerService {
     topic: string,
     event: Event,
     signal?: AbortSignal,
+    options: PublishOptions = {},
   ): Promise<void> {
-    const key = event.companyId || event.userId || event.source;
+    const key = this.getIdempotencyKey(topic, event);
+
+    const row = await this.outboxService.create(
+      { topic, payload: event, key },
+      options.tx,
+    );
+
+    if (options.tx) return;
 
     this.logger.debug(
       `Publishing internal event ${event.id} of type ${event.type} to topic ${topic}`,
     );
 
-    await this.executeWithRetry(async () => {
-      const producer = this.kafkaService.getProducer();
-      await this.executeWithTimeout(
-        producer.send({
-          topic,
-          messages: [
-            {
-              key,
-              value: JSON.stringify(event),
-            },
-          ],
-        }),
-        this.sendTimeout,
-        `Kafka send to ${topic}`,
-        signal,
-      );
-    }, `publish internal event ${event.id} to ${topic}`);
+    await this.outboxService.publish(row.id, signal);
 
     this.logger.log(
       `Successfully published internal event ${event.id} to topic ${topic}`,
     );
+  }
+
+  private getIdempotencyKey(topic: string, event: Event): string {
+    return `${topic}:${event.id}:${event.type}`;
+  }
+
+  async publishPending(topic: string, key: string, signal?: AbortSignal) {
+    await this.outboxService.publishByKey(topic, key, signal);
   }
 
   /**
