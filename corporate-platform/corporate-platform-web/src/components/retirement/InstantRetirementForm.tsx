@@ -154,9 +154,12 @@ export default function InstantRetirementForm({
   const [reportingFramework, setReportingFramework] =
     useState<ReportingFramework>('ghg-protocol');
   const [reportingPeriod, setReportingPeriod] = useState('');
+  const [submitCooldownUntil, setSubmitCooldownUntil] = useState(0);
 
   // Refs for focus management
   const containerRef = useRef<HTMLDivElement>(null);
+  const reviewSubmitRef = useRef(false);
+  const isSubmittingRef = useRef(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -166,7 +169,9 @@ export default function InstantRetirementForm({
   const creditId = availableCredits.length > 0 ? selectedCreditId : manualCreditId.trim();
   const selectedCredit = availableCredits.find((c) => c.id === selectedCreditId);
   const maxAmount = selectedCredit?.availableAmount ?? 10000;
-  const canSubmit = creditId.length > 0 && amount >= 1 && !retiring;
+  const isSubmitCooldownActive = submitCooldownUntil > Date.now();
+  const submissionLocked = retiring || isSubmittingRef.current || isSubmitCooldownActive;
+  const canSubmit = creditId.length > 0 && amount >= 1 && !submissionLocked;
 
   // Focus management for modal
   useEffect(() => {
@@ -256,6 +261,18 @@ export default function InstantRetirementForm({
       }, 100);
       announce(`Retirement error: ${retireError}`, 'assertive');
     }
+
+    if (retireError) {
+      const cooldownMs = 1500;
+      setSubmitCooldownUntil(Date.now() + cooldownMs);
+      const timer = window.setTimeout(() => {
+        setSubmitCooldownUntil(0);
+      }, cooldownMs);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
   }, [retireError, announce]);
 
   /**
@@ -296,8 +313,9 @@ export default function InstantRetirementForm({
    */
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || retiring) return;
+    if (reviewSubmitRef.current || submissionLocked || !canSubmit) return;
 
+    reviewSubmitRef.current = true;
     setStage('review');
     announce(
       'Review your retirement details before confirming. This action is permanent.',
@@ -307,37 +325,54 @@ export default function InstantRetirementForm({
 
   /** Return to the form with every value intact. Nothing has been retired. */
   function handleBackToForm() {
+    reviewSubmitRef.current = false;
     setStage('form');
     announce('Returned to the retirement form. Nothing has been retired.', 'polite');
   }
 
   /** The only path that actually commits the retirement. */
   async function handleConfirmRetirement() {
-    if (!canSubmit || retiring) return;
+    if (!canSubmit || submissionLocked || isSubmittingRef.current) return;
 
-    const result = await retire({
-      creditId,
-      amount,
-      purpose,
-      purposeDetails: purposeDetails.trim() || undefined,
-      beneficiaryName: reviewSummary.beneficiaryName,
-      beneficiaryWallet: beneficiaryWallet.trim() || companyWallet || undefined,
-      reportingFramework,
-      reportingPeriod: reportingPeriod.trim() || undefined,
-    });
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `retire-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-    if (result) {
-      setSubmitted(true);
-      onSuccess?.(result);
-      announce(`Successfully retired ${amount} tons of carbon credits`, 'assertive');
-    } else {
-      // Keep the user on the review step so the error is shown next to the
-      // action that produced it and they can retry or go back and edit.
-      setStage('review');
+    isSubmittingRef.current = true;
+
+    try {
+      const result = await retire(
+        {
+          creditId,
+          amount,
+          purpose,
+          purposeDetails: purposeDetails.trim() || undefined,
+          beneficiaryName: reviewSummary.beneficiaryName,
+          beneficiaryWallet: beneficiaryWallet.trim() || companyWallet || undefined,
+          reportingFramework,
+          reportingPeriod: reportingPeriod.trim() || undefined,
+        },
+        { idempotencyKey },
+      );
+
+      if (result) {
+        setSubmitted(true);
+        onSuccess?.(result);
+        announce(`Successfully retired ${amount} tons of carbon credits`, 'assertive');
+      } else {
+        // Keep the user on the review step so the error is shown next to the
+        // action that produced it and they can retry or go back and edit.
+        setStage('review');
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   }
 
   function handleReset() {
+    reviewSubmitRef.current = false;
+    isSubmittingRef.current = false;
     setSubmitted(false);
     setStage('form');
     clearLastRetirement();
@@ -349,6 +384,8 @@ export default function InstantRetirementForm({
   }
 
   function handleClose() {
+    reviewSubmitRef.current = false;
+    isSubmittingRef.current = false;
     clearRetireError();
     clearLastRetirement();
     setSubmitted(false);
@@ -558,12 +595,14 @@ export default function InstantRetirementForm({
                 key={id}
                 type="button"
                 onClick={() => {
+                  if (retiring) return;
                   setPurpose(id);
                   announce(`Selected ${name}`, 'polite');
                 }}
                 role="radio"
                 aria-checked={purpose === id}
-                className={`p-3 rounded-xl border-2 text-left transition-all duration-200 ${
+                disabled={retiring}
+                className={`p-3 rounded-xl border-2 text-left transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
                   purpose === id
                     ? 'border-corporate-blue bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-corporate-blue/50'
@@ -612,12 +651,14 @@ export default function InstantRetirementForm({
                   key={credit.id}
                   type="button"
                   onClick={() => {
+                    if (retiring) return;
                     setSelectedCreditId(credit.id);
                     announce(`Selected ${credit.projectName}`, 'polite');
                   }}
                   role="radio"
                   aria-checked={selectedCreditId === credit.id}
-                  className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200 ${
+                  disabled={retiring}
+                  className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedCreditId === credit.id
                       ? 'border-corporate-blue bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-200 dark:border-gray-700 hover:border-corporate-blue/50'
@@ -658,7 +699,8 @@ export default function InstantRetirementForm({
                 onChange={(e) => setManualCreditId(e.target.value)}
                 required
                 aria-required="true"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
           )}
@@ -682,7 +724,8 @@ export default function InstantRetirementForm({
             step={100}
             value={Math.min(amount, maxAmount)}
             onChange={(e) => setAmount(parseInt(e.target.value, 10))}
-            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mb-3"
+            disabled={retiring}
+            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
             aria-valuenow={amount}
             aria-valuemin={1}
             aria-valuemax={maxAmount}
@@ -693,10 +736,12 @@ export default function InstantRetirementForm({
                 key={a}
                 type="button"
                 onClick={() => {
+                  if (retiring) return;
                   setAmount(a);
                   announce(`Selected ${a.toLocaleString()} tons`, 'polite');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                disabled={retiring}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                   amount === a
                     ? 'bg-corporate-blue text-white'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
@@ -717,7 +762,8 @@ export default function InstantRetirementForm({
                 max={maxAmount}
                 value={amount}
                 onChange={(e) => setAmount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                className="w-24 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-24 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
                 aria-label="Custom amount in tons"
               />
             </div>
@@ -749,7 +795,8 @@ export default function InstantRetirementForm({
                 placeholder={companyName ?? 'Your company'}
                 value={beneficiaryName}
                 onChange={(e) => setBeneficiaryName(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -765,7 +812,8 @@ export default function InstantRetirementForm({
                 placeholder={companyWallet ?? 'Company wallet on file'}
                 value={beneficiaryWallet}
                 onChange={(e) => setBeneficiaryWallet(e.target.value)}
-                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
             <div>
@@ -781,7 +829,8 @@ export default function InstantRetirementForm({
                 onChange={(e) =>
                   setReportingFramework(e.target.value as ReportingFramework)
                 }
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {REPORTING_FRAMEWORKS.map((framework) => (
                   <option key={framework.id} value={framework.id}>
@@ -803,7 +852,8 @@ export default function InstantRetirementForm({
                 placeholder="e.g. FY2026 Q1"
                 value={reportingPeriod}
                 onChange={(e) => setReportingPeriod(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
           </div>
