@@ -323,6 +323,139 @@ fn test_existing_functionality_with_cap() {
 }
 
 // ====================================================================
+// Tests for transfer_token and transfer_token_from (#522)
+// ====================================================================
+
+/// transfer_token moves exactly the specified token ID, not a count-based
+/// selection.
+#[test]
+fn test_transfer_token_moves_exact_token_id() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    // Mint tokens 1, 2, 3 to owner
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+
+    let buyer = Address::generate(&env);
+
+    // transfer_token for token_id 2 specifically
+    client.transfer_token(&owner, &buyer, &2);
+
+    // Only token 2 should have moved
+    assert_eq!(client.owner_of(&2), buyer);
+    // Tokens 1 and 3 should still be owned by owner
+    assert_eq!(client.owner_of(&1), owner);
+    assert_eq!(client.owner_of(&3), owner);
+    assert_eq!(client.balance(&owner), 2);
+    assert_eq!(client.balance(&buyer), 1);
+}
+
+/// transfer_token fails when the caller does not own the specified token.
+#[test]
+fn test_transfer_token_fails_for_wrong_owner() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    client.mint(&admin, &owner, &meta);
+
+    let stranger = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let result = client.try_transfer_token(&stranger, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::NotOwner)));
+}
+
+/// transfer_token_from moves exactly the specified token via allowance.
+#[test]
+fn test_transfer_token_from_moves_exact_token_id() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    // Mint tokens 1, 2, 3 to owner
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+
+    let spender = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // Approve spender for at least 1 unit
+    client.approve(&owner, &spender, &1, &env.ledger().sequence());
+
+    // transfer_token_from moves exactly token_id 3
+    client.transfer_token_from(&spender, &owner, &buyer, &3);
+
+    assert_eq!(client.owner_of(&3), buyer);
+    assert_eq!(client.owner_of(&1), owner);
+    assert_eq!(client.owner_of(&2), owner);
+    assert_eq!(client.balance(&buyer), 1);
+}
+
+/// transfer_token_from fails without sufficient allowance.
+#[test]
+fn test_transfer_token_from_fails_without_allowance() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    client.mint(&admin, &owner, &meta);
+
+    let spender = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // No approval — should fail
+    let result = client.try_transfer_token_from(&spender, &owner, &buyer, &1);
+    assert_eq!(result, Err(Ok(ContractError::NotAuthorized)));
+}
+
+/// transfer_token_from deducts exactly 1 from allowance (not token_id).
+#[test]
+fn test_transfer_token_from_deducts_one_from_allowance() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+
+    let spender = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    // Approve 3 units of allowance
+    client.approve(&owner, &spender, &3, &env.ledger().sequence());
+
+    // transfer token_id 2 — should spend 1 allowance, not 2
+    client.transfer_token_from(&spender, &owner, &buyer, &2);
+
+    assert_eq!(client.allowance(&owner, &spender), 2);
+    assert_eq!(client.owner_of(&2), buyer);
+    assert_eq!(client.owner_of(&1), owner);
+}
+
+/// Existing count-based transfer still works correctly after adding
+/// transfer_token / transfer_token_from.
+#[test]
+fn test_count_based_transfer_still_works() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let meta = make_meta(&env);
+
+    client.mint(&admin, &owner, &meta);
+    client.mint(&admin, &owner, &meta);
+
+    let buyer = Address::generate(&env);
+
+    // Count-based: transfer 2 tokens
+    client.transfer(&owner, &buyer, &2);
+    assert_eq!(client.balance(&owner), 0);
+    assert_eq!(client.balance(&buyer), 2);
+}
+
 // Two-step admin transfer tests (issue #557)
 // ====================================================================
 
