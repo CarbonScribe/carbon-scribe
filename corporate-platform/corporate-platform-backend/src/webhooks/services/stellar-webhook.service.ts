@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import {
   StellarWebhookDto,
@@ -16,6 +16,14 @@ export class StellarWebhookService {
     this.logger.log(
       `Registering transaction confirmation for hash: ${dto.transactionHash}`,
     );
+
+    const existing = await this.prisma.transactionConfirmation.findUnique({
+      where: { transactionHash: dto.transactionHash },
+      select: { companyId: true },
+    });
+    if (existing && existing.companyId !== dto.companyId) {
+      throw new ConflictException('Transaction confirmation belongs to another company');
+    }
 
     return this.prisma.transactionConfirmation.upsert({
       where: { transactionHash: dto.transactionHash },
