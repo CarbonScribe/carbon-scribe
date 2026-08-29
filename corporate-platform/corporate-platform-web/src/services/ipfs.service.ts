@@ -1,5 +1,7 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
 import { ApiResponse, apiClient } from './api-client';
+import { chunkedUpload } from '@/lib/utils/chunkedUpload';
+import type { UploadProgress } from '@/lib/utils/chunkedUpload';
 import type {
   IpfsBatchUploadRequest,
   IpfsCertificateAnchorRequest,
@@ -13,6 +15,9 @@ import type {
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+
+/** Files at or above this size use the chunked/resumable upload path (10 MB). */
+export const CHUNKED_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
 
 class IpfsService {
   private normalizeResponse<T>(response: ApiResponse<T> | T): ApiResponse<T> {
@@ -68,6 +73,44 @@ class IpfsService {
         success: false,
         error: error instanceof Error ? error.message : 'Upload failed',
       };
+    }
+  }
+
+  /**
+   * Chunked/resumable upload for files at or above CHUNKED_UPLOAD_THRESHOLD.
+   * Sends the file in 2 MB slices with Content-Range headers.  Each chunk
+   * is independently retried with exponential backoff.  Progress and cancellation
+   * are driven by the caller via onProgress / signal.
+   */
+  async uploadChunked(
+    file: File,
+    metadata: Record<string, string>,
+    options: {
+      sessionKey: string
+      onProgress?: (progress: UploadProgress) => void
+      signal?: AbortSignal
+    },
+  ): Promise<ApiResponse<IpfsUploadResponse>> {
+    try {
+      const result = await chunkedUpload({
+        url: `${API_BASE_URL}/ipfs/upload/chunked`,
+        file,
+        metadata,
+        sessionKey: options.sessionKey,
+        onProgress: options.onProgress,
+        signal: options.signal,
+      })
+
+      if (!result.cid) {
+        return { success: false, error: 'Chunked upload completed but no CID was returned' }
+      }
+
+      return { success: true, data: { cid: result.cid } }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return { success: false, error: 'Upload cancelled', isCancelled: true }
+      }
+      return { success: false, error: err instanceof Error ? err.message : 'Chunked upload failed' }
     }
   }
 
