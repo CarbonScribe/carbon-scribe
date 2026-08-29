@@ -57,9 +57,10 @@ export default function TaskBoard({ projectId }: TaskBoardProps) {
         <button
           type="button"
           onClick={() => setShowForm(true)}
+          aria-label="Add task"
           className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm font-medium"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4" aria-hidden="true" />
           Add task
         </button>
       </div>
