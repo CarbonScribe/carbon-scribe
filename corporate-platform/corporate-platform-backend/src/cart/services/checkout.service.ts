@@ -222,15 +222,40 @@ export class CheckoutService {
       throw new BadRequestException('Payment was declined');
     }
 
-    // 4. Complete the purchase in a transaction
+    // 4. Complete the purchase in a Serializable transaction. This atomically:
+    //    a) Verifies the order's backing credit reservations are still active
+    //    b) Re-validates availability under row locks
+    //    c) Performs the decrements behind floor guards
+    //    d) Records all movements in CreditAvailabilityLog
+    //    Together, these ensure no race between payment and decrement.
     const completedOrder = await this.unitOfWork.run(async (tx: any) => {
-      // Decrease credit availability for each item through the shared,
-      // lock-safe path (#516). It re-locks each credit row inside this
-      // transaction, re-checks availability (closing the TOCTOU window opened
-      // by the payment call above), writes the decrement behind a floor guard
-      // so availableAmount can never go negative, and records the movement on
-      // CreditAvailabilityLog. This cart's own reservation is excluded from the
-      // headroom calculation so the order can consume the units it is holding.
+      // 4a. Before decrementing, verify that the reservations backing this
+      //     order are still active (not expired). If a reservation expired
+      //     between initiateCheckout and now, fail gracefully rather than
+      //     accepting an invalid order.
+      if (order.cartId) {
+        const reservations = await tx.creditReservation.findMany({
+          where: {
+            cartId: order.cartId,
+            expiresAt: { lt: new Date() }, // Find ANY that have expired
+          },
+        });
+
+        if (reservations.length > 0) {
+          throw new BadRequestException(
+            `Order cannot be confirmed: reservation(s) have expired. ` +
+              `Please recreate your cart and try again.`,
+          );
+        }
+      }
+
+      // 4b & 4c. Decrease credit availability for each item through the shared,
+      //          lock-safe path. It re-locks each credit row inside this
+      //          transaction, re-checks availability (closing the TOCTOU window opened
+      //          by the payment call above), writes the decrement behind a floor guard
+      //          so availableAmount can never go negative, and records the movement on
+      //          CreditAvailabilityLog. This cart's own reservation is excluded from the
+      //          headroom calculation so the order can consume the units it is holding.
       for (const item of order.items) {
         await this.availability.decrementWithin(tx as PrismaTxClient, {
           creditId: item.creditId,

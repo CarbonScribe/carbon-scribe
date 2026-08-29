@@ -131,7 +131,7 @@ model Credit {
   projectName     String // Denormalized for display/search
   // Credit Details
   pricePerTon     Float    @default(0)
-  availableAmount Int
+  availableAmount Int      @default(0)
   totalAmount     Int
   status          String   @default("available") // available, reserved, retired, pending
 

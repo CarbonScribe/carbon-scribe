@@ -255,6 +255,23 @@ export class AvailabilityService {
     });
 
     if (!result || result.count === 0) {
+      // Structured logging for oversell prevention failure
+      this.logger.warn(
+        {
+          category: 'oversell_prevention_rejection',
+          creditId: claim.creditId,
+          projectName: headroom.projectName,
+          changeType: claim.changeType,
+          requestedAmount: claim.amount,
+          availableAmount: headroom.availableAmount,
+          effectivelyAvailable: headroom.effectivelyAvailable,
+          reservedAmount: headroom.reservedAmount,
+          reason: claim.reason,
+          changedBy: claim.changedBy,
+        },
+        `Oversell prevention: rejected decrement for credit ${claim.creditId}`,
+      );
+
       throw new ConflictException(
         `Insufficient credits available for project "${headroom.projectName}". ` +
           `Requested: ${claim.amount}, Available: ${headroom.availableAmount}`,

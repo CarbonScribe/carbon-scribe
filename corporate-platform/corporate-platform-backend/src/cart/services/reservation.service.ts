@@ -105,28 +105,115 @@ export class ReservationService {
   /**
    * Remove all expired reservations from the database.
    * Runs every 5 minutes via cron.
+   *
+   * Uses row-level locking via SELECT ... FOR UPDATE on affected credits to
+   * prevent interleaving with concurrent confirmPurchase operations. This ensures
+   * that:
+   *
+   * 1. If a reservation expires while confirmPurchase is mid-transaction, both
+   *    operations serialize on the same credit row lock.
+   * 2. The cron job sees a consistent view of all reservations for a credit
+   *    before deciding which ones are actually expired.
+   * 3. No stale reservation data is passed to other concurrent carts' availability
+   *    calculations.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async releaseExpiredReservations(): Promise<void> {
     const prisma = this.prisma as any;
 
+    // Find all expired reservations
     const expired = await prisma.creditReservation.findMany({
       where: { expiresAt: { lt: new Date() } },
+      include: { credit: true },
     });
 
-    const result = await prisma.creditReservation.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
+    if (!expired.length) {
+      return;
+    }
 
-    if (result.count > 0) {
-      this.logger.log(`Released ${result.count} expired credit reservation(s)`);
-      await this.logReleases(expired, 'system', 'reservation expired');
+    // Group by creditId to minimize lock acquisitions
+    const expiredByCredit = new Map<string, typeof expired>();
+    for (const reservation of expired) {
+      if (!expiredByCredit.has(reservation.creditId)) {
+        expiredByCredit.set(reservation.creditId, []);
+      }
+      expiredByCredit.get(reservation.creditId)!.push(reservation);
+    }
+
+    // Process each credit's expired reservations in a Serializable transaction
+    // with an explicit row lock, so the cron job doesn't race with confirmPurchase
+    for (const [creditId, _creditExpired] of expiredByCredit) {
+      try {
+        await this.availability.runSerializable(async (txClient) => {
+          const tx = txClient as any;
+
+          // Lock the credit row for the rest of this transaction
+          await this.availability.lockCredit(tx, creditId);
+
+          // Re-fetch the reservations under the lock to get a fresh view
+          // (they may have been released or renewed by another transaction)
+          const currentlyExpired = await tx.creditReservation.findMany({
+            where: {
+              creditId,
+              expiresAt: { lt: new Date() },
+            },
+          });
+
+          if (currentlyExpired.length === 0) {
+            // All were released or renewed by another transaction
+            return;
+          }
+
+          // Delete the currently-expired ones
+          await tx.creditReservation.deleteMany({
+            where: {
+              creditId,
+              expiresAt: { lt: new Date() },
+            },
+          });
+
+          // Log releases for each one
+          for (const reservation of currentlyExpired) {
+            try {
+              const credit = await tx.credit.findFirst({
+                where: { id: creditId },
+              });
+              const current = credit?.availableAmount ?? 0;
+
+              await this.availability.logMovementWithin(tx, {
+                creditId,
+                changedBy: 'system',
+                changeType: AvailabilityChangeType.RELEASE,
+                amount: reservation.quantity,
+                previousAmount: current,
+                newAmount: current,
+                reason: `reservation expired at ${reservation.expiresAt.toISOString()}`,
+              });
+            } catch (logError) {
+              this.logger.warn(
+                `Could not log reservation release for credit ${creditId}: ` +
+                  `${logError instanceof Error ? logError.message : String(logError)}`,
+              );
+            }
+          }
+
+          this.logger.log(
+            `Released ${currentlyExpired.length} expired credit reservation(s) for credit ${creditId}`,
+          );
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to release expired reservations for credit ${creditId}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+        // Continue with other credits rather than failing the entire cron job
+      }
     }
   }
 
   /**
-   * Record released holds on CreditAvailabilityLog. Best-effort: a bookkeeping
-   * failure must not fail the release itself, which has already happened.
+   * Record released holds on CreditAvailabilityLog for manual release operations.
+   * Best-effort: a bookkeeping failure must not fail the release itself.
    */
   private async logReleases(
     reservations: Array<{ creditId: string; quantity: number }> | undefined,
