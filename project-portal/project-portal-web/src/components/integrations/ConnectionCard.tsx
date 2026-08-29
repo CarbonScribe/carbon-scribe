@@ -1,7 +1,7 @@
 'use client';
 
 import { Link, MoreVertical, Play, Pause, Trash2, Settings } from 'lucide-react';
-import { IntegrationConnection } from '@/store/integration.types';
+import { IntegrationConnection } from '@/lib/store/integrations/integration.types';
 
 interface ConnectionCardProps {
   connection: IntegrationConnection;

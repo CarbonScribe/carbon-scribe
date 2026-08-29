@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short,
-    token::Client as TokenClient, vec, Address, Env, Map, String, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, symbol_short, vec, Address,
+    Env, IntoVal, Map, String, Symbol, Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -27,6 +27,8 @@ pub enum TimeLockError {
     InvalidTtlConfig = 10,
     /// TTL not configured.
     TtlNotConfigured = 11,
+    /// The underlying token-ID-aware transfer call failed.
+    TokenTransferFailed = 12,
 }
 
 // ---------------------------------------------------------------------------
@@ -296,13 +298,16 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        let token_client = TokenClient::new(&env, &ca_contract);
-
-        token_client.transfer_from(
-            &env.current_contract_address(),
-            &caller,
-            &env.current_contract_address(),
-            &(token_id as i128),
+        env.invoke_contract::<()>(
+            &ca_contract,
+            &Symbol::new(&env, "transfer_token_from"),
+            vec![
+                &env,
+                env.current_contract_address().into_val(&env),
+                caller.into_val(&env),
+                env.current_contract_address().into_val(&env),
+                token_id.into_val(&env),
+            ],
         );
 
         let record = LockRecord {
@@ -341,11 +346,15 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        let token_client = TokenClient::new(&env, &ca_contract);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &record.owner,
-            &(token_id as i128),
+        env.invoke_contract::<()>(
+            &ca_contract,
+            &Symbol::new(&env, "transfer_token"),
+            vec![
+                &env,
+                env.current_contract_address().into_val(&env),
+                record.owner.into_val(&env),
+                token_id.into_val(&env),
+            ],
         );
 
         records.remove(token_id);
@@ -375,18 +384,28 @@ impl TimeLock {
             .instance()
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
-        let token_client = TokenClient::new(&env, &ca_contract);
 
         let mut released: Vec<u32> = vec![&env];
 
         for token_id in token_ids.iter() {
             if let Some(record) = records.get(token_id) {
                 if now >= record.unlock_timestamp {
-                    token_client.transfer(
-                        &env.current_contract_address(),
-                        &record.owner,
-                        &(token_id as i128),
-                    );
+                    let transfer_ok = env
+                        .try_invoke_contract::<(), TimeLockError>(
+                            &ca_contract,
+                            &Symbol::new(&env, "transfer_token"),
+                            vec![
+                                &env,
+                                env.current_contract_address().into_val(&env),
+                                record.owner.into_val(&env),
+                                token_id.into_val(&env),
+                            ],
+                        )
+                        .map_or(false, |inner| inner.is_ok());
+
+                    if !transfer_ok {
+                        continue;
+                    }
 
                     emit_credit_released(
                         &env,
@@ -424,11 +443,15 @@ impl TimeLock {
             .get(&DataKey::CarbonAssetContract)
             .ok_or(TimeLockError::NotInitialized)?;
 
-        let token_client = TokenClient::new(&env, &ca_contract);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &record.owner,
-            &(token_id as i128),
+        env.invoke_contract::<()>(
+            &ca_contract,
+            &Symbol::new(&env, "transfer_token"),
+            vec![
+                &env,
+                env.current_contract_address().into_val(&env),
+                record.owner.into_val(&env),
+                token_id.into_val(&env),
+            ],
         );
 
         records.remove(token_id);
@@ -729,7 +752,11 @@ impl TimeLock {
 #[cfg(test)]
 mod test {
     use super::{TimeLock, TimeLockClient, TimeLockError};
-    use soroban_sdk::{testutils::Address as _, vec, Address, Env, Vec};
+    use soroban_sdk::{
+        contract, contractimpl, contracttype, testutils::Address as _, vec, Address, Env, IntoVal,
+        Symbol, Vec,
+    };
+    use soroban_sdk::testutils::Ledger;
 
     fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
         let env = Env::default();
@@ -837,5 +864,228 @@ mod test {
         token_ids.push_back(1);
         let result = client.try_batch_prune_expired(&token_ids, &10);
         assert_eq!(result, Err(Ok(TimeLockError::TtlNotConfigured)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression tests for #522 – specific-token transfer semantics
+    // -----------------------------------------------------------------------
+
+    /// Minimal mock CarbonAsset contract that exposes `transfer_token` and
+    /// `transfer_token_from` with the same signatures as the real contract.
+    /// Records every transfer as `(from, to, token_id)` so the test can
+    /// assert exactly which token was moved.
+    #[contract]
+    pub struct MockCarbonAsset;
+
+    #[contractimpl]
+    impl MockCarbonAsset {
+        pub fn transfer_token(
+            env: Env,
+            _from: Address,
+            _to: Address,
+            token_id: u32,
+        ) -> Result<(), crate::TimeLockError> {
+            let mut log: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&MockDataKey::TransferLog)
+                .unwrap_or(Vec::new(&env));
+            log.push_back(token_id);
+            env.storage()
+                .instance()
+                .set(&MockDataKey::TransferLog, &log);
+            Ok(())
+        }
+
+        pub fn transfer_token_from(
+            env: Env,
+            _spender: Address,
+            _from: Address,
+            _to: Address,
+            token_id: u32,
+        ) -> Result<(), crate::TimeLockError> {
+            let mut log: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&MockDataKey::TransferLog)
+                .unwrap_or(Vec::new(&env));
+            log.push_back(token_id);
+            env.storage()
+                .instance()
+                .set(&MockDataKey::TransferLog, &log);
+            Ok(())
+        }
+
+        pub fn get_transfer_log(env: Env) -> Vec<u32> {
+            env.storage()
+                .instance()
+                .get(&MockDataKey::TransferLog)
+                .unwrap_or(Vec::new(&env))
+        }
+
+        pub fn fail_next(_env: Env) {
+            // Mark next transfer to fail
+        }
+
+        pub fn vintage(_env: Env, _token_id: u32) -> u32 {
+            2023
+        }
+    }
+
+    #[contracttype]
+    enum MockDataKey {
+        TransferLog,
+    }
+
+    fn setup_with_mock() -> (Env, Address, Address, TimeLockClient<'static>) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let mock_ca_id = env.register(MockCarbonAsset, ());
+        let contract_id = env.register(TimeLock, ());
+        let client = TimeLockClient::new(&env, &contract_id);
+
+        (env, admin, mock_ca_id, client)
+    }
+
+    #[test]
+    fn test_lock_credit_uses_transfer_token_from_with_correct_id() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+
+        // Lock token_id = 5 specifically
+        client.lock_credit(&caller, &5, &unlock);
+
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
+
+        // Exactly one transfer happened, and it was token_id 5
+        assert_eq!(log.len(), 1);
+        assert_eq!(log.get(0).unwrap(), 5);
+    }
+
+    #[test]
+    fn test_release_if_eligible_uses_transfer_token_with_correct_id() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+
+        // Lock token_id = 42
+        client.lock_credit(&caller, &42, &unlock);
+
+        // Advance past unlock
+        env.ledger().with_mut(|l| l.timestamp = unlock + 1);
+
+        client.release_if_eligible(&42);
+
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
+
+        // transfer_token_from (lock) + transfer_token (release) = 2 total
+        assert_eq!(log.len(), 2);
+        assert_eq!(log.get(0).unwrap(), 42);
+        assert_eq!(log.get(1).unwrap(), 42);
+    }
+
+    #[test]
+    fn test_batch_release_moves_exact_token_ids() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+
+        // Lock tokens 10, 20, 30
+        client.lock_credit(&caller, &10, &unlock);
+        client.lock_credit(&caller, &20, &unlock);
+        client.lock_credit(&caller, &30, &unlock);
+
+        // Advance past unlock
+        env.ledger().with_mut(|l| l.timestamp = unlock + 1);
+
+        // Batch release: only tokens 10 and 30 (skip 20)
+        let mut batch: Vec<u32> = vec![&env];
+        batch.push_back(10);
+        batch.push_back(30);
+
+        let released = client.batch_release(&batch);
+
+        assert_eq!(released.len(), 2);
+        assert_eq!(released.get(0).unwrap(), 10);
+        assert_eq!(released.get(1).unwrap(), 30);
+
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
+
+        // 3 locks + 2 releases = 5 total transfers
+        assert_eq!(log.len(), 5);
+        // Releases should be exactly 10 and 30
+        assert_eq!(log.get(3).unwrap(), 10);
+        assert_eq!(log.get(4).unwrap(), 30);
+    }
+
+    #[test]
+    fn test_force_release_moves_exact_token_id() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+
+        let caller = Address::generate(&env);
+        // Far-future unlock — force_release should bypass it
+        let unlock = env.ledger().timestamp() + 999_999;
+
+        client.lock_credit(&caller, &77, &unlock);
+
+        // Force release (admin already authorized via mock_all_auths)
+        client.force_release(&77);
+
+        let log: Vec<u32> = env.invoke_contract(
+            &mock_ca_id,
+            &Symbol::new(&env, "get_transfer_log"),
+            vec![&env],
+        );
+
+        // lock (token 77) + force_release (token 77)
+        assert_eq!(log.len(), 2);
+        assert_eq!(log.get(0).unwrap(), 77);
+        assert_eq!(log.get(1).unwrap(), 77);
+    }
+
+    #[test]
+    fn test_lock_release_lifecycle_removes_record() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+
+        client.lock_credit(&caller, &99, &unlock);
+        assert_eq!(client.get_record_count(), 1);
+        assert!(client.get_lock_status(&99).is_some());
+
+        env.ledger().with_mut(|l| l.timestamp = unlock + 1);
+        client.release_if_eligible(&99);
+
+        assert_eq!(client.get_record_count(), 0);
+        assert!(client.get_lock_status(&99).is_none());
     }
 }

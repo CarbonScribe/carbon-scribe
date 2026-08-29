@@ -20,6 +20,7 @@ import {
   AvailabilityChangeType,
   PrismaTxClient,
 } from '../../credit/interfaces/availability.interface';
+import { ProducerService } from '../../event-bus/producer.service';
 
 @Injectable()
 export class CheckoutService {
@@ -31,6 +32,7 @@ export class CheckoutService {
     private auditService: AuditService,
     private postPurchaseService: PostPurchaseService,
     private availability: AvailabilityService,
+    private producerService: ProducerService,
   ) {}
 
   async initiateCheckout(
@@ -285,6 +287,25 @@ export class CheckoutService {
         },
       });
 
+      completionEvent = {
+        id: `order:${updated.id}:completed`,
+        type: 'order.completed',
+        source: 'corporate-platform',
+        timestamp: new Date().toISOString(),
+        correlationId: updated.id,
+        userId: updated.userId ?? undefined,
+        companyId: updated.companyId,
+        data: updated,
+        version: '1.0',
+      };
+
+      await this.producerService.publish(
+        'order-events',
+        completionEvent,
+        undefined,
+        { tx },
+      );
+
       // Clear the cart and its reservations
       if (order.cartId) {
         await tx.creditReservation.deleteMany({
@@ -305,6 +326,11 @@ export class CheckoutService {
 
       return updated;
     });
+
+    await this.producerService.publishPending(
+      'order-events',
+      `order-events:${completionEvent.id}:${completionEvent.type}`,
+    );
 
     // 5. Write audit event
     await this.auditService.logOrderEvent(

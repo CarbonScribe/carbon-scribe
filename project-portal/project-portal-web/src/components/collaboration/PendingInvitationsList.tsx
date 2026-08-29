@@ -56,6 +56,7 @@ export default function PendingInvitationsList({ projectId }: PendingInvitations
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setSelectedInvitation(inv)}
+                aria-label={`Invitation actions for ${inv.email}`}
                 className="p-1 text-gray-500 hover:text-gray-700 hover:bg-white rounded"
                 title="Actions"
               >

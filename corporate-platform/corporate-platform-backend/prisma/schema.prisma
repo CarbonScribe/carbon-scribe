@@ -6,6 +6,23 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  topic       String
+  payload     Json
+  key         String
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  nextAttemptAt DateTime?
+
+  @@unique([topic, key])
+  @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
+  @@map("outbox_events")
+}
+
 model Company {
   id                     String @id @default(cuid())
   name                   String

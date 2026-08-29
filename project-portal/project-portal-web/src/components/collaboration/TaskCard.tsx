@@ -31,9 +31,9 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
     >
       <div className="flex items-start gap-2">
         {isUpdating ? (
-          <Loader2 className="w-4 h-4 text-emerald-500 animate-spin flex-shrink-0 mt-0.5" />
+          <Loader2 className="w-4 h-4 text-emerald-500 animate-spin flex-shrink-0 mt-0.5" aria-hidden="true" />
         ) : (
-          <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100" />
+          <GripVertical className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
           <h4 className="font-medium text-gray-900 truncate">{task.title}</h4>
@@ -46,13 +46,13 @@ export default function TaskCard({ task, onClick }: TaskCardProps) {
             </span>
             {task.due_date && (
               <span className="flex items-center gap-1 text-xs text-gray-500">
-                <Calendar className="w-3 h-3" />
+                <Calendar className="w-3 h-3" aria-hidden="true" />
                 {new Date(task.due_date).toLocaleDateString()}
               </span>
             )}
             {task.assigned_to && (
               <span className="flex items-center gap-1 text-xs text-gray-500">
-                <User className="w-3 h-3" />
+                <User className="w-3 h-3" aria-hidden="true" />
                 {task.assigned_to.slice(0, 8)}…
               </span>
             )}
