@@ -709,3 +709,11 @@ Authorization: Bearer <JWT>
 
 #### Testing
 - See `test/retirement-history.e2e-spec.ts` for integration tests and usage examples.
+# Webhook security
+
+Inbound `/api/v1/webhooks/stellar` and `/api/v1/webhooks/soroban` deliveries
+must include `X-Webhook-Timestamp` and an HMAC-SHA256
+`X-Webhook-Signature` over `${timestamp}.${raw_request_body}`. Timestamps older
+than five minutes, invalid signatures, and excessive requests are rejected and
+recorded as security events. Configure `WEBHOOK_SIGNING_SECRET`; it is
+separate from JWT and Stellar credentials.
