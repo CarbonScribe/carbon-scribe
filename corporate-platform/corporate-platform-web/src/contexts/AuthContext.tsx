@@ -357,7 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         handleRemoteLogout();
         return;
       }
-      if (isTokenExpired(token)) {
+      if (isTokenExpired()) {
         const ok = await refreshTokenSilently();
         if (!ok) handleRemoteLogout();
         return;
