@@ -222,7 +222,30 @@ describe('InstantRetirementForm – review step', () => {
           beneficiaryWallet: 'GABC123WALLET',
           reportingFramework: 'ghg-protocol',
         }),
+        expect.objectContaining({
+          idempotencyKey: expect.any(String),
+        }),
       )
+    })
+  })
+
+  it('prevents a rapid double-click from submitting twice', async () => {
+    retireMock.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      return baseRecord
+    })
+
+    render(<InstantRetirementForm availableCredits={availableCredits} />)
+
+    openReviewStep()
+    await screen.findByTestId('retirement-review-step')
+
+    const confirmButton = screen.getByRole('button', { name: /confirm retirement of/i })
+    fireEvent.click(confirmButton)
+    fireEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(retireMock).toHaveBeenCalledTimes(1)
     })
   })
 

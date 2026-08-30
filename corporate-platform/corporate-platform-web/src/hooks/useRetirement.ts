@@ -37,10 +37,24 @@ export interface UseRetirementActions {
  * @param autoFetch - When true, fetches history and stats on mount.
  * @param initialQuery - Initial query parameters for the history fetch.
  */
+const retirementSubmissionGuard = {
+  isSubmitting: false,
+  activeIdempotencyKey: null as string | null,
+};
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `retire-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function useRetirement(
   autoFetch = false,
   initialQuery: RetirementHistoryQuery = {},
 ): UseRetirementState & UseRetirementActions {
+  const submissionGuardRef = useRef(retirementSubmissionGuard);
   const [history, setHistory] = useState<RetirementHistoryResponse | null>(
     null,
   );
@@ -94,20 +108,41 @@ export function useRetirement(
 
   const retire = useCallback(
     async (payload: RetireCreditsPayload, options?: ApiFetchOptions): Promise<RetirementRecord | null> => {
-      setRetiring(true);
-      setRetireError(null);
-      const res = await retirementService.retire(payload, options);
-      if (res.isCancelled) {
-        setRetiring(false);
+      const nextIdempotencyKey = options?.idempotencyKey ?? generateIdempotencyKey();
+
+      if (submissionGuardRef.current.isSubmitting) {
         return null;
       }
-      setRetiring(false);
-      if (res.success && res.data) {
-        setLastRetirement(res.data);
-        return res.data;
+
+      submissionGuardRef.current.isSubmitting = true;
+      submissionGuardRef.current.activeIdempotencyKey = nextIdempotencyKey;
+      setRetiring(true);
+      setRetireError(null);
+
+      try {
+        const res = await retirementService.retire(payload, {
+          ...options,
+          idempotencyKey: nextIdempotencyKey,
+        });
+
+        if (res.isCancelled) {
+          return null;
+        }
+
+        if (res.success && res.data) {
+          setLastRetirement(res.data);
+          return res.data;
+        }
+
+        setRetireError(
+          res.parsedError?.message ?? res.error ?? 'Retirement failed. Please try again.',
+        );
+        return null;
+      } finally {
+        submissionGuardRef.current.isSubmitting = false;
+        submissionGuardRef.current.activeIdempotencyKey = null;
+        setRetiring(false);
       }
-      setRetireError(res.parsedError?.message ?? res.error ?? 'Retirement failed. Please try again.');
-      return null;
     },
     [],
   );
