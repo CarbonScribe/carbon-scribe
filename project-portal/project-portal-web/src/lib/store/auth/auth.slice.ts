@@ -1,8 +1,9 @@
 import type { StateCreator } from "zustand";
 import type { StoreState } from "../store";
-import type { RegisterPayload, AuthSlice } from "./auth.types";
-import { getProfileApi, loginApi, logoutApi, refreshApi, registerApi, normalizeUser } from "@/lib/api/auth.api";
+import type { RegisterPayload, AuthSlice, WalletState } from "./auth.types";
+import { getProfileApi, loginApi, logoutApi, refreshApi, registerApi, normalizeUser, walletChallengeApi, walletLoginApi } from "@/lib/api/auth.api";
 import { setAuthToken, setOnUnauthorized } from "@/lib/api/axios";
+import { connectWallet as connectWalletHelper, isValidStellarAddress } from "@/lib/stellar/wallet";
 
 const INITIAL_AUTH_STATE = {
   token: null,
@@ -20,6 +21,11 @@ const INITIAL_AUTH_STATE = {
     profile: false,
     logout: false,
   },
+};
+
+const INITIAL_WALLET_STATE: WalletState = {
+  publicKey: null,
+  connectionState: "idle",
 };
 
 const isTokenExpired = (expiresIn: number | null): boolean => {
@@ -82,10 +88,78 @@ export const createAuthSlice: StateCreator<StoreState, [], [], AuthSlice> = (set
 
   return {
     ...INITIAL_AUTH_STATE,
+    ...INITIAL_WALLET_STATE,
+
+    wallet: INITIAL_WALLET_STATE,
 
     setHydrated: (hydrated) => set({ isHydrated: hydrated }),
 
     clearError: () => set({ authError: null }),
+
+    connectWallet: async () => {
+      set((s) => ({
+        wallet: { ...s.wallet, connectionState: "connecting" },
+        authError: null,
+      }));
+
+      try {
+        const publicKey = await connectWalletHelper();
+
+        if (!isValidStellarAddress(publicKey)) {
+          throw new Error("Invalid Stellar address received from wallet.");
+        }
+
+        set((s) => ({
+          wallet: { publicKey, connectionState: "connected" },
+        }));
+      } catch (error: any) {
+        const msg = error?.message || "Wallet connection failed";
+        set((s) => ({
+          wallet: { ...s.wallet, connectionState: "error" },
+          authError: msg,
+        }));
+      }
+    },
+
+    disconnectWallet: () => {
+      set({ wallet: INITIAL_WALLET_STATE });
+    },
+
+    loginWithWallet: async (publicKey, signedChallenge) => {
+      set((s) => ({
+        authLoading: { ...s.authLoading, login: true },
+        authError: null,
+      }));
+
+      try {
+        const response = await walletLoginApi({
+          public_key: publicKey,
+          signed_challenge: signedChallenge,
+        });
+        const { access_token, refresh_token, expires_in, token_type, user } = response;
+
+        const normalizedUser = user?.id ? user : normalizeUser(user);
+
+        setAuthState({
+          token: access_token,
+          refreshToken: refresh_token,
+          expiresIn: expires_in,
+          tokenType: token_type ?? "Bearer",
+          user: normalizedUser,
+        });
+
+        await get().fetchProfile();
+
+        set((s) => ({ authLoading: { ...s.authLoading, login: false } }));
+      } catch (error: any) {
+        const message = error?.response?.data?.error || error?.message || "Wallet login failed";
+        set((s) => ({
+          authLoading: { ...s.authLoading, login: false },
+          authError: message,
+        }));
+        throw error;
+      }
+    },
 
     login: async (email, password) => {
       set((s) => ({

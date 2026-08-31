@@ -3,19 +3,22 @@
 mod errors;
 mod events;
 mod storage;
-mod types;
 #[cfg(test)]
 mod test;
+mod types;
 
 use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String, Symbol, Vec};
 
 use crate::errors::ContractError;
 use crate::events::{
-    ApproveEvent, MintCapReachedEvent, MintCapSetEvent, MintEvent, MintingFrozenEvent,
-    QualityScoreUpdatedEvent, Sep41BurnEvent, Sep41TransferEvent, StatusChangeEvent, TransferEvent,
+    AdminTransferAcceptedEvent, AdminTransferProposedEvent, ApproveEvent, MintCapReachedEvent,
+    MintCapSetEvent, MintEvent, MintingFrozenEvent, QualityScoreUpdatedEvent, Sep41BurnEvent,
+    Sep41TransferEvent, StatusChangeEvent, TransferEvent,
 };
 use crate::storage::DataKey;
-use crate::types::{AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
+use crate::types::{
+    AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult,
+};
 
 // ========================================================================
 // Contract
@@ -226,7 +229,11 @@ impl CarbonAsset {
 
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
         let key = DataKey::Allowance(from, spender);
-        if let Some(allowance) = env.storage().persistent().get::<DataKey, AllowanceData>(&key) {
+        if let Some(allowance) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AllowanceData>(&key)
+        {
             if allowance.live_until_ledger < env.ledger().sequence() {
                 0
             } else {
@@ -283,7 +290,12 @@ impl CarbonAsset {
         Self::balance_of(env, owner)
     }
 
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), ContractError> {
+    pub fn transfer(
+        env: Env,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
         from.require_auth();
         Self::transfer_amount_internal(env, from, to, amount)
     }
@@ -302,6 +314,41 @@ impl CarbonAsset {
         env.storage().persistent().set(&key, &allowance);
 
         Self::transfer_amount_internal(env, from, to, amount)
+    }
+
+    /// Transfer a specific token by ID. Unlike the SEP-41 `transfer` which
+    /// takes a count-based amount and greedily selects token IDs via
+    /// `collect_transferable_tokens`, this function moves exactly the specified
+    /// `token_id`.
+    pub fn transfer_token(
+        env: Env,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        Self::transfer_token_internal(env, from, to, token_id, true)
+    }
+
+    /// Transfer a specific token by ID using an allowance (SEP-41-style
+    /// `transfer_from` but token-ID-aware). The caller (`spender`) must have
+    /// been approved by `from` for at least 1 unit of allowance.
+    ///
+    /// This is the correct entry-point for contracts (e.g. `time_lock`) that
+    /// need to move exactly one specific token on behalf of a user.
+    pub fn transfer_token_from(
+        env: Env,
+        spender: Address,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        spender.require_auth();
+
+        let allowance = Self::spend_allowance(env.clone(), from.clone(), spender.clone(), 1)?;
+        let key = DataKey::Allowance(from.clone(), spender);
+        env.storage().persistent().set(&key, &allowance);
+
+        Self::transfer_token_internal(env, from, to, token_id, false)
     }
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
@@ -366,9 +413,7 @@ impl CarbonAsset {
         env.storage()
             .persistent()
             .set(&DataKey::Burned(token_id), &true);
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Owner(token_id));
+        env.storage().persistent().remove(&DataKey::Owner(token_id));
 
         Ok(())
     }
@@ -385,19 +430,25 @@ impl CarbonAsset {
     ) -> Result<bool, ContractError> {
         let _status = Self::get_status(env.clone(), token_id)?;
 
-        let regulatory_contract: Option<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::RegulatoryCheck);
+        let regulatory_contract: Option<Address> =
+            env.storage().instance().get(&DataKey::RegulatoryCheck);
 
+        // Fail-open by design: regulatory checking is an opt-in, per-deployment
+        // feature (see set_regulatory_check). A deployment that has never
+        // configured a regulatory contract hasn't opted into compliance
+        // gating at all, so there is no jurisdiction rule to enforce and none
+        // is being claimed — treating every transfer as non-compliant would
+        // brick transfers for every deployment that doesn't use this feature.
+        // ContractError::RegulatoryNotSet is reserved for a path that
+        // requires regulatory config to be present and finds it missing;
+        // this optional hook isn't that path. See
+        // test_before_transfer_without_regulatory_contract_is_fail_open.
         if regulatory_contract.is_none() {
             return Ok(true);
         }
 
-        let host_jurisdiction: Option<String> = env
-            .storage()
-            .instance()
-            .get(&DataKey::HostJurisdiction);
+        let host_jurisdiction: Option<String> =
+            env.storage().instance().get(&DataKey::HostJurisdiction);
 
         let host_jurisdiction = match host_jurisdiction {
             Some(value) => value,
@@ -418,7 +469,26 @@ impl CarbonAsset {
         args.push_back(operation.into_val(&env));
         args.push_back(host_jurisdiction.into_val(&env));
 
-        let result: ValidationResult = env.invoke_contract(&contract, &symbol, args);
+        // try_invoke_contract (rather than the trapping invoke_contract) so a
+        // missing/undeployed contract, a missing validate_transaction export,
+        // an argument mismatch, an internal panic, or a return value that
+        // doesn't deserialize as ValidationResult all surface as a typed
+        // ComplianceCallFailed instead of aborting the whole host invocation.
+        let call_result: Result<
+            Result<ValidationResult, _>,
+            Result<soroban_sdk::Error, soroban_sdk::InvokeError>,
+        > = env.try_invoke_contract::<ValidationResult, soroban_sdk::Error>(
+            &contract, &symbol, args,
+        );
+
+        let result = match call_result {
+            Ok(Ok(value)) => value,
+            // Call succeeded but the returned value didn't deserialize as
+            // ValidationResult, or the call failed outright (contract not
+            // deployed, function not found, argument mismatch, internal
+            // panic, or the contract returned its own typed error).
+            Ok(Err(_)) | Err(_) => return Err(ContractError::ComplianceCallFailed),
+        };
 
         Ok(result.is_compliant && !result.requires_authorization)
     }
@@ -516,8 +586,120 @@ impl CarbonAsset {
     }
 
     // ====================================================================
+    // Admin Transfer (two-step propose/accept, issue #557)
+    // ====================================================================
+    //
+    // DataKey::Admin can only ever change via this propose/accept flow — no
+    // other function in this contract writes it directly. This is
+    // deliberately narrower than the single-step admin-gated setters below
+    // (set_retirement_tracker, set_regulatory_check, set_host_jurisdiction,
+    // set_oracle): those stay one-step by design, since a wrong contract
+    // address there is recoverable by the admin calling the setter again,
+    // whereas a wrong Admin address with no acceptance step would
+    // permanently brick every privileged function in this contract at
+    // once. Only the admin key itself gets the two-step treatment.
+
+    /// Propose `new_admin` as the successor admin. Requires the *current*
+    /// admin's auth. Does not touch DataKey::Admin — get_admin() keeps
+    /// returning the current admin until accept_admin_transfer lands.
+    pub fn propose_admin_transfer(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        AdminTransferProposedEvent {
+            sequence: next_sequence,
+            current_admin: admin,
+            proposed_admin: new_admin,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Accept a pending admin transfer. Requires the auth of the address
+    /// currently in PendingAdmin — only that address may complete the
+    /// rotation. Copies PendingAdmin into Admin and clears PendingAdmin.
+    pub fn accept_admin_transfer(env: Env, caller: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(ContractError::NoPendingAdmin)?;
+
+        if caller != pending_admin {
+            return Err(ContractError::NotPendingAdmin);
+        }
+
+        let old_admin = Self::get_admin(env.clone())?;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        AdminTransferAcceptedEvent {
+            sequence: next_sequence,
+            old_admin,
+            new_admin: pending_admin,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Cancel an in-flight admin transfer proposal. Restricted to the
+    /// *current* admin. Clears PendingAdmin without touching Admin; a
+    /// no-op (but still admin-gated) if nothing was pending.
+    pub fn cancel_admin_transfer(env: Env, caller: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        Ok(())
+    }
+
+    // ====================================================================
     // Admin Configuration
     // ====================================================================
+    //
+    // The setters below remain single-step, admin-gated writes — see the
+    // "Admin Transfer" section above for why only DataKey::Admin itself
+    // gets a propose/accept flow.
 
     pub fn set_retirement_tracker(
         env: Env,
@@ -580,11 +762,7 @@ impl CarbonAsset {
     /// - Only the admin may call this.
     /// - The cap can only be set **once** (immutable after first set).
     /// - The cap cannot be set below the current `TotalMinted` count.
-    pub fn set_max_supply(
-        env: Env,
-        caller: Address,
-        max_supply: u32,
-    ) -> Result<(), ContractError> {
+    pub fn set_max_supply(env: Env, caller: Address, max_supply: u32) -> Result<(), ContractError> {
         caller.require_auth();
         let admin = Self::get_admin(env.clone())?;
         if caller != admin {
@@ -639,9 +817,7 @@ impl CarbonAsset {
         }
 
         // Already frozen is a no-op to keep things idempotent, but we still emit event
-        env.storage()
-            .instance()
-            .set(&DataKey::MintingFrozen, &true);
+        env.storage().instance().set(&DataKey::MintingFrozen, &true);
 
         let sequence: u64 = env
             .storage()
@@ -672,6 +848,12 @@ impl CarbonAsset {
             .ok_or(ContractError::NotInitialized)
     }
 
+    /// Returns the proposed successor admin while a transfer is in flight,
+    /// or None if there is no pending proposal.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
     pub fn get_name(env: Env) -> Result<String, ContractError> {
         env.storage()
             .instance()
@@ -694,17 +876,11 @@ impl CarbonAsset {
     }
 
     pub fn name(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Name)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Name).unwrap()
     }
 
     pub fn symbol(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Symbol)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Symbol).unwrap()
     }
 
     pub fn get_retirement_tracker(env: Env) -> Result<Address, ContractError> {
@@ -859,6 +1035,10 @@ impl CarbonAsset {
             return Err(ContractError::TransferNotAllowed);
         }
 
+        // The `?` here already propagates ComplianceCallFailed (or any other
+        // ContractError from before_transfer's own storage lookups)
+        // transparently — only an `Ok(false)` (the call succeeded and
+        // responded non-compliant) reaches this explicit ComplianceFailed.
         if !Self::before_transfer(env.clone(), from.clone(), to.clone(), token_id)? {
             return Err(ContractError::ComplianceFailed);
         }
@@ -919,16 +1099,18 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41TransferEvent { sequence: next_sequence, from, to, amount }.publish(&env);
+        Sep41TransferEvent {
+            sequence: next_sequence,
+            from,
+            to,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
 
-    fn burn_amount_internal(
-        env: Env,
-        from: Address,
-        amount: i128,
-    ) -> Result<(), ContractError> {
+    fn burn_amount_internal(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
         if amount <= 0 {
             return Err(ContractError::InvalidStatusTransition);
         }
@@ -948,7 +1130,12 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41BurnEvent { sequence: next_sequence, from, amount }.publish(&env);
+        Sep41BurnEvent {
+            sequence: next_sequence,
+            from,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -1111,7 +1298,9 @@ impl CarbonAsset {
 
         tokens.pop_back();
         if tokens.len() == 0 {
-            env.storage().persistent().remove(&DataKey::OwnerTokens(owner));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::OwnerTokens(owner));
         } else {
             env.storage()
                 .persistent()

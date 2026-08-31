@@ -11,7 +11,6 @@ import {
   Shield,
   CheckCircle,
   AlertCircle,
-  Loader2,
   ExternalLink,
   FileText,
   X,
@@ -21,7 +20,13 @@ import { useAccessibility } from '@/hooks/useAccessibility';
 import { useAnnouncement } from '@/hooks/useAnnouncement';
 import { IconButton } from '@/components/common/IconButton';
 import { AccessibleIcon } from '@/components/common/AccessibleIcon';
-import type { RetirementPurpose, RetirementRecord } from '@/types/retirement';
+import RetirementReviewStep from '@/components/retirement/RetirementReviewStep';
+import type {
+  ReportingFramework,
+  RetirementPurpose,
+  RetirementRecord,
+  RetirementReviewSummary,
+} from '@/types/retirement';
 
 interface AvailableCredit {
   id: string;
@@ -42,6 +47,13 @@ interface InstantRetirementFormProps {
   isOpen?: boolean;
   /** Callback to close the modal */
   onClose?: () => void;
+  /**
+   * Company the retirement is attributed to. Shown on the review step so the
+   * user can confirm the beneficiary before committing (#512).
+   */
+  companyName?: string;
+  /** Company wallet the retirement executes from. */
+  companyWallet?: string;
 }
 
 const PURPOSES: {
@@ -90,12 +102,31 @@ const PURPOSES: {
 
 const QUICK_AMOUNTS = [100, 500, 1000, 5000, 10000];
 
+/**
+ * Reporting frameworks a retirement can be attributed to, surfaced so the
+ * review step can state which report the retirement will count toward (#512).
+ */
+const REPORTING_FRAMEWORKS: { id: ReportingFramework; name: string }[] = [
+  { id: 'ghg-protocol', name: 'GHG Protocol Corporate Standard' },
+  { id: 'csrd', name: 'CSRD / ESRS E1' },
+  { id: 'cdp', name: 'CDP Climate Change' },
+  { id: 'sbti', name: 'Science Based Targets (SBTi)' },
+  { id: 'corsia', name: 'CORSIA' },
+  { id: 'cbam', name: 'CBAM' },
+  { id: 'none', name: 'Not attributed to a framework' },
+];
+
+/** Which screen of the flow is showing. The three input steps are unchanged. */
+type FormStage = 'form' | 'review';
+
 export default function InstantRetirementForm({
   onSuccess,
   availableCredits = [],
   isModal = false,
   isOpen = true,
   onClose = () => {},
+  companyName,
+  companyWallet,
 }: InstantRetirementFormProps) {
   const { retire, retiring, retireError, lastRetirement, clearRetireError, clearLastRetirement } =
     useRetirement();
@@ -110,9 +141,25 @@ export default function InstantRetirementForm({
   const [manualCreditId, setManualCreditId] = useState('');
   const [amount, setAmount] = useState(1000);
   const [submitted, setSubmitted] = useState(false);
+  /**
+   * `form` shows the three-step input flow; `review` shows the pre-commit
+   * summary. Submitting the form advances the stage — it never calls the API
+   * directly (#512).
+   */
+  const [stage, setStage] = useState<FormStage>('form');
+  const [beneficiaryName, setBeneficiaryName] = useState(companyName ?? '');
+  const [beneficiaryWallet, setBeneficiaryWallet] = useState(
+    companyWallet ?? '',
+  );
+  const [reportingFramework, setReportingFramework] =
+    useState<ReportingFramework>('ghg-protocol');
+  const [reportingPeriod, setReportingPeriod] = useState('');
+  const [submitCooldownUntil, setSubmitCooldownUntil] = useState(0);
 
   // Refs for focus management
   const containerRef = useRef<HTMLDivElement>(null);
+  const reviewSubmitRef = useRef(false);
+  const isSubmittingRef = useRef(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
@@ -122,7 +169,9 @@ export default function InstantRetirementForm({
   const creditId = availableCredits.length > 0 ? selectedCreditId : manualCreditId.trim();
   const selectedCredit = availableCredits.find((c) => c.id === selectedCreditId);
   const maxAmount = selectedCredit?.availableAmount ?? 10000;
-  const canSubmit = creditId.length > 0 && amount >= 1 && !retiring;
+  const isSubmitCooldownActive = submitCooldownUntil > Date.now();
+  const submissionLocked = retiring || isSubmittingRef.current || isSubmitCooldownActive;
+  const canSubmit = creditId.length > 0 && amount >= 1 && !submissionLocked;
 
   // Focus management for modal
   useEffect(() => {
@@ -212,39 +261,135 @@ export default function InstantRetirementForm({
       }, 100);
       announce(`Retirement error: ${retireError}`, 'assertive');
     }
+
+    if (retireError) {
+      const cooldownMs = 1500;
+      setSubmitCooldownUntil(Date.now() + cooldownMs);
+      const timer = window.setTimeout(() => {
+        setSubmitCooldownUntil(0);
+      }, cooldownMs);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
   }, [retireError, announce]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  /**
+   * The summary shown on the review step. Combines the form inputs with
+   * context the user never typed (project name, price, company wallet) so the
+   * screen describes the actual effect of confirming, not just the raw inputs.
+   */
+  const reviewSummary: RetirementReviewSummary = {
+    creditId,
+    creditProjectName: selectedCredit?.projectName ?? creditId,
+    creditCountry: selectedCredit?.country,
+    pricePerTon: selectedCredit?.pricePerTon,
+    amount,
+    estimatedValue:
+      selectedCredit?.pricePerTon != null
+        ? selectedCredit.pricePerTon * amount
+        : undefined,
+    purpose,
+    purposeLabel: PURPOSES.find((p) => p.id === purpose)?.name ?? purpose,
+    purposeDetails: purposeDetails.trim() || undefined,
+    beneficiaryName:
+      beneficiaryName.trim() || companyName?.trim() || 'Your company',
+    beneficiaryWallet:
+      beneficiaryWallet.trim() ||
+      companyWallet?.trim() ||
+      'Company wallet on file',
+    reportingFramework,
+    reportingFrameworkLabel:
+      REPORTING_FRAMEWORKS.find((f) => f.id === reportingFramework)?.name ??
+      reportingFramework,
+    reportingPeriod: reportingPeriod.trim() || undefined,
+  };
+
+  /**
+   * Submitting the form opens the review step. It deliberately does NOT call
+   * retire() — retirement is irreversible, so the API call only happens from
+   * the explicit confirm action on the review screen (#512).
+   */
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || retiring) return;
+    if (reviewSubmitRef.current || submissionLocked || !canSubmit) return;
 
-    const result = await retire({
-      creditId,
-      amount,
-      purpose,
-      purposeDetails: purposeDetails.trim() || undefined,
-    });
+    reviewSubmitRef.current = true;
+    setStage('review');
+    announce(
+      'Review your retirement details before confirming. This action is permanent.',
+      'assertive',
+    );
+  }
 
-    if (result) {
-      setSubmitted(true);
-      onSuccess?.(result);
-      announce(`Successfully retired ${amount} tons of carbon credits`, 'assertive');
+  /** Return to the form with every value intact. Nothing has been retired. */
+  function handleBackToForm() {
+    reviewSubmitRef.current = false;
+    setStage('form');
+    announce('Returned to the retirement form. Nothing has been retired.', 'polite');
+  }
+
+  /** The only path that actually commits the retirement. */
+  async function handleConfirmRetirement() {
+    if (!canSubmit || submissionLocked || isSubmittingRef.current) return;
+
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `retire-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+    isSubmittingRef.current = true;
+
+    try {
+      const result = await retire(
+        {
+          creditId,
+          amount,
+          purpose,
+          purposeDetails: purposeDetails.trim() || undefined,
+          beneficiaryName: reviewSummary.beneficiaryName,
+          beneficiaryWallet: beneficiaryWallet.trim() || companyWallet || undefined,
+          reportingFramework,
+          reportingPeriod: reportingPeriod.trim() || undefined,
+        },
+        { idempotencyKey },
+      );
+
+      if (result) {
+        setSubmitted(true);
+        onSuccess?.(result);
+        announce(`Successfully retired ${amount} tons of carbon credits`, 'assertive');
+      } else {
+        // Keep the user on the review step so the error is shown next to the
+        // action that produced it and they can retry or go back and edit.
+        setStage('review');
+      }
+    } finally {
+      isSubmittingRef.current = false;
     }
   }
 
   function handleReset() {
+    reviewSubmitRef.current = false;
+    isSubmittingRef.current = false;
     setSubmitted(false);
+    setStage('form');
     clearLastRetirement();
     clearRetireError();
     setPurposeDetails('');
     setAmount(1000);
+    setReportingPeriod('');
     announce('Form reset', 'polite');
   }
 
   function handleClose() {
+    reviewSubmitRef.current = false;
+    isSubmittingRef.current = false;
     clearRetireError();
     clearLastRetirement();
     setSubmitted(false);
+    setStage('form');
     onClose();
   }
 
@@ -398,31 +543,47 @@ export default function InstantRetirementForm({
         </AccessibleIcon>
       </div>
 
-      <form onSubmit={handleSubmit} noValidate>
-        {/* Error Banner */}
-        {retireError && (
-          <div
-            ref={errorRef}
-            tabIndex={-1}
-            className="flex items-start gap-3 p-4 mb-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl focus:outline-none"
-            role="alert"
-            aria-live="assertive"
+      {/* Error Banner — rendered on both the form and the review step so a
+          failed confirmation is reported next to the action that produced it. */}
+      {retireError && (
+        <div
+          ref={errorRef}
+          tabIndex={-1}
+          className="flex items-start gap-3 p-4 mb-5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl focus:outline-none"
+          role="alert"
+          aria-live="assertive"
+        >
+          <AccessibleIcon hidden aria-hidden="true">
+            <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          </AccessibleIcon>
+          <div className="flex-1 text-sm text-red-800 dark:text-red-300">{retireError}</div>
+          <button
+            type="button"
+            onClick={clearRetireError}
+            className="text-red-500 hover:text-red-700 dark:text-red-400 text-xs underline shrink-0"
+            aria-label="Dismiss error message"
           >
-            <AccessibleIcon hidden aria-hidden="true">
-              <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-            </AccessibleIcon>
-            <div className="flex-1 text-sm text-red-800 dark:text-red-300">{retireError}</div>
-            <button
-              type="button"
-              onClick={clearRetireError}
-              className="text-red-500 hover:text-red-700 dark:text-red-400 text-xs underline shrink-0"
-              aria-label="Dismiss error message"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+            Dismiss
+          </button>
+        </div>
+      )}
 
+      {/* ── Pre-commit review step (#512) ──────────────────────────────────
+          Shown instead of the form once the user submits. The retirement API
+          is only called from the explicit confirm action here. */}
+      {stage === 'review' && (
+        <RetirementReviewStep
+          summary={reviewSummary}
+          onBack={handleBackToForm}
+          onConfirm={handleConfirmRetirement}
+          retiring={retiring}
+        />
+      )}
+
+      {/* The three input steps are unchanged; all values live in component
+          state, so returning from the review step restores them intact. */}
+      {stage === 'form' && (
+      <form onSubmit={handleSubmit} noValidate>
         {/* Step 1 – Purpose */}
         <fieldset className="mb-6">
           <legend className="text-sm font-medium text-gray-900 dark:text-white mb-3">
@@ -434,12 +595,14 @@ export default function InstantRetirementForm({
                 key={id}
                 type="button"
                 onClick={() => {
+                  if (retiring) return;
                   setPurpose(id);
                   announce(`Selected ${name}`, 'polite');
                 }}
                 role="radio"
                 aria-checked={purpose === id}
-                className={`p-3 rounded-xl border-2 text-left transition-all duration-200 ${
+                disabled={retiring}
+                className={`p-3 rounded-xl border-2 text-left transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
                   purpose === id
                     ? 'border-corporate-blue bg-blue-50 dark:bg-blue-900/20'
                     : 'border-gray-200 dark:border-gray-700 hover:border-corporate-blue/50'
@@ -488,12 +651,14 @@ export default function InstantRetirementForm({
                   key={credit.id}
                   type="button"
                   onClick={() => {
+                    if (retiring) return;
                     setSelectedCreditId(credit.id);
                     announce(`Selected ${credit.projectName}`, 'polite');
                   }}
                   role="radio"
                   aria-checked={selectedCreditId === credit.id}
-                  className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200 ${
+                  disabled={retiring}
+                  className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${
                     selectedCreditId === credit.id
                       ? 'border-corporate-blue bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-200 dark:border-gray-700 hover:border-corporate-blue/50'
@@ -534,7 +699,8 @@ export default function InstantRetirementForm({
                 onChange={(e) => setManualCreditId(e.target.value)}
                 required
                 aria-required="true"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
           )}
@@ -558,7 +724,8 @@ export default function InstantRetirementForm({
             step={100}
             value={Math.min(amount, maxAmount)}
             onChange={(e) => setAmount(parseInt(e.target.value, 10))}
-            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mb-3"
+            disabled={retiring}
+            className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
             aria-valuenow={amount}
             aria-valuemin={1}
             aria-valuemax={maxAmount}
@@ -569,10 +736,12 @@ export default function InstantRetirementForm({
                 key={a}
                 type="button"
                 onClick={() => {
+                  if (retiring) return;
                   setAmount(a);
                   announce(`Selected ${a.toLocaleString()} tons`, 'polite');
                 }}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                disabled={retiring}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                   amount === a
                     ? 'bg-corporate-blue text-white'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
@@ -593,33 +762,114 @@ export default function InstantRetirementForm({
                 max={maxAmount}
                 value={amount}
                 onChange={(e) => setAmount(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                className="w-24 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                disabled={retiring}
+                className="w-24 px-2 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
                 aria-label="Custom amount in tons"
               />
             </div>
           </div>
         </div>
 
-        {/* Submit */}
+        {/* Attribution — wallet/beneficiary and reporting impact. Additive to
+            the three-step flow above; every field is optional and defaults to
+            the authenticated company's context. Surfaced here so the review
+            step has real values to summarise (#512). */}
+        <fieldset className="mb-6">
+          <legend className="text-sm font-medium text-gray-900 dark:text-white mb-3">
+            Attribution &amp; Reporting{' '}
+            <span className="font-normal text-gray-500 dark:text-gray-400">
+              (optional)
+            </span>
+          </legend>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="beneficiary-name"
+                className="block text-xs text-gray-500 dark:text-gray-400 mb-1"
+              >
+                Beneficiary
+              </label>
+              <input
+                id="beneficiary-name"
+                type="text"
+                placeholder={companyName ?? 'Your company'}
+                value={beneficiaryName}
+                onChange={(e) => setBeneficiaryName(e.target.value)}
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="beneficiary-wallet"
+                className="block text-xs text-gray-500 dark:text-gray-400 mb-1"
+              >
+                Wallet
+              </label>
+              <input
+                id="beneficiary-wallet"
+                type="text"
+                placeholder={companyWallet ?? 'Company wallet on file'}
+                value={beneficiaryWallet}
+                onChange={(e) => setBeneficiaryWallet(e.target.value)}
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="reporting-framework"
+                className="block text-xs text-gray-500 dark:text-gray-400 mb-1"
+              >
+                Reporting framework
+              </label>
+              <select
+                id="reporting-framework"
+                value={reportingFramework}
+                onChange={(e) =>
+                  setReportingFramework(e.target.value as ReportingFramework)
+                }
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {REPORTING_FRAMEWORKS.map((framework) => (
+                  <option key={framework.id} value={framework.id}>
+                    {framework.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                htmlFor="reporting-period"
+                className="block text-xs text-gray-500 dark:text-gray-400 mb-1"
+              >
+                Reporting period
+              </label>
+              <input
+                id="reporting-period"
+                type="text"
+                placeholder="e.g. FY2026 Q1"
+                value={reportingPeriod}
+                onChange={(e) => setReportingPeriod(e.target.value)}
+                disabled={retiring}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue disabled:opacity-60 disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+        </fieldset>
+
+        {/* Submit — opens the review step; it does not retire anything. */}
         <button
           type="submit"
           disabled={!canSubmit}
           className="w-full corporate-btn-primary py-4 text-base font-bold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-          aria-label={retiring ? 'Processing retirement...' : `Retire ${amount.toLocaleString()} tons of carbon credits`}
+          aria-label={`Review retirement of ${amount.toLocaleString()} tons of carbon credits before confirming`}
         >
-          {retiring ? (
-            <>
-              <Loader2 size={20} className="animate-spin" aria-hidden="true" />
-              Processing Retirement…
-            </>
-          ) : (
-            <>
-              <AccessibleIcon hidden aria-hidden="true">
-                <Shield size={20} />
-              </AccessibleIcon>
-              Retire {amount.toLocaleString()} tCO₂ Now
-            </>
-          )}
+          <AccessibleIcon hidden aria-hidden="true">
+            <Shield size={20} />
+          </AccessibleIcon>
+          Review &amp; Retire {amount.toLocaleString()} tCO₂
         </button>
 
         <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
@@ -629,6 +879,7 @@ export default function InstantRetirementForm({
           </div>
         </div>
       </form>
+      )}
     </div>
   );
 

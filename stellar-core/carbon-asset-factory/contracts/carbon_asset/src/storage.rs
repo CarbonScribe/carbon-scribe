@@ -4,6 +4,9 @@ use soroban_sdk::{contracttype, Address};
 #[contracttype]
 pub enum DataKey {
     Admin,
+    // Holds a proposed successor admin address during a two-step transfer
+    // (issue #557). Absent when no transfer is in flight.
+    PendingAdmin,
     Name,
     Symbol,
     Decimals,

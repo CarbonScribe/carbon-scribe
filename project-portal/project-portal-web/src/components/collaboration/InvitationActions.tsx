@@ -111,7 +111,7 @@ export default function InvitationActions({ invitation, onClose, isOwner = false
       <div className="bg-white rounded-lg p-4 max-w-sm w-full mx-4">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-900">Invitation for {invitation.email}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-600">
             ✕
           </button>
         </div>
@@ -126,7 +126,7 @@ export default function InvitationActions({ invitation, onClose, isOwner = false
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-700 bg-gray-50 hover:bg-gray-100 disabled:text-gray-400 disabled:hover:bg-gray-50 rounded"
                 title={invitation.resent_count >= 3 ? 'Maximum resend limit reached' : undefined}
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-4 h-4" aria-hidden="true" />
                 Resend
               </button>
               <button
@@ -134,7 +134,7 @@ export default function InvitationActions({ invitation, onClose, isOwner = false
                 disabled={cancelling}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-red-700 bg-red-50 hover:bg-red-100 disabled:text-gray-400 disabled:hover:bg-red-50 rounded"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
                 Cancel
               </button>
             </>
@@ -145,14 +145,14 @@ export default function InvitationActions({ invitation, onClose, isOwner = false
             onClick={handleAccept}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded"
           >
-            <Check className="w-4 h-4" />
+            <Check className="w-4 h-4" aria-hidden="true" />
             Accept
           </button>
           <button
             onClick={handleDecline}
             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-gray-700 bg-gray-50 hover:bg-gray-100 rounded"
           >
-            <XCircle className="w-4 h-4" />
+            <XCircle className="w-4 h-4" aria-hidden="true" />
             Decline
           </button>
         </div>

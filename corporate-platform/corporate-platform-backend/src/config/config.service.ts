@@ -91,6 +91,28 @@ export class ConfigService {
   }
 
   /**
+   * Generic get method to maintain compatibility with @nestjs/config
+   * for specific untyped environment variables.
+   */
+  get<T = any>(key: string, defaultValue?: T): T {
+    const value = process.env[key];
+    if (value === undefined) {
+      return defaultValue as T;
+    }
+
+    if (typeof defaultValue === 'number') {
+      return parseInt(value, 10) as unknown as T;
+    }
+
+    // Attempt basic numeric coercion if T is number (implied by usage)
+    if (!isNaN(value as any) && value.trim() !== '') {
+      return Number(value) as unknown as T;
+    }
+
+    return value as unknown as T;
+  }
+
+  /**
    * Get timeout configuration
    */
   getTimeoutConfig(): TimeoutConfig {

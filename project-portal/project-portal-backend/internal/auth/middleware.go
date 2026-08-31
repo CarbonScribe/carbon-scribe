@@ -9,7 +9,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthMiddleware validates JWT tokens in the Authorization header
+// AuthMiddleware validates JWT tokens in the Authorization header.
+// Email verification is checked separately by RequireVerifiedEmail because this
+// middleware has no repository dependency.
 func AuthMiddleware(tm *TokenManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -62,6 +64,37 @@ func AuthMiddleware(tm *TokenManager) gin.HandlerFunc {
 
 		// Set the token in context for logout purposes
 		c.Set("access_token", tokenStr)
+
+		c.Next()
+	}
+}
+
+// RequireVerifiedEmail blocks authenticated users until they verify ownership of their email.
+func RequireVerifiedEmail(repo *Repository) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, err := GetUserIDFromContext(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+			c.Abort()
+			return
+		}
+
+		user, err := repo.GetUserByID(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to retrieve user"})
+			c.Abort()
+			return
+		}
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+			c.Abort()
+			return
+		}
+		if !user.EmailVerified {
+			c.JSON(http.StatusForbidden, gin.H{"error": "email not verified", "verification_required": true})
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}

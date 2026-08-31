@@ -87,3 +87,23 @@ pub struct MintingFrozenEvent {
     pub sequence: u64,
     pub frozen_by: Address,
 }
+
+// Admin transfer events (issue #557)
+
+/// Emitted when the current admin proposes a successor. get_admin() still
+/// returns current_admin until a matching accept_admin_transfer lands.
+#[contractevent]
+pub struct AdminTransferProposedEvent {
+    pub sequence: u64,
+    pub current_admin: Address,
+    pub proposed_admin: Address,
+}
+
+/// Emitted when a pending admin transfer is accepted and DataKey::Admin is
+/// rotated to new_admin.
+#[contractevent]
+pub struct AdminTransferAcceptedEvent {
+    pub sequence: u64,
+    pub old_admin: Address,
+    pub new_admin: Address,
+}

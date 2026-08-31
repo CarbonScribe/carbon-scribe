@@ -654,5 +654,101 @@
       ]
     ]
   },
-  "events": []
+  "events": [
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "rule_added"
+              }
+            ],
+            "data": {
+              "map": [
+                {
+                  "key": {
+                    "symbol": "added_by"
+                  },
+                  "val": {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "dest_jur"
+                  },
+                  "val": {
+                    "string": "CA"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "host_jur"
+                  },
+                  "val": {
+                    "string": "US"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "is_allowed"
+                  },
+                  "val": {
+                    "bool": true
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "operation"
+                  },
+                  "val": {
+                    "vec": [
+                      {
+                        "symbol": "RETIREMENT"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "required_authority"
+                  },
+                  "val": "void"
+                },
+                {
+                  "key": {
+                    "symbol": "rule_id"
+                  },
+                  "val": {
+                    "string": "R2"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "source_jur"
+                  },
+                  "val": {
+                    "string": "US"
+                  }
+                },
+                {
+                  "key": {
+                    "symbol": "timestamp"
+                  },
+                  "val": {
+                    "u64": "0"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    }
+  ]
 }

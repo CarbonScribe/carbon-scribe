@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -14,6 +15,10 @@ import {
 } from './contracts/contract.interface';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { TimeoutError } from '../../shared/exceptions/timeout-error';
+import {
+  SIGNING_PROVIDER_CONTRACT,
+  SigningProvider,
+} from '../signing/signing-provider.interface';
 
 /**
  * Soroban Service with timeout and retry configuration
@@ -38,9 +43,20 @@ export class SorobanService {
   private readonly getEventsTimeout: number;
   private readonly getLatestLedgerTimeout: number;
 
+  /**
+   * Delay before a freshly-submitted PENDING call becomes eligible for the
+   * reconciliation sweep (#515) — long enough for the RPC to index the
+   * transaction, short enough that a late landing is noticed promptly.
+   */
+  private readonly reconciliationInitialDelayMs = Number(
+    process.env.SOROBAN_RECONCILIATION_INITIAL_DELAY_MS || 15_000,
+  );
+
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    @Inject(SIGNING_PROVIDER_CONTRACT)
+    private readonly signingProvider: SigningProvider,
   ) {
     const stellarConfig = this.configService.getStellarConfig();
     this.rpc = new StellarSdk.rpc.Server(
@@ -116,9 +132,9 @@ export class SorobanService {
     this.ensureCallInput(payload.contractId, payload.methodName);
 
     const args = payload.args || [];
-    const secret = process.env.STELLAR_SECRET_KEY;
 
-    if (!secret) {
+    // Explicit simulate mode via SigningProvider (never silent missing-env fallback)
+    if (!this.signingProvider.isLive()) {
       const simulated = await this.simulateContractCall(
         {
           contractId: payload.contractId,
@@ -130,6 +146,16 @@ export class SorobanService {
 
       const txHash = `sim_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
       const submittedAt = new Date();
+      const signingPublicKey = await this.signingProvider.getPublicKey();
+      this.logger.log(
+        JSON.stringify({
+          event: 'contract_invoke_simulated',
+          signingPublicKey,
+          keyId: this.signingProvider.keyId,
+          contractId: payload.contractId,
+          methodName: payload.methodName,
+        }),
+      );
 
       await this.prisma.contractCall.create({
         data: {
@@ -157,11 +183,11 @@ export class SorobanService {
       };
     }
 
-    const keypair = StellarSdk.Keypair.fromSecret(secret);
+    const signingPublicKey = await this.signingProvider.getPublicKey();
     const sourceAccount = await this.executeWithTimeout(
-      this.rpc.getAccount(keypair.publicKey()),
+      this.rpc.getAccount(signingPublicKey),
       this.simulateTimeout,
-      `getAccount for ${keypair.publicKey()}`,
+      `getAccount for ${signingPublicKey}`,
       signal,
     );
 
@@ -183,11 +209,29 @@ export class SorobanService {
       signal,
     );
 
-    prepared.sign(keypair);
+    // Sign via SigningProvider — audit log includes public key, not secret
+    const preparedXdr = (prepared as any).toXDR();
+    const signed = await this.signingProvider.signTransaction(
+      preparedXdr,
+      this.networkPassphrase,
+    );
+    this.logger.log(
+      JSON.stringify({
+        event: 'contract_invoke_signed',
+        signingPublicKey: signed.publicKey,
+        keyId: signed.keyId ?? this.signingProvider.keyId,
+        contractId: payload.contractId,
+        methodName: payload.methodName,
+      }),
+    );
+    const signedTx = StellarSdk.TransactionBuilder.fromXDR(
+      signed.signedXdr,
+      this.networkPassphrase,
+    );
 
     const submittedAt = new Date();
     const sendResponse = await this.executeWithTimeout(
-      this.rpc.sendTransaction(prepared as any),
+      this.rpc.sendTransaction(signedTx as any),
       this.sendTimeout,
       `sendTransaction for ${payload.contractId}.${payload.methodName}`,
       signal,
@@ -216,6 +260,7 @@ export class SorobanService {
     let status: 'PENDING' | 'CONFIRMED' = 'PENDING';
     let confirmedAt: Date | null = null;
     let txDetails: unknown = null;
+    let immediateCheckError: string | null = null;
 
     try {
       txDetails = await this.getTransaction(txHash, signal);
@@ -225,10 +270,19 @@ export class SorobanService {
         confirmedAt = new Date();
       }
     } catch (error) {
+      immediateCheckError = this.getErrorMessage(error);
       this.logger.warn(
-        `Unable to fetch tx ${txHash} immediately after send: ${this.getErrorMessage(error)}`,
+        `Unable to fetch tx ${txHash} immediately after send: ${immediateCheckError}. ` +
+          `Row persisted as PENDING; the reconciliation sweep will re-check it.`,
       );
     }
+
+    // A row left PENDING here is picked up by SorobanReconciliationService
+    // (#515), which re-checks it on a schedule until the RPC gives a definitive
+    // answer or the retry budget is exhausted. Seeding the retry columns —
+    // previously modelled but never written by this path — is what makes the
+    // row visible to that sweep on its very next tick.
+    const isPending = status === 'PENDING';
 
     await this.prisma.contractCall.create({
       data: {
@@ -241,6 +295,15 @@ export class SorobanService {
         result: this.toJson(txDetails || sendResponse),
         submittedAt,
         confirmedAt: confirmedAt || undefined,
+        ...(isPending
+          ? {
+              retryCount: 0,
+              nextRetryAt: new Date(
+                Date.now() + this.reconciliationInitialDelayMs,
+              ),
+              errorMessage: immediateCheckError ?? undefined,
+            }
+          : {}),
       },
     });
 

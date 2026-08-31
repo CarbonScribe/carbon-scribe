@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import IpfsManager from '@/components/ipfs/IpfsManager'
+import * as chunkedUploadModule from '@/hooks/useChunkedUpload'
 
 const listDocumentsMock = vi.fn()
 const uploadDocumentMock = vi.fn()
@@ -17,6 +18,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }))
 
 vi.mock('@/services/ipfs.service', () => ({
+  CHUNKED_UPLOAD_THRESHOLD: 10 * 1024 * 1024,
   ipfsService: {
     listDocuments: (...args: unknown[]) => listDocumentsMock(...args),
     uploadDocument: (...args: unknown[]) => uploadDocumentMock(...args),
@@ -47,6 +49,19 @@ const docs = [
   },
 ]
 
+// Default chunked upload hook — acts as a no-op (small files don't use it)
+function makeChunkedHook(overrides?: Partial<ReturnType<typeof chunkedUploadModule.useChunkedUpload>>) {
+  return {
+    progress: null,
+    uploading: false,
+    error: null,
+    start: vi.fn().mockResolvedValue({ cid: 'QmChunked1' }),
+    cancel: vi.fn(),
+    reset: vi.fn(),
+    ...overrides,
+  }
+}
+
 describe('IpfsManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -59,6 +74,8 @@ describe('IpfsManager', () => {
     deleteByCidMock.mockResolvedValue({ success: true, data: { deleted: true } })
     anchorCertificateMock.mockResolvedValue({ success: true, data: { cid: 'QmCert1' } })
     verifyCertificateMock.mockResolvedValue({ success: true, data: { cid: 'QmCert1', verified: true } })
+
+    vi.spyOn(chunkedUploadModule, 'useChunkedUpload').mockReturnValue(makeChunkedHook())
   })
 
   it('renders document list from API', async () => {

@@ -46,8 +46,14 @@ export interface IdempotentContractResult<T = unknown> {
   /** The idempotency key used */
   idempotencyKey: string;
 
-  /** Status of the call */
-  status: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'DUPLICATE';
+  /**
+   * Status of the call.
+   *
+   * Sourced from {@link ContractCallStatus} rather than restating its members,
+   * so adding a status (UNRESOLVED, for the reconciliation sweep) cannot leave
+   * this union silently out of date.
+   */
+  status: ContractCallStatus;
 
   /** Whether this is a duplicate submission */
   isDuplicate: boolean;
@@ -78,7 +84,23 @@ export enum ContractCallStatus {
   CONFIRMED = 'CONFIRMED',
   FAILED = 'FAILED',
   DUPLICATE = 'DUPLICATE',
+  /**
+   * Terminal. The reconciliation sweep (#515) exhausted its retry budget
+   * without the Soroban RPC ever returning a definitive outcome for this
+   * transaction. Distinct from FAILED — the call may have landed on-chain; we
+   * simply could not establish that within the retry window, and the row needs
+   * an operator to look at it rather than sitting in PENDING forever.
+   */
+  UNRESOLVED = 'UNRESOLVED',
 }
+
+/** Statuses no reconciliation sweep should revisit. */
+export const TERMINAL_CONTRACT_CALL_STATUSES: ContractCallStatus[] = [
+  ContractCallStatus.CONFIRMED,
+  ContractCallStatus.FAILED,
+  ContractCallStatus.DUPLICATE,
+  ContractCallStatus.UNRESOLVED,
+];
 
 /**
  * Duplicate handling strategy

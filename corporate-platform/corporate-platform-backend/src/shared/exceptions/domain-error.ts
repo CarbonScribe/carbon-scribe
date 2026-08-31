@@ -88,6 +88,8 @@ export const ErrorCodes = {
   AUTH_007: 'AUTH_007', // Invalid refresh token
   AUTH_008: 'AUTH_008', // Session expired
   AUTH_009: 'AUTH_009', // Invalid password reset token
+  AUTH_010: 'AUTH_010', // Refresh token reuse detected
+  AUTH_011: 'AUTH_011', // Session locked
 
   // Validation (VALIDATION)
   VALIDATION_001: 'VALIDATION_001', // General validation error
