@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import {
   StellarWebhookDto,
@@ -22,7 +27,9 @@ export class StellarWebhookService {
       select: { companyId: true },
     });
     if (existing && existing.companyId !== dto.companyId) {
-      throw new ConflictException('Transaction confirmation belongs to another company');
+      throw new ConflictException(
+        'Transaction confirmation belongs to another company',
+      );
     }
 
     return this.prisma.transactionConfirmation.upsert({

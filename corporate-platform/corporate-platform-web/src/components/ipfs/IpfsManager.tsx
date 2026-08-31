@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -17,6 +17,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAuth } from '@/contexts/AuthContext'
 import { ipfsService, CHUNKED_UPLOAD_THRESHOLD } from '@/services/ipfs.service'
 import { useChunkedUpload } from '@/hooks/useChunkedUpload'
+import { Pagination } from '@/components/common/Pagination'
 import type { IpfsDocumentRecord, IpfsDocumentType } from '@/types/ipfs'
 
 const documentTypes: IpfsDocumentType[] = [
@@ -125,14 +126,11 @@ export default function IpfsManager() {
     }))
   }, [virtualRows, paginatedDocs, rowVirtualizer.measureElement])
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     setLoading(true)
     setError(null)
 
-    const response = await ipfsService.listDocuments(user?.companyId, {
-      page: safePage,
-      limit: pageSize,
-    })
+    const response = await ipfsService.listDocuments(user?.companyId)
     if (!response.success) {
       setError(response.error || 'Unable to load IPFS documents')
       setDocuments([])

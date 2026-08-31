@@ -18,7 +18,12 @@ import { ConfigModule } from '../../config/config.module';
 import { SigningModule } from '../signing/signing.module';
 
 @Module({
-  imports: [OwnershipHistoryModule, IdempotencyModule, ConfigModule, SigningModule],
+  imports: [
+    OwnershipHistoryModule,
+    IdempotencyModule,
+    ConfigModule,
+    SigningModule,
+  ],
   providers: [
     SorobanService,
     CarbonAssetService,

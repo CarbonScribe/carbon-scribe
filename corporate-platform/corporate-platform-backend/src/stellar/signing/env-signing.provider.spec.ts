@@ -33,9 +33,9 @@ describe('EnvSigningProvider (#542)', () => {
   it('signTransaction rejects in simulate mode', async () => {
     process.env.STELLAR_SIGNING_MODE = 'simulate';
     const p = new EnvSigningProvider('transfer');
-    await expect(p.signTransaction('AAAA', 'Test SDF Network ; September 2015')).rejects.toThrow(
-      /simulate mode/i,
-    );
+    await expect(
+      p.signTransaction('AAAA', 'Test SDF Network ; September 2015'),
+    ).rejects.toThrow(/simulate mode/i);
   });
 
   it('KmsSigningProvider fails closed when selected without public key', () => {

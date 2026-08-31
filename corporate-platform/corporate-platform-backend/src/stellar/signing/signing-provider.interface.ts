@@ -25,7 +25,10 @@ export interface SigningProvider {
    * Sign a prepared transaction XDR string.
    * Implementations must not retain secret material longer than needed.
    */
-  signTransaction(txXdr: string, networkPassphrase: string): Promise<SignedPayload>;
+  signTransaction(
+    txXdr: string,
+    networkPassphrase: string,
+  ): Promise<SignedPayload>;
 
   /** True when this provider produces real on-chain signatures */
   isLive(): boolean;
