@@ -35,6 +35,13 @@ import {
 import { reportError } from '@/lib/telemetry/errorReporter';
 import { useHydrated } from '@/hooks/useHydrated';
 import { isClient, safeGetItem, safeSetItem, safeRemoveItem } from '@/lib/utils/hydration';
+import {
+  broadcastAuthEvent,
+  createAuthChannel,
+  isAuthStorageKey,
+  tryAcquireRefreshLeadership,
+  type AuthBroadcastMessage,
+} from '@/lib/auth/cross-tab-auth';
 
 export type SessionExpiryState = 'active' | 'warning' | 'grace' | 'expired';
 
@@ -160,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
+      broadcastAuthEvent((window as any).__csAuthChannel ?? null, 'refresh');
       return true;
     } catch (error) {
       reportError(error, 'AuthContext', 'warning', { operation: 'refreshToken' });
@@ -203,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Unable to load user profile after login')
       }
 
+      broadcastAuthEvent((window as any).__csAuthChannel ?? null, 'login')
       router.push('/')
     } catch (error) {
       reportError(error, 'AuthContext', 'error', { operation: 'login' })
@@ -293,8 +302,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Attempt silent auto-refresh within the refresh buffer window
         if (remaining <= TOKEN_REFRESH_BUFFER && now - lastRefreshAttempt > 30000) {
           lastRefreshAttempt = now;
-          await refreshTokenSilently();
-          // If successful the expiry timestamp updates; next tick clears the warning
+          // Only the elected leader tab performs proactive refresh (#550)
+          if (tryAcquireRefreshLeadership()) {
+            await refreshTokenSilently();
+          }
+          // Non-leaders pick up new tokens via storage / BroadcastChannel
         }
       } else {
         // Access token has expired — start / continue grace period
@@ -324,8 +336,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [user, pathname, router, refreshTokenSilently]);
 
+  // Cross-tab auth sync (#550): BroadcastChannel + storage events
+  useEffect(() => {
+    if (!isHydrated || typeof window === 'undefined') return;
+
+    const channel = createAuthChannel();
+    (window as any).__csAuthChannel = channel;
+
+    const handleRemoteLogout = () => {
+      clearAuthData();
+      setUser(null);
+      if (!isPublicRoute(pathname || '/')) {
+        router.push('/login');
+      }
+    };
+
+    const handleRemoteLoginOrRefresh = async () => {
+      const token = getAccessToken();
+      if (!token) {
+        handleRemoteLogout();
+        return;
+      }
+      if (isTokenExpired()) {
+        const ok = await refreshTokenSilently();
+        if (!ok) handleRemoteLogout();
+        return;
+      }
+      await syncProfile(token);
+    };
+
+    const onBroadcast = (event: MessageEvent<AuthBroadcastMessage>) => {
+      const msg = event.data;
+      if (!msg || msg.source === undefined) return;
+      if (msg.type === 'logout') {
+        handleRemoteLogout();
+      } else if (msg.type === 'login' || msg.type === 'refresh' || msg.type === 'profile') {
+        void handleRemoteLoginOrRefresh();
+      }
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (!isAuthStorageKey(event.key)) return;
+      if (event.key === 'cs_access_token' && !event.newValue) {
+        handleRemoteLogout();
+        return;
+      }
+      if (event.key === 'cs_access_token' && event.newValue) {
+        void handleRemoteLoginOrRefresh();
+        return;
+      }
+      if (event.key === 'cs_user' && event.newValue) {
+        void handleRemoteLoginOrRefresh();
+      }
+      if (event.key === 'cs_auth_event' && event.newValue) {
+        try {
+          const msg = JSON.parse(event.newValue) as AuthBroadcastMessage;
+          if (msg.type === 'logout') handleRemoteLogout();
+          else if (msg.type === 'login' || msg.type === 'refresh') void handleRemoteLoginOrRefresh();
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    channel?.addEventListener('message', onBroadcast);
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      channel?.removeEventListener('message', onBroadcast);
+      channel?.close();
+      window.removeEventListener('storage', onStorage);
+      if ((window as any).__csAuthChannel === channel) {
+        delete (window as any).__csAuthChannel;
+      }
+    };
+  }, [isHydrated, pathname, router, refreshTokenSilently, syncProfile]);
+
   // Protect routes - only runs after hydration
   useEffect(() => {
+
     if (!isHydrated) return;
     if (isLoading) return; // Wait for auth initialization
 

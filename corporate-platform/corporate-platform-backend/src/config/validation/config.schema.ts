@@ -41,6 +41,14 @@ export const configSchema = Joi.object({
   STELLAR_NETWORK: Joi.string().default('testnet'),
   HORIZON_URL: Joi.string().uri().allow(''),
   SOROBAN_RPC_URL: Joi.string().uri().allow(''),
+  // Signing (#542): explicit mode — never treat missing secret as silent simulate
+  STELLAR_SIGNING_MODE: Joi.string().valid('simulate', 'live').default('simulate'),
+  STELLAR_SIGNING_PROVIDER: Joi.string().valid('env', 'kms', 'vault').default('env'),
+  STELLAR_SECRET_KEY: Joi.string().allow('', null),
+  STELLAR_TRANSFER_SECRET_KEY: Joi.string().allow('', null),
+  STELLAR_KMS_KEY_ID: Joi.string().allow('', null),
+  STELLAR_KMS_PUBLIC_KEY: Joi.string().allow('', null),
+  STELLAR_VAULT_KEY_PATH: Joi.string().allow('', null),
 
   // ============================================================
   // Auth Configuration

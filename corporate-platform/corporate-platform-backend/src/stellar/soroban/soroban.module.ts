@@ -15,9 +15,10 @@ import { IdempotencyService } from './idempotency/idempotency.service';
 import { SorobanReconciliationService } from './reconciliation/soroban-reconciliation.service';
 
 import { ConfigModule } from '../../config/config.module';
+import { SigningModule } from '../signing/signing.module';
 
 @Module({
-  imports: [OwnershipHistoryModule, IdempotencyModule, ConfigModule],
+  imports: [OwnershipHistoryModule, IdempotencyModule, ConfigModule, SigningModule],
   providers: [
     SorobanService,
     CarbonAssetService,
