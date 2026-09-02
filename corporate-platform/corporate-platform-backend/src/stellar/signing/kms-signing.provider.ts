@@ -42,7 +42,9 @@ export class KmsSigningProvider implements SigningProvider, OnModuleInit {
 
   onModuleInit(): void {
     if (!this.enabled) {
-      this.logger.debug(`KmsSigningProvider not selected (category=${this.category})`);
+      this.logger.debug(
+        `KmsSigningProvider not selected (category=${this.category})`,
+      );
       return;
     }
     if (!this.publicKey) {

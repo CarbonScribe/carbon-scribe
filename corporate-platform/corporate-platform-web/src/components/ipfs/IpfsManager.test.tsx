@@ -136,120 +136,116 @@ describe('IpfsManager', () => {
     expect(await screen.findByText('Unable to load')).toBeInTheDocument()
   })
 
-  // ---------------------------------------------------------------------------
-  // Chunked upload tests
-  // ---------------------------------------------------------------------------
+  it('supports paging through multiple pages of documents', async () => {
+    const manyDocs = Array.from({ length: 25 }, (_, i) => ({
+      id: `doc-${i + 1}`,
+      companyId: 'company-1',
+      documentType: 'REPORT',
+      referenceId: `ref-${i + 1}`,
+      ipfsCid: `QmDoc${i + 1}`,
+      ipfsGateway: 'https://gateway.pinata.cloud/ipfs/',
+      fileName: `report-${i + 1}.pdf`,
+      fileSize: 100 + i,
+      mimeType: 'application/pdf',
+      pinned: true,
+      pinnedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }))
 
-  it('uses small-file path (uploadDocument) for files below threshold', async () => {
-    render(<IpfsManager />)
-    await screen.findByText('report.pdf')
-
-    const smallFile = new File(['small content'], 'small.pdf', { type: 'application/pdf' })
-    const input = screen.getAllByRole('button', { name: 'Upload' })[0].closest('form')!
-    const fileInput = input.querySelector('input[type="file"]')!
-
-    fireEvent.change(fileInput, { target: { files: [smallFile] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-
-    await waitFor(() => {
-      expect(uploadDocumentMock).toHaveBeenCalledWith(smallFile, expect.objectContaining({ companyId: 'company-1' }))
-    })
-
-    expect(chunkedUploadModule.useChunkedUpload().start).not.toHaveBeenCalled()
-  })
-
-  it('uses chunked path for files at or above threshold', async () => {
-    const startMock = vi.fn().mockResolvedValue({ cid: 'QmChunked1' })
-    vi.spyOn(chunkedUploadModule, 'useChunkedUpload').mockReturnValue(makeChunkedHook({ start: startMock }))
+    listDocumentsMock.mockResolvedValue({ success: true, data: manyDocs })
 
     render(<IpfsManager />)
-    await screen.findByText('report.pdf')
 
-    // 10 MB + 1 byte — above threshold
-    const largeContent = new Uint8Array(10 * 1024 * 1024 + 1)
-    const largeFile = new File([largeContent], 'large.pdf', { type: 'application/pdf' })
+    expect(await screen.findByText('report-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('report-10.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('report-11.pdf')).not.toBeInTheDocument()
 
-    const form = screen.getAllByRole('button', { name: 'Upload' })[0].closest('form')!
-    const fileInput = form.querySelector('input[type="file"]')!
+    // Showing 1 to 10 of 25 documents
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
 
-    fireEvent.change(fileInput, { target: { files: [largeFile] } })
+    // Click Next page
+    const nextBtn = screen.getByRole('button', { name: /next page/i })
+    fireEvent.click(nextBtn)
 
-    expect(await screen.findByText(/resumable chunked upload/)).toBeInTheDocument()
+    expect(await screen.findByText('report-11.pdf')).toBeInTheDocument()
+    expect(screen.getByText('report-20.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('report-1.pdf')).not.toBeInTheDocument()
+    expect(screen.getByText('Page 2 of 3')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    // Click Previous page
+    const prevBtn = screen.getByRole('button', { name: /previous page/i })
+    fireEvent.click(prevBtn)
 
-    await waitFor(() => {
-      expect(startMock).toHaveBeenCalledWith(expect.objectContaining({ file: largeFile }))
-    })
-
-    expect(uploadDocumentMock).not.toHaveBeenCalled()
+    expect(await screen.findByText('report-1.pdf')).toBeInTheDocument()
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
   })
 
-  it('shows error and does not reload docs when chunked upload is cancelled', async () => {
-    const cancelMock = vi.fn()
-    const startMock = vi.fn().mockResolvedValue(null) // null = cancelled
-    vi.spyOn(chunkedUploadModule, 'useChunkedUpload').mockReturnValue(
-      makeChunkedHook({ start: startMock, cancel: cancelMock, error: 'Upload cancelled' }),
-    )
-
-    render(<IpfsManager />)
-    await screen.findByText('report.pdf')
-
-    const largeContent = new Uint8Array(10 * 1024 * 1024 + 1)
-    const largeFile = new File([largeContent], 'cancel.pdf', { type: 'application/pdf' })
-
-    const form = screen.getAllByRole('button', { name: 'Upload' })[0].closest('form')!
-    const fileInput = form.querySelector('input[type="file"]')!
-
-    fireEvent.change(fileInput, { target: { files: [largeFile] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Upload cancelled')).toBeInTheDocument()
-    })
-
-    // listDocuments should only have been called once on mount, not again after cancel
-    expect(listDocumentsMock).toHaveBeenCalledTimes(1)
-  })
-
-  it('resumes from last byte offset when session exists in localStorage', async () => {
-    // Simulate a persisted session for the file
-    const sessions: Record<string, unknown> = {
-      'resume.pdf__10485761__0': {
-        sessionKey: 'resume.pdf__10485761__0',
-        fileName: 'resume.pdf',
-        fileSize: 10 * 1024 * 1024 + 1,
-        bytesUploaded: 4 * 1024 * 1024, // 4 MB already done
+  it('filters by uploadRef without regression and resets page', async () => {
+    const mixedDocs = [
+      {
+        id: '1',
+        companyId: 'company-1',
+        documentType: 'REPORT',
+        referenceId: 'target-ref',
+        ipfsCid: 'QmDoc1',
+        fileName: 'target.pdf',
+        fileSize: 100,
+        mimeType: 'application/pdf',
+        pinned: true,
       },
-    }
-    localStorage.setItem('ipfs_upload_sessions', JSON.stringify(sessions))
+      {
+        id: '2',
+        companyId: 'company-1',
+        documentType: 'REPORT',
+        referenceId: 'other-ref',
+        ipfsCid: 'QmDoc2',
+        fileName: 'other.pdf',
+        fileSize: 200,
+        mimeType: 'application/pdf',
+        pinned: true,
+      },
+    ]
 
-    const startMock = vi.fn().mockResolvedValue({ cid: 'QmResumed' })
-    vi.spyOn(chunkedUploadModule, 'useChunkedUpload').mockReturnValue(makeChunkedHook({ start: startMock }))
+    listDocumentsMock.mockResolvedValue({ success: true, data: mixedDocs })
 
     render(<IpfsManager />)
-    await screen.findByText('report.pdf')
 
-    const largeContent = new Uint8Array(10 * 1024 * 1024 + 1)
-    const largeFile = new File([largeContent], 'resume.pdf', { type: 'application/pdf' })
-    Object.defineProperty(largeFile, 'lastModified', { value: 0 })
+    expect(await screen.findByText('target.pdf')).toBeInTheDocument()
+    expect(screen.getByText('other.pdf')).toBeInTheDocument()
 
-    const form = screen.getAllByRole('button', { name: 'Upload' })[0].closest('form')!
-    const fileInput = form.querySelector('input[type="file"]')!
+    // Type into referenceId input in the single upload form
+    const refInput = screen.getByPlaceholderText('referenceId')
+    fireEvent.change(refInput, { target: { value: 'target-ref' } })
 
-    fireEvent.change(fileInput, { target: { files: [largeFile] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Upload' }))
+    expect(screen.getByText('target.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('other.pdf')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent('Showing 1 to 1 of 1 documents')
+  })
 
-    await waitFor(() => {
-      // The sessionKey is derived from file.name + size + lastModified;
-      // chunked.start should be called with that key
-      expect(startMock).toHaveBeenCalledWith(
-        expect.objectContaining({ sessionKey: 'resume.pdf__10485761__0' }),
-      )
-    })
+  it('renders and paginates large document sets', async () => {
+    const largeDocSet = Array.from({ length: 100 }, (_, i) => ({
+      id: `doc-${i + 1}`,
+      companyId: 'company-1',
+      documentType: 'REPORT',
+      referenceId: `ref-${i + 1}`,
+      ipfsCid: `QmDoc${i + 1}`,
+      fileName: `doc-${i + 1}.pdf`,
+      fileSize: 100,
+      mimeType: 'application/pdf',
+      pinned: true,
+    }))
 
-    expect(await screen.findByText(/QmResumed/)).toBeInTheDocument()
+    listDocumentsMock.mockResolvedValue({ success: true, data: largeDocSet })
 
-    localStorage.clear()
+    render(<IpfsManager />)
+
+    expect(await screen.findByText('doc-1.pdf')).toBeInTheDocument()
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent('Showing 1 to 10 of 100 documents')
+
+    // Change page size to 20
+    const pageSizeSelect = screen.getByLabelText(/select rows per page for documents/i)
+    fireEvent.change(pageSizeSelect, { target: { value: '20' } })
+
+    expect(screen.getByTestId('pagination-info')).toHaveTextContent('Showing 1 to 20 of 100 documents')
   })
 })

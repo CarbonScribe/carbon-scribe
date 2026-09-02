@@ -173,10 +173,31 @@ class IpfsService {
     return this.normalizeResponse(response);
   }
 
-  async listDocuments(companyId?: string): Promise<ApiResponse<IpfsDocumentRecord[]>> {
-    const endpoint = companyId
-      ? `/ipfs/documents?companyId=${encodeURIComponent(companyId)}`
-      : '/ipfs/documents';
+  async listDocuments(
+    companyIdOrParams?: string | { companyId?: string; page?: number; limit?: number },
+    pagination?: { page?: number; limit?: number },
+  ): Promise<ApiResponse<IpfsDocumentRecord[]>> {
+    let companyId: string | undefined;
+    let page: number | undefined;
+    let limit: number | undefined;
+
+    if (typeof companyIdOrParams === 'string') {
+      companyId = companyIdOrParams;
+      page = pagination?.page;
+      limit = pagination?.limit;
+    } else if (companyIdOrParams && typeof companyIdOrParams === 'object') {
+      companyId = companyIdOrParams.companyId;
+      page = companyIdOrParams.page;
+      limit = companyIdOrParams.limit;
+    }
+
+    const queryParams = new URLSearchParams();
+    if (companyId) queryParams.set('companyId', companyId);
+    if (page !== undefined && page !== null) queryParams.set('page', String(page));
+    if (limit !== undefined && limit !== null) queryParams.set('limit', String(limit));
+
+    const qs = queryParams.toString();
+    const endpoint = qs ? `/ipfs/documents?${qs}` : '/ipfs/documents';
     const response = await apiClient.get<IpfsDocumentRecord[]>(endpoint);
     return this.normalizeResponse(response);
   }

@@ -65,10 +65,7 @@ export class ProgressTrackingService {
     const base = Number(target.baseYearEmissions);
     const reduction = Number(target.reductionPercentage) / 100;
     const span = Math.max(1, target.targetYear - target.baseYear);
-    const progress = Math.min(
-      1,
-      Math.max(0, (year - target.baseYear) / span),
-    );
+    const progress = Math.min(1, Math.max(0, (year - target.baseYear) / span));
     const targetAtEnd = base * (1 - reduction);
     return base + (targetAtEnd - base) * progress;
   }
@@ -87,10 +84,7 @@ export class ProgressTrackingService {
     const requiredCut = base * reduction;
     if (requiredCut <= 0) return 0;
     const actualCut = base - latestActual;
-    return Math.max(
-      0,
-      Math.min(100, (actualCut / requiredCut) * 100),
-    );
+    return Math.max(0, Math.min(100, (actualCut / requiredCut) * 100));
   }
 
   classifyTrackStatus(
@@ -124,8 +118,7 @@ export class ProgressTrackingService {
     }
     return years.map((year) => ({
       year,
-      actualEmissions:
-        byYear.get(year) ?? Number(target.baseYearEmissions),
+      actualEmissions: byYear.get(year) ?? Number(target.baseYearEmissions),
       targetEmissions: this.expectedEmissionsAtYear(target, year),
     }));
   }
@@ -144,9 +137,7 @@ export class ProgressTrackingService {
     const targetEntries: TargetDashboardEntry[] = targets.map((t) => {
       const rows = progressRows.filter((p) => p.targetId === t.id);
       const series = this.buildSeries(t, rows);
-      const latest = series.length
-        ? series[series.length - 1]
-        : null;
+      const latest = series.length ? series[series.length - 1] : null;
       const latestEmissions = latest ? latest.actualEmissions : null;
       const latestYear = latest ? latest.year : t.baseYear;
       return {
