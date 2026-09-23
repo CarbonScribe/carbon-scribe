@@ -258,3 +258,37 @@ fn test_set_replenishment_rate() {
     let result = client.try_set_replenishment_rate(&governance, &1000);
     assert!(result.is_ok());
 }
+
+#[test]
+fn test_withdraw_underflow() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+    client.deposit(&admin, &1, &project_id);
+
+    env.as_contract(&client.address, || {
+        crate::storage::set_total_value_locked(&env, 0);
+    });
+
+    let result = client.try_withdraw_to_replace(&governance, &1, &999);
+    assert_eq!(result, Err(Ok(crate::Error::ArithmeticOverflow)));
+}
+
+#[test]
+fn test_deposit_overflow() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+    
+    env.as_contract(&client.address, || {
+        crate::storage::set_total_value_locked(&env, i128::MAX);
+    });
+
+    let result = client.try_deposit(&admin, &1, &project_id);
+    assert_eq!(result, Err(Ok(crate::Error::ArithmeticOverflow)));
+}
+

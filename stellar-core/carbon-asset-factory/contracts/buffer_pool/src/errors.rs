@@ -13,4 +13,5 @@ pub enum Error {
     InvalidState = 7,
     /// Percentage was explicitly set to zero, which would cause division-by-zero in auto_deposit.
     ZeroPercentage = 8,
+    ArithmeticOverflow = 9,
 }
