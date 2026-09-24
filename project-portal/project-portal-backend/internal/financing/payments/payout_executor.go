@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stellar/go/txnbuild"
-	"project-portal/project-portal-backend/internal/auth"
-	"project-portal/project-portal-backend/internal/financing"
+	"carbon-scribe/project-portal/project-portal-backend/internal/auth"
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing"
 )
 
 type PayoutExecutor interface {
