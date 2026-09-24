@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { configSchema } from './validation/config.schema';
+import { PlaceholderDetector } from './validation/placeholder-detector';
 import { AppConfig } from './interfaces/app-config.interface';
 import { DatabaseConfig } from './interfaces/database-config.interface';
 import { RedisConfig } from './interfaces/redis-config.interface';
@@ -26,6 +27,25 @@ export interface RateLimitConfig {
   enableMetrics: boolean;
   enableLogging: boolean;
   whitelistEnabled: boolean;
+}
+
+export const JWT_SECRET_MIN_LENGTH = 32;
+
+/**
+ * Treats any deployment that looks shared/staging as production-like for
+ * secret validation, not just NODE_ENV === 'production' — a staging box
+ * misconfigured with NODE_ENV=development should still reject weak secrets.
+ */
+export function isProductionLikeEnvironment(value: {
+  NODE_ENV?: string;
+  SERVICE_NAME?: string;
+  DEPLOY_ENV?: string;
+}): boolean {
+  if (value.NODE_ENV === 'production') {
+    return true;
+  }
+  const marker = `${value.SERVICE_NAME || ''} ${value.DEPLOY_ENV || ''}`.toLowerCase();
+  return /staging|shared/.test(marker);
 }
 
 export interface AllConfig {
@@ -183,13 +203,22 @@ export class ConfigService {
     };
 
     // Basic production validation (additional validation handled by StartupValidator)
-    if (app.nodeEnv === 'production') {
-      if (!value.DATABASE_URL) {
-        throw new Error('DATABASE_URL is required in production');
-      }
-      if (!value.JWT_SECRET || value.JWT_SECRET === 'dev-jwt-secret') {
+    const isProductionLike = isProductionLikeEnvironment(value);
+
+    if (app.nodeEnv === 'production' && !value.DATABASE_URL) {
+      throw new Error('DATABASE_URL is required in production');
+    }
+
+    if (isProductionLike) {
+      const placeholderDetector = new PlaceholderDetector();
+      const jwtSecretCheck = placeholderDetector.validateValue(
+        value.JWT_SECRET,
+        'JWT_SECRET',
+        { minLength: JWT_SECRET_MIN_LENGTH },
+      );
+      if (!jwtSecretCheck.isValid) {
         throw new Error(
-          'JWT_SECRET must be set to a secure value in production',
+          `${jwtSecretCheck.message} (minimum ${JWT_SECRET_MIN_LENGTH} characters, no dev/test/placeholder patterns).`,
         );
       }
     }
