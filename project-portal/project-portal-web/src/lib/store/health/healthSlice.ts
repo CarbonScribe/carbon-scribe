@@ -8,6 +8,7 @@ import {
     acknowledgeAlertApi,
     fetchDependenciesApi,
     fetchUptimeApi,
+    fetchMaintenanceScheduleApi,
 } from './health.api';
 import { AxiosError } from 'axios';
 
@@ -18,6 +19,7 @@ const initialState = {
     alerts: [],
     dependencies: [],
     uptimeStats: null,
+    maintenanceEvents: [],
     healthLoading: {
         isFetchingStatus: false,
         isFetchingServices: false,
@@ -26,6 +28,7 @@ const initialState = {
         isFetchingDependencies: false,
         isAcknowledgingAlert: false,
         isFetchingUptime: false,
+        isFetchingMaintenance: false,
     },
     healthErrors: {
         status: null,
@@ -35,6 +38,7 @@ const initialState = {
         dependencies: null,
         acknowledge: null,
         uptime: null,
+        maintenance: null,
     },
 };
 
@@ -190,6 +194,25 @@ export const createHealthSlice: StateCreator<HealthSlice> = (set, get) => ({
                 healthErrors: { ...state.healthErrors, acknowledge: getErrorMessage(error) },
             }));
             return false;
+        }
+    },
+
+    fetchMaintenanceSchedule: async () => {
+        set((state) => ({
+            healthLoading: { ...state.healthLoading, isFetchingMaintenance: true },
+            healthErrors: { ...state.healthErrors, maintenance: null },
+        }));
+        try {
+            const data = await fetchMaintenanceScheduleApi();
+            set((state) => ({
+                maintenanceEvents: data,
+                healthLoading: { ...state.healthLoading, isFetchingMaintenance: false },
+            }));
+        } catch (error) {
+            set((state) => ({
+                healthLoading: { ...state.healthLoading, isFetchingMaintenance: false },
+                healthErrors: { ...state.healthErrors, maintenance: getErrorMessage(error) },
+            }));
         }
     },
 
