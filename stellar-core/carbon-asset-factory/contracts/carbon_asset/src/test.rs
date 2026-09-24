@@ -2,6 +2,7 @@
 
 use super::{CarbonAsset, CarbonAssetClient};
 use crate::errors::ContractError;
+use crate::storage::DataKey;
 use crate::types::{AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, String};
@@ -832,4 +833,119 @@ fn test_transfer_with_regulatory_contract_erroring_returns_compliance_call_faile
 
     let result = client.try_transfer(&owner, &buyer, &1);
     assert_eq!(result, Err(Ok(ContractError::ComplianceCallFailed)));
+}
+
+// ====================================================================
+// Safe increment overflow handling (issue #611)
+// ====================================================================
+
+/// Minting fails with TokenIdOverflow when NextTokenId is at u32::MAX,
+/// preventing silent wraparound, and asserts that no state is mutated.
+#[test]
+fn test_mint_next_token_id_overflow_at_u32_max_returns_error_and_preserves_state() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+
+    // Seed NextTokenId to u32::MAX
+    env.as_contract(&contract_id, || {
+        env.storage().instance().set(&DataKey::NextTokenId, &u32::MAX);
+    });
+
+    let meta = make_meta(&env);
+    let result = client.try_mint(&admin, &owner, &meta);
+    assert_eq!(result, Err(Ok(ContractError::TokenIdOverflow)));
+
+    // Verify no state mutation occurred
+    let stored_next_token_id: u32 = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&DataKey::NextTokenId).unwrap()
+    });
+    assert_eq!(stored_next_token_id, u32::MAX);
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.balance(&owner), 0);
+    assert_eq!(
+        client.try_owner_of(&u32::MAX),
+        Err(Ok(ContractError::TokenNotFound))
+    );
+}
+
+/// Minting near u32::MAX succeeds for the boundary token (u32::MAX - 1),
+/// advancing NextTokenId to u32::MAX, and then the next mint attempt fails
+/// with TokenIdOverflow without mutating state.
+#[test]
+fn test_mint_near_u32_max_succeeds_then_overflows_safely() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+
+    // Seed NextTokenId to u32::MAX - 1
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::NextTokenId, &(u32::MAX - 1));
+    });
+
+    let meta = make_meta(&env);
+
+    // First mint succeeds and mints token (u32::MAX - 1)
+    let token_id = client.mint(&admin, &owner, &meta);
+    assert_eq!(token_id, u32::MAX - 1);
+    assert_eq!(client.balance(&owner), 1);
+    assert_eq!(client.owner_of(&(u32::MAX - 1)), owner);
+    assert_eq!(client.get_total_minted(), 1);
+
+    let stored_next_token_id: u32 = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&DataKey::NextTokenId).unwrap()
+    });
+    assert_eq!(stored_next_token_id, u32::MAX);
+
+    // Second mint hits u32::MAX overflow and must be rejected
+    let result = client.try_mint(&admin, &owner, &meta);
+    assert_eq!(result, Err(Ok(ContractError::TokenIdOverflow)));
+
+    // State remains unmutated after failed mint
+    let next_id_after_fail: u32 = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&DataKey::NextTokenId).unwrap()
+    });
+    assert_eq!(next_id_after_fail, u32::MAX);
+    assert_eq!(client.get_total_minted(), 1);
+    assert_eq!(client.balance(&owner), 1);
+    assert_eq!(
+        client.try_owner_of(&u32::MAX),
+        Err(Ok(ContractError::TokenNotFound))
+    );
+}
+
+/// TotalMinted overflow guard also returns TokenIdOverflow without state mutation.
+#[test]
+fn test_mint_total_minted_overflow_returns_error_and_preserves_state() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+
+    // Seed TotalMinted to u32::MAX
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalMinted, &u32::MAX);
+    });
+
+    let meta = make_meta(&env);
+    let result = client.try_mint(&admin, &owner, &meta);
+    assert_eq!(result, Err(Ok(ContractError::TokenIdOverflow)));
+
+    // Verify TotalMinted did not wrap and no token was minted
+    let stored_total_minted: u32 = env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .get(&DataKey::TotalMinted)
+            .unwrap()
+    });
+    assert_eq!(stored_total_minted, u32::MAX);
+    let stored_next_token_id: u32 = env.as_contract(&contract_id, || {
+        env.storage().instance().get(&DataKey::NextTokenId).unwrap()
+    });
+    assert_eq!(stored_next_token_id, 1);
+    assert_eq!(client.balance(&owner), 0);
+    assert_eq!(
+        client.try_owner_of(&1),
+        Err(Ok(ContractError::TokenNotFound))
+    );
 }

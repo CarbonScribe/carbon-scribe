@@ -30,4 +30,7 @@ pub enum ContractError {
     // succeeded and the regulatory contract responded non-compliant
     // (issue #517).
     ComplianceCallFailed = 19,
+    // Mint counter overflow: NextTokenId or TotalMinted has reached
+    // u32::MAX and cannot be safely incremented without wraparound (issue #611).
+    TokenIdOverflow = 20,
 }
