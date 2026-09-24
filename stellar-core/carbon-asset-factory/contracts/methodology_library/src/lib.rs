@@ -23,6 +23,7 @@ pub enum Error {
     InvalidRegistryLink = 13,
     InvalidRegistry = 14,
     MetadataTooLong = 15,
+    DuplicateMethodologyIdentity = 16,
 }
 
 #[contracttype]
@@ -66,6 +67,9 @@ pub enum DataKey {
     DelayPeriod,
     NextProposalId,
     AuthorityProposal(u32),
+    // Maps a (name, version, registry) identity triple to the token_id it
+    // was minted as, so mint/update can reject duplicate identities.
+    IdentityIndex(String, String, String),
 }
 
 #[contract]
@@ -145,6 +149,10 @@ impl MethodologyLibrary {
         Ok(())
     }
 
+    fn identity_key(name: &String, version: &String, registry: &String) -> DataKey {
+        DataKey::IdentityIndex(name.clone(), version.clone(), registry.clone())
+    }
+
     fn is_whitespace_only(bytes: &Bytes) -> bool {
         for i in 0..bytes.len() {
             if !bytes.get(i).unwrap().is_ascii_whitespace() {
@@ -222,10 +230,16 @@ impl MethodologyLibrary {
             return Err(Error::MetadataMismatch);
         }
 
+        let identity_key = Self::identity_key(&meta.name, &meta.version, &meta.registry);
+        if env.storage().persistent().has(&identity_key) {
+            return Err(Error::DuplicateMethodologyIdentity);
+        }
+
         let token_id: u32 = env.storage().persistent().get(&DataKey::NextTokenId).ok_or(Error::NotInitialized)?;
-        
+
         env.storage().persistent().set(&DataKey::Methodology(token_id), &meta);
         env.storage().persistent().set(&DataKey::Owner(token_id), &owner);
+        env.storage().persistent().set(&identity_key, &token_id);
         env.storage().persistent().set(&DataKey::NextTokenId, &(token_id + 1));
 
         env.events().publish(
@@ -253,6 +267,23 @@ impl MethodologyLibrary {
         // Only the issuing authority can update metadata
         if existing.issuing_authority != caller {
             return Err(Error::Unauthorized);
+        }
+
+        let identity_changed = existing.name != meta.name
+            || existing.version != meta.version
+            || existing.registry != meta.registry;
+
+        if identity_changed {
+            let new_identity_key = Self::identity_key(&meta.name, &meta.version, &meta.registry);
+            if let Some(colliding_token_id) = env.storage().persistent().get::<DataKey, u32>(&new_identity_key) {
+                if colliding_token_id != token_id {
+                    return Err(Error::DuplicateMethodologyIdentity);
+                }
+            }
+
+            let old_identity_key = Self::identity_key(&existing.name, &existing.version, &existing.registry);
+            env.storage().persistent().remove(&old_identity_key);
+            env.storage().persistent().set(&new_identity_key, &token_id);
         }
 
         // Update metadata in storage
@@ -326,6 +357,11 @@ impl MethodologyLibrary {
             .persistent()
             .get(&DataKey::Methodology(token_id))
             .ok_or(Error::TokenNotFound)
+    }
+
+    pub fn get_token_by_identity(env: Env, name: String, version: String, registry: String) -> Option<u32> {
+        let key = Self::identity_key(&name, &version, &registry);
+        env.storage().persistent().get(&key)
     }
 
     pub fn is_valid_methodology(env: Env, token_id: u32) -> bool {
@@ -1410,5 +1446,308 @@ mod test {
 
         let result3 = client.try_mint_methodology(&authority, &owner, &meta3);
         assert_eq!(result3, Err(Ok(Error::InvalidVersion)));
+    }
+
+    #[test]
+    fn test_duplicate_identity_rejected_same_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(token_id, 1);
+
+        // Same (name, version, registry) again — must be rejected even
+        // though every field individually passes format validation.
+        let result = client.try_mint_methodology(&authority, &owner, &meta);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+    }
+
+    #[test]
+    fn test_duplicate_identity_rejected_regardless_of_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority_a = Address::generate(&env);
+        let authority_b = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority_a);
+        client.add_authority(&admin, &authority_b);
+
+        let meta_a = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority_a.clone(),
+            ipfs_cid: None,
+        };
+
+        let token_id = client.mint_methodology(&authority_a, &owner, &meta_a);
+        assert_eq!(token_id, 1);
+
+        // A different, also-authorized authority tries to mint the exact
+        // same identity as its own token — must still be rejected.
+        let meta_b = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://different-host.example.org"),
+            issuing_authority: authority_b.clone(),
+            ipfs_cid: None,
+        };
+
+        let result = client.try_mint_methodology(&authority_b, &owner, &meta_b);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+    }
+
+    #[test]
+    fn test_same_name_different_version_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta_v1 = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id_v1 = client.mint_methodology(&authority, &owner, &meta_v1);
+        assert_eq!(token_id_v1, 1);
+
+        // Same name and registry, distinct version ("1.0.0" vs "1.0.1") —
+        // a distinct identity, so this must succeed.
+        let meta_v2 = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.1"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id_v2 = client.mint_methodology(&authority, &owner, &meta_v2);
+        assert_eq!(token_id_v2, 2);
+        assert_ne!(token_id_v1, token_id_v2);
+    }
+
+    #[test]
+    fn test_get_token_by_identity_resolves_known_triple() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let name = String::from_str(&env, "Improved Forest Management");
+        let version = String::from_str(&env, "1.0.0");
+        let registry = String::from_str(&env, "VERRA");
+
+        let meta = MethodologyMeta {
+            name: name.clone(),
+            version: version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+
+        let resolved = client.get_token_by_identity(&name, &version, &registry);
+        assert_eq!(resolved, Some(token_id));
+
+        let unknown = client.get_token_by_identity(
+            &name,
+            &String::from_str(&env, "9.9.9"),
+            &registry,
+        );
+        assert_eq!(unknown, None);
+    }
+
+    #[test]
+    fn test_update_identity_collision_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta_a = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_a = client.mint_methodology(&authority, &owner, &meta_a);
+
+        let meta_b = MethodologyMeta {
+            name: String::from_str(&env, "Avoided Deforestation"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_b = client.mint_methodology(&authority, &owner, &meta_b);
+        assert_ne!(token_a, token_b);
+
+        // Updating token_b's identity to collide with token_a's must be rejected.
+        let colliding_update = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org/alt"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let result = client.try_update_methodology_metadata(&authority, &token_b, &colliding_update);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+
+        // token_b's original identity must remain intact and resolvable.
+        assert_eq!(
+            client.get_token_by_identity(
+                &String::from_str(&env, "Avoided Deforestation"),
+                &String::from_str(&env, "1.0.0"),
+                &String::from_str(&env, "VERRA"),
+            ),
+            Some(token_b)
+        );
+    }
+
+    #[test]
+    fn test_update_identity_new_triple_succeeds_and_updates_index() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let old_name = String::from_str(&env, "Improved Forest Management");
+        let old_version = String::from_str(&env, "1.0.0");
+        let registry = String::from_str(&env, "VERRA");
+
+        let meta = MethodologyMeta {
+            name: old_name.clone(),
+            version: old_version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(
+            client.get_token_by_identity(&old_name, &old_version, &registry),
+            Some(token_id)
+        );
+
+        let new_name = String::from_str(&env, "Improved Forest Management v2");
+        let new_version = String::from_str(&env, "2.0.0");
+        let updated_meta = MethodologyMeta {
+            name: new_name.clone(),
+            version: new_version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org/updated"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        client.update_methodology_metadata(&authority, &token_id, &updated_meta);
+
+        // Old identity no longer resolves; new identity resolves to the same token.
+        assert_eq!(
+            client.get_token_by_identity(&old_name, &old_version, &registry),
+            None
+        );
+        assert_eq!(
+            client.get_token_by_identity(&new_name, &new_version, &registry),
+            Some(token_id)
+        );
     }
 }

@@ -1,13 +1,17 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/mail"
+	"strings"
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/utils"
 
 	"github.com/google/uuid"
@@ -30,19 +34,46 @@ type Service struct {
 	tokenManager     *TokenManager
 	stellarAuth      *StellarAuthenticator
 	passwordHashCost int
+
+	// emailer is optional: when nil, verification/reset tokens are still
+	// generated and stored but no email is sent (matching this service's
+	// pre-email-delivery behavior). Set via WithEmailer.
+	emailer              aws.EmailClient
+	verificationBaseURL  string
+	passwordResetBaseURL string
+}
+
+// ServiceOption configures optional Service dependencies.
+type ServiceOption func(*Service)
+
+// WithEmailer wires a transactional email client into the service so
+// registration and password-reset flows actually deliver their tokens by
+// email instead of only generating them. verificationBaseURL and
+// passwordResetBaseURL are the frontend URLs the token is appended to as a
+// "?token=" query parameter (see internal/config's AuthConfig).
+func WithEmailer(emailer aws.EmailClient, verificationBaseURL, passwordResetBaseURL string) ServiceOption {
+	return func(s *Service) {
+		s.emailer = emailer
+		s.verificationBaseURL = verificationBaseURL
+		s.passwordResetBaseURL = passwordResetBaseURL
+	}
 }
 
 // NewService creates a new auth service
-func NewService(repo *Repository, tm *TokenManager, sa *StellarAuthenticator, hashCost int) *Service {
+func NewService(repo *Repository, tm *TokenManager, sa *StellarAuthenticator, hashCost int, opts ...ServiceOption) *Service {
 	if hashCost == 0 {
 		hashCost = DefaultPasswordHashCost
 	}
-	return &Service{
+	s := &Service{
 		repository:       repo,
 		tokenManager:     tm,
 		stellarAuth:      sa,
 		passwordHashCost: hashCost,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Register registers a new user
@@ -90,6 +121,8 @@ func (s *Service) Register(email, password, fullName, organization string) (*Use
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate verification token: %w", err)
 	}
+
+	s.sendVerificationEmail(user.Email, verificationToken)
 
 	return toUserResponse(user), verificationToken, nil
 }
@@ -270,6 +303,8 @@ func (s *Service) RequestPasswordReset(email string) (string, error) {
 		return "", fmt.Errorf("failed to generate reset token: %w", err)
 	}
 
+	s.sendPasswordResetEmail(user.Email, resetToken)
+
 	return resetToken, nil
 }
 
@@ -388,7 +423,14 @@ func (s *Service) ResendVerification(email string) (string, error) {
 		return "", nil
 	}
 
-	return s.generateAuthToken(user.ID, "email_verification", EmailVerificationTokenTTL)
+	token, err := s.generateAuthToken(user.ID, "email_verification", EmailVerificationTokenTTL)
+	if err != nil {
+		return "", err
+	}
+
+	s.sendVerificationEmail(user.Email, token)
+
+	return token, nil
 }
 
 // GetUserProfile retrieves a user's profile
@@ -525,6 +567,50 @@ func (s *Service) generateAuthToken(userID, tokenType string, expiry time.Durati
 	}
 
 	return tokenStr, nil
+}
+
+// sendVerificationEmail emails a freshly generated verification token, if
+// an emailer is configured. A send failure is logged, not returned: the
+// token is already stored and valid, so a transient SES hiccup shouldn't
+// fail registration/resend — the caller can request another resend.
+func (s *Service) sendVerificationEmail(toEmail, token string) {
+	link := buildTokenLink(s.verificationBaseURL, token)
+	if s.emailer == nil {
+		// No SES client configured (e.g. local dev without SES_FROM_ADDRESS
+		// set): log the link instead of silently discarding it. Never
+		// returned over HTTP — see internal/auth/handler.go.
+		log.Printf("auth: no emailer configured; verification link for %s: %s", toEmail, link)
+		return
+	}
+	subject, htmlBody, textBody := aws.RenderVerificationEmail(link, EmailVerificationTokenTTL)
+	if err := s.emailer.SendEmail(context.Background(), toEmail, subject, htmlBody, textBody); err != nil {
+		log.Printf("auth: failed to send verification email to %s: %v", toEmail, err)
+	}
+}
+
+// sendPasswordResetEmail emails a freshly generated password-reset token,
+// if an emailer is configured. Like sendVerificationEmail, a send failure
+// is logged rather than propagated.
+func (s *Service) sendPasswordResetEmail(toEmail, token string) {
+	link := buildTokenLink(s.passwordResetBaseURL, token)
+	if s.emailer == nil {
+		log.Printf("auth: no emailer configured; password reset link for %s: %s", toEmail, link)
+		return
+	}
+	subject, htmlBody, textBody := aws.RenderPasswordResetEmail(link, PasswordResetTokenTTL)
+	if err := s.emailer.SendEmail(context.Background(), toEmail, subject, htmlBody, textBody); err != nil {
+		log.Printf("auth: failed to send password reset email to %s: %v", toEmail, err)
+	}
+}
+
+// buildTokenLink appends a "token" query parameter to baseURL, handling
+// baseURL both with and without a pre-existing query string.
+func buildTokenLink(baseURL, token string) string {
+	separator := "?"
+	if strings.Contains(baseURL, "?") {
+		separator = "&"
+	}
+	return fmt.Sprintf("%s%stoken=%s", baseURL, separator, token)
 }
 
 func (s *Service) getUserPermissions(role string) ([]string, error) {

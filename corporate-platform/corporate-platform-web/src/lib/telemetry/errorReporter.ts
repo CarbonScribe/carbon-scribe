@@ -41,6 +41,60 @@ function isRateLimited(): boolean {
   return false;
 }
 
+// ── Redaction (#555) ─────────────────────────────────────────────────────────
+//
+// Telemetry is forwarded off-device to an observability endpoint, so it must
+// never carry auth tokens or user-profile data — a call site could always
+// pass one in by mistake (e.g. a raw API error body that happens to echo a
+// header). This is enforced structurally here, not just by auditing call
+// sites, so a future call site can't quietly reintroduce a leak.
+
+const SENSITIVE_METADATA_KEYS = new Set([
+  'token',
+  'accesstoken',
+  'access_token',
+  'refreshtoken',
+  'refresh_token',
+  'idtoken',
+  'id_token',
+  'password',
+  'authorization',
+  'cookie',
+  'user',
+  'profile',
+  'jwt',
+]);
+
+// A JWT is three base64url segments joined by dots; each segment is
+// realistically at least ~10 chars. Matches and redacts any such substring
+// found in a string value, regardless of which field it's in.
+const JWT_LIKE_PATTERN = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
+
+function redactJwtLike(value: string): string {
+  return value.replace(JWT_LIKE_PATTERN, '[REDACTED_TOKEN]');
+}
+
+function sanitizeMetadataValue(value: unknown): unknown {
+  if (typeof value === 'string') return redactJwtLike(value);
+  return value;
+}
+
+function sanitizeMetadata(
+  metadata?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!metadata) return metadata;
+
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (SENSITIVE_METADATA_KEYS.has(key.toLowerCase())) {
+      sanitized[key] = '[REDACTED]';
+      continue;
+    }
+    sanitized[key] = sanitizeMetadataValue(value);
+  }
+  return sanitized;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildPayload(
@@ -50,7 +104,7 @@ function buildPayload(
   metadata?: Record<string, unknown>,
   requestId?: string,
 ): ErrorPayload {
-  const message =
+  const rawMessage =
     error instanceof Error
       ? error.message
       : typeof error === 'string'
@@ -58,13 +112,13 @@ function buildPayload(
         : JSON.stringify(error);
 
   return {
-    error: message,
+    error: redactJwtLike(rawMessage),
     severity,
     context,
-    metadata: {
+    metadata: sanitizeMetadata({
       ...metadata,
-      ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
-    },
+      ...(error instanceof Error && error.stack ? { stack: redactJwtLike(error.stack) } : {}),
+    }),
     timestamp: new Date().toISOString(),
     url: typeof window !== 'undefined' ? window.location.href : '',
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
@@ -131,8 +185,11 @@ export function reportError(
 
   if (IS_DEV) {
     if (shouldLogToConsole(severity)) {
+      // Log the sanitized payload, not the raw error/metadata (#555) — the
+      // dev console is still somewhere a token or profile value shouldn't
+      // land, e.g. during a screen-shared debugging session.
       // eslint-disable-next-line no-console
-      console.error(`[${severity.toUpperCase()}] ${context}:`, error, metadata ?? '');
+      console.error(`[${severity.toUpperCase()}] ${context}:`, payload.error, payload.metadata ?? '');
     }
     // In development, skip remote forwarding unless explicitly configured
     if (!ENDPOINT) return;

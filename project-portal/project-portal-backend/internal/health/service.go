@@ -124,20 +124,28 @@ func (s *service) GetDetailedStatus(ctx context.Context) (DetailedStatusResponse
 
 	uptime := time.Since(startTime).String()
 
-	return DetailedStatusResponse{
-		Status:    overallStatus,
-		Service:   defaultServiceName,
-		Timestamp: time.Now(),
-		Version:   defaultVersion,
-		Uptime:    uptime,
-		Components: map[string]ComponentStatus{
-			"database": {
-				Status:        dbStatus,
-				Details:       dbError,
-				LatencyMs:     dbLatency,
-				LastCheckTime: time.Now(),
-			},
+	components := map[string]ComponentStatus{
+		"database": {
+			Status:        dbStatus,
+			Details:       dbError,
+			LatencyMs:     dbLatency,
+			LastCheckTime: time.Now(),
 		},
+	}
+	for name, status := range snapshotComponentProviders() {
+		components[name] = status
+		if status.Status != "up" && overallStatus == "healthy" {
+			overallStatus = "degraded"
+		}
+	}
+
+	return DetailedStatusResponse{
+		Status:     overallStatus,
+		Service:    defaultServiceName,
+		Timestamp:  time.Now(),
+		Version:    defaultVersion,
+		Uptime:     uptime,
+		Components: components,
 	}, nil
 }
 

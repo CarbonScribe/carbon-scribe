@@ -23,6 +23,8 @@ type Config struct {
 	RateLimit     RateLimitConfig
 	Soroban       SorobanConfig
 	Notifications NotificationsConfig
+	MQTT          MQTTConfig
+	SES           SESConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -54,6 +56,13 @@ type SettingsConfig struct {
 	EncryptionKeyHex string
 	APIKeyPrefix     string
 	ProfileCDNBase   string
+}
+
+// SESConfig holds configuration for the SES transactional email client.
+// AWS credentials/region/endpoint are shared with AWSConfig; the client is
+// only constructed (see cmd/api/main.go) when FromAddress is set.
+type SESConfig struct {
+	FromAddress string // verified SES sender identity, e.g. "no-reply@carbonscribe.io"
 }
 
 type GeospatialConfig struct {
@@ -111,6 +120,22 @@ type SorobanConfig struct {
 	NetworkPassphrase   string
 	CarbonAssetContract string
 	InventoryCacheTTL   string
+}
+
+// MQTTConfig holds configuration for the IoT telemetry MQTT client.
+// The client is only started (see cmd/api/main.go) when BrokerURL is set.
+type MQTTConfig struct {
+	BrokerURL             string // e.g. "tls://broker.example.com:8883" or "tcp://localhost:1883"
+	ClientID              string
+	Username              string
+	Password              string
+	TLSCACertFile         string // optional custom CA for verifying the broker
+	TLSCertFile           string // client certificate, for mutual TLS
+	TLSKeyFile            string // client private key, for mutual TLS
+	TLSInsecureSkipVerify bool   // dev-only; never enable in production
+	QoS                   int
+	QueueSize             int
+	Workers               int
 }
 
 type NotificationsConfig struct {
@@ -242,6 +267,22 @@ func Load() (*Config, error) {
 			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
+		},
+		SES: SESConfig{
+			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
+		},
+		MQTT: MQTTConfig{
+			BrokerURL:             os.Getenv("MQTT_BROKER_URL"),
+			ClientID:              os.Getenv("MQTT_CLIENT_ID"),
+			Username:              os.Getenv("MQTT_USERNAME"),
+			Password:              os.Getenv("MQTT_PASSWORD"),
+			TLSCACertFile:         os.Getenv("MQTT_TLS_CA_CERT_FILE"),
+			TLSCertFile:           os.Getenv("MQTT_TLS_CERT_FILE"),
+			TLSKeyFile:            os.Getenv("MQTT_TLS_KEY_FILE"),
+			TLSInsecureSkipVerify: os.Getenv("MQTT_TLS_INSECURE_SKIP_VERIFY") == "true",
+			QoS:                   getIntOrDefault("MQTT_QOS", 1),
+			QueueSize:             getIntOrDefault("MQTT_QUEUE_SIZE", 1000),
+			Workers:               getIntOrDefault("MQTT_WORKERS", 4),
 		},
 		Notifications: NotificationsConfig{
 			MongoURI:          getEnvOrDefault("NOTIFICATIONS_MONGO_URI", "mongodb://localhost:27017"),
