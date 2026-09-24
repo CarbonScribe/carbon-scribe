@@ -148,4 +148,3 @@ func TestSendEmail_UsesConfiguredFromAddress(t *testing.T) {
 	assert.Equal(t, "<p>hi</p>", *captured.Content.Simple.Body.Html.Data)
 	assert.Equal(t, "hi", *captured.Content.Simple.Body.Text.Data)
 }
-
