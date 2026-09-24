@@ -40,7 +40,8 @@ describe('JWT_SECRET direct-env-read scan', () => {
   });
 
   it('confirms the scan itself still detects a direct read (sanity check)', () => {
-    const fixture = 'const secret = process.env.JWT_SECRET || "dev-jwt-secret";';
+    const fixture =
+      'const secret = process.env.JWT_SECRET || "dev-jwt-secret";';
     expect(DIRECT_READ_PATTERN.test(fixture)).toBe(true);
   });
 });
