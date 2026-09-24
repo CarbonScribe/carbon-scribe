@@ -35,7 +35,7 @@ export class JwtSecretConsistencyValidator implements OnModuleInit {
     } catch {
       throw new Error(
         "JWT secret mismatch: JwtModule's signing secret does not match " +
-          "ConfigService.getAuthConfig().jwtSecret. Refusing to start.",
+          'ConfigService.getAuthConfig().jwtSecret. Refusing to start.',
       );
     }
 
