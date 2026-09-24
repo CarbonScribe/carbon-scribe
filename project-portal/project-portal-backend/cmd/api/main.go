@@ -150,8 +150,16 @@ func main() {
 	// --- Methodology Compliance Validator ---
 	methodologyValidator := validation.NewMethodologyValidator(methodologyCapClient)
 
+	// isProduction mirrors the release-mode signal used for gin.SetMode below:
+	// Debug is only true when explicitly enabled, so an unconfigured
+	// environment fails closed to the stricter production checks.
+	isProduction := !cfg.Debug
+	mintingContractClient, err := minting.NewContractClientFromEnv(isProduction)
+	if err != nil {
+		log.Fatalf("❌ Failed to configure carbon asset minting contract client: %v", err)
+	}
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
-	mintingService := minting.NewService(db, nil, mintingCapValidator)
+	mintingService := minting.NewService(db, mintingContractClient, mintingCapValidator)
 	mintingHandler := minting.NewHandler(mintingService).WithRateLimiter(rateLimiter)
 
 	projectService := project.NewService(projectRepo, methodologyService, mintingService, validation.Validator(methodologyValidator))

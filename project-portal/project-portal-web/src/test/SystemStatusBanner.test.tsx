@@ -15,6 +15,7 @@ const defaultHealthState = {
     isFetchingDependencies: false,
     isAcknowledgingAlert: false,
     isFetchingUptime: false,
+    isFetchingMaintenance: false,
   },
   healthErrors: {
     status: null,
@@ -24,6 +25,7 @@ const defaultHealthState = {
     dependencies: null,
     acknowledge: null,
     uptime: null,
+    maintenance: null,
   },
   fetchDetailedStatus: vi.fn(),
   fetchUptimeStats: vi.fn(),

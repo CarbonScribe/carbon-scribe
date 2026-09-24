@@ -42,15 +42,14 @@ import {
   tryAcquireRefreshLeadership,
   type AuthBroadcastMessage,
 } from '@/lib/auth/cross-tab-auth';
+import {
+  SESSION_WARNING_SECONDS,
+  SESSION_GRACE_SECONDS,
+  TOKEN_REFRESH_BUFFER,
+} from '@/lib/auth/sessionConfig';
+import { clearAllUnsavedChanges } from '@/lib/forms/unsavedChangesRegistry';
 
 export type SessionExpiryState = 'active' | 'warning' | 'grace' | 'expired';
-
-const SESSION_WARNING_SECONDS =
-  parseInt(process.env.NEXT_PUBLIC_SESSION_EXPIRY_WARNING_MINUTES || '5', 10) * 60;
-const SESSION_GRACE_SECONDS =
-  parseInt(process.env.NEXT_PUBLIC_SESSION_GRACE_SECONDS || '30', 10);
-const TOKEN_REFRESH_BUFFER =
-  parseInt(process.env.NEXT_PUBLIC_TOKEN_REFRESH_BUFFER || '60', 10);
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -191,6 +190,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const success = await refreshTokenSilently();
     if (success) {
       setSessionExpiryState('active');
+      // Telemetry (#549): distinguish a user-initiated renewal from a
+      // forced logout for support triage.
+      reportError('session_renewed', 'AuthContext', 'info', {
+        operation: 'renewSession',
+        outcome: 'renewed',
+      });
     }
     return success;
   }, [refreshTokenSilently]);
@@ -264,6 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       // Always clear client-side data
       clearAuthData();
+      clearAllUnsavedChanges();
       setUser(null);
       setIsLoading(false);
 
@@ -322,7 +328,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           // Grace period over — force logout
           setSessionExpiryState('expired');
+          // Telemetry (#549): distinguish this forced logout from a
+          // user-initiated renewal for support triage.
+          reportError('session_expired_forced_logout', 'AuthContext', 'warning', {
+            operation: 'sessionExpiry',
+            outcome: 'forced-logout',
+          });
           clearAuthData();
+          clearAllUnsavedChanges();
           setUser(null);
           if (!isPublicRoute(pathname)) {
             router.push('/login');

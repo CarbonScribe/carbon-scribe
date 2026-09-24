@@ -57,8 +57,13 @@ export const configSchema = Joi.object({
   // ============================================================
   // Auth Configuration
   // ============================================================
-  JWT_SECRET: Joi.string().default('dev-jwt-secret'),
+  // No default: an unset JWT_SECRET must fail validation in every
+  // environment rather than silently resolving to a known weak value.
+  JWT_SECRET: Joi.string().required(),
   JWT_EXPIRY: Joi.string().default('15m'),
+  // Optional marker so shared/staging deployments that don't set
+  // NODE_ENV=production still get production-grade secret checks.
+  DEPLOY_ENV: Joi.string().allow('').optional(),
 
   // ============================================================
   // Logging Configuration

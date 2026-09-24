@@ -61,6 +61,14 @@ export interface SystemStatusSnapshot {
   uptimeStats: UptimeStat[];
 }
 
+export interface MaintenanceEvent {
+  id: string;
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+}
+
 export interface HealthSlice {
   // State
   detailedStatus: SystemStatusSnapshot | null;
@@ -69,7 +77,8 @@ export interface HealthSlice {
   alerts: SystemAlert[];
   dependencies: ServiceDependency[];
   uptimeStats: UptimeStat[] | null;
-  
+  maintenanceEvents: MaintenanceEvent[];
+
   healthLoading: {
     isFetchingStatus: boolean;
     isFetchingServices: boolean;
@@ -78,6 +87,7 @@ export interface HealthSlice {
     isFetchingDependencies: boolean;
     isAcknowledgingAlert: boolean;
     isFetchingUptime: boolean;
+    isFetchingMaintenance: boolean;
   };
   healthErrors: {
     status: string | null;
@@ -87,6 +97,7 @@ export interface HealthSlice {
     dependencies: string | null;
     acknowledge: string | null;
     uptime: string | null;
+    maintenance: string | null;
   };
 
   // Actions
@@ -97,5 +108,6 @@ export interface HealthSlice {
   acknowledgeAlert: (id: string, adminId: string) => Promise<boolean>;
   fetchDependencies: () => Promise<void>;
   fetchUptimeStats: () => Promise<void>;
+  fetchMaintenanceSchedule: () => Promise<void>;
   clearHealthData: () => void;
 }
