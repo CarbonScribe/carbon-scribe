@@ -122,6 +122,27 @@ func main() {
 		log.Println("✅ Redis connected — rate limiting enabled")
 	}
 
+	// ============================================================================
+	// Initialize SES Email Client (only if a sender address is configured)
+	// ============================================================================
+	var emailClient aws.EmailClient
+	if cfg.SES.FromAddress != "" {
+		sesClient, sesErr := aws.NewSESClient(aws.SESConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+			Endpoint:        cfg.AWS.Endpoint,
+			FromAddress:     cfg.SES.FromAddress,
+		})
+		if sesErr != nil {
+			log.Fatalf("❌ Failed to configure SES email client: %v", sesErr)
+		}
+		emailClient = sesClient
+		log.Printf("✅ SES email client initialized (from=%s)", cfg.SES.FromAddress)
+	} else {
+		log.Println("ℹ️  SES_FROM_ADDRESS not configured — transactional email is disabled")
+	}
+
 	// Parse JWT token expiries
 	accessTokenExpiry := parseDuration(cfg.Auth.JWTAccessTokenExpiry, 15*time.Minute)
 	refreshTokenExpiry := parseDuration(cfg.Auth.JWTRefreshTokenExpiry, 7*24*time.Hour)
@@ -130,7 +151,11 @@ func main() {
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, accessTokenExpiry, refreshTokenExpiry)
 	stellarAuth := auth.NewStellarAuthenticator(cfg.Auth.StellarNetworkPassphrase, 15*time.Minute)
 	authRepo := auth.NewRepository(db)
-	authService := auth.NewService(authRepo, tokenManager, stellarAuth, cfg.Auth.PasswordHashCost)
+	var authServiceOpts []auth.ServiceOption
+	if emailClient != nil {
+		authServiceOpts = append(authServiceOpts, auth.WithEmailer(emailClient, cfg.Auth.EmailVerificationURL, cfg.Auth.PasswordResetURL))
+	}
+	authService := auth.NewService(authRepo, tokenManager, stellarAuth, cfg.Auth.PasswordHashCost, authServiceOpts...)
 	authHandler := auth.NewHandler(authService)
 
 	healthRepo := health.NewRepository(db)
@@ -435,6 +460,13 @@ func main() {
 		// Register Monitoring Routes under v1
 		// ============================================================================
 		api.RegisterMonitoringRoutes(v1, monitoringHandler)
+
+		// Register the SES bounce/complaint SNS webhook under v1. Registered
+		// unconditionally (independent of emailClient) since SNS can still
+		// deliver events for mail sent before SES was reconfigured, and the
+		// endpoint itself does no harm sitting idle.
+		sesWebhookHandler := api.NewSESWebhookHandler(aws.SESWebhookHandlers{})
+		api.RegisterSESWebhookRoutes(v1, sesWebhookHandler)
 
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
