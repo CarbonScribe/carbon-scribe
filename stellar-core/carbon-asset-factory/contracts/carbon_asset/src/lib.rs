@@ -136,14 +136,22 @@ impl CarbonAsset {
             .get(&DataKey::NextTokenId)
             .ok_or(ContractError::NotInitialized)?;
 
-        env.storage()
-            .instance()
-            .set(&DataKey::NextTokenId, &(token_id + 1));
+        let next_token_id = token_id
+            .checked_add(1)
+            .ok_or(ContractError::TokenIdOverflow)?;
 
         // Increment total minted counter
+        let next_total_minted = total_minted
+            .checked_add(1)
+            .ok_or(ContractError::TokenIdOverflow)?;
+
         env.storage()
             .instance()
-            .set(&DataKey::TotalMinted, &(total_minted + 1));
+            .set(&DataKey::NextTokenId, &next_token_id);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalMinted, &next_total_minted);
 
         env.storage()
             .persistent()
@@ -201,7 +209,7 @@ impl CarbonAsset {
 
         // Emit cap-reached event if we just hit the cap exactly
         if let Some(max_supply) = max_supply_opt {
-            if total_minted + 1 == max_supply {
+            if next_total_minted == max_supply {
                 let sequence: u64 = env
                     .storage()
                     .instance()
@@ -213,7 +221,7 @@ impl CarbonAsset {
                     .set(&DataKey::EventSequence, &cap_seq);
                 MintCapReachedEvent {
                     sequence: cap_seq,
-                    total_minted: total_minted + 1,
+                    total_minted: next_total_minted,
                     max_supply,
                 }
                 .publish(&env);
