@@ -266,6 +266,9 @@ STELLAR_SECRET_KEY=your_secret
 AWS_REGION=us-east-1
 AWS_S3_BUCKET=carbon-documents
 
+# AWS SES (transactional email — see "SES Email Delivery" below)
+SES_FROM_ADDRESS=noreply@carbonscribe.com
+
 # Local development seeding
 SEED_DEV_USERS=true
 ```
@@ -420,4 +423,54 @@ Updated examples:
 ### Attribution and Auditing
 
 Activity logs for collaboration writes now use the authenticated `user_id` from JWT claims. Any identity value supplied by clients is ignored.
+
+## SES Email Delivery
+
+Transactional email (registration verification, password reset, and — once `internal/monitoring/alerts` is wired up in `cmd/api/main.go` — alert notifications) is sent through Amazon SES via `pkg/aws.SESClient`. The client only starts if `SES_FROM_ADDRESS` is set; without it, verification/reset links are logged to the server console instead of emailed (fine for local dev, not for production).
+
+### Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `SES_FROM_ADDRESS` | Yes, to enable email | The verified sender identity emails are sent from. Validated at startup — an unset or malformed value fails config validation (or, if set, the API refuses to start). |
+| `AWS_REGION` | Yes, to enable email | Region SES sends from. Shared with the other AWS clients in this backend. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | No | Static credentials. Omit to use the default AWS credential chain (instance role, `~/.aws/credentials`, etc.) — the recommended approach in any deployed environment. |
+| `AWS_ENDPOINT_URL` | No | Overrides the SES endpoint (e.g. for a local SES-compatible emulator). |
+
+### Verified identity setup
+
+SES requires the `SES_FROM_ADDRESS` identity (or the domain it belongs to) to be verified before it can send mail, and new accounts start in the SES sandbox, which additionally requires every **recipient** address to be verified too.
+
+1. In the SES console (or via `aws sesv2 create-email-identity`), verify either the exact `SES_FROM_ADDRESS` mailbox or, preferably, the whole sending domain (adds the DKIM CNAME records SES gives you to your DNS zone — this also gets you DKIM-signed mail and lets you use any address `@yourdomain`).
+2. Configure SPF (a `TXT` record including `include:amazonses.com`) and DMARC for the sending domain, so mail from `SES_FROM_ADDRESS` reliably lands in inboxes instead of spam.
+3. While in the SES sandbox, verify each recipient address you intend to test with, or request production access (SES console → **Account dashboard** → **Request production access**) to send to arbitrary recipients.
+
+### Required IAM permissions
+
+The credentials the backend runs as (an IAM role in any real deployment; `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` locally) need at minimum:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ses:SendEmail",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Scope `Resource` down to the specific verified identity's ARN (`arn:aws:ses:<region>:<account-id>:identity/<domain-or-address>`) once you know it, rather than leaving it as `*`.
+
+### Bounce and complaint handling
+
+`POST /api/v1/webhooks/ses` receives bounce, complaint, and delivery events via an SNS topic subscribed to SES's event publishing:
+
+1. Create an SNS topic and subscribe `https://<your-api-host>/api/v1/webhooks/ses` to it (protocol: HTTPS).
+2. In the SES console, on the verified identity, add that SNS topic as the destination for **Bounces**, **Complaints**, and (optionally) **Deliveries** under "Feedback notifications" or a configuration set's event destinations.
+3. The endpoint automatically confirms the SNS subscription handshake (`SubscriptionConfirmation`) the first time SNS delivers to it — no manual confirmation step needed.
+
+Every message's signature is cryptographically verified (SNS `SignatureVersion` 1) before it's processed, and both the signing certificate URL and the subscription-confirmation URL are required to be HTTPS `*.amazonaws.com` URLs, so a forged POST to this endpoint can never be mistaken for a real SNS message. Bounce and complaint events are logged with the affected recipient(s) and reason; wire `aws.SESWebhookHandlers.OnBounce`/`OnComplaint` (passed into `api.NewSESWebhookHandler` in `cmd/api/main.go`) to take further action, such as suppressing future sends to a hard-bounced address.
 
