@@ -24,6 +24,7 @@ type Config struct {
 	Soroban       SorobanConfig
 	Notifications NotificationsConfig
 	MQTT          MQTTConfig
+	SES           SESConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -55,6 +56,13 @@ type SettingsConfig struct {
 	EncryptionKeyHex string
 	APIKeyPrefix     string
 	ProfileCDNBase   string
+}
+
+// SESConfig holds configuration for the SES transactional email client.
+// AWS credentials/region/endpoint are shared with AWSConfig; the client is
+// only constructed (see cmd/api/main.go) when FromAddress is set.
+type SESConfig struct {
+	FromAddress string // verified SES sender identity, e.g. "no-reply@carbonscribe.io"
 }
 
 type GeospatialConfig struct {
@@ -259,6 +267,9 @@ func Load() (*Config, error) {
 			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
+		},
+		SES: SESConfig{
+			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
 		},
 		MQTT: MQTTConfig{
 			BrokerURL:             os.Getenv("MQTT_BROKER_URL"),
