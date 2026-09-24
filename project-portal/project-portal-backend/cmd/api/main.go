@@ -36,6 +36,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
 	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
@@ -295,6 +296,57 @@ func main() {
 	monitoringHandler := api.NewMonitoringHandler(monitoringService)
 	log.Println("✅ Monitoring service initialized")
 
+	// ============================================================================
+	// Initialize MQTT IoT Telemetry Client (only if a broker is configured)
+	// ============================================================================
+	var mqttClient *iot.Client
+	if cfg.MQTT.BrokerURL != "" {
+		mqttClient = iot.NewClient(iot.Config{
+			BrokerURL:             cfg.MQTT.BrokerURL,
+			ClientID:              cfg.MQTT.ClientID,
+			Username:              cfg.MQTT.Username,
+			Password:              cfg.MQTT.Password,
+			TLSCACertFile:         cfg.MQTT.TLSCACertFile,
+			TLSCertFile:           cfg.MQTT.TLSCertFile,
+			TLSKeyFile:            cfg.MQTT.TLSKeyFile,
+			TLSInsecureSkipVerify: cfg.MQTT.TLSInsecureSkipVerify,
+			QoS:                   byte(cfg.MQTT.QoS),
+			QueueSize:             cfg.MQTT.QueueSize,
+			Workers:               cfg.MQTT.Workers,
+		}, monitoringService, log.New(log.Writer(), "[mqtt] ", log.LstdFlags))
+
+		health.RegisterComponentStatusProvider("mqtt", func() health.ComponentStatus {
+			status := mqttClient.Status()
+			componentStatus := "up"
+			if !status.Connected {
+				componentStatus = "down"
+			}
+			return health.ComponentStatus{
+				Status:        componentStatus,
+				Details:       status.LastError,
+				LastCheckTime: time.Now(),
+				Metadata: map[string]any{
+					"broker_url":         status.BrokerURL,
+					"messages_received":  status.MessagesReceived,
+					"messages_dropped":   status.MessagesDropped,
+					"queue_depth":        status.QueueDepth,
+					"queue_capacity":     status.QueueCapacity,
+					"last_connected_at":  status.LastConnectedAt,
+					"last_disconnect_at": status.LastDisconnectAt,
+				},
+			}
+		})
+
+		if err := mqttClient.Start(context.Background()); err != nil {
+			log.Printf("⚠️  MQTT client failed to start (%v) — IoT telemetry via MQTT will be unavailable", err)
+			mqttClient = nil
+		} else {
+			log.Printf("✅ MQTT client started, connecting to %s", cfg.MQTT.BrokerURL)
+		}
+	} else {
+		log.Println("ℹ️  MQTT_BROKER_URL not configured — MQTT IoT telemetry client disabled")
+	}
+
 	// Setup Gin
 	if !cfg.Debug {
 		gin.SetMode(gin.ReleaseMode)
@@ -439,6 +491,10 @@ func main() {
 	// Attempt graceful shutdown
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("❌ Server forced to shutdown: %v", err)
+	}
+
+	if mqttClient != nil {
+		mqttClient.Stop(ctx)
 	}
 
 	fmt.Println("✅ Server exited gracefully")
