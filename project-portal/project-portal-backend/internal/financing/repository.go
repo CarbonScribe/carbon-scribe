@@ -20,6 +20,7 @@ type Repository interface {
 	FindPaymentByExternalID(ctx context.Context, externalID string) (*PaymentTransaction, error)
 	CreateRevenueDistribution(ctx context.Context, payout *RevenueDistribution) error
 	GetRevenueDistribution(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error)
+	UpdateRevenueDistribution(ctx context.Context, payout *RevenueDistribution) error
 	GetActivePricingModel(ctx context.Context, methodologyCode, regionCode string, vintageYear int) (*CreditPricingModel, error)
 	GetCreditByTokenID(ctx context.Context, tokenID string) (*CarbonCredit, error)
 	ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error)
@@ -94,6 +95,10 @@ func (r *repository) GetRevenueDistribution(ctx context.Context, payoutID uuid.U
 		return nil, err
 	}
 	return &payout, nil
+}
+
+func (r *repository) UpdateRevenueDistribution(ctx context.Context, payout *RevenueDistribution) error {
+	return r.db.WithContext(ctx).Save(payout).Error
 }
 
 func (r *repository) GetActivePricingModel(ctx context.Context, methodologyCode, regionCode string, vintageYear int) (*CreditPricingModel, error) {
