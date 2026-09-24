@@ -3,12 +3,19 @@ package tokenization
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stellar/go/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStellarClientConstants(t *testing.T) {
+	assert.Equal(t, 15, DefaultPollAttempts)
+	assert.Equal(t, 2*time.Second, DefaultPollInterval)
+	assert.Equal(t, int64(300), int64(MintTransactionTimeoutSeconds))
+}
 
 func TestMockMintReturnsTokens(t *testing.T) {
 	client := NewMockStellarClient()

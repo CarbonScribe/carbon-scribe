@@ -8,6 +8,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	// PlaceholderHealthCheckLatencyMs is a temporary placeholder latency value
+	// pending real latency measurement in TestConnection.
+	PlaceholderHealthCheckLatencyMs = 45
+)
+
 type Service struct {
 	repo Repository
 }
@@ -43,7 +49,7 @@ func (s *Service) TestConnection(ctx context.Context, id string) error {
 	_ = s.repo.RecordHealth(ctx, &IntegrationHealth{
 		ConnectionID: conn.ID,
 		Status:       "healthy",
-		LatencyMs:    45, // Dummy value
+		LatencyMs:    PlaceholderHealthCheckLatencyMs,
 		CheckedAt:    time.Now(),
 		Message:      "Connection successful",
 	})

@@ -21,7 +21,21 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-const defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
+const (
+	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
+
+	// DefaultMethodologyMockStartToken is the default starting token ID for mock methodology minting.
+	DefaultMethodologyMockStartToken = 1000
+
+	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
+	DefaultPollAttempts = 15
+
+	// DefaultPollInterval is the duration between transaction status polling attempts.
+	DefaultPollInterval = 2 * time.Second
+
+	// MintTransactionTimeoutSeconds is the timeout in seconds for methodology transactions.
+	MintTransactionTimeoutSeconds = 300
+)
 
 // MethodologyContractClient abstracts calls into Methodology Library contract methods.
 type MethodologyContractClient interface {
@@ -58,7 +72,7 @@ func NewContractClientFromEnv() MethodologyContractClient {
 		return client
 	}
 
-	startToken := 1000
+	startToken := DefaultMethodologyMockStartToken
 	if raw := os.Getenv("METHODOLOGY_MOCK_START_TOKEN"); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
 			startToken = parsed
@@ -107,8 +121,8 @@ func newRealContractClientFromEnv(contractID string) (*realContractClient, error
 		authority:         authority,
 		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
 		httpClient:        http.DefaultClient,
-		pollInterval:      2 * time.Second,
-		pollAttempts:      15,
+		pollInterval:      DefaultPollInterval,
+		pollAttempts:      DefaultPollAttempts,
 	}, nil
 }
 
@@ -212,7 +226,7 @@ func (c *realContractClient) submitContractTransaction(ctx context.Context, func
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee + simulation.MinResourceFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return protocol.GetTransactionResponse{}, fmt.Errorf("build methodology transaction: %w", err)
@@ -254,7 +268,7 @@ func (c *realContractClient) simulateContractCall(ctx context.Context, functionN
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return protocol.SimulateHostFunctionResult{}, protocol.SimulateTransactionResponse{}, fmt.Errorf("build simulation transaction: %w", err)

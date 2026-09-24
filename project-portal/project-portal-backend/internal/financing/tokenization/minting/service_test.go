@@ -3,6 +3,7 @@ package minting
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,12 @@ import (
 
 // Unit tests for the minting service that don't depend on external databases.
 // This is to avoid unsynced go.mod in CI when sqlite is not already present.
+
+func TestMintingConstants(t *testing.T) {
+	assert.Equal(t, 15, DefaultPollAttempts)
+	assert.Equal(t, 2*time.Second, DefaultPollInterval)
+	assert.Equal(t, int64(300), int64(MintTransactionTimeoutSeconds))
+}
 
 func TestMintingMetadataPreparation(t *testing.T) {
 	projectID := uuid.New()
