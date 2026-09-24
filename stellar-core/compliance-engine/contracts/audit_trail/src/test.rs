@@ -10,12 +10,7 @@ use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String};
 
 /// Set up a contract, initialise it, and authorize `emitter`.
 /// Returns `(env, client, admin, emitter)`.
-fn setup() -> (
-    Env,
-    AuditTrailContractClient<'static>,
-    Address,
-    Address,
-) {
+fn setup() -> (Env, AuditTrailContractClient<'static>, Address, Address) {
     let env = Env::default();
     let contract_id = env.register(AuditTrailContract, ());
     let client = AuditTrailContractClient::new(&env, &contract_id);
@@ -93,6 +88,44 @@ fn test_record_and_query_event() {
 }
 
 #[test]
+fn test_legacy_stored_event_remains_readable() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin);
+
+    let tx_hash = BytesN::from_array(&env, &[42; 32]);
+    let timestamp = env.ledger().timestamp();
+    let event_id = AuditTrailContract::derive_event_id(&env, &tx_hash, timestamp, None);
+    let legacy_event = LegacyAuditEvent {
+        event_id: event_id.clone(),
+        timestamp,
+        event_type: String::from_str(&env, "LEGACY_EVENT"),
+        emitting_contract: Address::generate(&env),
+        primary_entity_id: String::from_str(&env, "legacy-entity"),
+        secondary_entity_id: None,
+        event_data: String::from_str(&env, "{}"),
+        tx_hash,
+    };
+
+    // Simulate a value written before AuditEvent gained prev_event_hash.
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::Events(event_id.clone()), &legacy_event);
+    });
+
+    let stored = client.get_event(&event_id).unwrap();
+    assert_eq!(stored.event_type, String::from_str(&env, "LEGACY_EVENT"));
+    assert_eq!(stored.prev_event_hash, None);
+
+    let mut legacy_segment = Vec::new(&env);
+    legacy_segment.push_back(event_id);
+    assert!(client.verify_chain_segment(&legacy_segment));
+}
+
+#[test]
 fn test_oversized_event_payload() {
     let (env, client, _admin, emitter) = setup();
 
@@ -102,8 +135,14 @@ fn test_oversized_event_payload() {
     let event_data = String::from_str(&env, &oversized);
     let tx_hash = BytesN::from_array(&env, &[1; 32]);
 
-    let result =
-        client.try_record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    let result = client.try_record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
     assert_eq!(result, Err(Ok(AuditTrailError::PayloadTooLarge)));
 }
 
@@ -215,6 +254,14 @@ fn test_pruning_and_compaction() {
     let entity_events = client.get_events_by_entity(&primary_id);
     assert_eq!(entity_events.len(), 1);
     assert_eq!(entity_events.get(0).unwrap().event_id, event_id_2);
+
+    // Pruning leaves the chain tip untouched. A verification request spanning
+    // the deleted event now fails rather than silently repairing the chain.
+    assert_eq!(client.get_chain_tip(), Some(event_id_2.clone()));
+    let mut pruned_chain = Vec::new(&env);
+    pruned_chain.push_back(event_id_1);
+    pruned_chain.push_back(event_id_2);
+    assert!(!client.verify_chain_segment(&pruned_chain));
 }
 
 // ---------------------------------------------------------------------------
@@ -300,8 +347,14 @@ fn test_revoked_emitter_cannot_record_events() {
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[4; 32]);
 
-    let result =
-        client.try_record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+    let result = client.try_record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
     assert_eq!(result, Err(Ok(AuditTrailError::EmitterNotAuthorized)));
 }
 
@@ -356,6 +409,116 @@ fn test_two_authorized_callers_produce_independent_records() {
     assert_eq!(client.get_events_by_contract(&emitter_b).len(), 1);
 }
 
+#[test]
+fn test_hash_chain_links_events_and_detects_skips() {
+    let (env, client, _admin, emitter) = setup();
+    let event_type = String::from_str(&env, "CHAIN_TEST");
+    let primary_id = String::from_str(&env, "chain-entity");
+    let event_data = String::from_str(&env, "{}");
+    // Reuse the same transaction hash and ledger timestamp to prove that the
+    // predecessor hash itself changes the derived event ID.
+    let tx_hash = BytesN::from_array(&env, &[10; 32]);
+
+    let first_id = client.record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+    let first = client.get_event(&first_id).unwrap();
+    assert_eq!(first.prev_event_hash, None);
+    assert_eq!(client.get_chain_tip(), Some(first_id.clone()));
+
+    let second_id = client.record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+    assert_ne!(second_id, first_id);
+    let second = client.get_event(&second_id).unwrap();
+    assert_eq!(second.prev_event_hash, Some(first_id.clone()));
+
+    let third_id = client.record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+    assert_ne!(third_id, second_id);
+    assert_eq!(client.get_chain_tip(), Some(third_id.clone()));
+
+    let mut complete_chain = Vec::new(&env);
+    complete_chain.push_back(first_id.clone());
+    complete_chain.push_back(second_id.clone());
+    complete_chain.push_back(third_id.clone());
+    assert!(client.verify_chain_segment(&complete_chain));
+
+    // Any contiguous sub-segment is also verifiable from its first event as
+    // the anchor.
+    let mut contiguous_segment = Vec::new(&env);
+    contiguous_segment.push_back(second_id.clone());
+    contiguous_segment.push_back(third_id.clone());
+    assert!(client.verify_chain_segment(&contiguous_segment));
+
+    // Omitting the middle event leaves a broken link, even though both
+    // remaining events exist.
+    let mut skipped_chain = Vec::new(&env);
+    skipped_chain.push_back(first_id.clone());
+    skipped_chain.push_back(third_id.clone());
+    assert!(!client.verify_chain_segment(&skipped_chain));
+
+    // A substituted/missing ID is rejected as a gap in the supplied segment.
+    let mut substituted_chain = Vec::new(&env);
+    substituted_chain.push_back(first_id);
+    substituted_chain.push_back(BytesN::from_array(&env, &[99; 32]));
+    substituted_chain.push_back(third_id);
+    assert!(!client.verify_chain_segment(&substituted_chain));
+}
+
+#[test]
+fn test_chain_tip_advances_across_authorized_emitters() {
+    let (env, client, _admin, emitter_a) = setup();
+    let emitter_b = Address::generate(&env);
+    client.authorize_emitter(&emitter_b);
+
+    assert_eq!(client.get_chain_tip(), None);
+
+    let event_type = String::from_str(&env, "MULTI_EMITTER_CHAIN");
+    let primary_id = String::from_str(&env, "shared-chain-entity");
+    let event_data = String::from_str(&env, "{}");
+    let first_id = client.record_event(
+        &emitter_a,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &BytesN::from_array(&env, &[20; 32]),
+    );
+    assert_eq!(client.get_chain_tip(), Some(first_id.clone()));
+
+    env.ledger().set_timestamp(env.ledger().timestamp() + 1);
+    let second_id = client.record_event(
+        &emitter_b,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &BytesN::from_array(&env, &[21; 32]),
+    );
+
+    let second = client.get_event(&second_id).unwrap();
+    assert_eq!(second.emitting_contract, emitter_b);
+    assert_eq!(second.prev_event_hash, Some(first_id));
+    assert_eq!(client.get_chain_tip(), Some(second_id));
+}
+
 /// An authorized contract cannot record an event attributed to a *different*
 /// authorized contract.  Passing contract B's address when contract A should
 /// be the caller violates the require_auth check.
@@ -407,7 +570,14 @@ fn test_paged_query() {
     for i in 0u8..5 {
         let tx_hash = BytesN::from_array(&env, &[i; 32]);
         env.ledger().set_timestamp(env.ledger().timestamp() + 1);
-        client.record_event(&emitter, &event_type, &primary_id, &None, &event_data, &tx_hash);
+        client.record_event(
+            &emitter,
+            &event_type,
+            &primary_id,
+            &None,
+            &event_data,
+            &tx_hash,
+        );
     }
 
     // Page 0: first 3 events.

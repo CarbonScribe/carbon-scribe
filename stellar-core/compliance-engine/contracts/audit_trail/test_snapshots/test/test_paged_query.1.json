@@ -241,16 +241,16 @@
                       "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
                     },
                     {
-                      "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                     },
                     {
-                      "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                     },
                     {
-                      "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
+                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                     },
                     {
-                      "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
                     }
                   ]
                 }
@@ -302,16 +302,16 @@
                       "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
                     },
                     {
-                      "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                     },
                     {
-                      "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                     },
                     {
-                      "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
+                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                     },
                     {
-                      "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
                     }
                   ]
                 }
@@ -363,16 +363,16 @@
                       "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
                     },
                     {
-                      "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                     },
                     {
-                      "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                     },
                     {
-                      "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
+                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                     },
                     {
-                      "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
                     }
                   ]
                 }
@@ -454,6 +454,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "primary_entity_id"
                       },
                       "val": {
@@ -501,7 +507,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                  "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                 }
               ]
             },
@@ -521,7 +527,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                     }
                   ]
                 },
@@ -549,7 +555,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                        "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                       }
                     },
                     {
@@ -558,6 +564,130 @@
                       },
                       "val": {
                         "string": "PAGE_TEST"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "paged-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0202020202020202020202020202020202020202020202020202020202020202"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "PAGE_TEST"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                       }
                     },
                     {
@@ -609,7 +739,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                  "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                 }
               ]
             },
@@ -629,7 +759,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                     }
                   ]
                 },
@@ -657,7 +787,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                        "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                       }
                     },
                     {
@@ -670,110 +800,10 @@
                     },
                     {
                       "key": {
-                        "symbol": "primary_entity_id"
+                        "symbol": "prev_event_hash"
                       },
                       "val": {
-                        "string": "paged-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "2"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "PAGE_TEST"
+                        "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                       }
                     },
                     {
@@ -825,7 +855,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                  "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                 }
               ]
             },
@@ -845,7 +875,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                     }
                   ]
                 },
@@ -873,7 +903,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                        "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                       }
                     },
                     {
@@ -882,6 +912,14 @@
                       },
                       "val": {
                         "string": "PAGE_TEST"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
                       }
                     },
                     {
@@ -903,7 +941,7 @@
                         "symbol": "timestamp"
                       },
                       "val": {
-                        "u64": "3"
+                        "u64": "2"
                       }
                     },
                     {
@@ -911,7 +949,7 @@
                         "symbol": "tx_hash"
                       },
                       "val": {
-                        "bytes": "0202020202020202020202020202020202020202020202020202020202020202"
+                        "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
                       }
                     }
                   ]
@@ -978,16 +1016,16 @@
                       "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
                     },
                     {
-                      "bytes": "75ad87838bfb2aa5d09b67651ee5be185441e0d7fe195c1735dcd84ec0ee4a32"
+                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
                     },
                     {
-                      "bytes": "f099f04126b1bbdb43f1f08d5dd324c524b7d5ae27416bd565b8ee2087417e4b"
+                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
                     },
                     {
-                      "bytes": "be8c733b84ac82946a6a191810ca9969da11f12f7ebc935b947e5bee05433a93"
+                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
                     },
                     {
-                      "bytes": "225cb84cd545e815924213a8395fcfd01b4ff9e0840882600685508e8e8f4858"
+                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
                     }
                   ]
                 }
@@ -1074,6 +1112,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "ChainTip"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RetentionPeriod"
                             }
                           ]
@@ -1091,7 +1141,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "635"
+                          "u64": "763"
                         }
                       },
                       {
