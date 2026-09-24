@@ -21,7 +21,9 @@ describe('JwtSecretConsistencyValidator', () => {
   });
 
   it('throws when JwtService and ConfigService have diverged onto different secrets', () => {
-    const jwtService = new JwtService({ secret: 'secret-jwt-module-signs-with' });
+    const jwtService = new JwtService({
+      secret: 'secret-jwt-module-signs-with',
+    });
     const configService = mockConfigService('a-completely-different-secret');
     const validator = new JwtSecretConsistencyValidator(
       jwtService,
