@@ -13,6 +13,17 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	// DefaultPasswordHashCost defines the default bcrypt cost factor used when hashing passwords.
+	DefaultPasswordHashCost = 12
+
+	// EmailVerificationTokenTTL defines the lifespan of an email verification token.
+	EmailVerificationTokenTTL = 24 * time.Hour
+
+	// PasswordResetTokenTTL defines the lifespan of a password reset token.
+	PasswordResetTokenTTL = 1 * time.Hour
+)
+
 // Service handles business logic for authentication
 type Service struct {
 	repository       *Repository
@@ -24,7 +35,7 @@ type Service struct {
 // NewService creates a new auth service
 func NewService(repo *Repository, tm *TokenManager, sa *StellarAuthenticator, hashCost int) *Service {
 	if hashCost == 0 {
-		hashCost = 12
+		hashCost = DefaultPasswordHashCost
 	}
 	return &Service{
 		repository:       repo,
@@ -75,7 +86,7 @@ func (s *Service) Register(email, password, fullName, organization string) (*Use
 	}
 
 	// Generate email verification token
-	verificationToken, err := s.generateAuthToken(user.ID, "email_verification", 24*time.Hour)
+	verificationToken, err := s.generateAuthToken(user.ID, "email_verification", EmailVerificationTokenTTL)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate verification token: %w", err)
 	}
@@ -254,7 +265,7 @@ func (s *Service) RequestPasswordReset(email string) (string, error) {
 	}
 
 	// Generate reset token
-	resetToken, err := s.generateAuthToken(user.ID, "password_reset", 1*time.Hour)
+	resetToken, err := s.generateAuthToken(user.ID, "password_reset", PasswordResetTokenTTL)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate reset token: %w", err)
 	}
@@ -377,7 +388,7 @@ func (s *Service) ResendVerification(email string) (string, error) {
 		return "", nil
 	}
 
-	return s.generateAuthToken(user.ID, "email_verification", 24*time.Hour)
+	return s.generateAuthToken(user.ID, "email_verification", EmailVerificationTokenTTL)
 }
 
 // GetUserProfile retrieves a user's profile
@@ -487,7 +498,7 @@ func (s *Service) createSessionAndTokens(user *User, ipAddress, userAgent string
 
 func (s *Service) generateAuthToken(userID, tokenType string, expiry time.Duration) (string, error) {
 	if expiry == 0 {
-		expiry = 24 * time.Hour
+		expiry = EmailVerificationTokenTTL
 	}
 
 	// Generate random token

@@ -22,8 +22,19 @@ import (
 )
 
 const (
+	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
+	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
 	defaultSorobanRPCURL         = "https://soroban-testnet.stellar.org:443"
+
+	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
+	DefaultPollAttempts = 15
+
+	// DefaultPollInterval is the duration between transaction status polling attempts.
+	DefaultPollInterval = 2 * time.Second
+
+	// MintTransactionTimeoutSeconds is the timeout in seconds for mint transactions.
+	MintTransactionTimeoutSeconds = 300
 )
 
 // CarbonAssetMetadata represents the metadata for a carbon asset credit
@@ -294,7 +305,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return 0, "", fmt.Errorf("build simulation transaction: %w", err)
@@ -338,7 +349,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee + simResp.MinResourceFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return 0, "", fmt.Errorf("build submit transaction: %w", err)
@@ -375,7 +386,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 }
 
 func (c *realContractClient) waitForTransaction(ctx context.Context, hash string) (protocol.GetTransactionResponse, error) {
-	for attempt := 0; attempt < 15; attempt++ {
+	for attempt := 0; attempt < DefaultPollAttempts; attempt++ {
 		response, err := c.rpc.GetTransaction(ctx, protocol.GetTransactionRequest{Hash: hash, Format: protocol.FormatBase64})
 		if err != nil {
 			return protocol.GetTransactionResponse{}, fmt.Errorf("poll mint transaction %s: %w", hash, err)
@@ -395,7 +406,7 @@ func (c *realContractClient) waitForTransaction(ctx context.Context, hash string
 		select {
 		case <-ctx.Done():
 			return protocol.GetTransactionResponse{}, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(DefaultPollInterval):
 		}
 	}
 	return protocol.GetTransactionResponse{}, fmt.Errorf("mint transaction %s was not confirmed before timeout", hash)

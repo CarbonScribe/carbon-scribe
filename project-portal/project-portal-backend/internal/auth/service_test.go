@@ -23,6 +23,17 @@ func newAuthTestService(t *testing.T) (*Service, *Repository, *gorm.DB) {
 	return NewService(repo, tm, NewStellarAuthenticator("test-passphrase", time.Minute), 4), repo, db
 }
 
+func TestAuthConstants(t *testing.T) {
+	require.Equal(t, 12, DefaultPasswordHashCost)
+	require.Equal(t, 24*time.Hour, EmailVerificationTokenTTL)
+	require.Equal(t, 1*time.Hour, PasswordResetTokenTTL)
+}
+
+func TestNewServiceDefaultPasswordHashCost(t *testing.T) {
+	svc := NewService(nil, nil, nil, 0)
+	require.Equal(t, DefaultPasswordHashCost, svc.passwordHashCost)
+}
+
 func TestLoginRejectsUnverifiedUser(t *testing.T) {
 	svc, _, _ := newAuthTestService(t)
 	_, _, err := svc.Register("user@example.com", "password123", "Test User", "Org")

@@ -2,11 +2,19 @@ package methodology
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stellar/go/xdr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMethodologyContractClientConstants(t *testing.T) {
+	assert.Equal(t, 1000, DefaultMethodologyMockStartToken)
+	assert.Equal(t, 15, DefaultPollAttempts)
+	assert.Equal(t, 2*time.Second, DefaultPollInterval)
+	assert.Equal(t, int64(300), int64(MintTransactionTimeoutSeconds))
+}
 
 func TestBuildMethodologyMetaVal(t *testing.T) {
 	val, err := buildMethodologyMetaVal(MethodologyMeta{
