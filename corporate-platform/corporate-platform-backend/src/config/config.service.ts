@@ -44,7 +44,8 @@ export function isProductionLikeEnvironment(value: {
   if (value.NODE_ENV === 'production') {
     return true;
   }
-  const marker = `${value.SERVICE_NAME || ''} ${value.DEPLOY_ENV || ''}`.toLowerCase();
+  const marker =
+    `${value.SERVICE_NAME || ''} ${value.DEPLOY_ENV || ''}`.toLowerCase();
   return /staging|shared/.test(marker);
 }
 
