@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds application configuration
@@ -25,6 +26,44 @@ type Config struct {
 	Notifications NotificationsConfig
 	MQTT          MQTTConfig
 	SES           SESConfig
+	Monitoring    MonitoringConfig
+	Minting       MintingConfig
+}
+
+// MonitoringConfig holds monitoring-module settings.
+type MonitoringConfig struct {
+	SLA SLAConfig
+}
+
+// SLAConfig holds the SLA thresholds the performance analytics service
+// benchmarks observed monitoring data against. A zero threshold means
+// "not configured": that metric is reported but not judged, so an unset SLA
+// can never manufacture a breach.
+type SLAConfig struct {
+	// Latency ceilings, in milliseconds.
+	LatencyP50Ms float64
+	LatencyP95Ms float64
+	LatencyP99Ms float64
+	// MaxErrorRate is a ceiling expressed as a fraction in [0,1] (0.01 = 1%).
+	MaxErrorRate float64
+	// MinUptime is a floor expressed as a fraction in [0,1] (0.999 = 99.9%).
+	MinUptime float64
+	// Names of the stored metrics the observed latency and error rate are
+	// read from.
+	LatencyMetricName   string
+	ErrorRateMetricName string
+}
+
+// MintingConfig holds the retry policy for Soroban carbon-credit minting.
+// Backoff grows exponentially from BaseBackoff, doubling per attempt, capped
+// at MaxBackoff, with jitter applied to each delay.
+type MintingConfig struct {
+	MaxAttempts int
+	BaseBackoff time.Duration
+	MaxBackoff  time.Duration
+	// JitterFactor is the fraction of the computed delay that is randomised,
+	// in [0,1]. 0.2 means the actual delay lands in [0.8d, 1.0d].
+	JitterFactor float64
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -295,6 +334,23 @@ func Load() (*Config, error) {
 			TwilioAuthToken:   os.Getenv("TWILIO_AUTH_TOKEN"),
 			TwilioFromNumber:  os.Getenv("TWILIO_FROM_NUMBER"),
 		},
+		Monitoring: MonitoringConfig{
+			SLA: SLAConfig{
+				LatencyP50Ms:        getFloatOrDefault("SLA_LATENCY_P50_MS", 100),
+				LatencyP95Ms:        getFloatOrDefault("SLA_LATENCY_P95_MS", 300),
+				LatencyP99Ms:        getFloatOrDefault("SLA_LATENCY_P99_MS", 750),
+				MaxErrorRate:        getFloatOrDefault("SLA_MAX_ERROR_RATE", 0.01),
+				MinUptime:           getFloatOrDefault("SLA_MIN_UPTIME", 0.99),
+				LatencyMetricName:   getEnvOrDefault("SLA_LATENCY_METRIC", "api_request_latency_ms"),
+				ErrorRateMetricName: getEnvOrDefault("SLA_ERROR_RATE_METRIC", "api_error_rate"),
+			},
+		},
+		Minting: MintingConfig{
+			MaxAttempts:  getIntOrDefault("MINTING_MAX_ATTEMPTS", 3),
+			BaseBackoff:  getDurationOrDefault("MINTING_BACKOFF_BASE", 2*time.Second),
+			MaxBackoff:   getDurationOrDefault("MINTING_BACKOFF_MAX", 60*time.Second),
+			JitterFactor: getFloatOrDefault("MINTING_BACKOFF_JITTER", 0.2),
+		},
 	}, nil
 }
 
@@ -311,6 +367,34 @@ func getIntOrDefault(key string, defaultVal int) int {
 		return defaultVal
 	}
 	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
+}
+
+// getFloatOrDefault reads a float64 from the environment, falling back to
+// defaultVal when unset or unparsable.
+func getFloatOrDefault(key string, defaultVal float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
+}
+
+// getDurationOrDefault reads a Go duration string (e.g. "2s", "500ms") from
+// the environment, falling back to defaultVal when unset or unparsable.
+func getDurationOrDefault(key string, defaultVal time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := time.ParseDuration(v)
 	if err != nil {
 		return defaultVal
 	}

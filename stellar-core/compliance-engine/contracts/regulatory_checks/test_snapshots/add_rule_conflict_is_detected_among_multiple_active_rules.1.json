@@ -91,6 +91,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "required_authority"
                       },
                       "val": "void"
@@ -176,6 +184,14 @@
                             "symbol": "TRANSFER"
                           }
                         ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     },
                     {
@@ -269,6 +285,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "required_authority"
                       },
                       "val": "void"
@@ -355,6 +379,14 @@
                             "symbol": "TRANSFER"
                           }
                         ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     },
                     {
@@ -483,6 +515,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "required_authority"
                       },
                       "val": "void"
@@ -591,6 +631,14 @@
                             "symbol": "TRANSFER"
                           }
                         ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     },
                     {
@@ -707,6 +755,14 @@
                     },
                     {
                       "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
                         "symbol": "required_authority"
                       },
                       "val": "void"
@@ -815,6 +871,14 @@
                             "symbol": "TRANSFER"
                           }
                         ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 0
                       }
                     },
                     {
