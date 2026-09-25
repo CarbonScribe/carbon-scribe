@@ -307,6 +307,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "primary_entity_id"
                       },
                       "val": {
@@ -485,6 +491,18 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "ChainTip"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bytes": "f5ad92ad0bcc165cf5a131541273264d3b2586635b305bd2e768917d275c0791"
                         }
                       },
                       {

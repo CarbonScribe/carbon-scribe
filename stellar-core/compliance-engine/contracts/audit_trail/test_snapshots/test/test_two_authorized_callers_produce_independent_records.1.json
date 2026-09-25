@@ -166,7 +166,7 @@
                       "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                     }
                   ]
                 }
@@ -264,7 +264,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                     }
                   ]
                 }
@@ -316,7 +316,7 @@
                       "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                     }
                   ]
                 }
@@ -337,7 +337,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                  "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                 }
               ]
             },
@@ -357,7 +357,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                     }
                   ]
                 },
@@ -385,7 +385,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                        "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                       }
                     },
                     {
@@ -394,6 +394,14 @@
                       },
                       "val": {
                         "string": "MINT"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
                       }
                     },
                     {
@@ -506,6 +514,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "primary_entity_id"
                       },
                       "val": {
@@ -598,7 +612,7 @@
                       "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
                     }
                   ]
                 }
@@ -693,6 +707,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "ChainTip"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bytes": "9f3e90abccee8cae1560f27ac8d6c7922af498463d4c3c8f3067e1bee5de75ea"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RetentionPeriod"
                             }
                           ]
@@ -710,7 +736,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "246"
+                          "u64": "278"
                         }
                       },
                       {
