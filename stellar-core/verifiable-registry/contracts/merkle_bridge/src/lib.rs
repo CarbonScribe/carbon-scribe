@@ -19,6 +19,14 @@ pub enum DataKey {
     CurrentEpoch,
     /// Merkle root for a specific epoch (epoch_id -> root_hash)
     MerkleRoot(u64),
+    /// Proposed, not-yet-finalized root for an epoch
+    PendingRoot(u64),
+    /// Ledger timestamp at which a root proposal was published
+    RootPublishedAt(u64),
+    /// Whether an epoch's pending root was frozen by the admin
+    FrozenRoot(u64),
+    /// Global challenge period in seconds
+    ChallengePeriod,
     /// Whether a registry credit has been minted (registry_credit_id -> bool)
     MintedCredit(String),
     /// Whether a registry credit has been retired (registry_credit_id -> bool)
@@ -52,6 +60,23 @@ pub struct RootUpdatedEvent {
     pub epoch_id: u64,
     pub root_hash: BytesN<32>,
     pub updated_by: Address,
+}
+
+/// Event emitted when an updater proposes a root for the challenge period.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RootProposedEvent {
+    pub epoch_id: u64,
+    pub root_hash: BytesN<32>,
+    pub proposed_by: Address,
+}
+
+/// Event emitted when the admin discards a pending root proposal.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RootFrozenEvent {
+    pub epoch_id: u64,
+    pub frozen_by: Address,
 }
 
 /// Event emitted when a credit is marked as retired
@@ -97,7 +122,15 @@ pub enum MerkleBridgeError {
     CreditIdTooLong = 14,
     /// registry_credit_id contains disallowed characters (only A-Z, a-z, 0-9, '-', '_' allowed)
     CreditIdInvalidCharset = 15,
+    /// A root proposal has not been finalized yet
+    RootNotFinalized = 16,
+    /// The root challenge period has not elapsed
+    ChallengePeriodNotElapsed = 17,
+    /// The pending root has already been frozen
+    RootAlreadyFrozen = 18,
 }
+
+const DEFAULT_CHALLENGE_PERIOD: u64 = 3600;
 
 // ============ registry_credit_id Validation ============
 
@@ -176,6 +209,9 @@ impl MerkleBridge {
         env.storage().instance().set(&DataKey::Updater, &updater);
         env.storage().instance().set(&DataKey::CurrentEpoch, &0u64);
         env.storage().instance().set(&DataKey::NextTokenId, &1u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::ChallengePeriod, &DEFAULT_CHALLENGE_PERIOD);
 
         log!(&env, "MerkleBridge initialized with admin: {}", admin);
 
@@ -238,6 +274,20 @@ impl MerkleBridge {
         Ok(())
     }
 
+    /// Set the root challenge period in seconds. Admin-only.
+    pub fn set_challenge_period(
+        env: Env,
+        caller: Address,
+        challenge_period: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::ChallengePeriod, &challenge_period);
+        Ok(())
+    }
+
     /// Update the Merkle root for a new epoch
     ///
     /// # Arguments
@@ -269,26 +319,141 @@ impl MerkleBridge {
             return Err(MerkleBridgeError::NonSequentialEpoch);
         }
 
-        // Store the new root
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
+
+        // A frozen epoch can be proposed again by the updater. The freeze
+        // marker only prevents finalizing the discarded proposal.
         env.storage()
             .persistent()
-            .set(&DataKey::MerkleRoot(epoch_id), &root_hash);
+            .remove(&DataKey::FrozenRoot(epoch_id));
 
-        // Update current epoch
+        // Store the proposal and its publication time. CurrentEpoch and the
+        // final MerkleRoot remain unchanged until finalize_root succeeds.
         env.storage()
-            .instance()
-            .set(&DataKey::CurrentEpoch, &epoch_id);
+            .persistent()
+            .set(&DataKey::PendingRoot(epoch_id), &root_hash);
+        let published_at = env.ledger().timestamp();
+        env.storage()
+            .persistent()
+            .set(&DataKey::RootPublishedAt(epoch_id), &published_at);
 
-        // Emit event
-        RootUpdatedEvent {
+        RootProposedEvent {
             epoch_id,
             root_hash: root_hash.clone(),
-            updated_by: caller.clone(),
+            proposed_by: caller.clone(),
         }
         .publish(&env);
 
-        log!(&env, "Root updated for epoch {}: {:?}", epoch_id, root_hash);
+        log!(
+            &env,
+            "Root proposed for epoch {}: {:?}",
+            epoch_id,
+            root_hash
+        );
 
+        Ok(())
+    }
+
+    /// Finalize a pending root after its challenge period has elapsed.
+    pub fn finalize_root(
+        env: Env,
+        caller: Address,
+        epoch_id: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        if env
+            .storage()
+            .persistent()
+            .get(&DataKey::FrozenRoot(epoch_id))
+            .unwrap_or(false)
+        {
+            return Err(MerkleBridgeError::RootAlreadyFrozen);
+        }
+        let root_hash: BytesN<32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingRoot(epoch_id))
+            .ok_or(MerkleBridgeError::RootNotFinalized)?;
+        let published_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootPublishedAt(epoch_id))
+            .ok_or(MerkleBridgeError::RootNotFinalized)?;
+        let challenge_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ChallengePeriod)
+            .unwrap_or(DEFAULT_CHALLENGE_PERIOD);
+        let ready_at = published_at.saturating_add(challenge_period);
+        if env.ledger().timestamp() < ready_at {
+            return Err(MerkleBridgeError::ChallengePeriodNotElapsed);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::MerkleRoot(epoch_id), &root_hash);
+        env.storage()
+            .instance()
+            .set(&DataKey::CurrentEpoch, &epoch_id);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRoot(epoch_id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RootPublishedAt(epoch_id));
+
+        RootUpdatedEvent {
+            epoch_id,
+            root_hash,
+            updated_by: caller,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Admin-only cancellation of a pending root proposal.
+    pub fn freeze_pending_root(
+        env: Env,
+        caller: Address,
+        epoch_id: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+        if env
+            .storage()
+            .persistent()
+            .get(&DataKey::FrozenRoot(epoch_id))
+            .unwrap_or(false)
+        {
+            return Err(MerkleBridgeError::RootAlreadyFrozen);
+        }
+        if !env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRoot(epoch_id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RootPublishedAt(epoch_id));
+        env.storage()
+            .persistent()
+            .set(&DataKey::FrozenRoot(epoch_id), &true);
+        RootFrozenEvent {
+            epoch_id,
+            frozen_by: caller,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -328,6 +493,13 @@ impl MerkleBridge {
         }
 
         // Get the stored Merkle root for the given epoch
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
         let stored_root: BytesN<32> = env
             .storage()
             .persistent()
@@ -447,6 +619,27 @@ impl MerkleBridge {
             .persistent()
             .get(&DataKey::MerkleRoot(epoch_id))
             .ok_or(MerkleBridgeError::RootNotFound)
+    }
+
+    /// Get the pending root and the timestamp at which it was proposed.
+    pub fn get_pending_root(env: Env, epoch_id: u64) -> Option<(BytesN<32>, u64)> {
+        let root = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingRoot(epoch_id))?;
+        let published_at = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootPublishedAt(epoch_id))?;
+        Some((root, published_at))
+    }
+
+    /// Get the configured root challenge period in seconds.
+    pub fn get_challenge_period(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::ChallengePeriod)
+            .unwrap_or(DEFAULT_CHALLENGE_PERIOD)
     }
 
     /// Check if a credit has been minted
@@ -654,7 +847,7 @@ impl MerkleBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Bytes, Env};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Bytes, Env};
 
     fn setup_env() -> (Env, Address, Address) {
         let env = Env::default();
@@ -666,6 +859,12 @@ mod tests {
 
     fn create_contract(env: &Env) -> Address {
         env.register(MerkleBridge, ())
+    }
+
+    fn finalize_root(env: &Env, client: &MerkleBridgeClient, finalizer: &Address, epoch_id: u64) {
+        env.ledger()
+            .set_timestamp(DEFAULT_CHALLENGE_PERIOD.saturating_mul(epoch_id));
+        client.finalize_root(finalizer, &epoch_id);
     }
 
     /// Helper to compute a leaf hash for testing
@@ -767,9 +966,56 @@ mod tests {
 
         // Update root for epoch 1
         client.update_root(&updater, &1, &root_hash);
+        assert_eq!(client.get_current_epoch(), 0);
+        assert_eq!(client.get_pending_root(&1), Some((root_hash.clone(), 0)));
+        finalize_root(&env, &client, &admin, 1);
 
         assert_eq!(client.get_current_epoch(), 1);
         assert_eq!(client.get_root(&1), root_hash);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #17)")]
+    fn test_finalize_root_before_challenge_period_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+
+        let root_hash = BytesN::from_array(&env, &[1u8; 32]);
+        client.update_root(&updater, &1, &root_hash);
+        client.finalize_root(&admin, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #16)")]
+    fn test_mint_pending_root_fails_until_finalized() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+
+        let registry_id = String::from_str(&env, "VER-123-ABC-456");
+        let root_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
+        client.update_root(&updater, &1, &root_hash);
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #18)")]
+    fn test_freeze_pending_root_prevents_finalize() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+
+        let root_hash = BytesN::from_array(&env, &[1u8; 32]);
+        client.update_root(&updater, &1, &root_hash);
+        client.freeze_pending_root(&admin, &1);
+        env.ledger().set_timestamp(DEFAULT_CHALLENGE_PERIOD);
+        client.finalize_root(&admin, &1);
     }
 
     #[test]
@@ -816,6 +1062,7 @@ mod tests {
 
         // For a single leaf tree, the root is the leaf hash itself
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint with empty proof (single leaf)
         let user = Address::generate(&env);
@@ -847,6 +1094,7 @@ mod tests {
         let root = hash_pair(&env, &leaf_1, &leaf_2);
 
         client.update_root(&updater, &1, &root);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint first credit with proof containing second leaf
         let user = Address::generate(&env);
@@ -879,6 +1127,7 @@ mod tests {
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
 
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
@@ -902,6 +1151,7 @@ mod tests {
         // Create a leaf hash for a different credit
         let leaf_hash = compute_test_leaf_hash(&env, "VER-DIFFERENT-ID");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Try to mint with wrong registry ID
         let user = Address::generate(&env);
@@ -940,6 +1190,7 @@ mod tests {
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
 
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mark as retired first
         client.mark_retired(&updater, &registry_id);
@@ -1007,6 +1258,7 @@ mod tests {
         let root = hash_pair(&env, &node_01, &node_23);
 
         client.update_root(&updater, &1, &root);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint VER-001 (index 0)
         // Proof: [leaf[1], node_23]
@@ -1044,8 +1296,11 @@ mod tests {
         let root_3 = compute_test_leaf_hash(&env, "EPOCH3-VER-003");
 
         client.update_root(&updater, &1, &root_1);
+        finalize_root(&env, &client, &admin, 1);
         client.update_root(&updater, &2, &root_2);
+        finalize_root(&env, &client, &admin, 2);
         client.update_root(&updater, &3, &root_3);
+        finalize_root(&env, &client, &admin, 3);
 
         assert_eq!(client.get_current_epoch(), 3);
         assert_eq!(client.get_root(&1), root_1);
@@ -1064,6 +1319,7 @@ mod tests {
 
         let leaf_hash = compute_test_leaf_hash(&env, "VER-1234A");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Try to mint with leaf_index too large for proof length
         let user = Address::generate(&env);
@@ -1135,6 +1391,7 @@ mod tests {
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
@@ -1160,7 +1417,9 @@ mod tests {
 #[cfg(test)]
 mod benchmarks {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env, String, Vec,
+    };
 
     fn setup_bench_env() -> (Env, Address, Address, MerkleBridgeClient<'static>) {
         let env = Env::default();
@@ -1171,6 +1430,12 @@ mod benchmarks {
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
         (env, admin, updater, client)
+    }
+
+    fn finalize_root(env: &Env, client: &MerkleBridgeClient, finalizer: &Address, epoch_id: u64) {
+        env.ledger()
+            .set_timestamp(DEFAULT_CHALLENGE_PERIOD.saturating_mul(epoch_id));
+        client.finalize_root(finalizer, &epoch_id);
     }
 
     fn generate_deterministic_sibling(env: &Env, seed: u8) -> BytesN<32> {
@@ -1233,6 +1498,7 @@ mod benchmarks {
             }
 
             client.update_root(&updater, &current_epoch, &current_working_hash);
+            finalize_root(&env, &client, &updater, current_epoch);
 
             env.cost_estimate().budget().reset_default();
 
@@ -1295,6 +1561,7 @@ mod benchmarks {
                 proof_path.push_back(sibling);
 
                 client.update_root(&updater, &sequential_epoch, &combined_root);
+                finalize_root(&env, &client, &updater, sequential_epoch);
                 client.mint_wrapped(&user, &registry_id, &proof_path, &0, &sequential_epoch);
             }
 
@@ -1323,6 +1590,7 @@ mod benchmarks {
             bytes[0] = epoch as u8;
             let root = BytesN::from_array(&env, &bytes);
             client.update_root(&updater, &epoch, &root);
+            finalize_root(&env, &client, &updater, epoch);
         }
 
         env.cost_estimate().budget().reset_default();
