@@ -247,6 +247,30 @@ func (m *mockRepository) GetSystemStatusSummary(ctx context.Context) (*monitorin
 }
 
 // ============================================================================
+// Notification Delivery Log methods
+// ============================================================================
+
+func (m *mockRepository) SaveNotificationDeliveryLog(ctx context.Context, log *monitoring.NotificationDeliveryLog) error {
+	return nil
+}
+
+func (m *mockRepository) GetNotificationDeliveryLogs(ctx context.Context, alertID string, limit int) ([]monitoring.NotificationDeliveryLog, error) {
+	return []monitoring.NotificationDeliveryLog{}, nil
+}
+
+func (m *mockRepository) GetNotificationDeliveryLogsByRule(ctx context.Context, ruleID string, limit int) ([]monitoring.NotificationDeliveryLog, error) {
+	return []monitoring.NotificationDeliveryLog{}, nil
+}
+
+func (m *mockRepository) MarkNotificationDeliverySuccess(ctx context.Context, logID string) error {
+	return nil
+}
+
+func (m *mockRepository) MarkNotificationDeliveryFailed(ctx context.Context, logID string, errMsg string) error {
+	return nil
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
