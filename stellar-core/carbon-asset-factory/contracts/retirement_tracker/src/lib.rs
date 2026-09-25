@@ -23,6 +23,9 @@ use soroban_sdk::{
 /// per-element cost changes.
 pub const MAX_BATCH_SIZE: u32 = 100;
 
+/// Maximum number of retirement IDs returned by one pagination request.
+pub const MAX_PAGE_LIMIT: u32 = 100;
+
 // ========================================================================
 // Data Structures
 // ========================================================================
@@ -447,7 +450,11 @@ impl RetirementTracker {
         env.storage().persistent().get(&ledger_key)
     }
 
-    /// Get all token IDs retired by a specific entity
+    /// Get all token IDs retired by a specific entity.
+    ///
+    /// This unbounded query is retained for backwards compatibility. New
+    /// callers should prefer `get_retirements_by_entity_page` for large
+    /// histories.
     ///
     /// # Arguments
     /// * `retiring_entity` - The address to query
@@ -460,6 +467,51 @@ impl RetirementTracker {
             .persistent()
             .get(&entity_key)
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Get one bounded page of token IDs retired by an entity.
+    ///
+    /// `offset` is the zero-based number of records to skip. Requests larger
+    /// than `MAX_PAGE_LIMIT` are capped server-side so a caller cannot cause
+    /// an unbounded response. An offset beyond the end returns an empty page.
+    pub fn get_retirements_by_entity_page(
+        env: Env,
+        retiring_entity: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<u32> {
+        let entity_key = DataKey::EntityIndex(retiring_entity);
+        let records: Vec<u32> = env
+            .storage()
+            .persistent()
+            .get(&entity_key)
+            .unwrap_or(Vec::new(&env));
+        let page_limit = core::cmp::min(limit, MAX_PAGE_LIMIT);
+        let mut page = Vec::new(&env);
+        let mut index = 0u32;
+
+        while index < offset && index < records.len() {
+            index += 1;
+        }
+
+        let mut returned = 0u32;
+        while index < records.len() && returned < page_limit {
+            page.push_back(records.get(index).unwrap());
+            index += 1;
+            returned += 1;
+        }
+
+        page
+    }
+
+    /// Get the total number of retirements recorded for an entity.
+    pub fn get_retirement_count_by_entity(env: Env, retiring_entity: Address) -> u32 {
+        let entity_key = DataKey::EntityIndex(retiring_entity);
+        env.storage()
+            .persistent()
+            .get::<_, Vec<u32>>(&entity_key)
+            .map(|records| records.len())
+            .unwrap_or(0)
     }
 
     /// Get the latest contract-scoped event nonce.
@@ -547,7 +599,7 @@ impl RetirementTracker {
 mod test {
     use super::{
         ContractError, RetirementFailureReason, RetirementTracker, RetirementTrackerClient,
-        MAX_BATCH_SIZE,
+        MAX_BATCH_SIZE, MAX_PAGE_LIMIT,
     };
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::testutils::Events as _;
@@ -600,7 +652,7 @@ mod test {
 
     #[test]
     fn retire_with_tx_hash_records_actual_hash_and_nonce() {
-        let (env, client, retiring_entity) = setup();
+        let (_env, client, retiring_entity) = setup();
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
 
         let record = client.retire_with_tx_hash(
@@ -912,5 +964,34 @@ mod test {
         // Second initialization fails
         let result = client.try_initialize(&admin, &asset_contract);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn paginated_entity_retirements_are_bounded_and_counted() {
+        let (_env, client, retiring_entity) = setup();
+
+        for token_id in 1..=(MAX_PAGE_LIMIT + 5) {
+            client.retire(&token_id, &retiring_entity, &None);
+        }
+
+        assert_eq!(
+            client.get_retirement_count_by_entity(&retiring_entity),
+            MAX_PAGE_LIMIT + 5
+        );
+
+        // A request above the cap is bounded to MAX_PAGE_LIMIT.
+        let first_page =
+            client.get_retirements_by_entity_page(&retiring_entity, &0, &(MAX_PAGE_LIMIT + 50));
+        assert_eq!(first_page.len(), MAX_PAGE_LIMIT);
+        assert_eq!(first_page.get(0), Some(1));
+        assert_eq!(first_page.get(MAX_PAGE_LIMIT - 1), Some(MAX_PAGE_LIMIT));
+
+        let second_page = client.get_retirements_by_entity_page(&retiring_entity, &100, &100);
+        assert_eq!(second_page.len(), 5);
+        assert_eq!(second_page.get(0), Some(101));
+        assert_eq!(second_page.get(4), Some(105));
+
+        let empty_page = client.get_retirements_by_entity_page(&retiring_entity, &999, &10);
+        assert!(empty_page.is_empty());
     }
 }
