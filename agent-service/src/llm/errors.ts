@@ -1,10 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export type ErrorCategory =
-  | "rate_limited"
-  | "connection_error"
-  | "invalid_request"
-  | "unknown";
+  "rate_limited" | "connection_error" | "invalid_request" | "unknown";
 
 export interface ClassifiedError {
   category: ErrorCategory;
@@ -39,7 +36,7 @@ export function classifyAnthropicError(
 
   if (err instanceof Anthropic.APIError) {
     // APIError has a status property for HTTP status codes
-    const status = (err as any).status;
+    const status = err.status;
     if (status) {
       // 4xx errors are generally not retryable (invalid requests)
       // 5xx errors are server-side and may be retryable

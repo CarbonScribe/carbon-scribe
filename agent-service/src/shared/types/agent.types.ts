@@ -26,7 +26,8 @@ export interface AgentRunResult {
   citations?: AgentCitation[];
   /** Error classification for failed runs — helps callers distinguish
    * transient failures (rate limits, connection errors) from permanent ones. */
-  errorCategory?: "rate_limited" | "connection_error" | "invalid_request" | "unknown";
+  errorCategory?:
+    "rate_limited" | "connection_error" | "invalid_request" | "unknown";
   /** Whether the error is retryable — true for rate limits and connection errors. */
   retryable?: boolean;
 }

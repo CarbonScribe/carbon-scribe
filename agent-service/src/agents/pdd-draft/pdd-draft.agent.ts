@@ -1,8 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
-import { classifyAnthropicError } from "../../llm/errors.js";
+import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
 import {
   checkApproval,
@@ -180,7 +179,7 @@ async function failRun(
   req: AgentRunRequest,
   toolCalls: ToolCallRecord[],
   message: string,
-  errorInfo?: { category: string; retryable: boolean },
+  errorInfo?: { category: ErrorCategory; retryable: boolean },
 ): Promise<AgentRunResult> {
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -196,7 +195,7 @@ async function failRun(
     requestId: req.requestId,
     status: "failed",
     output: { error: message },
-    errorCategory: errorInfo?.category as any,
+    errorCategory: errorInfo?.category,
     retryable: errorInfo?.retryable,
   };
 }
