@@ -36,6 +36,7 @@ fn make_rule_with_priority(
         is_allowed,
         required_authority: None,
         priority,
+        version: 0, // ignored/overwritten by the contract on add_rule/update_rule
     }
 }
 
@@ -191,6 +192,7 @@ fn test_update_rule_emits_event() {
         is_allowed: false, // Changed
         required_authority: None,
         priority: 0,
+        version: 0, // ignored/overwritten by the contract
     };
     client.update_rule(&governance, &updated_rule);
 
@@ -255,6 +257,7 @@ fn test_rule_lifecycle_events() {
         is_allowed: false,
         required_authority: None,
         priority: 0,
+        version: 0, // ignored/overwritten by the contract
     };
     client.update_rule(&governance, &updated);
     let stored = client.get_rule(&String::from_str(&env, "R1")).unwrap();
@@ -608,4 +611,191 @@ fn test_deactivating_top_priority_rule_promotes_the_next() {
 
     assert_eq!(result.rule_id, Some(String::from_str(&env, "BROAD")));
     assert!(!result.is_compliant);
+}
+
+// ========== Rule Versioning & History Tests (#565) ==========
+
+/// A brand-new rule starts at version 1.
+#[test]
+fn test_add_rule_starts_at_version_one() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+
+    let rule = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &rule);
+
+    let stored = client.get_rule(&String::from_str(&env, "R1")).unwrap();
+    assert_eq!(stored.version, 1);
+}
+
+/// update_rule archives the pre-update content (not only its hash) and
+/// increments the version counter.
+#[test]
+fn test_update_rule_archives_prior_version_and_increments_version() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let rule_id = String::from_str(&env, "R1");
+
+    let v1 = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &v1);
+
+    let v2 = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, false);
+    client.update_rule(&governance, &v2);
+
+    // The live rule is now version 2 with the new content.
+    let current = client.get_rule(&rule_id).unwrap();
+    assert_eq!(current.version, 2);
+    assert_eq!(current.is_allowed, false);
+
+    // Version 1's *content* — not just its hash — is still retrievable.
+    let archived_v1 = client.get_rule_at_version(&rule_id, &1u32).unwrap();
+    assert_eq!(archived_v1.version, 1);
+    assert_eq!(archived_v1.is_allowed, true);
+    assert_eq!(archived_v1.rule_id, rule_id);
+}
+
+/// get_rule_history returns every version in chronological order, ending
+/// with the current live version.
+#[test]
+fn test_get_rule_history_returns_chronological_order() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let rule_id = String::from_str(&env, "R1");
+
+    let v1 = make_rule_with_priority(
+        &env, "R1", "US", "CA", "US", OperationType::TRANSFER, true, 1,
+    );
+    client.add_rule(&governance, &v1);
+
+    let v2 = make_rule_with_priority(
+        &env, "R1", "US", "CA", "US", OperationType::TRANSFER, true, 2,
+    );
+    client.update_rule(&governance, &v2);
+
+    let v3 = make_rule_with_priority(
+        &env, "R1", "US", "CA", "US", OperationType::TRANSFER, true, 3,
+    );
+    client.update_rule(&governance, &v3);
+
+    let history = client.get_rule_history(&rule_id);
+    assert_eq!(history.len(), 3);
+    assert_eq!(history.get(0).unwrap().version, 1);
+    assert_eq!(history.get(0).unwrap().priority, 1);
+    assert_eq!(history.get(1).unwrap().version, 2);
+    assert_eq!(history.get(1).unwrap().priority, 2);
+    assert_eq!(history.get(2).unwrap().version, 3);
+    assert_eq!(history.get(2).unwrap().priority, 3);
+}
+
+/// get_rule_history returns an empty vector for a rule_id that never existed.
+#[test]
+fn test_get_rule_history_empty_for_unknown_rule() {
+    let env = Env::default();
+    let (client, _admin, _governance) = setup(&env);
+
+    let history = client.get_rule_history(&String::from_str(&env, "NEVER-EXISTED"));
+    assert_eq!(history.len(), 0);
+}
+
+/// deactivate_rule preserves the final rule content in history instead of
+/// deleting it, even though get_rule() no longer returns it.
+#[test]
+fn test_deactivate_rule_preserves_final_content_in_history() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let rule_id = String::from_str(&env, "R1");
+
+    let rule = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &rule);
+    client.deactivate_rule(&governance, &rule_id);
+
+    // No longer "live"...
+    assert!(client.get_rule(&rule_id).is_none());
+
+    // ...but its final content is still queryable.
+    let history = client.get_rule_history(&rule_id);
+    assert_eq!(history.len(), 1);
+    assert_eq!(history.get(0).unwrap().version, 1);
+    assert_eq!(history.get(0).unwrap().is_allowed, true);
+
+    let at_version_1 = client.get_rule_at_version(&rule_id, &1u32).unwrap();
+    assert_eq!(at_version_1.rule_id, rule_id);
+}
+
+/// get_rule_at_version resolves both the current live version and archived
+/// (superseded) versions correctly.
+#[test]
+fn test_get_rule_at_version_point_in_time_lookup() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let rule_id = String::from_str(&env, "R1");
+
+    let v1 = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &v1);
+
+    let v2 = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, false);
+    client.update_rule(&governance, &v2);
+
+    let at_v1 = client.get_rule_at_version(&rule_id, &1u32).unwrap();
+    assert_eq!(at_v1.is_allowed, true);
+
+    let at_v2 = client.get_rule_at_version(&rule_id, &2u32).unwrap();
+    assert_eq!(at_v2.is_allowed, false);
+
+    assert!(client.get_rule_at_version(&rule_id, &3u32).is_none());
+}
+
+/// update_rule rejects a change that would create a logical conflict with
+/// another active rule — the same check add_rule already performs.
+#[test]
+fn test_update_rule_into_conflicting_state_is_rejected() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+
+    let rule1 = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &rule1);
+
+    let rule2 = make_rule(
+        &env,
+        "R2",
+        "US",
+        "CA",
+        "US",
+        OperationType::RETIREMENT,
+        true,
+    );
+    client.add_rule(&governance, &rule2);
+
+    // Attempt to update R2 into a state that duplicates R1's logical params.
+    let conflicting_update = make_rule(&env, "R2", "US", "CA", "US", OperationType::TRANSFER, true);
+    let res = client.try_update_rule(&governance, &conflicting_update);
+    assert!(matches!(res, Err(Ok(ContractError::RuleConflict))));
+
+    // R2 must be unchanged — still its original, non-conflicting content.
+    let stored = client.get_rule(&String::from_str(&env, "R2")).unwrap();
+    assert_eq!(stored.operation, OperationType::RETIREMENT);
+    assert_eq!(
+        stored.version, 1,
+        "a rejected update must not bump the version"
+    );
+}
+
+/// Updating a rule to content resembling its *own* prior version must not
+/// be rejected as a self-conflict.
+#[test]
+fn test_update_rule_does_not_conflict_with_its_own_prior_version() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let rule_id = String::from_str(&env, "R1");
+
+    let rule = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &rule);
+
+    // "Update" to logically identical content — must succeed, not be
+    // treated as conflicting with itself.
+    let same = make_rule(&env, "R1", "US", "CA", "US", OperationType::TRANSFER, true);
+    client.update_rule(&governance, &same);
+
+    let stored = client.get_rule(&rule_id).unwrap();
+    assert_eq!(stored.version, 2);
 }
