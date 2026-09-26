@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -10,6 +11,7 @@ type Repository interface {
 	// Connection
 	CreateConnection(ctx context.Context, conn *IntegrationConnection) error
 	GetConnection(ctx context.Context, id string) (*IntegrationConnection, error)
+	GetConnectionByProvider(ctx context.Context, provider string) (*IntegrationConnection, error)
 	ListConnections(ctx context.Context) ([]IntegrationConnection, error)
 	UpdateConnection(ctx context.Context, conn *IntegrationConnection) error
 	DeleteConnection(ctx context.Context, id string) error
@@ -30,6 +32,12 @@ type Repository interface {
 	// OAuth Token
 	SaveOAuthToken(ctx context.Context, token *OAuthToken) error
 	GetOAuthToken(ctx context.Context, connectionID string) (*OAuthToken, error)
+
+	// OAuth State (authorization-code + PKCE flow)
+	CreateOAuthState(ctx context.Context, state *OAuthState) error
+	GetOAuthStateByState(ctx context.Context, state string) (*OAuthState, error)
+	MarkOAuthStateConsumed(ctx context.Context, state string) error
+	DeleteExpiredOAuthStates(ctx context.Context, before time.Time) error
 
 	// Health
 	RecordHealth(ctx context.Context, health *IntegrationHealth) error
@@ -53,6 +61,14 @@ func (r *repository) CreateConnection(ctx context.Context, conn *IntegrationConn
 func (r *repository) GetConnection(ctx context.Context, id string) (*IntegrationConnection, error) {
 	var conn IntegrationConnection
 	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&conn).Error; err != nil {
+		return nil, err
+	}
+	return &conn, nil
+}
+
+func (r *repository) GetConnectionByProvider(ctx context.Context, provider string) (*IntegrationConnection, error) {
+	var conn IntegrationConnection
+	if err := r.db.WithContext(ctx).Where("provider = ?", provider).Order("created_at desc").First(&conn).Error; err != nil {
 		return nil, err
 	}
 	return &conn, nil
@@ -136,6 +152,28 @@ func (r *repository) GetOAuthToken(ctx context.Context, connectionID string) (*O
 		return nil, err
 	}
 	return &token, nil
+}
+
+// OAuth State
+
+func (r *repository) CreateOAuthState(ctx context.Context, state *OAuthState) error {
+	return r.db.WithContext(ctx).Create(state).Error
+}
+
+func (r *repository) GetOAuthStateByState(ctx context.Context, state string) (*OAuthState, error) {
+	var s OAuthState
+	if err := r.db.WithContext(ctx).Where("state = ?", state).First(&s).Error; err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *repository) MarkOAuthStateConsumed(ctx context.Context, state string) error {
+	return r.db.WithContext(ctx).Model(&OAuthState{}).Where("state = ?", state).Update("consumed", true).Error
+}
+
+func (r *repository) DeleteExpiredOAuthStates(ctx context.Context, before time.Time) error {
+	return r.db.WithContext(ctx).Where("expires_at < ?", before).Delete(&OAuthState{}).Error
 }
 
 // Health
