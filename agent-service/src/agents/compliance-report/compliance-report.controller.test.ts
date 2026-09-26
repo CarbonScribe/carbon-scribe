@@ -48,7 +48,9 @@ describe("complianceReportRouter POST /run", () => {
       agent: "compliance-report",
       requestId: "req-2",
       status: "failed",
-      output: { error: "Anthropic API error: internal error" },
+      output: { error: "API error (500): internal error" },
+      errorCategory: "connection_error",
+      retryable: true,
     };
     runComplianceReportAgentMock.mockResolvedValue(result);
 

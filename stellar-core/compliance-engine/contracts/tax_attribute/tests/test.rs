@@ -95,6 +95,17 @@ fn test_attach_exactly_at_expiration_boundary_succeeds() {
 }
 
 #[test]
+#[should_panic(expected = "InvalidValidityWindow")]
+fn test_attach_inverted_validity_window_fails() {
+    let (env, client, _admin, issuer) = setup_test_env();
+    setup_ledger(&env, 1);
+
+    // Create attribute with inverted window: valid_from > valid_until
+    let definition = create_definition(&env, "tag-inverted", 2000, 1000);
+    client.attach_tax_attribute(&issuer, &1, &definition);
+}
+
+#[test]
 fn test_generate_issuer_proof_for_authorized_issuer() {
     let (env, client, _admin, issuer) = setup_test_env();
     setup_ledger(&env, 5);

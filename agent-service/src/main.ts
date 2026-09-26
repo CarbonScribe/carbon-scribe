@@ -4,6 +4,7 @@ import { router } from "./routes/index.js";
 import { errorHandler } from "./shared/middleware/error-handler.js";
 import { migrateAuditLogSchema } from "./shared/audit/audit-log.migrate.js";
 import { getPool } from "./shared/audit/db.js";
+import { logger } from "./shared/logging/logger.js";
 
 const app = express();
 
@@ -17,11 +18,11 @@ async function main() {
   await migrateAuditLogSchema(getPool());
 
   app.listen(env.port, () => {
-    console.log(`agent-service listening on :${env.port}`);
+    logger.info({ port: env.port }, "agent-service listening");
   });
 }
 
 main().catch((err) => {
-  console.error("agent-service failed to start:", err);
+  logger.error({ error: err }, "agent-service failed to start");
   process.exit(1);
 });

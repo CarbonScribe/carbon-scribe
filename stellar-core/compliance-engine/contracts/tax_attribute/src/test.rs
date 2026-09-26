@@ -34,13 +34,13 @@ fn last_attribute_revoked_event(env: &Env) -> (u32, String, Address, String, u64
     (token_id, tag_id, revoked_by, reason, timestamp)
 }
 
-fn make_attribute_def(env: &Env, tag_id: &str, valid_until: u64) -> AttributeDefinition {
+fn make_attribute_def(env: &Env, tag_id: &str, valid_from: u64, valid_until: u64) -> AttributeDefinition {
     AttributeDefinition {
         tag_id: String::from_str(env, tag_id),
         jurisdiction: String::from_str(env, "US"),
         regulation_code: String::from_str(env, "IRC-45Q"),
         eligibility_criteria_hash: BytesN::from_array(env, &[1u8; 32]),
-        valid_from: 0,
+        valid_from,
         valid_until,
     }
 }
@@ -73,7 +73,7 @@ fn test_unauthorized_issuer_attachment() {
     client.init(&admin);
     env.mock_all_auths();
 
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     let res = client.try_attach_tax_attribute(&unauthorized_issuer, &1u32, &def);
     assert!(matches!(res, Err(Ok(ContractError::NotAuthorizedIssuer))));
 }
@@ -93,9 +93,34 @@ fn test_expired_attribute_attachment() {
     // Set ledger timestamp past valid_until
     env.ledger().set_timestamp(2000);
 
-    let def = make_attribute_def(&env, "TAG-001", 1000); // valid_until = 1000 < 2000
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000); // valid_until = 1000 < 2000
     let res = client.try_attach_tax_attribute(&issuer, &1u32, &def);
     assert!(matches!(res, Err(Ok(ContractError::AttributeExpired))));
+}
+
+#[test]
+fn test_inverted_validity_window_rejection() {
+    let env = Env::default();
+    let contract_id = env.register(TaxAttributeContract, ());
+    let client = TaxAttributeContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+
+    client.init(&admin);
+    env.mock_all_auths();
+    client.add_issuer(&issuer);
+
+    env.ledger().set_timestamp(500);
+
+    // Create attribute with inverted window: valid_from > valid_until
+    let def = make_attribute_def(&env, "TAG-001", 2000, 1000); // valid_from = 2000 > valid_until = 1000
+    let res = client.try_attach_tax_attribute(&issuer, &1u32, &def);
+    assert!(matches!(res, Err(Ok(ContractError::InvalidValidityWindow))));
+
+    // Verify the attribute was not stored
+    let tag_id = String::from_str(&env, "TAG-001");
+    let stored_attr = client.try_get_attribute(&tag_id);
+    assert!(matches!(stored_attr, Err(Ok(ContractError::AttributeNotFound))));
 }
 
 #[test]
@@ -112,7 +137,7 @@ fn test_duplicate_tag_id_attachment() {
 
     env.ledger().set_timestamp(500);
 
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     // Attempt attaching again with same tag_id
@@ -150,7 +175,7 @@ fn test_revoke_attribute_unauthorized() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     // Rando attempts revocation
@@ -173,7 +198,7 @@ fn test_revoke_attribute_not_attached() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     // Attempt to revoke from token 2 where it wasn't attached
@@ -196,7 +221,7 @@ fn test_happy_path_lifecycle() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     let jur = String::from_str(&env, "US");
@@ -222,7 +247,7 @@ fn test_revoke_attribute_emits_event_for_admin_caller() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     env.ledger().set_timestamp(700);
@@ -253,7 +278,7 @@ fn test_revoke_attribute_emits_event_for_issuer_caller() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     env.ledger().set_timestamp(900);
@@ -285,7 +310,7 @@ fn test_revoke_attribute_failure_paths_emit_no_event() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     let tag_id = String::from_str(&env, "TAG-001");

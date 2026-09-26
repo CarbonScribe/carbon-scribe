@@ -177,6 +177,11 @@ impl TaxAttributeContract {
             return Err(ContractError::AttributeExpired);
         }
 
+        // Verify the validity window is logically ordered (valid_from <= valid_until)
+        if definition.valid_from > definition.valid_until {
+            return Err(ContractError::InvalidValidityWindow);
+        }
+
         // Verify tag_id uniqueness
         if env
             .storage()
@@ -305,6 +310,17 @@ impl TaxAttributeContract {
             }
         }
         false
+    }
+
+    pub fn get_attribute(env: Env, tag_id: String) -> Result<TaxAttributeTag, ContractError> {
+        let key = DataKey::Attribute(tag_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(ContractError::AttributeNotFound);
+        }
+        env.storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::AttributeNotFound)
     }
 
     pub fn get_issuing_authorities(env: Env) -> Vec<Address> {

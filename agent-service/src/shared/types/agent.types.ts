@@ -24,6 +24,12 @@ export interface AgentRunResult {
   /** Citations/source records the agent grounded its answer in — required
    * for anything compliance- or portfolio-facing. */
   citations?: AgentCitation[];
+  /** Error classification for failed runs — helps callers distinguish
+   * transient failures (rate limits, connection errors) from permanent ones. */
+  errorCategory?:
+    "rate_limited" | "connection_error" | "invalid_request" | "unknown";
+  /** Whether the error is retryable — true for rate limits and connection errors. */
+  retryable?: boolean;
 }
 
 export interface AgentCitation {
