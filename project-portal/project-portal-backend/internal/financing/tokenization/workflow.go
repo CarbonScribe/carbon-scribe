@@ -71,6 +71,25 @@ func (w *Workflow) Mint(ctx context.Context, input MintInput) (*MintOutcome, err
 	}, nil
 }
 
+// BuildTrustlineTransaction returns an unsigned ChangeTrust transaction for
+// the buyer's wallet to sign, delegating to the underlying Stellar client.
+func (w *Workflow) BuildTrustlineTransaction(ctx context.Context, req TrustlineRequest) (*TrustlineResponse, error) {
+	return w.client.BuildTrustlineTransaction(ctx, req)
+}
+
+// HasTrustline reports whether accountAddress currently holds a trustline
+// for the given asset, delegating to the underlying Stellar client.
+func (w *Workflow) HasTrustline(ctx context.Context, accountAddress, assetCode, assetIssuer string) (bool, error) {
+	return w.client.HasTrustline(ctx, accountAddress, assetCode, assetIssuer)
+}
+
+// AuthorizeTrustlineIfRequired issues issuer-side trustline authorization
+// when the asset is configured as requiring it, delegating to the
+// underlying Stellar client.
+func (w *Workflow) AuthorizeTrustlineIfRequired(ctx context.Context, buyerAddress, assetCode string) error {
+	return w.client.AuthorizeTrustlineIfRequired(ctx, buyerAddress, assetCode)
+}
+
 func extractVintageYear(assetCode string) int {
 	trimmed := strings.TrimSpace(assetCode)
 	if len(trimmed) < 4 {

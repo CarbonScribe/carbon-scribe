@@ -279,6 +279,22 @@ type StellarWebhookRequest struct {
 	Error           string `json:"error"`
 }
 
+type TrustlineSetupRequest struct {
+	BuyerPublicKey  string `json:"buyer_public_key" binding:"required"`
+	PaymentProvider string `json:"payment_provider" binding:"required"`
+	Currency        string `json:"currency"`
+	AssetCode       string `json:"asset_code"`
+	AssetIssuer     string `json:"asset_issuer" binding:"required"`
+	Limit           string `json:"limit"`
+}
+
+type TrustlineSetupResponse struct {
+	TransactionXDR string `json:"transaction_xdr"`
+	AssetCode      string `json:"asset_code"`
+	AssetIssuer    string `json:"asset_issuer"`
+	Limit          string `json:"limit"`
+}
+
 type PaymentWebhookRequest struct {
 	ExternalID string `json:"external_id" binding:"required"`
 	Status     string `json:"status" binding:"required"`

@@ -227,6 +227,7 @@ impl TaxAttributeContract {
         caller: Address,
         token_id: u32,
         tag_id: String,
+        reason: String,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -263,6 +264,7 @@ impl TaxAttributeContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::TokenAttributes(token_id), &attached_tags);
+            events::emit_attribute_revoked_event(&env, token_id, tag_id, caller, reason);
             Ok(())
         } else {
             Err(ContractError::AttributeNotAttached)

@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"errors"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -48,7 +50,24 @@ func (h *Handler) ConfigureWebhook(c *gin.Context) {
 
 // IncomingWebhook
 func (h *Handler) IncomingWebhook(c *gin.Context) {
-	// Verify signature logic would go here
+	connectionID := c.Query("connection_id")
+	if connectionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing connection_id"})
+		return
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read request body"})
+		return
+	}
+
+	signature := c.GetHeader("X-Webhook-Signature")
+	if err := h.service.VerifyIncomingWebhookSignature(c.Request.Context(), connectionID, body, signature); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid webhook signature"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "received"})
 }
 
@@ -77,21 +96,42 @@ func (h *Handler) GetHealth(c *gin.Context) {
 // OAuth2 Authorize
 func (h *Handler) OAuth2Authorize(c *gin.Context) {
 	provider := c.Param("provider")
-	url, err := h.service.InitiateOAuth2(c.Request.Context(), provider)
+	redirectURI := c.Query("redirect_uri")
+
+	authURL, err := h.service.InitiateOAuth2(c.Request.Context(), provider, redirectURI)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		switch {
+		case errors.Is(err, ErrRedirectURIMismatch):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "redirect_uri mismatch"})
+		case errors.Is(err, ErrNoConnectionForProvider):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
-	c.Redirect(http.StatusFound, url)
+	c.Redirect(http.StatusFound, authURL)
 }
 
 // OAuth2 Callback
 func (h *Handler) OAuth2Callback(c *gin.Context) {
 	provider := c.Param("provider")
 	code := c.Query("code")
+	state := c.Query("state")
 
-	if err := h.service.HandleOAuth2Callback(c.Request.Context(), provider, code); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.service.HandleOAuth2Callback(c.Request.Context(), provider, code, state); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
+		case errors.Is(err, ErrExpiredState):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "expired state"})
+		case errors.Is(err, ErrStateAlreadyUsed):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "state already used"})
+		case errors.Is(err, ErrTokenExchangeFailed):
+			c.JSON(http.StatusBadGateway, gin.H{"error": "token exchange failed"})
+		default:
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
