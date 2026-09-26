@@ -123,6 +123,9 @@ impl BufferPoolContract {
             .remove(&(storage::CUSTODY, token_id));
 
         let tvl = get_total_value_locked(&env);
+        if tvl < 1 {
+            return Err(Error::ArithmeticOverflow);
+        }
         let new_tvl = tvl.checked_sub(1).ok_or(Error::ArithmeticOverflow)?;
         set_total_value_locked(&env, new_tvl);
 
