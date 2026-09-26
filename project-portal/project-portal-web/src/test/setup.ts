@@ -1,7 +1,14 @@
 import '@testing-library/jest-dom/vitest'
 import { vi } from 'vitest'
 
+// Clear all mocks after each test to prevent state leakage
+afterEach(() => {
+  vi.clearAllMocks()
+})
+
 // Mock Next.js router
+const mockUsePathname = vi.fn(() => '/team')
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -11,8 +18,11 @@ vi.mock('next/navigation', () => ({
     refresh: vi.fn(),
   }),
   useSearchParams: () => new URLSearchParams(),
-  usePathname: () => '/team',
+  usePathname: mockUsePathname,
 }))
+
+// Export mocked usePathname for route-specific test overrides
+export const mockedUsePathname = mockUsePathname
 
 // Mock Next.js image
 vi.mock('next/image', () => ({
@@ -24,17 +34,34 @@ vi.mock('next/image', () => ({
   },
 }))
 
-// Mock API client
+// Mock API client - each method is a fresh vi.fn() that can be overridden per test
+const mockGet = vi.fn()
+const mockPost = vi.fn()
+const mockPut = vi.fn()
+const mockDelete = vi.fn()
+const mockPatch = vi.fn()
+const mockRequest = vi.fn()
+
 vi.mock('@/lib/api/apiClient', () => ({
   default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-    patch: vi.fn(),
-    request: vi.fn(),
+    get: mockGet,
+    post: mockPost,
+    put: mockPut,
+    delete: mockDelete,
+    patch: mockPatch,
+    request: mockRequest,
   },
 }))
+
+// Export mocked functions for easier test manipulation
+export const mockedApiClient = {
+  get: mockGet,
+  post: mockPost,
+  put: mockPut,
+  delete: mockDelete,
+  patch: mockPatch,
+  request: mockRequest,
+}
 
 // Global test setup — only applies in browser-like environments (jsdom)
 if (typeof window !== 'undefined') {
