@@ -277,6 +277,92 @@ fn test_withdraw_underflow() {
 }
 
 #[test]
+fn test_pause_by_non_governance_fails() {
+    let (_, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    // admin is not governance, so pause() must be rejected.
+    let result = client.try_pause(&admin);
+    assert_eq!(result, Err(Ok(crate::Error::Unauthorized)));
+    assert!(!client.is_paused());
+}
+
+#[test]
+fn test_unpause_by_non_governance_fails() {
+    let (_, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+    client.pause(&governance);
+
+    let result = client.try_unpause(&admin);
+    assert_eq!(result, Err(Ok(crate::Error::Unauthorized)));
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_pause_by_governance_blocks_deposit_withdraw_and_auto_deposit() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+    client.deposit(&admin, &1, &project_id);
+
+    client.pause(&governance);
+    assert!(client.is_paused());
+
+    let deposit_result = client.try_deposit(&admin, &2, &project_id);
+    assert_eq!(deposit_result, Err(Ok(crate::Error::ContractPaused)));
+
+    let withdraw_result = client.try_withdraw_to_replace(&governance, &1, &999);
+    assert_eq!(withdraw_result, Err(Ok(crate::Error::ContractPaused)));
+
+    let auto_deposit_result = client.try_auto_deposit(&carbon_contract, &20, &project_id, &20);
+    assert_eq!(auto_deposit_result, Err(Ok(crate::Error::ContractPaused)));
+
+    // Pausing must not touch already-stored custody records or TVL accounting.
+    assert!(client.is_token_in_pool(&1));
+    assert_eq!(client.get_total_value_locked(), 1);
+}
+
+#[test]
+fn test_unpause_restores_normal_operation() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+    client.pause(&governance);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+    let paused_result = client.try_deposit(&admin, &1, &project_id);
+    assert_eq!(paused_result, Err(Ok(crate::Error::ContractPaused)));
+
+    client.unpause(&governance);
+    assert!(!client.is_paused());
+
+    client.deposit(&admin, &1, &project_id);
+    assert!(client.is_token_in_pool(&1));
+}
+
+#[test]
+fn test_view_functions_callable_while_paused() {
+    let (env, admin, governance, carbon_contract, client) = setup_test_env();
+
+    client.initialize(&admin, &governance, &carbon_contract, &500);
+
+    let project_id = String::from_str(&env, "PROJECT-001");
+    client.deposit(&admin, &1, &project_id);
+
+    client.pause(&governance);
+
+    // View-only functions remain callable regardless of pause state.
+    assert_eq!(client.get_total_value_locked(), 1);
+    assert!(client.get_custody_record(&1).is_some());
+    assert!(client.is_token_in_pool(&1));
+    assert!(client.is_paused());
+}
+
+#[test]
 fn test_deposit_overflow() {
     let (env, admin, governance, carbon_contract, client) = setup_test_env();
 

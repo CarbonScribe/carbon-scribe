@@ -255,6 +255,16 @@ export class AvailabilityService {
     });
 
     if (!result || result.count === 0) {
+      // The floor-guarded update matched no rows: a concurrent claim consumed
+      // the units between our read and our write. Distinguish this
+      // oversell-prevention rejection from other failure types (a missing
+      // credit, a bad request, a DB error) so operators can tell "the system
+      // correctly stopped an overdraft" apart from "something is broken".
+      this.logger.warn(
+        `Oversell prevented: guarded decrement matched 0 rows for credit ${claim.creditId} ` +
+          `(requested=${claim.amount}, changeType=${claim.changeType ?? AvailabilityChangeType.DECREMENT}, ` +
+          `changedBy=${claim.changedBy ?? 'system'}, reason=${claim.reason ?? 'n/a'})`,
+      );
       throw new ConflictException(
         `Insufficient credits available for project "${headroom.projectName}". ` +
           `Requested: ${claim.amount}, Available: ${headroom.availableAmount}`,

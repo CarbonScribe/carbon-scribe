@@ -91,6 +91,29 @@ describe('AvailabilityService', () => {
     );
   });
 
+  it('logs a structured warning distinguishing an oversell rejection when the guarded update matches no rows', async () => {
+    const warnSpy = jest
+      .spyOn((service as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+
+    prisma.credit.findFirst.mockResolvedValueOnce({
+      id: 'c1',
+      projectName: 'Forest',
+      availableAmount: 100,
+      status: 'available',
+    });
+    prisma.credit.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.decrementAvailability('c1', 10, 'buyer-a', 'checkout'),
+    ).rejects.toThrow(ConflictException);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Oversell prevented'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('c1'));
+  });
+
   it('throws on insufficient availability', async () => {
     prisma.credit.findFirst.mockResolvedValueOnce({
       id: 'c1',

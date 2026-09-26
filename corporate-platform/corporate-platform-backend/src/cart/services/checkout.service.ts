@@ -1,6 +1,8 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
@@ -22,8 +24,24 @@ import {
 } from '../../credit/interfaces/availability.interface';
 import { ProducerService } from '../../event-bus/producer.service';
 
+/**
+ * Thrown when confirmPurchase finds that the order's backing cart reservation
+ * for an item has expired (or was never held) at decrement time. Caught
+ * alongside ConflictException in confirmPurchase's oversell-rejection
+ * handling (#545) — both mean "the authoritative, lock-protected check found
+ * this order can no longer be fulfilled."
+ */
+class ReservationExpiredError extends Error {
+  constructor(projectName: string) {
+    super(`Reservation for "${projectName}" has expired`);
+    this.name = 'ReservationExpiredError';
+  }
+}
+
 @Injectable()
 export class CheckoutService {
+  private readonly logger = new Logger(CheckoutService.name);
+
   constructor(
     private prisma: PrismaService,
     private unitOfWork: UnitOfWorkService,
@@ -226,83 +244,166 @@ export class CheckoutService {
 
     let completionEvent: any;
 
-    // 4. Complete the purchase in a transaction
-    const completedOrder = await this.unitOfWork.run(async (tx: any) => {
-      // Decrease credit availability for each item through the shared,
-      // lock-safe path (#516). It re-locks each credit row inside this
-      // transaction, re-checks availability (closing the TOCTOU window opened
-      // by the payment call above), writes the decrement behind a floor guard
-      // so availableAmount can never go negative, and records the movement on
-      // CreditAvailabilityLog. This cart's own reservation is excluded from the
-      // headroom calculation so the order can consume the units it is holding.
-      for (const item of order.items) {
-        await this.availability.decrementWithin(tx as PrismaTxClient, {
-          creditId: item.creditId,
-          amount: item.quantity,
-          changedBy: order.userId ?? 'system',
-          changeType: AvailabilityChangeType.PURCHASE,
-          reason: `order:${orderId}`,
-          reservationCartId: order.cartId ?? undefined,
-          respectReservations: true,
-        });
-      }
+    // 4. Complete the purchase in a single Serializable transaction (#545).
+    //    Availability re-validation and the decrement now share one
+    //    transaction boundary — there is no window between "check" and
+    //    "update" for a concurrent order to slip through.
+    let completedOrder: any;
+    try {
+      completedOrder = await this.availability.runSerializable(
+        async (tx: any) => {
+          for (const item of order.items) {
+            // Lock the credit row before touching reservation bookkeeping, so
+            // this check-then-decrement cannot interleave with
+            // releaseExpiredReservations or a concurrent confirmPurchase for
+            // the same credit (#545): whichever transaction acquires the
+            // lock first finishes its whole check-then-write before the
+            // other proceeds.
+            await this.availability.lockCredit(
+              tx as PrismaTxClient,
+              item.creditId,
+            );
 
-      // Update order status
-      const updated = await tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: 'completed',
-          paymentId: paymentResult.paymentId,
-          transactionHash: paymentResult.transactionHash,
-          paidAt: new Date(),
-          completedAt: new Date(),
+            if (order.cartId) {
+              // The raw availableAmount alone doesn't tell us whether *this*
+              // order's own hold is still live — only that enough units
+              // exist somewhere. A reservation can expire (swept by
+              // releaseExpiredReservations) between initiateCheckout and
+              // confirmPurchase; without this check, confirmPurchase would
+              // silently decrement against a stale claim instead of
+              // rejecting it explicitly (#545).
+              const activeReservation = await tx.creditReservation.findFirst({
+                where: {
+                  cartId: order.cartId,
+                  creditId: item.creditId,
+                  expiresAt: { gt: new Date() },
+                },
+              });
+
+              if (!activeReservation) {
+                throw new ReservationExpiredError(item.credit.projectName);
+              }
+            }
+
+            // Decrease credit availability for each item through the shared,
+            // lock-safe path (#516). It re-checks availability (closing the
+            // TOCTOU window opened by the payment call above), writes the
+            // decrement behind a floor guard so availableAmount can never go
+            // negative, and records the movement on CreditAvailabilityLog.
+            // This cart's own reservation is excluded from the headroom
+            // calculation so the order can consume the units it is holding.
+            await this.availability.decrementWithin(tx as PrismaTxClient, {
+              creditId: item.creditId,
+              amount: item.quantity,
+              changedBy: order.userId ?? 'system',
+              changeType: AvailabilityChangeType.PURCHASE,
+              reason: `order:${orderId}`,
+              reservationCartId: order.cartId ?? undefined,
+              respectReservations: true,
+            });
+          }
+
+          // Update order status
+          const updated = await tx.order.update({
+            where: { id: orderId },
+            data: {
+              status: 'completed',
+              paymentId: paymentResult.paymentId,
+              transactionHash: paymentResult.transactionHash,
+              paidAt: new Date(),
+              completedAt: new Date(),
+            },
+            include: {
+              items: {
+                include: { credit: true },
+              },
+            },
+          });
+
+          completionEvent = {
+            id: `order:${updated.id}:completed`,
+            type: 'order.completed',
+            source: 'corporate-platform',
+            timestamp: new Date().toISOString(),
+            correlationId: updated.id,
+            userId: updated.userId ?? undefined,
+            companyId: updated.companyId,
+            data: updated,
+            version: '1.0',
+          };
+
+          await this.producerService.publish(
+            'order-events',
+            completionEvent,
+            undefined,
+            { tx },
+          );
+
+          // Clear the cart and its reservations
+          if (order.cartId) {
+            await tx.creditReservation.deleteMany({
+              where: { cartId: order.cartId },
+            });
+            await tx.cartItem.deleteMany({
+              where: { cartId: order.cartId },
+            });
+            await tx.cart.update({
+              where: { id: order.cartId },
+              data: {
+                subtotal: 0,
+                serviceFee: 0,
+                total: 0,
+              },
+            });
+          }
+
+          return updated;
         },
-        include: {
-          items: {
-            include: { credit: true },
-          },
-        },
-      });
-
-      completionEvent = {
-        id: `order:${updated.id}:completed`,
-        type: 'order.completed',
-        source: 'corporate-platform',
-        timestamp: new Date().toISOString(),
-        correlationId: updated.id,
-        userId: updated.userId ?? undefined,
-        companyId: updated.companyId,
-        data: updated,
-        version: '1.0',
-      };
-
-      await this.producerService.publish(
-        'order-events',
-        completionEvent,
-        undefined,
-        { tx },
       );
+    } catch (error) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof ReservationExpiredError
+      ) {
+        // The authoritative, lock-protected check lost the availability race
+        // (or this order's own reservation expired first). Distinguish this
+        // oversell-prevention rejection from other failure types in the
+        // logs — payment already succeeded, so this is refunded rather than
+        // silently leaving the customer charged for an order that cannot be
+        // fulfilled.
+        this.logger.warn(
+          `confirmPurchase rejected for order ${orderId}: oversold/expired-reservation ` +
+            `(${error.message}). Refunding payment ${paymentResult.paymentId}.`,
+        );
 
-      // Clear the cart and its reservations
-      if (order.cartId) {
-        await tx.creditReservation.deleteMany({
-          where: { cartId: order.cartId },
+        await this.paymentService.refundPayment(paymentResult.paymentId);
+
+        if (order.cartId) {
+          await this.reservationService.releaseReservations(order.cartId);
+        }
+
+        await prisma.order.update({
+          where: { id: orderId },
+          data: { status: 'failed' },
         });
-        await tx.cartItem.deleteMany({
-          where: { cartId: order.cartId },
-        });
-        await tx.cart.update({
-          where: { id: order.cartId },
-          data: {
-            subtotal: 0,
-            serviceFee: 0,
-            total: 0,
-          },
-        });
+
+        await this.auditService.logOrderEvent(
+          orderId,
+          'credits_unavailable',
+          'pending',
+          'failed',
+          undefined,
+          { reason: error.message, refunded: true },
+        );
+
+        throw new BadRequestException(
+          `Credits are no longer available to complete this order (${error.message}). ` +
+            `Order has been marked as failed and your payment has been refunded.`,
+        );
       }
 
-      return updated;
-    });
+      throw error;
+    }
 
     await this.producerService.publishPending(
       'order-events',

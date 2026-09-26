@@ -28,6 +28,18 @@ pub fn emit_duplicate_auto_deposit_event(env: &Env, token_id: u32, project_id: &
         .publish((symbol_short!("dup_dep"),), (token_id, project_id));
 }
 
+pub fn emit_pause_event(env: &Env, paused_by: &Address) {
+    #[allow(deprecated)]
+    env.events()
+        .publish((symbol_short!("pause"),), (paused_by,));
+}
+
+pub fn emit_unpause_event(env: &Env, unpaused_by: &Address) {
+    #[allow(deprecated)]
+    env.events()
+        .publish((symbol_short!("unpause"),), (unpaused_by,));
+}
+
 #[allow(dead_code)]
 pub fn emit_config_update_event(env: &Env, param_name: &Symbol, new_value: i64) {
     #[allow(deprecated)]

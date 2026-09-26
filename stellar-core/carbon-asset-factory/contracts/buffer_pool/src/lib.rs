@@ -54,6 +54,10 @@ impl BufferPoolContract {
         token_id: u32,
         project_id: String,
     ) -> Result<(), Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let admin = get_admin(&env);
         let carbon_contract = get_carbon_asset_contract(&env);
 
@@ -93,6 +97,10 @@ impl BufferPoolContract {
         token_id: u32,
         target_invalidated_token: u32,
     ) -> Result<(), Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let governance = get_governance(&env);
 
         if governance_caller != governance {
@@ -142,6 +150,10 @@ impl BufferPoolContract {
         project_id: String,
         _total_minted: u32,
     ) -> Result<bool, Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let carbon_contract = get_carbon_asset_contract(&env);
         if carbon_contract_caller != carbon_contract {
             return Err(Error::Unauthorized);
@@ -228,6 +240,45 @@ impl BufferPoolContract {
         set_replenishment_percentage(&env, new_percentage);
 
         Ok(())
+    }
+
+    /// Freeze deposit(), withdraw_to_replace(), and auto_deposit() for
+    /// incident response. Restricted to governance.
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        let governance = get_governance(&env);
+
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        caller.require_auth();
+
+        set_paused(&env, &true);
+
+        emit_pause_event(&env, &caller);
+
+        Ok(())
+    }
+
+    /// Restore normal operation after an incident. Restricted to governance.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        let governance = get_governance(&env);
+
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        caller.require_auth();
+
+        set_paused(&env, &false);
+
+        emit_unpause_event(&env, &caller);
+
+        Ok(())
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        get_paused(&env)
     }
 
     pub fn get_total_value_locked(env: Env) -> i128 {
