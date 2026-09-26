@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 
 // Clear all mocks after each test to prevent state leakage
 afterEach(() => {
