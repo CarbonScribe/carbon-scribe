@@ -247,7 +247,7 @@ fn test_revoke_attribute_emits_event_for_admin_caller() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     env.ledger().set_timestamp(700);
@@ -278,7 +278,7 @@ fn test_revoke_attribute_emits_event_for_issuer_caller() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     env.ledger().set_timestamp(900);
@@ -310,7 +310,7 @@ fn test_revoke_attribute_failure_paths_emit_no_event() {
     client.add_issuer(&issuer);
 
     env.ledger().set_timestamp(500);
-    let def = make_attribute_def(&env, "TAG-001", 1000);
+    let def = make_attribute_def(&env, "TAG-001", 0, 1000);
     client.attach_tax_attribute(&issuer, &1u32, &def);
 
     let tag_id = String::from_str(&env, "TAG-001");
