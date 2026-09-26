@@ -18,6 +18,16 @@ pub struct JurisdictionRule {
     pub operation: OperationType,
     pub is_allowed: bool,
     pub required_authority: Option<Address>,
+    /// Evaluation precedence. **Lower values win**: a rule with priority 10 is
+    /// evaluated before — and therefore governs ahead of — one with priority
+    /// 20. This lets a narrow, specific rule override a broad catch-all
+    /// regardless of the order the two were added.
+    ///
+    /// Rules sharing a priority are ordered by `rule_id` ascending, so the
+    /// outcome never depends on storage insertion order. Priority 0 is the
+    /// highest precedence and is the value existing rules take when they are
+    /// migrated, preserving a single well-defined ordering for them.
+    pub priority: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

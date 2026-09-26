@@ -25,6 +25,11 @@ pub fn compute_rule_hash(env: &Env, rule: &JurisdictionRule) -> Bytes {
     let allowed_byte: u8 = if rule.is_allowed { 1 } else { 0 };
     bytes.push_back(allowed_byte);
 
+    // Append priority, so a change that only reorders precedence still
+    // produces a different hash and is visible in the RuleUpdated event.
+    let priority_bytes = Bytes::from_array(env, &rule.priority.to_be_bytes());
+    bytes.append(&priority_bytes);
+
     // Append required_authority if present — use a marker byte plus clone marker
     if rule.required_authority.is_some() {
         bytes.push_back(1u8);

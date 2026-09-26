@@ -77,7 +77,8 @@ impl BufferPoolContract {
         set_custody_record(&env, token_id, &record);
 
         let tvl = get_total_value_locked(&env);
-        set_total_value_locked(&env, tvl + 1);
+        let new_tvl = tvl.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
+        set_total_value_locked(&env, new_tvl);
 
         emit_deposit_event(&env, token_id, &caller, &project_id);
 
@@ -122,7 +123,11 @@ impl BufferPoolContract {
             .remove(&(storage::CUSTODY, token_id));
 
         let tvl = get_total_value_locked(&env);
-        set_total_value_locked(&env, tvl - 1);
+        if tvl < 1 {
+            return Err(Error::ArithmeticOverflow);
+        }
+        let new_tvl = tvl.checked_sub(1).ok_or(Error::ArithmeticOverflow)?;
+        set_total_value_locked(&env, new_tvl);
 
         // Emit trace events for off-chain tracking
         emit_withdraw_event(&env, token_id, target_invalidated_token, &governance_caller);
@@ -170,7 +175,8 @@ impl BufferPoolContract {
             set_custody_record(&env, token_id, &record);
 
             let tvl = get_total_value_locked(&env);
-            set_total_value_locked(&env, tvl + 1);
+            let new_tvl = tvl.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
+            set_total_value_locked(&env, new_tvl);
 
             emit_auto_deposit_event(&env, token_id, &project_id);
 

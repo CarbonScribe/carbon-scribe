@@ -29,6 +29,7 @@ fn make_rule(
         operation: op,
         is_allowed,
         required_authority: None,
+        priority: 0,
     }
 }
 

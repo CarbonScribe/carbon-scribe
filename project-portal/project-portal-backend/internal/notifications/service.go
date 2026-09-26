@@ -1,23 +1,24 @@
 package notifications
 
 import (
-    "context"
-    "errors"
-    "fmt"
-    "regexp"
-    "strings"
-    "time"
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
-    "carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/templates"
 
-    "github.com/google/uuid"
+	"github.com/google/uuid"
 )
 
 type Service struct {
-    repo          Repository
-    retryLimit    int
-    defaultLocale string
-    smsSender     channels.SMSSender
+	repo          Repository
+	retryLimit    int
+	defaultLocale string
+	smsSender     channels.SMSSender
+	renderer      *templates.Renderer
 }
 
 func NewService(repo Repository) *Service {
@@ -26,7 +27,28 @@ func NewService(repo Repository) *Service {
 		retryLimit:    3,
 		defaultLocale: "en",
 		smsSender:     &channels.MockSMSSender{},
+		// Dispatch uses the empty-string policy: a notification with an
+		// unfilled optional variable is still worth delivering, whereas
+		// failing the send would drop it entirely. Callers wanting strict
+		// validation construct their own Renderer with MissingVariableError.
+		renderer: templates.NewRenderer(templates.MissingVariableEmpty),
 	}
+}
+
+// SetRenderer overrides the template renderer, allowing a caller to choose a
+// different missing-variable policy.
+func (s *Service) SetRenderer(r *templates.Renderer) {
+	if r != nil {
+		s.renderer = r
+	}
+}
+
+// renderer is nil-safe for Services built by tests via struct literals.
+func (s *Service) templateRenderer() *templates.Renderer {
+	if s.renderer == nil {
+		s.renderer = templates.NewRenderer(templates.MissingVariableEmpty)
+	}
+	return s.renderer
 }
 
 func (s *Service) SetSMSSender(sender channels.SMSSender) {
@@ -47,6 +69,10 @@ func (s *Service) SendNotification(ctx context.Context, req SendNotificationRequ
 
 	content := req.Content
 	subject := req.Subject
+	// htmlContent holds the email-safe rendering of a templated body, where
+	// interpolated data is contextually escaped. It stays empty for
+	// non-templated sends, which carry caller-supplied content verbatim.
+	var htmlContent string
 	if req.TemplateID != "" {
 		tpl, err := s.repo.GetTemplateByID(ctx, req.TemplateID)
 		if err != nil {
@@ -55,8 +81,25 @@ func (s *Service) SendNotification(ctx context.Context, req SendNotificationRequ
 		if tpl == nil {
 			return nil, errors.New("template not found")
 		}
-		subject = s.renderTemplate(tpl.Subject, req.Variables)
-		content = s.renderTemplate(tpl.Body, req.Variables)
+
+		renderer := s.templateRenderer()
+
+		// The stored notification keeps the plain-text rendering: it is the
+		// channel-agnostic record, and HTML entities have no place in the
+		// in-app or SMS view of the same message.
+		rendered, err := renderer.RenderForChannel(templates.ChannelInApp, tpl.Subject, tpl.Body, req.Variables)
+		if err != nil {
+			return nil, fmt.Errorf("render template %s: %w", req.TemplateID, err)
+		}
+		subject, content = rendered.Subject, rendered.Body
+
+		if containsChannel(req.Channels, ChannelEmail) {
+			emailRendered, err := renderer.RenderForChannel(templates.ChannelEmail, tpl.Subject, tpl.Body, req.Variables)
+			if err != nil {
+				return nil, fmt.Errorf("render email template %s: %w", req.TemplateID, err)
+			}
+			htmlContent = emailRendered.Body
+		}
 	}
 
 	now := time.Now().UTC()
@@ -121,7 +164,13 @@ func (s *Service) SendNotification(ctx context.Context, req SendNotificationRequ
 				}
 			}
 		} else {
-			attemptStatus, providerResponse = s.mockDeliver(channel, req.Destinations, subject, content)
+			// Email carries the HTML rendering, where interpolated data is
+			// contextually escaped; every other channel gets the plain text.
+			body := content
+			if chUpper == ChannelEmail && htmlContent != "" {
+				body = htmlContent
+			}
+			attemptStatus, providerResponse = s.mockDeliver(channel, req.Destinations, subject, body)
 		}
 
 		attempt := &DeliveryAttempt{
@@ -265,10 +314,34 @@ func (s *Service) PreviewTemplate(ctx context.Context, templateID string, vars m
 		return nil, errors.New("template not found")
 	}
 
+	renderer := s.templateRenderer()
+
+	text, err := renderer.RenderForChannel(templates.ChannelInApp, tpl.Subject, tpl.Body, vars)
+	if err != nil {
+		return nil, fmt.Errorf("render template %s: %w", templateID, err)
+	}
+	html, err := renderer.RenderForChannel(templates.ChannelEmail, tpl.Subject, tpl.Body, vars)
+	if err != nil {
+		return nil, fmt.Errorf("render email template %s: %w", templateID, err)
+	}
+
+	// Both renderings are returned so a template author can see exactly what
+	// each channel will deliver, including how the email body is escaped.
 	return map[string]string{
-		"subject": s.renderTemplate(tpl.Subject, vars),
-		"body":    s.renderTemplate(tpl.Body, vars),
+		"subject":   text.Subject,
+		"body":      text.Body,
+		"body_html": html.Body,
 	}, nil
+}
+
+// containsChannel reports whether channels includes target, case-insensitively.
+func containsChannel(channels []string, target string) bool {
+	for _, c := range channels {
+		if strings.EqualFold(strings.TrimSpace(c), target) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) CreateRule(ctx context.Context, rule NotificationRule) (*NotificationRule, error) {
@@ -431,23 +504,6 @@ func (s *Service) ProcessWebhook(ctx context.Context, provider string, payload m
 		deliveredAt = &now
 	}
 	return s.repo.UpdateNotificationStatus(ctx, notificationID, status, deliveredAt)
-}
-
-func (s *Service) renderTemplate(template string, vars map[string]interface{}) string {
-	if template == "" || len(vars) == 0 {
-		return template
-	}
-	re := regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`)
-	return re.ReplaceAllStringFunc(template, func(match string) string {
-		parts := re.FindStringSubmatch(match)
-		if len(parts) != 2 {
-			return match
-		}
-		if v, ok := vars[parts[1]]; ok {
-			return fmt.Sprintf("%v", v)
-		}
-		return match
-	})
 }
 
 func evaluateCondition(condition RuleCondition, sampleData map[string]interface{}) bool {

@@ -313,64 +313,54 @@ impl RegulatoryCheck {
         let source_jur = source_jur.unwrap();
         let dest_jur = dest_jur.unwrap();
 
-        // Get active rules
-        let active_rules: Vec<String> = env
-            .storage()
-            .instance()
-            .get(&DataKey::ActiveRuleIds)
-            .unwrap_or(Vec::new(&env));
+        // Evaluate rules in explicit priority order rather than the order they
+        // happened to be inserted into ActiveRuleIds, so the governing rule for
+        // a transaction is a property of the rule set and not of its history.
+        let ordered_rules = Self::rules_in_priority_order(&env);
 
         // Find matching rule
-        for rule_id in active_rules.iter() {
-            let rule_key = DataKey::Rule(rule_id.clone());
-
-            if let Some(rule) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, JurisdictionRule>(&rule_key)
-            {
-                if Self::rule_matches(
-                    &env,
-                    &rule,
-                    &source_jur,
-                    &dest_jur,
-                    &host_jurisdiction,
-                    &operation,
-                ) {
-                    // Rule matched
-                    if rule.is_allowed {
-                        if let Some(authority) = rule.required_authority.clone() {
-                            // Requires authorization
-                            return ValidationResult {
-                                is_compliant: true,
-                                rule_id: Some(rule.rule_id.clone()),
-                                requires_authorization: true,
-                                authority_address: Some(authority),
-                                error_message: None,
-                            };
-                        } else {
-                            // Allowed without authorization
-                            return ValidationResult {
-                                is_compliant: true,
-                                rule_id: Some(rule.rule_id.clone()),
-                                requires_authorization: false,
-                                authority_address: None,
-                                error_message: None,
-                            };
-                        }
-                    } else {
-                        // Explicitly prohibited
+        for rule in ordered_rules.iter() {
+            if Self::rule_matches(
+                &env,
+                &rule,
+                &source_jur,
+                &dest_jur,
+                &host_jurisdiction,
+                &operation,
+            ) {
+                // Rule matched
+                if rule.is_allowed {
+                    if let Some(authority) = rule.required_authority.clone() {
+                        // Requires authorization
                         return ValidationResult {
-                            is_compliant: false,
+                            is_compliant: true,
+                            rule_id: Some(rule.rule_id.clone()),
+                            requires_authorization: true,
+                            authority_address: Some(authority),
+                            error_message: None,
+                        };
+                    } else {
+                        // Allowed without authorization
+                        return ValidationResult {
+                            is_compliant: true,
                             rule_id: Some(rule.rule_id.clone()),
                             requires_authorization: false,
                             authority_address: None,
-                            error_message: Some(String::from_str(
-                                &env,
-                                "Transaction prohibited by rule",
-                            )),
+                            error_message: None,
                         };
                     }
+                } else {
+                    // Explicitly prohibited
+                    return ValidationResult {
+                        is_compliant: false,
+                        rule_id: Some(rule.rule_id.clone()),
+                        requires_authorization: false,
+                        authority_address: None,
+                        error_message: Some(String::from_str(
+                            &env,
+                            "Transaction prohibited by rule",
+                        )),
+                    };
                 }
             }
         }
@@ -545,11 +535,80 @@ impl RegulatoryCheck {
         env.storage().persistent().get(&key)
     }
 
-    /// Get all active rule IDs
+    /// Get all active rule IDs, in raw storage-insertion order.
+    ///
+    /// This is *not* the order rules are evaluated in — see
+    /// `get_rules_by_priority` for that.
     pub fn get_active_rules(env: Env) -> Vec<String> {
         env.storage()
             .instance()
             .get(&DataKey::ActiveRuleIds)
             .unwrap_or(Vec::new(&env))
+    }
+
+    /// Get the active rules in exactly the order `validate_transaction`
+    /// evaluates them: ascending `priority` (lower wins), ties broken by
+    /// ascending `rule_id`.
+    ///
+    /// Operators can call this to audit precedence directly instead of
+    /// re-deriving it from insertion order.
+    pub fn get_rules_by_priority(env: Env) -> Vec<JurisdictionRule> {
+        Self::rules_in_priority_order(&env)
+    }
+
+    /// Loads every active rule and returns them in evaluation order.
+    ///
+    /// Rule IDs with no stored rule are skipped rather than trapping, matching
+    /// the tolerance the previous inline loop had for a dangling ID.
+    fn rules_in_priority_order(env: &Env) -> Vec<JurisdictionRule> {
+        let active_rule_ids: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveRuleIds)
+            .unwrap_or(Vec::new(env));
+
+        // Insertion sort: the active rule set is small and bounded by
+        // governance, and this avoids allocating a scratch buffer in a
+        // no_std contract.
+        let mut ordered: Vec<JurisdictionRule> = Vec::new(env);
+        for rule_id in active_rule_ids.iter() {
+            let rule_key = DataKey::Rule(rule_id.clone());
+            let rule: JurisdictionRule = match env
+                .storage()
+                .persistent()
+                .get::<DataKey, JurisdictionRule>(&rule_key)
+            {
+                Some(r) => r,
+                None => continue,
+            };
+
+            let mut position = ordered.len();
+            for index in 0..ordered.len() {
+                let existing = match ordered.get(index) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                if Self::rule_precedes(&rule, &existing) {
+                    position = index;
+                    break;
+                }
+            }
+            ordered.insert(position, rule);
+        }
+
+        ordered
+    }
+
+    /// Returns true when rule `a` must be evaluated before rule `b`.
+    ///
+    /// Precedence is lower `priority` first; equal priorities are ordered by
+    /// ascending `rule_id`. Because `rule_id` is unique across active rules,
+    /// this is a total order — two distinct rules can never tie, so the
+    /// evaluated sequence is fully deterministic.
+    fn rule_precedes(a: &JurisdictionRule, b: &JurisdictionRule) -> bool {
+        if a.priority != b.priority {
+            return a.priority < b.priority;
+        }
+        a.rule_id < b.rule_id
     }
 }
