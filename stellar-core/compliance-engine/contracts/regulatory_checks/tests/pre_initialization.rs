@@ -30,6 +30,7 @@ fn make_rule(
         is_allowed,
         required_authority: None,
         priority: 0,
+        version: 0, // ignored/overwritten by the contract on add_rule/update_rule
     }
 }
 

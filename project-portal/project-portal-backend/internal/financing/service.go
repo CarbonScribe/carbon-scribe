@@ -31,6 +31,7 @@ type Service interface {
 	ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error)
 	HandleStellarWebhook(ctx context.Context, req StellarWebhookRequest) error
 	HandlePaymentWebhook(ctx context.Context, req PaymentWebhookRequest) error
+	BuildTrustlineTransaction(ctx context.Context, req TrustlineSetupRequest) (*TrustlineSetupResponse, error)
 }
 
 type service struct {
@@ -407,6 +408,34 @@ func (s *service) HandleStellarWebhook(ctx context.Context, req StellarWebhookRe
 		credit.Status = CreditStatusVerified
 	}
 	return s.repo.UpdateCredit(ctx, credit)
+}
+
+func (s *service) BuildTrustlineTransaction(ctx context.Context, req TrustlineSetupRequest) (*TrustlineSetupResponse, error) {
+	assetCode := strings.TrimSpace(req.AssetCode)
+	resolvedCode, ok := payments.ResolveTrustlineAssetCode(req.PaymentProvider, req.Currency)
+	if !ok {
+		return nil, fmt.Errorf("trustline setup is only available for the stellar payment provider")
+	}
+	if assetCode == "" {
+		assetCode = resolvedCode
+	}
+
+	resp, err := s.workflow.BuildTrustlineTransaction(ctx, tokenization.TrustlineRequest{
+		BuyerAddress: req.BuyerPublicKey,
+		AssetCode:    assetCode,
+		AssetIssuer:  req.AssetIssuer,
+		Limit:        req.Limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &TrustlineSetupResponse{
+		TransactionXDR: resp.TransactionXDR,
+		AssetCode:      resp.AssetCode,
+		AssetIssuer:    resp.AssetIssuer,
+		Limit:          resp.Limit,
+	}, nil
 }
 
 func (s *service) HandlePaymentWebhook(ctx context.Context, req PaymentWebhookRequest) error {

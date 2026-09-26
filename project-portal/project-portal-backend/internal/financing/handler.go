@@ -1,12 +1,14 @@
 package financing
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization"
 	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
@@ -49,6 +51,8 @@ func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
 		} else {
 			financing.POST("/payments/initiate", requirePermission("financing:pay"), h.initiatePayment)
 		}
+
+		financing.POST("/trustlines", requirePermission("financing:pay"), h.buildTrustlineTransaction)
 
 		financing.POST("/payouts/distribute", requirePermission("financing:distribute"), h.distributeRevenue)
 		financing.GET("/payouts/:id", requirePermission("financing:read"), h.getPayoutStatus)
@@ -188,6 +192,10 @@ func (h *Handler) mintCredits(c *gin.Context) {
 	}
 	credit, err := h.service.MintCredits(c.Request.Context(), req)
 	if err != nil {
+		if errors.Is(err, tokenization.ErrTrustlineMissing) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "reason": "trustline_missing"})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -296,6 +304,24 @@ func (h *Handler) initiatePayment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, payment)
+}
+
+func (h *Handler) buildTrustlineTransaction(c *gin.Context) {
+	var req TrustlineSetupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.service.BuildTrustlineTransaction(c.Request.Context(), req)
+	if err != nil {
+		if errors.Is(err, tokenization.ErrBuyerAccountNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) distributeRevenue(c *gin.Context) {

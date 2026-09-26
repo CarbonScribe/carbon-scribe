@@ -78,6 +78,21 @@ type OAuthToken struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// OAuthState represents a pending OAuth2 authorization request, storing the
+// CSRF-protection state value and PKCE code_verifier issued by
+// InitiateOAuth2 until they are consumed (or expire) at OAuth2Callback.
+type OAuthState struct {
+	ID           string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	State        string    `gorm:"uniqueIndex;not null" json:"-"`
+	Provider     string    `gorm:"not null;index" json:"provider"`
+	ConnectionID string    `gorm:"index;not null" json:"connection_id"`
+	CodeVerifier string    `gorm:"not null" json:"-"`
+	RedirectURI  string    `json:"-"`
+	Consumed     bool      `gorm:"default:false;index" json:"-"`
+	ExpiresAt    time.Time `gorm:"index;not null" json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 // IntegrationHealth represents the health status of a connection
 type IntegrationHealth struct {
 	ID           string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
