@@ -360,6 +360,58 @@ CARBON_ASSET_USE_MOCK=false
 
 For mainnet deployment, set `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` to public-network values and provide funded, whitelisted operational keys.
 
+## Stellar Trustline Setup for Buyers
+
+A buyer's Stellar account must hold a trustline for an asset (the carbon
+credit itself, or a stablecoin like USDC used for payment) before any
+transfer into that account can succeed. The platform cannot sign on behalf
+of buyer-controlled accounts, so the backend only builds and returns an
+**unsigned** `ChangeTrust` transaction for the buyer's own wallet to sign
+and submit.
+
+Flow:
+1. Buyer requests a trustline transaction for the asset they need to hold.
+2. Backend verifies the buyer's account exists and is funded, then returns
+   an unsigned `ChangeTrust` transaction XDR.
+3. Buyer signs the XDR with their own wallet and submits it to the network.
+4. Immediately before any credit is minted/transferred to the buyer, the
+   backend re-verifies the trustline still exists — a trustline can be
+   removed by the account holder at any time — and rejects the mint with a
+   specific `trustline_missing` error instead of a generic failure if it is
+   gone.
+
+New endpoint:
+- `POST /api/v1/financing/trustlines`
+
+Request body:
+```json
+{
+  "buyer_public_key": "GABC...",
+  "payment_provider": "stellar",
+  "asset_code": "CRB2025",
+  "asset_issuer": "GISSUER...",
+  "limit": "1000000"
+}
+```
+`asset_code` may be omitted when `currency` is supplied instead; it is then
+derived via the existing `NormalizeAssetCode` helper (e.g. `USD` -> `USDC`).
+`payment_provider` must be a Stellar provider (`stellar`/`stellar_network`,
+checked via `IsStellarProvider`) — trustline setup does not apply to other
+payment rails.
+
+Environment variables:
+```bash
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+CARBON_ASSET_TRUSTLINE_LIMITS=USDC:1000000,CRB2025:1000000000
+CARBON_ASSET_AUTH_REQUIRED_CODES=CRB2025
+```
+`CARBON_ASSET_TRUSTLINE_LIMITS` sets the default `ChangeTrust` limit per
+asset code when a request does not specify one; unlisted codes fall back to
+the maximum trustline limit. `CARBON_ASSET_AUTH_REQUIRED_CODES` lists asset
+codes whose issuer has set `AUTH_REQUIRED_FLAG` — for those, the platform
+issues a `SetTrustLineFlags` authorization transaction once the buyer's
+trustline is observed on-chain.
+
 ## Collaboration API Authentication Update
 
 Collaboration write operations now enforce JWT authentication and derive actor identity from token context. This removes impersonation risk from client-provided identity fields and ensures audit/activity attribution is server-controlled.
