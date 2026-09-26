@@ -28,6 +28,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-is": "^19.2.5",
+    "react-turnstile": "^1.1.5",
     "recharts": "^3.7.0",
     "sonner": "^1.7.1",
     "xss-clean": "^0.1.4",
