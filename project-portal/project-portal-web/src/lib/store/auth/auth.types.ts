@@ -42,6 +42,7 @@ export interface RefreshResponse {
 export interface LoginCredentials {
   email: string;
   password: string;
+  captcha_token?: string;
 }
 
 export interface RegisterPayload {
@@ -49,6 +50,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   organization?: string;
+  captcha_token?: string;
 }
 
 export type AuthLoadingState = {
@@ -71,7 +73,7 @@ export type AuthSlice = {
   authLoading: AuthLoadingState;
   authError: string | null;
 
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, captcha_token?: string) => Promise<void>;
   register: (data: RegisterPayload) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;

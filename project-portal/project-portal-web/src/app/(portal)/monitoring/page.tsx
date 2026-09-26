@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store/store';
 
 // Dashboard
@@ -88,6 +88,8 @@ function ChartSkeleton() {
 }
 
 export default function SystemHealthDashboard() {
+  const [selectedMetric, setSelectedMetric] = useState('latency_p99');
+  
   const fetchDetailedStatus = useStore(state => state.fetchDetailedStatus);
   const fetchServices = useStore(state => state.fetchServices);
   const fetchAlerts = useStore(state => state.fetchAlerts);
@@ -119,6 +121,12 @@ export default function SystemHealthDashboard() {
       clearHealthData();
     };
   }, [isAuthenticated, fetchDetailedStatus, fetchServices, fetchAlerts, fetchMetrics, fetchDependencies, fetchUptimeStats, clearHealthData]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchMetrics('1h');
+    }
+  }, [selectedMetric, fetchMetrics, isAuthenticated]);
 
   if (!isAuthenticated) {
     return (
@@ -171,7 +179,7 @@ export default function SystemHealthDashboard() {
               <h2 className="text-lg font-bold text-gray-800">System Metrics</h2>
               {!metricsLoading && (
                 <div className="flex flex-wrap items-center gap-3">
-                  <MetricSelector />
+                  <MetricSelector value={selectedMetric} onChange={setSelectedMetric} />
                   <ChartControls />
                   <ChartExport />
                 </div>

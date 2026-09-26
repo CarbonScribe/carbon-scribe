@@ -87,14 +87,14 @@ export const createAuthSlice: StateCreator<StoreState, [], [], AuthSlice> = (set
 
     clearError: () => set({ authError: null }),
 
-    login: async (email, password) => {
+    login: async (email, password, captcha_token) => {
       set((s) => ({
         authLoading: { ...s.authLoading, login: true },
         authError: null,
       }));
 
       try {
-        const response = await loginApi({ email, password });
+        const response = await loginApi({ email, password, captcha_token });
         const { access_token, refresh_token, expires_in, token_type, user } = response;
 
         const normalizedUser = user?.id ? user : normalizeUser(user);

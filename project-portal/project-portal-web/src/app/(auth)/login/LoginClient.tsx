@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store/store';
 import { Mail, Lock, ChevronRight, AlertCircle, Loader2 } from 'lucide-react';
+import { Turnstile } from 'react-turnstile';
 import { showToast } from '@/components/ui/Toast';
 import AuthNavigation from '@/components/AuthNavigation';
 
@@ -23,7 +24,8 @@ export default function LoginClient() {
   // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string; captcha?: string }>({});
 
   const hasFormErrors = Object.values(formErrors).some((msg) => !!msg);
 
@@ -34,7 +36,7 @@ export default function LoginClient() {
   }, [isHydrated, isAuthenticated, router, next]);
 
   const validate = () => {
-    const errors: { email?: string; password?: string } = {};
+    const errors: { email?: string; password?: string; captcha?: string } = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email) {
@@ -45,6 +47,10 @@ export default function LoginClient() {
 
     if (!password) {
       errors.password = 'Password is required';
+    }
+
+    if (!captchaToken) {
+      errors.captcha = 'Please complete the CAPTCHA verification';
     }
 
     return errors;
@@ -63,12 +69,13 @@ export default function LoginClient() {
     }
 
     try {
-      await login(email, password);
+      await login(email, password, captchaToken);
       showToast('success', 'Signed in successfully');
       router.replace(next);
     } catch (err: any) {
       console.error('Login submission error:', err);
       showToast('error', err?.response?.data?.error || err?.message || 'Login failed');
+      setCaptchaToken('');
     }
   }
 
@@ -183,6 +190,25 @@ export default function LoginClient() {
             {formErrors.password && (
               <p id="login-password-error" className="mt-1 text-sm text-red-600" role="alert">
                 {formErrors.password}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Turnstile
+              sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onError={() => {
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA verification failed. Please try again.' }));
+              }}
+              onExpire={() => {
+                setCaptchaToken('');
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA expired. Please complete it again.' }));
+              }}
+            />
+            {formErrors.captcha && (
+              <p className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.captcha}
               </p>
             )}
           </div>
