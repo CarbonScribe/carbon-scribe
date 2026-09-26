@@ -150,9 +150,7 @@ describe("runDiscoveryAgent", () => {
     });
 
     expect(result.status).toBe("failed");
-    expect((result.output as { error: string }).error).toContain(
-      "API error",
-    );
+    expect((result.output as { error: string }).error).toContain("API error");
     expect(result.errorCategory).toBe("connection_error");
     expect(result.retryable).toBe(true);
     expect(auditRecord).toHaveBeenCalledWith(
@@ -169,7 +167,7 @@ describe("runDiscoveryAgent", () => {
       429,
       { message: "rate limit exceeded" },
       "rate limit exceeded",
-      undefined,
+      new Headers(),
     );
     toolRunnerMock.mockReturnValue(fakeRunner({ error: rateLimitError }));
 
@@ -182,7 +180,9 @@ describe("runDiscoveryAgent", () => {
     expect(result.status).toBe("failed");
     expect(result.errorCategory).toBe("rate_limited");
     expect(result.retryable).toBe(true);
-    expect((result.output as { error: string }).error).toContain("Rate limit exceeded");
+    expect((result.output as { error: string }).error).toContain(
+      "Rate limit exceeded",
+    );
   });
 
   it("returns a failed result distinguishing a non-API failure", async () => {
