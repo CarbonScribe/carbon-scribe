@@ -58,6 +58,103 @@
                         "symbol": "dest_jur"
                       },
                       "val": {
+                        "string": "ANY"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "host_jur"
+                      },
+                      "val": {
+                        "string": "ANY"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "is_allowed"
+                      },
+                      "val": {
+                        "bool": false
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "operation"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "TRANSFER"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 30
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "required_authority"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "rule_id"
+                      },
+                      "val": {
+                        "string": "C"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "source_jur"
+                      },
+                      "val": {
+                        "string": "US"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "function_name": "add_rule",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                },
+                {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "description"
+                      },
+                      "val": {
+                        "string": "desc"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "dest_jur"
+                      },
+                      "val": {
                         "string": "CA"
                       }
                     },
@@ -66,7 +163,7 @@
                         "symbol": "host_jur"
                       },
                       "val": {
-                        "string": "US"
+                        "string": "ANY"
                       }
                     },
                     {
@@ -94,7 +191,7 @@
                         "symbol": "priority"
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 10
                       }
                     },
                     {
@@ -108,7 +205,7 @@
                         "symbol": "rule_id"
                       },
                       "val": {
-                        "string": "R1"
+                        "string": "A"
                       }
                     },
                     {
@@ -135,7 +232,7 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "update_rule",
+              "function_name": "add_rule",
               "args": [
                 {
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
@@ -147,7 +244,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "updated desc"
+                        "string": "desc"
                       }
                     },
                     {
@@ -155,7 +252,7 @@
                         "symbol": "dest_jur"
                       },
                       "val": {
-                        "string": "CA"
+                        "string": "DE"
                       }
                     },
                     {
@@ -163,7 +260,7 @@
                         "symbol": "host_jur"
                       },
                       "val": {
-                        "string": "US"
+                        "string": "ANY"
                       }
                     },
                     {
@@ -171,7 +268,7 @@
                         "symbol": "is_allowed"
                       },
                       "val": {
-                        "bool": false
+                        "bool": true
                       }
                     },
                     {
@@ -191,7 +288,7 @@
                         "symbol": "priority"
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 20
                       }
                     },
                     {
@@ -205,7 +302,7 @@
                         "symbol": "rule_id"
                       },
                       "val": {
-                        "string": "R1"
+                        "string": "B"
                       }
                     },
                     {
@@ -225,6 +322,7 @@
         }
       ]
     ],
+    [],
     []
   ],
   "ledger": {
@@ -247,7 +345,7 @@
                   "symbol": "Rule"
                 },
                 {
-                  "string": "R1"
+                  "string": "A"
                 }
               ]
             },
@@ -267,7 +365,7 @@
                       "symbol": "Rule"
                     },
                     {
-                      "string": "R1"
+                      "string": "A"
                     }
                   ]
                 },
@@ -279,7 +377,7 @@
                         "symbol": "description"
                       },
                       "val": {
-                        "string": "updated desc"
+                        "string": "desc"
                       }
                     },
                     {
@@ -295,7 +393,247 @@
                         "symbol": "host_jur"
                       },
                       "val": {
+                        "string": "ANY"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "is_allowed"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "operation"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "TRANSFER"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 10
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "required_authority"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "rule_id"
+                      },
+                      "val": {
+                        "string": "A"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "source_jur"
+                      },
+                      "val": {
                         "string": "US"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Rule"
+                },
+                {
+                  "string": "B"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Rule"
+                    },
+                    {
+                      "string": "B"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "description"
+                      },
+                      "val": {
+                        "string": "desc"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "dest_jur"
+                      },
+                      "val": {
+                        "string": "DE"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "host_jur"
+                      },
+                      "val": {
+                        "string": "ANY"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "is_allowed"
+                      },
+                      "val": {
+                        "bool": true
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "operation"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "TRANSFER"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "priority"
+                      },
+                      "val": {
+                        "u32": 20
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "required_authority"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "rule_id"
+                      },
+                      "val": {
+                        "string": "B"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "source_jur"
+                      },
+                      "val": {
+                        "string": "US"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Rule"
+                },
+                {
+                  "string": "C"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Rule"
+                    },
+                    {
+                      "string": "C"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "description"
+                      },
+                      "val": {
+                        "string": "desc"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "dest_jur"
+                      },
+                      "val": {
+                        "string": "ANY"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "host_jur"
+                      },
+                      "val": {
+                        "string": "ANY"
                       }
                     },
                     {
@@ -323,7 +661,7 @@
                         "symbol": "priority"
                       },
                       "val": {
-                        "u32": 0
+                        "u32": 30
                       }
                     },
                     {
@@ -337,7 +675,7 @@
                         "symbol": "rule_id"
                       },
                       "val": {
-                        "string": "R1"
+                        "string": "C"
                       }
                     },
                     {
@@ -391,7 +729,13 @@
                         "val": {
                           "vec": [
                             {
-                              "string": "R1"
+                              "string": "C"
+                            },
+                            {
+                              "string": "A"
+                            },
+                            {
+                              "string": "B"
                             }
                           ]
                         }
@@ -497,6 +841,39 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": "1033654523790656264"
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": "4837995959683129791"
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": "4837995959683129791"
                   }
                 },
                 "durability": "temporary",

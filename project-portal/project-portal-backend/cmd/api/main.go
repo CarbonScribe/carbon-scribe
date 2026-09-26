@@ -24,6 +24,7 @@ import (
 	integrationstellar "carbon-scribe/project-portal/project-portal-backend/internal/integration/stellar"
 	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
+	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/analytics"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
@@ -186,6 +187,18 @@ func main() {
 	}
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
 	mintingService := minting.NewService(db, mintingContractClient, mintingCapValidator)
+
+	// Apply the configured minting retry policy (exponential backoff with
+	// jitter). NewService already resolves this from the environment; this
+	// makes the application config the single source of truth.
+	if configurable, ok := mintingService.(minting.RetryPolicyConfigurer); ok {
+		configurable.SetRetryPolicy(minting.RetryPolicy{
+			MaxAttempts:  cfg.Minting.MaxAttempts,
+			BaseBackoff:  cfg.Minting.BaseBackoff,
+			MaxBackoff:   cfg.Minting.MaxBackoff,
+			JitterFactor: cfg.Minting.JitterFactor,
+		})
+	}
 	mintingHandler := minting.NewHandler(mintingService).WithRateLimiter(rateLimiter)
 
 	projectService := project.NewService(projectRepo, methodologyService, mintingService, validation.Validator(methodologyValidator))
@@ -318,7 +331,26 @@ func main() {
 
 	monitoringRepo := monitoring.NewPostgresRepository(sqlDB)
 	monitoringService := monitoring.NewService(monitoringRepo)
-	monitoringHandler := api.NewMonitoringHandler(monitoringService)
+
+	// Performance analytics benchmarks stored monitoring data against the SLA
+	// thresholds in configuration and is exposed at
+	// GET /api/v1/monitoring/analytics/performance.
+	performanceAnalytics := analytics.NewPerformanceService(
+		monitoringRepo,
+		monitoringRepo,
+		analytics.SLAThresholds{
+			LatencyP50Ms:        cfg.Monitoring.SLA.LatencyP50Ms,
+			LatencyP95Ms:        cfg.Monitoring.SLA.LatencyP95Ms,
+			LatencyP99Ms:        cfg.Monitoring.SLA.LatencyP99Ms,
+			MaxErrorRate:        cfg.Monitoring.SLA.MaxErrorRate,
+			MinUptime:           cfg.Monitoring.SLA.MinUptime,
+			LatencyMetricName:   cfg.Monitoring.SLA.LatencyMetricName,
+			ErrorRateMetricName: cfg.Monitoring.SLA.ErrorRateMetricName,
+		},
+	)
+
+	monitoringHandler := api.NewMonitoringHandler(monitoringService).
+		WithPerformanceAnalytics(performanceAnalytics)
 	log.Println("✅ Monitoring service initialized")
 
 	// ============================================================================

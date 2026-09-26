@@ -1,10 +1,12 @@
 package v1
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
+	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/analytics"
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/ingestion"
 
 	"github.com/gin-gonic/gin"
@@ -13,11 +15,69 @@ import (
 // MonitoringHandler handles monitoring-related API endpoints.
 type MonitoringHandler struct {
 	service *monitoring.Service
+	// performance is optional: when nil the benchmark endpoint reports that
+	// the analytics service is not configured rather than panicking.
+	performance *analytics.PerformanceService
 }
 
 // NewMonitoringHandler creates a new monitoring handler.
 func NewMonitoringHandler(service *monitoring.Service) *MonitoringHandler {
 	return &MonitoringHandler{service: service}
+}
+
+// WithPerformanceAnalytics attaches the SLA benchmark service, enabling
+// GET /api/v1/monitoring/analytics/performance.
+func (h *MonitoringHandler) WithPerformanceAnalytics(svc *analytics.PerformanceService) *MonitoringHandler {
+	h.performance = svc
+	return h
+}
+
+// GetPerformanceBenchmark handles GET /api/v1/monitoring/analytics/performance.
+//
+//	@Summary     Benchmark service performance against SLA thresholds
+//	@Description Computes latency percentiles, error rate and uptime for a service
+//	@Description over a window and compares each against the configured SLA.
+//	@Tags        monitoring
+//	@Produce     json
+//	@Param       service query string true  "Service name to benchmark"
+//	@Param       window  query string false "Look-back window as a Go duration (default 1h)"
+//	@Success     200 {object} analytics.BenchmarkReport
+//	@Failure     400 {object} map[string]string
+//	@Failure     500 {object} map[string]string
+//	@Failure     503 {object} map[string]string
+//	@Router      /api/v1/monitoring/analytics/performance [get]
+func (h *MonitoringHandler) GetPerformanceBenchmark(c *gin.Context) {
+	if h.performance == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "performance analytics is not configured"})
+		return
+	}
+
+	req := analytics.BenchmarkRequest{Service: c.Query("service")}
+
+	if raw := c.Query("window"); raw != "" {
+		window, err := time.ParseDuration(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid window: " + err.Error()})
+			return
+		}
+		if window <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "window must be positive"})
+			return
+		}
+		req.Window = window
+	}
+
+	report, err := h.performance.Benchmark(c.Request.Context(), req)
+	if err != nil {
+		if errors.Is(err, analytics.ErrServiceRequired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, report)
 }
 
 // IngestSatellite handles POST /api/v1/monitoring/satellite.
@@ -279,5 +339,6 @@ func RegisterMonitoringRoutes(r *gin.RouterGroup, handler *MonitoringHandler) {
 		monitoring.GET("/iot", handler.ListIoTReadings)
 		monitoring.GET("/ndvi/tile/:z/:x/:y", handler.GetNDVITile)
 		monitoring.GET("/ndvi/timeseries/animation/:z/:x/:y", handler.GetNDVITimeSeriesAnimation)
+		monitoring.GET("/analytics/performance", handler.GetPerformanceBenchmark)
 	}
 }
