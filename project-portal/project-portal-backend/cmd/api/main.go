@@ -62,6 +62,13 @@ func main() {
 		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
 
+	// Fail fast if security-critical configuration is missing or still set to
+	// an insecure default. Development mode (SERVER_MODE=development/DEBUG=true)
+	// keeps the documented defaults for local convenience.
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("❌ Invalid configuration: %v", err)
+	}
+
 	// Initialize database connection
 	db, err := initDatabase(cfg)
 	if err != nil {
