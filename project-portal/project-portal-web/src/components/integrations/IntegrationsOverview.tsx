@@ -2,8 +2,8 @@
 
 import { useEffect } from 'react';
 import { Link, Zap, Webhook, Bell, Activity, Plus } from 'lucide-react';
-import { useIntegrationStore } from '@/store/integrationSlice';
-import { useActiveConnections, useActiveWebhooks, useActiveSubscriptions, useOverallHealthStatus } from '@/store/integration.selectors';
+import { useStore } from '@/lib/store/store';
+import { useActiveConnections, useActiveWebhooks, useActiveSubscriptions, useOverallHealthStatus } from '@/lib/store/integrations/integration.selectors';
 import EmptyState from '@/components/ui/EmptyState';
 import Button from '@/components/ui/Button';
 
@@ -12,23 +12,23 @@ const IntegrationsOverview = () => {
     connections,
     webhooks,
     subscriptions,
-    healthMetrics,
+    integrationHealthMetrics,
     connectionsLoading,
     webhooksLoading,
     subscriptionsLoading,
-    healthLoading,
+    integrationHealthLoading,
     fetchConnections,
     fetchWebhooks,
     fetchSubscriptions,
-    fetchHealthMetrics,
-  } = useIntegrationStore();
+    fetchIntegrationHealthMetrics,
+  } = useStore();
 
   useEffect(() => {
     fetchConnections();
     fetchWebhooks();
     fetchSubscriptions();
-    fetchHealthMetrics();
-  }, [fetchConnections, fetchWebhooks, fetchSubscriptions, fetchHealthMetrics]);
+    fetchIntegrationHealthMetrics();
+  }, [fetchConnections, fetchWebhooks, fetchSubscriptions, fetchIntegrationHealthMetrics]);
 
   const activeConnections = useActiveConnections();
   const activeWebhooks = useActiveWebhooks();
@@ -70,7 +70,7 @@ const IntegrationsOverview = () => {
     },
   ];
 
-  const isLoading = connectionsLoading || webhooksLoading || subscriptionsLoading || healthLoading;
+  const isLoading = connectionsLoading || webhooksLoading || subscriptionsLoading || integrationHealthLoading;
 
   if (isLoading && connections.length === 0) {
     return (

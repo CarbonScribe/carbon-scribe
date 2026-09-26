@@ -12,9 +12,21 @@ import { SorobanModule } from '../stellar/soroban/soroban.module';
 import { RetirementRecordingService } from './retirement-recording/retirement-recording.service';
 import { RetirementRecordingController } from './retirement-recording/retirement-recording.controller';
 import { RetirementEventListener } from '../stellar/soroban/events/retirement-event.listener';
+import { IdempotencyKeyService } from './idempotency/idempotency-key.service';
+import { IdempotencyInterceptor } from './idempotency/idempotency.interceptor';
+import { CacheModule } from '../cache/cache.module';
+import { DatabaseModule } from '../shared/database/database.module';
+import { CreditModule } from '../credit/credit.module';
 
 @Module({
-  imports: [SecurityModule, StellarModule, SorobanModule],
+  imports: [
+    SecurityModule,
+    StellarModule,
+    SorobanModule,
+    CacheModule,
+    DatabaseModule,
+    CreditModule,
+  ],
   providers: [
     RetirementService,
     InstantRetirementService,
@@ -24,6 +36,8 @@ import { RetirementEventListener } from '../stellar/soroban/events/retirement-ev
     PostPurchaseService,
     RetirementRecordingService,
     RetirementEventListener,
+    IdempotencyKeyService,
+    IdempotencyInterceptor,
   ],
   controllers: [RetirementController, RetirementRecordingController],
   exports: [
@@ -33,6 +47,7 @@ import { RetirementEventListener } from '../stellar/soroban/events/retirement-ev
     CertificateService,
     PostPurchaseService,
     RetirementRecordingService,
+    IdempotencyKeyService,
   ],
 })
 export class RetirementModule {}

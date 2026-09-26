@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import ProjectStatsDashboard from '@/components/dashboard/ProjectStatsDashboard';
 import ActiveProjectsGrid from '@/components/projects/ActiveProjectsGrid';
 import MonitoringAlerts from '@/components/monitoring/MonitoringAlerts';
@@ -11,7 +11,11 @@ import { useStore } from '@/lib/store/store';
 
 export default function ProjectPortalHome() {
   const fetchProjects = useStore((state) => state.fetchProjects);
+  const projects = useStore((state) => state.projects);
   const name = useStore((s) => s.user?.full_name) || 'Farmer';
+
+  // Get the first project ID for SatelliteInsights
+  const firstProjectId = projects && projects.length > 0 ? projects[0]?.id : '';
 
   // Fetch projects on mount
   useEffect(() => {
@@ -47,7 +51,7 @@ export default function ProjectPortalHome() {
 
         {/* Right Column - Insights & Actions */}
         <div className="space-y-6">
-          <SatelliteInsights />
+          <SatelliteInsights projectId={firstProjectId} />
           <TokenizationStatus projectId="demo-project-1" />
           <QuickActionsPanel />
         </div>

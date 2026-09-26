@@ -65,4 +65,34 @@ export class RetrievalService {
     const url = this.ipfs.gatewayForCid(cid);
     return { cid, url };
   }
+
+  async verifyPin(
+    cid: string,
+  ): Promise<{ verified: boolean; attempts: number; error?: string }> {
+    const maxAttempts = this.config.verifyRetryAttempts;
+    const delayMs = this.config.verifyRetryDelayMs;
+    const timeoutMs = this.config.verifyTimeoutMs;
+    const url = this.ipfs.gatewayForCid(cid);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await axios.head(url, { timeout: timeoutMs });
+        this.logger.log(
+          `CID ${cid} verified retrievable on attempt ${attempt}/${maxAttempts}`,
+        );
+        return { verified: true, attempts: attempt };
+      } catch (err: any) {
+        this.logger.warn(
+          `Verify attempt ${attempt}/${maxAttempts} failed for CID ${cid}: ${err?.message}`,
+        );
+        if (attempt < maxAttempts) {
+          await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    const error = `Content not retrievable from gateway after ${maxAttempts} attempt(s)`;
+    this.logger.error(`Pin verification failed for CID ${cid}: ${error}`);
+    return { verified: false, attempts: maxAttempts, error };
+  }
 }

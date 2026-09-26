@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useReportsStore } from '@/store/store';
-import type { DashboardWidget } from '@/store/reports.types';
-import { BarChart3 } from 'lucide-react';
+import { useEffect } from "react";
+import { useStore } from "@/lib/store/store";
+import type { DashboardWidget } from "@/lib/store/store";
+import { BarChart3 } from "lucide-react";
 
 interface ChartWidgetProps {
   widget: DashboardWidget;
 }
 
 export default function ChartWidget({ widget }: ChartWidgetProps) {
-  const { dashboardSummary, fetchDashboardSummary } = useReportsStore();
+  const { dashboardSummary, fetchDashboardSummary } = useStore();
   const config = widget.config ?? {};
   const title = widget.title;
 

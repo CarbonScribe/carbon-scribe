@@ -110,10 +110,23 @@ func (r *Repository) CreateAuthToken(token *AuthToken) error {
 	return r.db.Create(token).Error
 }
 
-// GetAuthToken retrieves an auth token by token string
+// GetAuthToken retrieves an active auth token by token string.
 func (r *Repository) GetAuthToken(tokenStr string) (*AuthToken, error) {
 	var token AuthToken
-	if err := r.db.First(&token, "token = ? AND used = false AND expires_at > ?", tokenStr, time.Now()).Error; err != nil {
+	if err := r.db.First(&token, "token = ? AND used = false", tokenStr).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &token, nil
+}
+
+// GetLatestAuthToken retrieves the newest token of a given type for a user.
+func (r *Repository) GetLatestAuthToken(userID, tokenType string) (*AuthToken, error) {
+	var token AuthToken
+	if err := r.db.Where("user_id = ? AND token_type = ? AND used = false", userID, tokenType).
+		Order("created_at DESC").First(&token).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

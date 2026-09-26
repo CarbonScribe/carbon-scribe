@@ -3,13 +3,16 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/store';
+import EmailVerificationBanner from './EmailVerificationBanner';
 
 export default function ProtectedRoute({
   children,
   roles,
+  requireVerifiedEmail = true,
 }: {
   children: React.ReactNode;
   roles?: string[];
+  requireVerifiedEmail?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,10 +29,17 @@ export default function ProtectedRoute({
       return;
     }
 
+    // Check email verification for protected routes
+    if (requireVerifiedEmail && user && !user.email_verified) {
+      // Allow access but show verification banner
+      // Don't redirect - let the banner handle it
+      return;
+    }
+
     if (roles?.length && user?.role && !roles.includes(user.role)) {
       router.replace('/'); // or a /403 page later
     }
-  }, [isHydrated, isAuthenticated, router, pathname, roles, user?.role]);
+  }, [isHydrated, isAuthenticated, router, pathname, roles, user?.role, requireVerifiedEmail, user]);
 
   const renderLoading = (message: string) => (
     <div className="min-h-[60vh] grid place-items-center">
@@ -51,5 +61,13 @@ export default function ProtectedRoute({
     return renderLoading('Checking access permissions...');
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {/* Show verification banner for unverified users */}
+      {requireVerifiedEmail && user && !user.email_verified && (
+        <EmailVerificationBanner className="mb-4" />
+      )}
+      {children}
+    </>
+  );
 }

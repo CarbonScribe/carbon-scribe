@@ -22,8 +22,19 @@ import (
 )
 
 const (
+	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
+	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
 	defaultSorobanRPCURL         = "https://soroban-testnet.stellar.org:443"
+
+	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
+	DefaultPollAttempts = 15
+
+	// DefaultPollInterval is the duration between transaction status polling attempts.
+	DefaultPollInterval = 2 * time.Second
+
+	// MintTransactionTimeoutSeconds is the timeout in seconds for mint transactions.
+	MintTransactionTimeoutSeconds = 300
 )
 
 type MintRequest struct {
@@ -95,7 +106,7 @@ func newRealClientFromEnv() (*RealStellarClient, error) {
 		networkPassphrase = network.TestNetworkPassphrase
 	}
 
-	pollAttempts := 15
+	pollAttempts := DefaultPollAttempts
 	if raw := strings.TrimSpace(os.Getenv("CARBON_ASSET_POLL_ATTEMPTS")); raw != "" {
 		if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed > 0 {
 			pollAttempts = parsed
@@ -107,7 +118,7 @@ func newRealClientFromEnv() (*RealStellarClient, error) {
 		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
 		networkPassphrase: networkPassphrase,
 		authority:         authority,
-		pollInterval:      2 * time.Second,
+		pollInterval:      DefaultPollInterval,
 		pollAttempts:      pollAttempts,
 	}, nil
 }
@@ -197,7 +208,7 @@ func (c *RealStellarClient) Mint(ctx context.Context, req MintRequest) (*MintRes
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build simulation transaction: %w", err)
@@ -241,7 +252,7 @@ func (c *RealStellarClient) Mint(ctx context.Context, req MintRequest) (*MintRes
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee + simResp.MinResourceFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build submit transaction: %w", err)

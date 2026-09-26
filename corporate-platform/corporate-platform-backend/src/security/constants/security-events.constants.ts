@@ -22,7 +22,11 @@ export const SecurityEvents = {
   ReportExported: 'report.exported',
   SettingsChanged: 'settings.changed',
   RateLimitExceeded: 'rate-limit.exceeded',
+  IdempotentRequest: 'idempotent.request',
   SuspiciousPatternDetected: 'suspicious.pattern.detected',
+  AuthRefreshSuccess: 'auth.refresh.success',
+  AuthRefreshFailed: 'auth.refresh.failed',
+  AuthRefreshTokenReuse: 'auth.refresh.token.reuse',
 } as const;
 
 export type SecurityEventType =
@@ -64,5 +68,9 @@ export const EventSeverityMap: Record<
   [SecurityEvents.ReportExported]: SecuritySeverity.Info,
   [SecurityEvents.SettingsChanged]: SecuritySeverity.Info,
   [SecurityEvents.RateLimitExceeded]: SecuritySeverity.Critical,
+  [SecurityEvents.IdempotentRequest]: SecuritySeverity.Info,
   [SecurityEvents.SuspiciousPatternDetected]: SecuritySeverity.Critical,
+  [SecurityEvents.AuthRefreshSuccess]: SecuritySeverity.Info,
+  [SecurityEvents.AuthRefreshFailed]: SecuritySeverity.Warning,
+  [SecurityEvents.AuthRefreshTokenReuse]: SecuritySeverity.Critical,
 };

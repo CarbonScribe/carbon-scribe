@@ -6,6 +6,23 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model OutboxEvent {
+  id          String    @id @default(cuid())
+  topic       String
+  payload     Json
+  key         String
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+  attempts    Int       @default(0)
+  nextAttemptAt DateTime?
+
+  @@unique([topic, key])
+  @@index([status, createdAt])
+  @@index([status, nextAttemptAt])
+  @@map("outbox_events")
+}
+
 model Company {
   id                     String @id @default(cuid())
   name                   String
@@ -55,6 +72,9 @@ model Company {
 
   // SBTi
   sbtiTargets            SbtiTarget[]
+
+  // Contract Calls (add this line)
+  contractCalls          ContractCall[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -492,8 +512,12 @@ model Session {
   ipAddress    String?
   expiresAt    DateTime
   isValid      Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  lastUsedAt   DateTime?
+  createdAt            DateTime  @default(now())
+  lastUsedAt           DateTime?
+  previousRefreshToken String?
+  deviceId             String?
+  failedAttempts       Int       @default(0)
+  lockedUntil          DateTime?
 
   @@index([refreshToken])
   @@index([expiresAt])
@@ -1136,6 +1160,34 @@ model IpfsDocument {
 }
 
 // ==========================================
+// Certificate anchoring dead-letter / recovery (#400)
+// ==========================================
+
+// Persists actionable failure state for certificate IPFS anchoring so failed
+// uploads can be retried or repaired without manual database forensics.
+model CertificateAnchorFailure {
+  id              String    @id @default(cuid())
+  retirementId    String? // reference to the retirement record (if applicable)
+  companyId       String? // owning company, for scoping/filtering
+  certificateData Json // payload of the certificate being anchored
+  attemptCount    Int       @default(0) // number of retry attempts made
+  lastError       String? // error message from the last failure
+  lastAttemptAt   DateTime? // timestamp of the last attempt
+  status          String    @default("pending") // pending, in_progress, failed, resolved
+  nextRetryAt     DateTime? // timestamp for the next scheduled retry
+  resolvedCid     String? // CID produced once anchoring succeeds
+  notifiedAt      DateTime? // last time a threshold alert was emitted
+  createdAt       DateTime  @default(now()) // timestamp of initial failure
+  resolvedAt      DateTime? // timestamp when resolved
+
+  @@index([status])
+  @@index([retirementId])
+  @@index([companyId])
+  @@index([nextRetryAt])
+  @@map("certificate_anchor_failures")
+}
+
+// ==========================================
 // Framework Registry (methodology-to-framework mapping)
 // ==========================================
 
@@ -1341,9 +1393,15 @@ model CreditTransfer {
   projectId       String
   amount          Int
   transactionHash String?
-  status          String // PENDING, CONFIRMED, FAILED
+  // SUBMITTED — accepted by the API, broadcast not yet acknowledged on-chain.
+  // PENDING    — broadcast to the network, awaiting confirmation.
+  // CONFIRMED / FAILED — terminal.
+  status          String
   errorMessage    String?
   initiatedAt     DateTime  @default(now())
+  // Moment the transaction was broadcast. Drives the elapsed-time and
+  // "stuck" indicators in the transfer UI (FE-069).
+  submittedAt     DateTime?
   confirmedAt     DateTime?
 
   @@index([purchaseId])
@@ -1358,15 +1416,47 @@ model ContractCall {
   methodName      String
   transactionHash String    @unique
   args            Json
-  status          String // PENDING, CONFIRMED, FAILED
+  // PENDING, CONFIRMED, FAILED, DUPLICATE, UNRESOLVED
+  // UNRESOLVED is terminal: the reconciliation sweep (#515) exhausted
+  // maxRetries without the RPC ever reporting a definitive outcome.
+  status          String
   result          Json?
   submittedAt     DateTime  @default(now())
   confirmedAt     DateTime?
 
+  // Idempotency & Deduplication Fields
+  workflowId      String?   @map("workflow_id") // Business workflow ID (e.g., retirement-123, mint-456)
+  idempotencyKey  String?   @unique @map("idempotency_key") // Client-provided idempotency key
+  deduplicationKey String?  @unique @map("deduplication_key") // Computed key: workflowId + methodName
+  originalCallId  String?   @map("original_call_id") // Reference to the original call in case of duplicate
+  isDuplicate     Boolean   @default(false) @map("is_duplicate")
+  duplicateReason String?   @map("duplicate_reason") // Reason for marking as duplicate
+
+  // Retry tracking
+  retryCount      Int       @default(0)
+  maxRetries      Int       @default(3)
+  lastRetryAt     DateTime?
+  nextRetryAt     DateTime?
+  errorMessage    String?
+
+  // Metadata
+  metadata        Json?     // Additional context
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  company Company @relation(fields: [companyId], references: [id])
+
+  // Composite indexes for querying
   @@index([companyId])
   @@index([contractId])
   @@index([status])
   @@index([submittedAt])
+  @@index([workflowId])
+  @@index([idempotencyKey])
+  @@index([deduplicationKey])
+  @@index([status, nextRetryAt])
+  @@index([companyId, workflowId])
   @@map("contract_calls")
 }
 

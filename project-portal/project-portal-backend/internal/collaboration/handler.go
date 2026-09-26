@@ -10,18 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetEnrichedMember handles GET /projects/:id/members/:userId
-func (h *Handler) GetEnrichedMember(c *gin.Context) {
-       projectID := c.Param("id")
-       userID := c.Param("userId")
-       member, err := h.service.GetEnrichedMember(c.Request.Context(), projectID, userID)
-       if err != nil {
-	       c.JSON(http.StatusNotFound, gin.H{"error": "member not found"})
-	       return
-       }
-       c.JSON(http.StatusOK, member)
-}
-
 type Handler struct {
 	service *Service
 }
@@ -46,6 +34,18 @@ type inviteUserResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// GetEnrichedMember handles GET /projects/:id/members/:userId
+func (h *Handler) GetEnrichedMember(c *gin.Context) {
+	projectID := c.Param("id")
+	userID := c.Param("userId")
+	member, err := h.service.GetEnrichedMember(c.Request.Context(), projectID, userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "member not found"})
+		return
+	}
+	c.JSON(http.StatusOK, member)
 }
 
 func (h *Handler) InviteUser(c *gin.Context) {
@@ -81,18 +81,48 @@ func (h *Handler) InviteUser(c *gin.Context) {
 	})
 }
 
+// PaginationResponse wraps list data with pagination metadata
+type PaginationResponse struct {
+	Data       interface{}    `json:"data"`
+	Pagination PaginationMeta `json:"pagination"`
+}
+
+// parsePagination extracts and validates limit/offset from query params
+func parsePagination(c *gin.Context) (int, int, error) {
+	limitStr := c.DefaultQuery("limit", "20")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil {
+		limit = 20 // use default on parse error
+	}
+
+	offsetStr := c.DefaultQuery("offset", "0")
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil {
+		offset = 0 // use default on parse error
+	}
+
+	return ValidatePagination(limit, offset)
+}
+
 func (h *Handler) GetActivities(c *gin.Context) {
 	projectID := c.Param("id")
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	activities, err := h.service.ListProjectActivities(c.Request.Context(), projectID, limit, offset)
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	activities, total, err := h.service.ListProjectActivities(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, activities)
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       activities,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 func (h *Handler) CreateComment(c *gin.Context) {
@@ -162,13 +192,24 @@ func (h *Handler) CreateResource(c *gin.Context) {
 }
 
 func (h *Handler) ListMembers(c *gin.Context) {
-       projectID := c.Param("id")
-       members, err := h.service.ListMembers(c.Request.Context(), projectID)
-       if err != nil {
-	       c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	       return
-       }
-       c.JSON(http.StatusOK, members)
+	projectID := c.Param("id")
+
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	members, total, err := h.service.ListMembers(c.Request.Context(), projectID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       members,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 func (h *Handler) RemoveMember(c *gin.Context) {
@@ -191,32 +232,65 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 
 func (h *Handler) ListInvitations(c *gin.Context) {
 	projectID := c.Param("id")
-	invitations, err := h.service.ListInvitations(c.Request.Context(), projectID)
+
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	invitations, total, err := h.service.ListInvitations(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, invitations)
+
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       invitations,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 func (h *Handler) ListComments(c *gin.Context) {
 	projectID := c.Param("id")
-	comments, err := h.service.ListComments(c.Request.Context(), projectID)
+
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	comments, total, err := h.service.ListComments(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, comments)
+
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       comments,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 func (h *Handler) ListTasks(c *gin.Context) {
 	projectID := c.Param("id")
-	tasks, err := h.service.ListTasks(c.Request.Context(), projectID)
+
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tasks, total, err := h.service.ListTasks(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, tasks)
+
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       tasks,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 func (h *Handler) UpdateTask(c *gin.Context) {
@@ -259,12 +333,23 @@ func (h *Handler) UpdateTask(c *gin.Context) {
 
 func (h *Handler) ListResources(c *gin.Context) {
 	projectID := c.Param("id")
-	resources, err := h.service.ListResources(c.Request.Context(), projectID)
+
+	limit, offset, err := parsePagination(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	resources, total, err := h.service.ListResources(c.Request.Context(), projectID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, resources)
+
+	c.JSON(http.StatusOK, PaginationResponse{
+		Data:       resources,
+		Pagination: BuildPaginationMeta(total, limit, offset),
+	})
 }
 
 // Invitation Lifecycle Handlers

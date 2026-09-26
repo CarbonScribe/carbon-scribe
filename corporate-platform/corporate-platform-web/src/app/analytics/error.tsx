@@ -1,6 +1,7 @@
 'use client'; // Error components must be Client Components
 
 import { useEffect } from 'react';
+import { reportError } from '@/lib/telemetry/errorReporter';
 
 export default function Error({
   error,
@@ -10,7 +11,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    reportError(error, 'analytics/error', 'error');
   }, [error]);
 
   return (

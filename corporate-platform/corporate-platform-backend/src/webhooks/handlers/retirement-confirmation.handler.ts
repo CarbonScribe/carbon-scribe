@@ -18,7 +18,7 @@ export class RetirementConfirmationHandler implements IWebhookHandler {
     );
   }
 
-  async handle(payload: any): Promise<void> {
+  async handle(payload: any, tx?: any): Promise<void> {
     if (payload.operationType !== OperationType.RETIREMENT) return;
 
     this.logger.log(
@@ -29,13 +29,14 @@ export class RetirementConfirmationHandler implements IWebhookHandler {
 
     try {
       // 1. Find the retirement record associated with this hash
-      const retirement = await this.prisma.retirement.findFirst({
+      const client = tx || this.prisma;
+      const retirement = await client.retirement.findFirst({
         where: { transactionHash: payload.hash },
       });
 
       if (retirement) {
         // 2. Update retirement verification status
-        await this.prisma.retirement.update({
+        await client.retirement.update({
           where: { id: retirement.id },
           data: {
             verifiedAt: isConfirmed ? new Date() : null,

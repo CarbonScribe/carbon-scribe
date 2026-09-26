@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CollaborationSlice, ProjectInvitation, ActivityLog } from './collaboration.types';
 import { createCollaborationSlice } from './collaborationSlice';
 import * as api from './collaboration.api';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
+
+vi.mock('@/lib/utils/toast', () => ({
+  showSuccessToast: vi.fn(),
+  showErrorToast: vi.fn(),
+}));
 
 // Mock the API module
 vi.mock('./collaboration.api', () => ({
@@ -51,6 +57,7 @@ describe('CollaborationSlice', () => {
       expect(slice.comments).toEqual([]);
       expect(slice.tasks).toEqual([]);
       expect(slice.resources).toEqual([]);
+      expect(slice.updatingTaskIds).toEqual([]);
       expect(slice.collaborationLoading).toEqual({
         members: false,
         invitations: false,
@@ -277,29 +284,82 @@ describe('CollaborationSlice', () => {
   });
 
   describe('updateTask', () => {
-    it('should update task successfully', async () => {
-      const mockTask = { id: '1', project_id: 'p1', created_by: 'user1', title: 'Updated task', status: 'done', description: '', priority: 'medium', time_logged: 0, created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
-      mockApi.updateTaskApi.mockResolvedValue(mockTask);
+    it('should update task successfully and apply optimistic update', async () => {
+      const initialTask = { id: '1', project_id: 'p1', created_by: 'user1', title: 'Initial task', status: 'todo', description: '', priority: 'medium', time_logged: 0, created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
+      slice.tasks = [initialTask];
+      slice.updatingTaskIds = [];
 
-      const result = await slice.updateTask('1', { status: 'done' });
+      const mockTask = { ...initialTask, status: 'done', title: 'Updated task' };
+      let resolveApi: (val: any) => void;
+      const apiPromise = new Promise((resolve) => { resolveApi = resolve; });
+      mockApi.updateTaskApi.mockReturnValue(apiPromise as any);
 
-      expect(mockApi.updateTaskApi).toHaveBeenCalledWith('1', { status: 'done' });
+      const updatePromise = slice.updateTask('1', { status: 'done', title: 'Updated task' });
+
+      // Assert optimistic update
+      expect(slice.tasks[0].status).toBe('done');
+      expect(slice.tasks[0].title).toBe('Updated task');
+      expect(slice.updatingTaskIds).toContain('1');
+      expect(mockApi.updateTaskApi).toHaveBeenCalledWith('1', { status: 'done', title: 'Updated task' });
+
+      // Resolve api
+      resolveApi!(mockTask);
+      const result = await updatePromise;
+
       expect(result).toEqual(mockTask);
+      expect(slice.updatingTaskIds).not.toContain('1');
+      expect(showSuccessToast).toHaveBeenCalledWith('Task updated successfully');
     });
 
-    it('should handle update task error', async () => {
+    it('should handle concurrent optimistic updates independently', async () => {
+      const taskOne = { id: '1', project_id: 'p1', created_by: 'user1', title: 'Task one', status: 'todo', description: '', priority: 'medium', time_logged: 0, created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
+      const taskTwo = { id: '2', project_id: 'p1', created_by: 'user1', title: 'Task two', status: 'in_progress', description: '', priority: 'high', time_logged: 0, created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
+      slice.tasks = [taskOne, taskTwo];
+      slice.updatingTaskIds = [];
+
+      let resolveFirst: (val: any) => void;
+      let resolveSecond: (val: any) => void;
+      const firstPromise = new Promise((resolve) => { resolveFirst = resolve; });
+      const secondPromise = new Promise((resolve) => { resolveSecond = resolve; });
+      mockApi.updateTaskApi
+        .mockReturnValueOnce(firstPromise as any)
+        .mockReturnValueOnce(secondPromise as any);
+
+      const firstUpdate = slice.updateTask('1', { status: 'done', priority: 'urgent' });
+      const secondUpdate = slice.updateTask('2', { assigned_to: 'user2' });
+
+      expect(slice.tasks.find((t) => t.id === '1')?.status).toBe('done');
+      expect(slice.tasks.find((t) => t.id === '1')?.priority).toBe('urgent');
+      expect(slice.tasks.find((t) => t.id === '2')?.assigned_to).toBe('user2');
+      expect(slice.updatingTaskIds).toEqual(expect.arrayContaining(['1', '2']));
+
+      resolveSecond!({ ...taskTwo, assigned_to: 'user2' });
+      await secondUpdate;
+      expect(slice.updatingTaskIds).toContain('1');
+      expect(slice.updatingTaskIds).not.toContain('2');
+
+      resolveFirst!({ ...taskOne, status: 'done', priority: 'urgent' });
+      await firstUpdate;
+      expect(slice.updatingTaskIds).toEqual([]);
+      expect(showSuccessToast).toHaveBeenCalledTimes(2);
+    });
+
+    it('should handle update task error and rollback', async () => {
+      const initialTask = { id: '1', project_id: 'p1', created_by: 'user1', title: 'Initial task', status: 'todo', description: '', priority: 'medium', time_logged: 0, created_at: '2023-01-01T00:00:00Z', updated_at: '2023-01-01T00:00:00Z' };
+      slice.tasks = [initialTask];
+      slice.updatingTaskIds = [];
+
       const error = new Error('Failed to update task');
       mockApi.updateTaskApi.mockRejectedValue(error);
 
       const result = await slice.updateTask('1', { status: 'done' });
 
-      expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          collaborationLoading: expect.objectContaining({ updateTask: false }),
-          collaborationErrors: expect.objectContaining({ updateTask: error.message }),
-        })
-      );
+      // Expect rollback
+      expect(slice.tasks[0].status).toBe('todo');
+      expect(slice.updatingTaskIds).not.toContain('1');
       expect(result).toBeNull();
+      expect(showErrorToast).toHaveBeenCalledWith('Failed to update task. Changes reverted.');
+      expect(slice.collaborationErrors.updateTask).toBe(error.message);
     });
   });
 

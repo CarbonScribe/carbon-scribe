@@ -13,6 +13,7 @@ import {
   STORAGE_CLASS_POLICIES,
   DocumentStorageClass,
 } from '../upload-policy.constants';
+import { RetrievalService } from './retrieval.service';
 import * as NodeClam from 'clamscan';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class UploadService {
     private readonly config: IpfsConfig,
     private readonly prisma: PrismaService,
     @Inject(IPFS_PROVIDER) private readonly provider: IIpfsProvider,
+    private readonly retrieval: RetrievalService,
   ) {}
 
   private async computeSha256(file: any): Promise<string> {
@@ -147,6 +149,13 @@ export class UploadService {
         storageClass,
       });
 
+      const verification = await this.retrieval.verifyPin(cid);
+      if (!verification.verified) {
+        throw new Error(
+          `Pin verification failed for CID ${cid}: ${verification.error}`,
+        );
+      }
+
       const record = await this.prisma.ipfsDocument.create({
         data: {
           companyId,
@@ -159,7 +168,14 @@ export class UploadService {
           mimeType: file.mimetype,
           pinned: true,
           pinnedAt: new Date(),
-          metadata: { ...metadata, storageClass, policy },
+          metadata: {
+            ...metadata,
+            storageClass,
+            policy,
+            pinVerified: true,
+            pinVerifiedAt: new Date().toISOString(),
+            pinVerifyAttempts: verification.attempts,
+          },
           idempotencyKey: idempotencyKey || null,
           contentHash,
         },
@@ -172,31 +188,13 @@ export class UploadService {
         `${this.provider.providerName} upload failed`,
         err?.message || err,
       );
-      const cid = `mockcid-${Date.now()}`;
-      const record = await this.prisma.ipfsDocument.create({
-        data: {
-          companyId,
-          documentType,
-          referenceId: metadata.referenceId || '',
-          ipfsCid: cid,
-          ipfsGateway: this.config.fallback,
-          fileName: file.originalname,
-          fileSize: file.size,
-          mimeType: file.mimetype,
-          pinned: false,
-          pinnedAt: new Date(),
-          metadata: { ...metadata, storageClass, policy },
-          idempotencyKey: idempotencyKey || null,
-          contentHash,
-        },
-      });
-      if (file.path) unlink(file.path, () => {});
-      return {
-        cid,
-        record: { ...record, contentHash },
-        storageClass,
-        warning: 'pinning-failed-mock-cid',
-      };
+      // Transaction rollback: never persist a mock CID on failure.
+      // Callers must handle the thrown error and prevent database writes.
+      throw new Error(
+        `IPFS upload failed: ${
+          err?.message || err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 
@@ -209,9 +207,20 @@ export class UploadService {
     );
   }
 
-  async listDocuments(companyId?: string) {
+  async listDocuments(
+    companyId?: string,
+    pagination?: { page?: number; limit?: number },
+  ) {
+    const take = pagination?.limit;
+    const skip =
+      pagination?.page && pagination?.limit
+        ? (pagination.page - 1) * pagination.limit
+        : undefined;
+
     return this.prisma.ipfsDocument.findMany({
       where: companyId ? { companyId } : {},
+      ...(skip !== undefined ? { skip } : {}),
+      ...(take !== undefined ? { take } : {}),
     });
   }
 

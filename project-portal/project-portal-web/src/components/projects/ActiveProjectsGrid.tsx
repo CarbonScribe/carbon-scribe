@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Calendar, Target, Users, ArrowUpRight, AlertCircle, FolderOpen } from 'lucide-react';
+import { MapPin, Calendar, Target, Users, ArrowUpRight, AlertCircle, FolderOpen, Loader2 } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
 import ProjectLoadingSkeleton from './ProjectLoadingSkeleton';
 import CreateProjectModal from './CreateProjectModal';
@@ -66,7 +66,12 @@ const ActiveProjectsGrid = () => {
     <>
       <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Active Projects</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold text-gray-900">Active Projects</h2>
+            {loading.isRefreshing && (
+              <Loader2 className="w-4 h-4 text-emerald-500 animate-spin" aria-label="Refreshing projects" />
+            )}
+          </div>
           <Button onClick={() => setShowCreateModal(true)} variant="primary">
             New Project
             <ArrowUpRight className="w-4 h-4" />

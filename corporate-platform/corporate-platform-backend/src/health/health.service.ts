@@ -1,20 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
-import { RedisService } from '../cache/redis.service';
+import { RedisService } from '../shared/cache/redis.service';
 import { KafkaService } from '../event-bus/kafka.service';
 import { IpfsConfig } from '../ipfs/ipfs.config';
 import { SorobanService } from '../stellar/soroban/soroban.service';
 import axios from 'axios';
 
 export interface HealthCheckDetail {
-  status: 'healthy' | 'unhealthy' | 'disabled';
+  status: 'healthy' | 'unhealthy' | 'disabled' | 'warning';
   latencyMs?: number;
   error?: string;
   details?: string;
 }
 
 export interface ReadinessResponse {
-  status: 'healthy' | 'unhealthy';
+  status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp: string;
   version: string;
   uptimeSeconds: number;
@@ -31,6 +31,7 @@ export interface ReadinessResponse {
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
   private readonly startTime = Date.now();
+  private readonly healthCheckTimeout = 3000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,14 +49,15 @@ export class HealthService {
     try {
       await Promise.race([
         this.prisma.$queryRaw`SELECT 1`,
-        new Promise((_, reject) =>
+        new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Database check timed out')), 2000),
         ),
       ]);
       return { status: 'healthy', latencyMs: Date.now() - start };
     } catch (err) {
-      this.logger.error('Database health check failed', err.stack);
-      return { status: 'unhealthy', error: err.message };
+      const error = err as Error;
+      this.logger.error('Database health check failed', error.stack);
+      return { status: 'unhealthy', error: error.message };
     }
   }
 
@@ -71,19 +73,20 @@ export class HealthService {
       }
       await Promise.race([
         client.ping(),
-        new Promise((_, reject) =>
+        new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Redis ping timed out')), 2000),
         ),
       ]);
       return { status: 'healthy', latencyMs: Date.now() - start };
     } catch (err) {
-      this.logger.error('Redis health check failed', err.stack);
-      return { status: 'unhealthy', error: err.message };
+      const error = err as Error;
+      this.logger.error('Redis health check failed', error.stack);
+      return { status: 'unhealthy', error: error.message };
     }
   }
 
   /**
-   * Performs a Kafka broker check using topic metadata fetch with a 3-second timeout.
+   * Performs a Kafka broker check with a 3-second timeout.
    */
   async checkKafka(): Promise<HealthCheckDetail> {
     if (!this.kafkaService.isEnabled()) {
@@ -94,7 +97,7 @@ export class HealthService {
       const admin = this.kafkaService.getAdmin();
       await Promise.race([
         admin.fetchTopicMetadata({ topics: [] }),
-        new Promise((_, reject) =>
+        new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new Error('Kafka metadata fetch timed out')),
             3000,
@@ -103,14 +106,14 @@ export class HealthService {
       ]);
       return { status: 'healthy', latencyMs: Date.now() - start };
     } catch (err) {
-      this.logger.error('Kafka health check failed', err.stack);
-      return { status: 'unhealthy', error: err.message };
+      const error = err as Error;
+      this.logger.error('Kafka health check failed', error.stack);
+      return { status: 'unhealthy', error: error.message };
     }
   }
 
   /**
    * Performs an IPFS/Pinata gateway reachability check with a 2-second timeout.
-   * If mock credentials are used, we accept 401/403 as reachable, indicating network up.
    */
   async checkIpfs(): Promise<HealthCheckDetail> {
     const start = Date.now();
@@ -129,7 +132,7 @@ export class HealthService {
 
       await Promise.race([
         requestPromise,
-        new Promise((_, reject) =>
+        new Promise<never>((_, reject) =>
           setTimeout(
             () =>
               reject(new Error('IPFS gateway reachability check timed out')),
@@ -140,16 +143,17 @@ export class HealthService {
 
       return { status: 'healthy', latencyMs: Date.now() - start };
     } catch (err) {
-      // If we get an HTTP response back, the endpoint is reachable (network connectivity is up)
-      if (err.response) {
+      const error = err as any;
+      // If we get an HTTP response back, the endpoint is reachable
+      if (error.response) {
         return {
           status: 'healthy',
           latencyMs: Date.now() - start,
-          details: `Reachable (HTTP Status: ${err.response.status})`,
+          details: `Reachable (HTTP Status: ${error.response.status})`,
         };
       }
-      this.logger.error('IPFS reachability check failed', err.stack);
-      return { status: 'unhealthy', error: err.message };
+      this.logger.error('IPFS reachability check failed', error.stack);
+      return { status: 'unhealthy', error: error.message };
     }
   }
 
@@ -166,25 +170,36 @@ export class HealthService {
           error: 'Stellar RPC client not initialized',
         };
       }
-      await Promise.race([
-        rpcClient.getLatestLedger(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Stellar RPC request timed out')),
-            2000,
+
+      // Create an abort controller for the timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      try {
+        await Promise.race([
+          rpcClient.getLatestLedger(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Stellar RPC request timed out')),
+              2000,
+            ),
           ),
-        ),
-      ]);
-      return { status: 'healthy', latencyMs: Date.now() - start };
+        ]);
+        clearTimeout(timeoutId);
+        return { status: 'healthy', latencyMs: Date.now() - start };
+      } catch (err) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
     } catch (err) {
-      this.logger.error('Stellar health check failed', err.stack);
-      return { status: 'unhealthy', error: err.message };
+      const error = err as Error;
+      this.logger.error('Stellar health check failed', error.stack);
+      return { status: 'unhealthy', error: error.message };
     }
   }
 
   /**
-   * Runs all critical dependency health checks in parallel to avoid blocking.
-   * Total time complexity: O(max(timeout)) = O(1) time-bounded execution.
+   * Runs all critical dependency health checks in parallel
    */
   async getReadiness(): Promise<ReadinessResponse> {
     const [dbResult, redisResult, kafkaResult, ipfsResult, stellarResult] =
@@ -203,8 +218,16 @@ export class HealthService {
       ipfsResult.status === 'healthy' &&
       stellarResult.status === 'healthy';
 
+    const isDegraded = !isHealthy && dbResult.status === 'healthy';
+
+    const status = isHealthy
+      ? 'healthy'
+      : isDegraded
+        ? 'degraded'
+        : 'unhealthy';
+
     return {
-      status: isHealthy ? 'healthy' : 'unhealthy',
+      status,
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version || '0.0.1',
       uptimeSeconds: Math.floor((Date.now() - this.startTime) / 1000),

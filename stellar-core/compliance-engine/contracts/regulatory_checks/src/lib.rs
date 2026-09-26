@@ -1,88 +1,40 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, String, Vec,
-};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
 
+mod errors;
+mod events;
+mod storage;
+
+#[cfg(test)]
 mod test;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-#[contracttype]
-pub enum OperationType {
-    TRANSFER,
-    RETIREMENT,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub struct JurisdictionRule {
-    pub rule_id: String,
-    pub description: String,
-    pub source_jur: String,
-    pub dest_jur: String,
-    pub host_jur: String,
-    pub operation: OperationType,
-    pub is_allowed: bool,
-    pub required_authority: Option<Address>,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub struct ValidationResult {
-    pub is_compliant: bool,
-    pub rule_id: Option<String>,
-    pub requires_authorization: bool,
-    pub authority_address: Option<Address>,
-    pub error_message: Option<String>,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub struct PendingApproval {
-    pub token_id: u32,
-    pub source: Address,
-    pub destination: Address,
-    pub operation: OperationType,
-    pub timestamp: u64,
-    pub approved: bool,
-}
-
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    Admin,
-    Governance,
-    CarbonAssetContract,
-    Rule(String),
-    ActiveRuleIds,
-    AddressJurisdiction(Address),
-    PendingApproval(BytesN<32>),
-}
-
-#[derive(Debug, Clone, Copy)]
-#[contracterror]
-pub enum ContractError {
-    NotAuthorized = 1,
-    RuleNotFound = 2,
-    RuleAlreadyExists = 3,
-    JurisdictionNotSet = 4,
-    InvalidApprovalKey = 5,
-    ApprovalExpired = 6,
-    NoMatchingRule = 7,
-    RuleConflict = 8, // New error for logical duplicate/conflict
-}
+pub use errors::ContractError;
+pub use storage::{DataKey, JurisdictionRule, OperationType, PendingApproval, ValidationResult};
 
 #[contract]
 pub struct RegulatoryCheck;
 
 #[contractimpl]
 impl RegulatoryCheck {
-    /// Initialize the contract
+    /// Returns true if the contract has been initialized.
+    pub fn is_initialized(env: Env) -> bool {
+        env.storage().instance().has(&DataKey::Admin)
+    }
+
+    /// One-time initialization of the contract.
+    /// Sets admin, governance, carbon_asset_contract, and active rules storage.
+    /// Returns ContractError::AlreadyInitialized if called more than once.
     pub fn initialize(
         env: Env,
         admin: Address,
         governance: Address,
         carbon_asset_contract: Address,
-    ) {
+    ) -> Result<(), ContractError> {
+        if Self::is_initialized(env.clone()) {
+            events::emit_reinitialization_attempted_event(&env, admin);
+            return Err(ContractError::AlreadyInitialized);
+        }
+
         admin.require_auth();
 
         env.storage().instance().set(&DataKey::Admin, &admin);
@@ -98,6 +50,10 @@ impl RegulatoryCheck {
         env.storage()
             .instance()
             .set(&DataKey::ActiveRuleIds, &active_rules);
+
+        events::emit_initialized_event(&env, admin, governance, carbon_asset_contract);
+
+        Ok(())
     }
 
     // ========================================================================
@@ -105,6 +61,7 @@ impl RegulatoryCheck {
     // ========================================================================
 
     /// Add a new jurisdiction rule
+    /// Emits a RuleAdded event after the rule is stored successfully.
     pub fn add_rule(
         env: Env,
         caller: Address,
@@ -112,7 +69,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -131,8 +92,7 @@ impl RegulatoryCheck {
             .instance()
             .get(&DataKey::ActiveRuleIds)
             .unwrap_or(Vec::new(&env));
-        for i in 0..active_rules.len() {
-            let rid = active_rules.get(i).unwrap();
+        for rid in active_rules.iter() {
             let existing_key = DataKey::Rule(rid.clone());
             if let Some(existing_rule) = env
                 .storage()
@@ -140,8 +100,12 @@ impl RegulatoryCheck {
                 .get::<DataKey, JurisdictionRule>(&existing_key)
             {
                 if Self::rules_conflict(&rule, &existing_rule) {
-                    // Compose a clear error message (not possible to return string in ContractError, so log it)
-                    soroban_sdk::log!(&env, "Rule conflict: attempted to add rule {:?} which conflicts with existing rule {:?}", rule, existing_rule);
+                    soroban_sdk::log!(
+                        &env,
+                        "Rule conflict: attempted to add rule {:?} which conflicts with existing rule {:?}",
+                        rule,
+                        existing_rule
+                    );
                     return Err(ContractError::RuleConflict);
                 }
             }
@@ -161,12 +125,24 @@ impl RegulatoryCheck {
             .instance()
             .set(&DataKey::ActiveRuleIds, &active_rules);
 
+        // Emit RuleAdded event after state changes
+        events::emit_rule_added_event(
+            &env,
+            rule.rule_id.clone(),
+            rule.source_jur.clone(),
+            rule.dest_jur.clone(),
+            rule.host_jur.clone(),
+            rule.operation,
+            rule.is_allowed,
+            rule.required_authority,
+            caller,
+        );
+
         Ok(())
     }
 
     /// Returns true if two rules are logically equivalent or would cause enforcement ambiguity.
     fn rules_conflict(a: &JurisdictionRule, b: &JurisdictionRule) -> bool {
-        // Consider rules conflicting if all key parameters match (except rule_id/description)
         a.source_jur == b.source_jur
             && a.dest_jur == b.dest_jur
             && a.host_jur == b.host_jur
@@ -176,6 +152,7 @@ impl RegulatoryCheck {
     }
 
     /// Update an existing rule
+    /// Emits a RuleUpdated event after the rule is updated.
     pub fn update_rule(
         env: Env,
         caller: Address,
@@ -183,7 +160,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -191,16 +172,34 @@ impl RegulatoryCheck {
 
         let rule_key = DataKey::Rule(rule.rule_id.clone());
 
-        if !env.storage().persistent().has(&rule_key) {
-            return Err(ContractError::RuleNotFound);
-        }
+        // Retrieve the old rule before updating
+        let old_rule: JurisdictionRule = env
+            .storage()
+            .persistent()
+            .get(&rule_key)
+            .ok_or(ContractError::RuleNotFound)?;
 
+        // Compute hashes for change detection before overwriting
+        let old_rule_hash = events::compute_rule_hash(&env, &old_rule);
+        let new_rule_hash = events::compute_rule_hash(&env, &rule);
+
+        // Store the updated rule
         env.storage().persistent().set(&rule_key, &rule);
+
+        // Emit RuleUpdated event after state change
+        events::emit_rule_updated_event(
+            &env,
+            rule.rule_id.clone(),
+            old_rule_hash,
+            new_rule_hash,
+            caller,
+        );
 
         Ok(())
     }
 
     /// Deactivate a rule
+    /// Emits a RuleDeactivated event after the rule is removed.
     pub fn deactivate_rule(
         env: Env,
         caller: Address,
@@ -208,7 +207,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);
@@ -220,17 +223,18 @@ impl RegulatoryCheck {
             return Err(ContractError::RuleNotFound);
         }
 
+        // Remove the rule
         env.storage().persistent().remove(&rule_key);
 
+        // Remove from active rules list
         let active_rules: Vec<String> = env
             .storage()
             .instance()
             .get(&DataKey::ActiveRuleIds)
-            .unwrap();
+            .unwrap_or(Vec::new(&env));
 
         let mut new_rules = Vec::new(&env);
-        for i in 0..active_rules.len() {
-            let rid = active_rules.get(i).unwrap();
+        for rid in active_rules.iter() {
             if rid != rule_id {
                 new_rules.push_back(rid);
             }
@@ -238,6 +242,9 @@ impl RegulatoryCheck {
         env.storage()
             .instance()
             .set(&DataKey::ActiveRuleIds, &new_rules);
+
+        // Emit RuleDeactivated event after state changes
+        events::emit_rule_deactivated_event(&env, rule_id, caller);
 
         Ok(())
     }
@@ -255,7 +262,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != admin {
             return Err(ContractError::NotAuthorized);
@@ -310,8 +321,7 @@ impl RegulatoryCheck {
             .unwrap_or(Vec::new(&env));
 
         // Find matching rule
-        for i in 0..active_rules.len() {
-            let rule_id = active_rules.get(i).unwrap();
+        for rule_id in active_rules.iter() {
             let rule_key = DataKey::Rule(rule_id.clone());
 
             if let Some(rule) = env
@@ -440,7 +450,6 @@ impl RegulatoryCheck {
             .get::<DataKey, PendingApproval>(&key)
         {
             let current_time = env.ledger().timestamp();
-            // Check if not expired and approved
             pending.approved && current_time <= pending.timestamp + 604800
         } else {
             false
@@ -492,7 +501,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != admin {
             return Err(ContractError::NotAuthorized);
@@ -510,7 +523,11 @@ impl RegulatoryCheck {
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
-        let governance: Address = env.storage().instance().get(&DataKey::Governance).unwrap();
+        let governance: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Governance)
+            .ok_or(ContractError::NotInitialized)?;
 
         if caller != governance {
             return Err(ContractError::NotAuthorized);

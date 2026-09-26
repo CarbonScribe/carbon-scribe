@@ -1,5 +1,5 @@
 use crate::types::Error;
-use soroban_sdk::String;
+use soroban_sdk::{Address, Executable, String};
 
 /// Validate IPFS CID format
 /// Basic validation to ensure the CID follows common IPFS patterns
@@ -81,4 +81,18 @@ fn is_base58_byte(b: u8) -> bool {
 /// Check if a byte is a valid base32 character
 fn is_base32_byte(b: u8) -> bool {
     matches!(b, b'a'..=b'z' | b'2'..=b'7' | b'A'..=b'Z')
+}
+
+/// Validate that an address is a valid destination for ownership transfer.
+/// Rejects contract addresses (Wasm and StellarAsset) since they cannot
+/// authenticate as project owners without explicit owner interfaces.
+/// Accepts account addresses and non-existent addresses (which may become
+/// valid accounts in the future).
+pub fn validate_address(address: &Address) -> Result<(), Error> {
+    match address.executable() {
+        Some(Executable::Wasm(_)) | Some(Executable::StellarAsset) => {
+            Err(Error::InvalidAddress)
+        }
+        _ => Ok(()),
+    }
 }

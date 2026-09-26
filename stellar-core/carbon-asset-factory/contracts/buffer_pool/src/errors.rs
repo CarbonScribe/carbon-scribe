@@ -11,4 +11,6 @@ pub enum Error {
     TokenNotFound = 5,
     AlreadyExists = 6,
     InvalidState = 7,
+    /// Percentage was explicitly set to zero, which would cause division-by-zero in auto_deposit.
+    ZeroPercentage = 8,
 }

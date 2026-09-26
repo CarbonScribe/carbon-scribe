@@ -6,6 +6,7 @@ import {
   ComplianceReport,
   CheckComplianceRequest,
 } from '@/types';
+import { reportError } from '@/lib/telemetry/errorReporter';
 
 /**
  * Compliance API Service
@@ -70,13 +71,13 @@ class ComplianceService {
       });
 
       if (!response.ok) {
-        console.error(`Failed to export report: ${response.statusText}`);
+        reportError(`Failed to export report: ${response.statusText}`, 'compliance.service', 'error', { entityId });
         return null;
       }
 
       return await response.blob();
     } catch (error) {
-      console.error('Error exporting compliance report:', error);
+      reportError(error, 'compliance.service', 'error', { entityId });
       return null;
     }
   }

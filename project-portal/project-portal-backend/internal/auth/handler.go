@@ -25,7 +25,7 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	userResp, verificationToken, err := h.service.Register(req.Email, req.Password, req.FullName, req.Organization)
+	userResp, _, err := h.service.Register(req.Email, req.Password, req.FullName, req.Organization)
 	if err != nil {
 		if errors.Is(err, errors.New("user with this email already exists")) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -35,10 +35,11 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	// The verification token is emailed by the service layer, never
+	// returned here.
 	c.JSON(http.StatusCreated, gin.H{
-		"user":               userResp,
-		"verification_token": verificationToken,
-		"message":            "User registered successfully. Please verify your email.",
+		"user":    userResp,
+		"message": "User registered successfully. Please verify your email.",
 	})
 }
 
@@ -55,7 +56,11 @@ func (h *Handler) Login(c *gin.Context) {
 
 	authResp, err := h.service.Login(req.Email, req.Password, ipAddress, userAgent)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		if errors.Is(err, ErrEmailNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "verification_required": true})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -75,7 +80,11 @@ func (h *Handler) WalletLogin(c *gin.Context) {
 
 	authResp, err := h.service.WalletLogin(req.PublicKey, req.SignedChallenge, ipAddress, userAgent)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		if errors.Is(err, ErrEmailNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "verification_required": true})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -92,7 +101,11 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	tokenResp, err := h.service.RefreshToken(req.RefreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		if errors.Is(err, ErrEmailNotVerified) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "verification_required": true})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		}
 		return
 	}
 
@@ -114,6 +127,22 @@ func (h *Handler) VerifyEmail(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully"})
+}
+
+// ResendVerification handles requests for a new email verification token.
+func (h *Handler) ResendVerification(c *gin.Context) {
+	var req ResendVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if _, err := h.service.ResendVerification(req.Email); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "If the email requires verification, a verification link has been sent"})
 }
 
 // Logout handles user logout
@@ -232,16 +261,15 @@ func (h *Handler) RequestPasswordReset(c *gin.Context) {
 		return
 	}
 
-	resetToken, err := h.service.RequestPasswordReset(req.Email)
-	if err != nil {
+	if _, err := h.service.RequestPasswordReset(req.Email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// For security, always return success even if email doesn't exist
+	// For security, always return success even if the email doesn't exist.
+	// The reset token is emailed by the service layer, never returned here.
 	c.JSON(http.StatusOK, gin.H{
 		"message": "If the email exists, a password reset link has been sent",
-		"token":   resetToken, // In production, send this via email, not in response
 	})
 }
 

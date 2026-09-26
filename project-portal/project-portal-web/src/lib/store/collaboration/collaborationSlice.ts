@@ -34,7 +34,7 @@ import {
   declineInvitationApi,
 } from './collaboration.api';
 import { getErrorMessage } from '@/lib/utils/errorMessage';
-
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 const initialLoading: CollaborationLoadingState = {
   members: false,
   invitations: false,
@@ -83,6 +83,7 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
   comments: [],
   tasks: [],
   resources: [],
+  updatingTaskIds: [],
   collaborationLoading: initialLoading,
   collaborationErrors: initialErrors,
 
@@ -209,7 +210,9 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
     try {
       const comment = await createCommentApi(data);
       set((s) => ({
-        comments: [...s.comments, comment],
+        comments: s.comments.some((existing) => existing.id === comment.id)
+          ? s.comments.map((existing) => existing.id === comment.id ? comment : existing)
+          : [...s.comments, comment],
         collaborationLoading: { ...s.collaborationLoading, createComment: false },
       }));
       return comment;
@@ -220,6 +223,14 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
       });
       return null;
     }
+  },
+
+  receiveComment: (comment: Comment) => {
+    set((s) => ({
+      comments: s.comments.some((existing) => existing.id === comment.id)
+        ? s.comments.map((existing) => existing.id === comment.id ? comment : existing)
+        : [...s.comments, comment],
+    }));
   },
 
   createTask: async (data: CreateTaskRequest): Promise<Task | null> => {
@@ -241,19 +252,37 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
   },
 
   updateTask: async (taskId: string, data: UpdateTaskRequest): Promise<Task | null> => {
-    set((s) => ({ collaborationLoading: { ...s.collaborationLoading, updateTask: true }, collaborationErrors: { ...s.collaborationErrors, updateTask: null } }));
+    const currentTasks = get().tasks;
+    const previousTask = currentTasks.find((t) => t.id === taskId);
+    
+    if (!previousTask) return null;
+
+    const optimisticTask = { ...previousTask, ...data } as Task;
+
+    set((s) => ({
+      tasks: s.tasks.map((t) => (t.id === taskId ? optimisticTask : t)),
+      updatingTaskIds: [...s.updatingTaskIds, taskId],
+      collaborationLoading: { ...s.collaborationLoading, updateTask: true },
+      collaborationErrors: { ...s.collaborationErrors, updateTask: null },
+    }));
+
     try {
       const updated = await updateTaskApi(taskId, data);
       set((s) => ({
         tasks: s.tasks.map((t) => (t.id === taskId ? updated : t)),
+        updatingTaskIds: s.updatingTaskIds.filter((id) => id !== taskId),
         collaborationLoading: { ...s.collaborationLoading, updateTask: false },
       }));
+      showSuccessToast('Task updated successfully');
       return updated;
     } catch (error) {
-      set({
+      set((s) => ({
+        tasks: s.tasks.map((t) => (t.id === taskId ? previousTask : t)),
+        updatingTaskIds: s.updatingTaskIds.filter((id) => id !== taskId),
         collaborationLoading: { ...get().collaborationLoading, updateTask: false },
         collaborationErrors: { ...get().collaborationErrors, updateTask: getErrorMessage(error) },
-      });
+      }));
+      showErrorToast('Failed to update task. Changes reverted.');
       return null;
     }
   },
@@ -362,6 +391,7 @@ export const createCollaborationSlice: StateCreator<CollaborationSlice> = (set, 
       comments: [],
       tasks: [],
       resources: [],
+      updatingTaskIds: [],
       collaborationLoading: initialLoading,
       collaborationErrors: initialErrors,
     }),

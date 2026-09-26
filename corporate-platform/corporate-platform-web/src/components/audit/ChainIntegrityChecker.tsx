@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { checkChainIntegrity, anchorAuditTrail } from '@/lib/api/audit.api';
 import type { ChainIntegrityResult } from '@/types/audit.types';
 import { Shield, ShieldCheck, ShieldX, Loader2, Link } from 'lucide-react';
+import { reportError } from '@/lib/telemetry/errorReporter';
 
 export default function ChainIntegrityChecker() {
   const [checking, setChecking] = useState(false);
@@ -16,7 +17,7 @@ export default function ChainIntegrityChecker() {
       const data = await checkChainIntegrity();
       setResult(data);
     } catch (error) {
-      console.error('Chain integrity check failed:', error);
+      reportError(error, 'ChainIntegrityChecker', 'error', { operation: 'checkIntegrity' });
     } finally {
       setChecking(false);
     }
@@ -28,7 +29,7 @@ export default function ChainIntegrityChecker() {
       const response = await anchorAuditTrail();
       alert(`Successfully anchored to Stellar! TX: ${response.transactionHash}`);
     } catch (error) {
-      console.error('Anchoring failed:', error);
+      reportError(error, 'ChainIntegrityChecker', 'error', { operation: 'anchorTrail' });
       alert('Failed to anchor audit trail to blockchain');
     } finally {
       setAnchoring(false);

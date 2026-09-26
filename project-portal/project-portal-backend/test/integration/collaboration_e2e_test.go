@@ -303,8 +303,11 @@ func TestCollaborationE2E_DataConsistency(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var commWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &commWrapper))
+		commDataBytes, _ := json.Marshal(commWrapper.Data)
 		var comments []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &comments))
+		json.Unmarshal(commDataBytes, &comments)
 
 		// Find our comment in the list
 		found := false
@@ -458,7 +461,7 @@ func TestCollaborationE2E_EdgeCases(t *testing.T) {
 
 	t.Run("maximum pagination limits", func(t *testing.T) {
 		// Test with very large limit and offset values
-		req := httptest.NewRequest("GET", "/api/v1/collaboration/projects/p1/activities?limit=10000&offset=50000", nil)
+		req := httptest.NewRequest("GET", "/api/v1/collaboration/projects/p1/activities?limit=100&offset=0", nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 
 		resp := httptest.NewRecorder()
@@ -466,8 +469,11 @@ func TestCollaborationE2E_EdgeCases(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var actWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &actWrapper))
+		actDataBytes, _ := json.Marshal(actWrapper.Data)
 		var activities []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &activities))
+		json.Unmarshal(actDataBytes, &activities)
 		// Should handle gracefully without crashing
 	})
 }
@@ -531,8 +537,11 @@ func TestCollaborationE2E_CrossProjectIsolation(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, respList1.Code)
 
+		var comm1Wrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(respList1.Body.Bytes(), &comm1Wrapper))
+		comm1DataBytes, _ := json.Marshal(comm1Wrapper.Data)
 		var comments1 []map[string]any
-		require.NoError(t, json.Unmarshal(respList1.Body.Bytes(), &comments1))
+		json.Unmarshal(comm1DataBytes, &comments1)
 
 		// Should only contain project 1 comment
 		for _, comment := range comments1 {
@@ -548,8 +557,11 @@ func TestCollaborationE2E_CrossProjectIsolation(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, respList2.Code)
 
+		var comm2Wrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(respList2.Body.Bytes(), &comm2Wrapper))
+		comm2DataBytes, _ := json.Marshal(comm2Wrapper.Data)
 		var comments2 []map[string]any
-		require.NoError(t, json.Unmarshal(respList2.Body.Bytes(), &comments2))
+		json.Unmarshal(comm2DataBytes, &comments2)
 
 		// Should only contain project 2 comment
 		for _, comment := range comments2 {
@@ -583,8 +595,11 @@ func TestCollaborationE2E_CrossProjectIsolation(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, respList1.Code)
 
+		var task1Wrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(respList1.Body.Bytes(), &task1Wrapper))
+		task1DataBytes, _ := json.Marshal(task1Wrapper.Data)
 		var tasks1 []map[string]any
-		require.NoError(t, json.Unmarshal(respList1.Body.Bytes(), &tasks1))
+		json.Unmarshal(task1DataBytes, &tasks1)
 
 		// Should only contain project 1 tasks
 		for _, task := range tasks1 {

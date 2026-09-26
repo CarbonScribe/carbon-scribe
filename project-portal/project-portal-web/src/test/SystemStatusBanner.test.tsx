@@ -14,6 +14,8 @@ const defaultHealthState = {
     isFetchingAlerts: false,
     isFetchingDependencies: false,
     isAcknowledgingAlert: false,
+    isFetchingUptime: false,
+    isFetchingMaintenance: false,
   },
   healthErrors: {
     status: null,
@@ -22,8 +24,11 @@ const defaultHealthState = {
     alerts: null,
     dependencies: null,
     acknowledge: null,
+    uptime: null,
+    maintenance: null,
   },
   fetchDetailedStatus: vi.fn(),
+  fetchUptimeStats: vi.fn(),
 }
 
 const createDetailedStatus = (overrides: Partial<SystemStatusSnapshot> = {}): SystemStatusSnapshot => ({
@@ -70,7 +75,12 @@ describe('SystemStatusBanner', () => {
   })
 
   it('renders live detailedStatus snapshot and updates when the store changes', async () => {
-    const snapshot = createDetailedStatus({ overallStatus: 'Healthy', activeAlertsCount: 3, healthyServicesCount: 4, totalServicesCount: 5 })
+    const snapshot = createDetailedStatus({ 
+      overallStatus: 'Healthy', 
+      activeAlertsCount: 3, 
+      healthyServicesCount: 4, 
+      totalServicesCount: 5 
+    })
     resetStore({ detailedStatus: snapshot })
 
     render(<SystemStatusBanner />)
@@ -91,7 +101,8 @@ describe('SystemStatusBanner', () => {
 
     expect(screen.getByText(/Last updated/i)).toBeVisible()
 
-    act(() => {
+    // Update the store state - the component should react synchronously
+    await act(async () => {
       useStore.setState({
         detailedStatus: createDetailedStatus({
           overallStatus: 'Degraded',
@@ -101,6 +112,12 @@ describe('SystemStatusBanner', () => {
           timestamp: '2026-01-01T12:05:00Z',
         }),
       })
+    })
+
+    // Advance timers by a small amount to allow any scheduled updates to complete
+    // This avoids infinite loop while still allowing UI updates
+    await act(async () => {
+      vi.advanceTimersByTime(100)
     })
 
     expect(screen.getByRole('heading', { name: /Degraded/i })).toBeVisible()
@@ -122,7 +139,7 @@ describe('SystemStatusBanner', () => {
     expect(mockFetchDetailedStatus).toHaveBeenCalledTimes(1)
 
     act(() => {
-      vi.advanceTimersByTime(30_000)
+      vi.advanceTimersByTime(60_000)
     })
 
     expect(mockFetchDetailedStatus).toHaveBeenCalledTimes(2)

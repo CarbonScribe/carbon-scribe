@@ -139,6 +139,15 @@ type SharedResource struct {
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
+// PaginationMeta holds pagination metadata for list endpoints
+type PaginationMeta struct {
+	Total          int  `json:"total"`
+	Limit          int  `json:"limit"`
+	Offset         int  `json:"offset"`
+	NextOffset     *int `json:"next_offset,omitempty"`
+	PreviousOffset *int `json:"previous_offset,omitempty"`
+}
+
 // ResourceBooking represents a reservation for a shared resource (e.g. equipment)
 type ResourceBooking struct {
 	ID         string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`

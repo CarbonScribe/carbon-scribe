@@ -202,6 +202,7 @@ export interface CollaborationSlice {
   comments: Comment[];
   tasks: Task[];
   resources: SharedResource[];
+  updatingTaskIds: string[];
 
   // Loading & errors (prefixed to avoid clashing with projects slice)
   collaborationLoading: CollaborationLoadingState;
@@ -219,6 +220,7 @@ export interface CollaborationSlice {
   inviteUser: (projectId: string, data: InviteUserRequest) => Promise<ProjectInvitation | null>;
   removeMember: (projectId: string, userId: string) => Promise<boolean>;
   createComment: (data: CreateCommentRequest) => Promise<Comment | null>;
+  receiveComment: (comment: Comment) => void;
   createTask: (data: CreateTaskRequest) => Promise<Task | null>;
   updateTask: (taskId: string, data: UpdateTaskRequest) => Promise<Task | null>;
   createResource: (data: CreateResourceRequest) => Promise<SharedResource | null>;

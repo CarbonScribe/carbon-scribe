@@ -1,5 +1,6 @@
 import { LogEntry } from '../interfaces/log-entry.interface';
+import { formatStructured } from './structured.formatter';
 
 export function formatJson(entry: LogEntry): string {
-  return JSON.stringify(entry);
+  return formatStructured(entry);
 }

@@ -18,6 +18,8 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../rbac/guards/roles.guard';
 import { Roles } from '../rbac/decorators/roles.decorator';
+import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
+import { SorobanEventDto } from './dto/soroban-event.dto';
 
 @Controller('api/v1/webhooks')
 export class WebhooksController {
@@ -58,12 +60,14 @@ export class WebhooksController {
   // --- Webhook Delivery (External) ---
 
   @Post('stellar')
+  @UseGuards(WebhookSignatureGuard)
   async receiveStellarWebhook(@Body() dto: StellarWebhookDto) {
     return this.stellarWebhookService.registerTransaction(dto);
   }
 
   @Post('soroban')
-  async receiveSorobanEvent(@Body() event: any) {
+  @UseGuards(WebhookSignatureGuard)
+  async receiveSorobanEvent(@Body() event: SorobanEventDto) {
     await this.dispatcherService.dispatch({
       eventType: 'soroban.event',
       timestamp: new Date().toISOString(),

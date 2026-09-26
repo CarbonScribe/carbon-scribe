@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../shared/database/prisma.service';
@@ -18,15 +13,22 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { randomBytes } from 'crypto';
 import { SecurityService } from '../security/security.service';
 import { SecurityEvents } from '../security/constants/security-events.constants';
+import {
+  InvalidCredentialsError,
+  UserNotFoundError,
+  InvalidRefreshTokenError,
+  SessionExpiredError,
+  EmailAlreadyInUseError,
+  ValidationError,
+  AccountInactiveError,
+  RefreshTokenReuseError,
+  SessionLockedError,
+} from '../shared/exceptions/error-classes';
 
 interface RequestMetadata {
   ipAddress?: string;
   userAgent?: string;
-}
-
-interface BruteForceState {
-  count: number;
-  lockUntil?: Date;
+  deviceId?: string;
 }
 
 type User = {
@@ -42,9 +44,16 @@ type User = {
 
 @Injectable()
 export class AuthService {
-  private readonly loginAttempts = new Map<string, BruteForceState>();
-  private readonly maxAttempts = 5;
-  private readonly lockMinutes = 15;
+  // ============================================================================
+  // REMOVED: In-memory brute force protection (loginAttempts Map, maxAttempts,
+  // lockMinutes, ensureNotLocked, registerFailedAttempt, clearFailedAttempts)
+  //
+  // REPLACED BY: Redis-backed RateLimitGuard with distributed rate limiting
+  // - Login: 5 attempts per 15 minutes per IP + email
+  // - Register: 3 attempts per hour per IP
+  // - Forgot password: 3 attempts per hour per IP + email
+  // - Reset password: 3 attempts per hour per IP + token
+  // ============================================================================
 
   constructor(
     private readonly prisma: PrismaService,
@@ -60,7 +69,7 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (existing) {
-      throw new BadRequestException('Email already in use');
+      throw new EmailAlreadyInUseError(dto.email);
     }
 
     const company = await this.prisma.company.create({
@@ -140,11 +149,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, metadata: RequestMetadata): Promise<AuthResponse> {
-    this.ensureNotLocked(dto.email);
+    // Rate limiting is now handled by RateLimitGuard
+    // No in-memory brute force protection here
 
     const user = await this.validateUser(dto.email, dto.password);
     if (!user) {
-      this.registerFailedAttempt(dto.email);
       await this.securityService.logEvent({
         eventType: SecurityEvents.AuthLoginFailed,
         companyId: undefined,
@@ -156,10 +165,8 @@ export class AuthService {
         status: 'failure',
         statusCode: 401,
       });
-      throw new UnauthorizedException('Invalid credentials');
+      throw new InvalidCredentialsError();
     }
-
-    this.clearFailedAttempts(dto.email);
 
     const session = await this.createSession(user.id, metadata);
     const { accessToken, refreshToken } = this.generateTokens(user, session.id);
@@ -205,12 +212,15 @@ export class AuthService {
     return response;
   }
 
-  async refresh(dto: RefreshTokenDto): Promise<AuthResponse> {
+  async refresh(
+    dto: RefreshTokenDto,
+    metadata?: RequestMetadata,
+  ): Promise<AuthResponse> {
     let payload: JwtPayload;
     try {
       payload = this.jwtService.verify<JwtPayload>(dto.refreshToken);
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new InvalidRefreshTokenError();
     }
 
     const session = await this.prisma.session.findUnique({
@@ -218,27 +228,102 @@ export class AuthService {
     });
 
     if (!session || !session.isValid) {
-      throw new UnauthorizedException('Invalid session');
+      throw new InvalidRefreshTokenError();
+    }
+
+    if (session.lockedUntil && session.lockedUntil > new Date()) {
+      throw new SessionLockedError();
     }
 
     if (session.expiresAt <= new Date()) {
-      throw new UnauthorizedException('Session expired');
+      throw new SessionExpiredError();
     }
 
-    const matches = await bcrypt.compare(
+    // Context mismatch check
+    if (
+      metadata &&
+      (metadata.ipAddress !== session.ipAddress ||
+        metadata.userAgent !== session.userAgent)
+    ) {
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.SuspiciousPatternDetected,
+        companyId: payload.companyId,
+        userId: payload.sub,
+        status: 'warning',
+        statusCode: 401,
+      });
+      // Optionally block or just flag. We just flagged it.
+    }
+
+    const isCurrentMatch = await bcrypt.compare(
       dto.refreshToken,
       session.refreshToken,
     );
-    if (!matches) {
-      throw new UnauthorizedException('Invalid refresh token');
+
+    let isPreviousMatch = false;
+    if (!isCurrentMatch && session.previousRefreshToken) {
+      isPreviousMatch = await bcrypt.compare(
+        dto.refreshToken,
+        session.previousRefreshToken,
+      );
+    }
+
+    if (isPreviousMatch) {
+      // Reuse detected!
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { isValid: false },
+      });
+
+      // Invalidate all sessions
+      await this.prisma.session.updateMany({
+        where: { userId: session.userId },
+        data: { isValid: false },
+      });
+
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthRefreshTokenReuse,
+        companyId: payload.companyId,
+        userId: payload.sub,
+        status: 'failure',
+        statusCode: 401,
+      });
+
+      throw new RefreshTokenReuseError();
+    }
+
+    if (!isCurrentMatch) {
+      // Increment failed attempts
+      const failedAttempts = session.failedAttempts + 1;
+      const lockedUntil =
+        failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { failedAttempts, lockedUntil },
+      });
+
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthRefreshFailed,
+        companyId: payload.companyId,
+        userId: payload.sub,
+        status: 'failure',
+        statusCode: 401,
+      });
+
+      throw new InvalidRefreshTokenError();
     }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('User not found');
+    if (!user) {
+      throw new UserNotFoundError(payload.sub);
+    }
+
+    if (!user.isActive) {
+      throw new AccountInactiveError();
     }
 
     const { accessToken, refreshToken } = this.generateTokens(user, session.id);
@@ -248,9 +333,13 @@ export class AuthService {
       this.prisma.session.update({
         where: { id: session.id },
         data: {
+          previousRefreshToken: session.refreshToken,
           refreshToken: hashedRefreshToken,
           lastUsedAt: new Date(),
-          expiresAt: this.computeRefreshExpiry(),
+          expiresAt: this.computeRefreshExpiry(session.createdAt),
+          failedAttempts: 0,
+          lockedUntil: null,
+          deviceId: metadata?.deviceId || session.deviceId,
         },
       }),
       this.prisma.user.update({
@@ -260,6 +349,14 @@ export class AuthService {
         },
       }),
     ]);
+
+    await this.securityService.logEvent({
+      eventType: SecurityEvents.AuthRefreshSuccess,
+      companyId: payload.companyId,
+      userId: payload.sub,
+      status: 'success',
+      statusCode: 200,
+    });
 
     return {
       user: this.toAuthUser(user),
@@ -273,7 +370,7 @@ export class AuthService {
     try {
       payload = this.jwtService.verify<JwtPayload>(dto.refreshToken);
     } catch {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new InvalidRefreshTokenError();
     }
 
     const session = await this.prisma.session.findUnique({
@@ -317,12 +414,12 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UserNotFoundError(userId);
     }
 
     const matches = await bcrypt.compare(dto.currentPassword, user.password);
     if (!matches) {
-      throw new UnauthorizedException('Current password is incorrect');
+      throw new InvalidCredentialsError();
     }
 
     const newHash = await bcrypt.hash(dto.newPassword, 10);
@@ -359,7 +456,7 @@ export class AuthService {
       where: { id: userId },
     });
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new UserNotFoundError(userId);
     }
     return this.toAuthUser(user);
   }
@@ -374,6 +471,7 @@ export class AuthService {
       id: session.id,
       userAgent: session.userAgent,
       ipAddress: session.ipAddress,
+      deviceId: session.deviceId,
       expiresAt: session.expiresAt,
       isValid: session.isValid,
       createdAt: session.createdAt,
@@ -448,7 +546,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new BadRequestException('Invalid or expired reset token');
+      throw new ValidationError('Invalid or expired reset token');
     }
 
     const newHash = await bcrypt.hash(dto.newPassword, 10);
@@ -496,8 +594,15 @@ export class AuthService {
     return { accessToken, refreshToken, payload };
   }
 
-  private computeRefreshExpiry() {
-    return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  private computeRefreshExpiry(createdAt?: Date) {
+    const rollingExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    if (createdAt) {
+      const absoluteExpiry = new Date(
+        createdAt.getTime() + 30 * 24 * 60 * 60 * 1000,
+      );
+      return rollingExpiry < absoluteExpiry ? rollingExpiry : absoluteExpiry;
+    }
+    return rollingExpiry;
   }
 
   private async createSession(userId: string, metadata: RequestMetadata) {
@@ -506,6 +611,7 @@ export class AuthService {
         userId,
         userAgent: metadata.userAgent,
         ipAddress: metadata.ipAddress,
+        deviceId: metadata.deviceId,
         refreshToken: '',
         expiresAt: this.computeRefreshExpiry(),
       },
@@ -521,31 +627,5 @@ export class AuthService {
       role: user.role,
       companyId: user.companyId,
     };
-  }
-
-  private ensureNotLocked(email: string) {
-    const state = this.loginAttempts.get(email);
-    if (!state || !state.lockUntil) {
-      return;
-    }
-    if (state.lockUntil > new Date()) {
-      throw new UnauthorizedException(
-        'Too many failed attempts, please try again later',
-      );
-    }
-    this.loginAttempts.delete(email);
-  }
-
-  private registerFailedAttempt(email: string) {
-    const state = this.loginAttempts.get(email) || { count: 0 };
-    state.count += 1;
-    if (state.count >= this.maxAttempts) {
-      state.lockUntil = new Date(Date.now() + this.lockMinutes * 60 * 1000);
-    }
-    this.loginAttempts.set(email, state);
-  }
-
-  private clearFailedAttempts(email: string) {
-    this.loginAttempts.delete(email);
   }
 }

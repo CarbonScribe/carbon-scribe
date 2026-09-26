@@ -1,53 +1,101 @@
-import { Controller, Post, Get, Body, Param, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  UseGuards,
+  Put,
+} from '@nestjs/common';
 import { AuctionService } from './auction.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { RateLimit, RateLimits } from '../rate-limit/rate-limit.decorator';
+import { PermissionsGuard } from '../rbac/guards/permissions.guard';
+import { Permissions } from '../rbac/decorators/permissions.decorator';
+import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
+import {
+  PORTFOLIO_VIEW,
+  CREDIT_PURCHASE,
+} from '../rbac/constants/permissions.constants';
 
-// Optional: if there's a guard it can be used, we'll try to extract mock user from request for now
 @Controller('api/v1/auctions')
+@UseGuards(JwtAuthGuard, PermissionsGuard, IpWhitelistGuard)
 export class AuctionController {
   constructor(private readonly auctionService: AuctionService) {}
 
-  @Post()
-  async createAuction(@Body() createAuctionDto: CreateAuctionDto) {
-    return this.auctionService.createAuction(createAuctionDto);
-  }
-
   @Get()
-  async getAuctions() {
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctions(@CurrentUser() _user: JwtPayload) {
     return this.auctionService.getAuctions();
   }
 
   @Get(':id')
-  async getAuctionById(@Param('id') id: string) {
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctionById(
+    @CurrentUser() _user: JwtPayload,
+    @Param('id') id: string,
+  ) {
     return this.auctionService.getAuctionById(id);
   }
 
-  @Post(':id/start')
-  async startAuction(@Param('id') id: string) {
+  @Post()
+  @Permissions(CREDIT_PURCHASE)
+  async createAuction(
+    @CurrentUser() _user: JwtPayload,
+    @Body() dto: CreateAuctionDto,
+  ) {
+    return this.auctionService.createAuction(dto);
+  }
+
+  @Put(':id/start')
+  @Permissions(CREDIT_PURCHASE)
+  async startAuction(
+    @CurrentUser() _user: JwtPayload,
+    @Param('id') id: string,
+  ) {
     return this.auctionService.startAuction(id);
   }
 
+  /**
+   * Place a bid on an auction
+   * Rate limited to 5 bids per minute per user per auction
+   */
   @Post(':id/bids')
+  @Permissions(CREDIT_PURCHASE)
+  @RateLimit(RateLimits.BIDDING)
+  @RateLimit(RateLimits.GLOBAL_AUCTION_BIDDING)
   async placeBid(
-    @Param('id') id: string,
-    @Body() placeBidDto: PlaceBidDto,
-    @Req() req: any,
+    @Param('id') auctionId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: PlaceBidDto,
   ) {
-    // Fallbacks for testing without auth guard
-    const userId = req.user?.id || 'mock-user-id';
-    const companyId = req.user?.companyId || 'mock-company-id';
-
-    return this.auctionService.placeBid(id, userId, companyId, placeBidDto);
+    return this.auctionService.placeBid(
+      auctionId,
+      user.sub,
+      user.companyId,
+      dto,
+    );
   }
 
   @Get(':id/bids')
-  async getAuctionBids(@Param('id') id: string) {
-    return this.auctionService.getAuctionBids(id);
+  @Permissions(PORTFOLIO_VIEW)
+  async getAuctionBids(
+    @CurrentUser() _user: JwtPayload,
+    @Param('id') auctionId: string,
+  ) {
+    return this.auctionService.getAuctionBids(auctionId);
   }
 
   @Post(':id/settle')
-  async settleAuction(@Param('id') id: string) {
-    return this.auctionService.settleAuction(id);
+  @Permissions(CREDIT_PURCHASE)
+  async settleAuction(
+    @CurrentUser() _user: JwtPayload,
+    @Param('id') auctionId: string,
+  ) {
+    return this.auctionService.settleAuction(auctionId);
   }
 }

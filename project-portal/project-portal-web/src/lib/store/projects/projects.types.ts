@@ -66,6 +66,7 @@ export interface ProjectStats {
 
 export interface ProjectsLoadingState {
   isFetching: boolean;
+  isRefreshing: boolean; // background SWR refresh — never blocks the UI
   isCreating: boolean;
   isUpdating: boolean;
   isDeleting: boolean;
@@ -86,9 +87,23 @@ export interface ProjectsSlice {
   errors: ProjectsErrorState;
   pagination: PaginationState;
   filters: ProjectFilters;
+  projectsCache: Record<string, { projects: Project[]; fetchedAt: number }>;
+  lastFetchedAt: number | null;
 
   // CRUD Actions
-  fetchProjects: (limit?: number, offset?: number) => Promise<void>;
+  fetchProjects: (
+    limit?: number,
+    offset?: number,
+    options?: { force?: boolean }
+  ) => Promise<void>;
+  refreshProjects: () => Promise<void>;
+  invalidateProjectsCache: () => void;
+  /** @internal used by fetchProjects to refresh stale cache entries without blocking the UI */
+  _refreshProjectsInBackground: (
+    limit: number,
+    offset: number,
+    key: string
+  ) => Promise<void>;
   fetchProjectById: (id: string) => Promise<void>;
   createProject: (data: ProjectCreateRequest) => Promise<Project | null>;
   updateProject: (id: string, data: ProjectUpdateRequest) => Promise<Project | null>;

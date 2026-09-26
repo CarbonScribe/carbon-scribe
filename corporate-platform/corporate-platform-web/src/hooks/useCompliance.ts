@@ -78,7 +78,9 @@ export function useCompliance(): UseComplianceState & UseComplianceActions {
       if (response.success && response.data) {
         setState((s) => ({ ...s, statuses: response.data ?? null }));
       } else {
-        setError(response.parsedError?.message ?? response.error || 'Failed to fetch compliance status');
+        // Use parentheses to clarify operator precedence
+        const errorMsg = (response.parsedError?.message ?? response.error) || 'Failed to fetch compliance status';
+        setError(errorMsg);
       }
     } catch (error) {
       const errorMessage =
@@ -97,7 +99,9 @@ export function useCompliance(): UseComplianceState & UseComplianceActions {
       if (response.success && response.data) {
         setState((s) => ({ ...s, report: response.data ?? null }));
       } else {
-        setError(response.parsedError?.message ?? response.error || 'Failed to fetch compliance report');
+        // Use parentheses to clarify operator precedence
+        const errorMsg = (response.parsedError?.message ?? response.error) || 'Failed to fetch compliance report';
+        setError(errorMsg);
       }
     } catch (error) {
       const errorMessage =
@@ -116,7 +120,9 @@ export function useCompliance(): UseComplianceState & UseComplianceActions {
       if (response.success && response.data) {
         setState((s) => ({ ...s, statuses: response.data ?? null }));
       } else {
-        setError(response.parsedError?.message ?? response.error || 'Failed to fetch compliance statuses');
+        // Use parentheses to clarify operator precedence
+        const errorMsg = (response.parsedError?.message ?? response.error) || 'Failed to fetch compliance statuses';
+        setError(errorMsg);
       }
     } catch (error) {
       const errorMessage =

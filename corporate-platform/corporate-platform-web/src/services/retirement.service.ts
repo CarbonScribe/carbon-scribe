@@ -1,5 +1,5 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
-import { ApiResponse, apiClient } from './api-client';
+import { ApiResponse, apiClient, ApiFetchOptions } from './api-client';
 import type {
   RetireCreditsPayload,
   RetirementRecord,
@@ -29,11 +29,11 @@ class RetirementService {
    */
   async retire(
     payload: RetireCreditsPayload,
+    options?: ApiFetchOptions,
   ): Promise<ApiResponse<RetirementRecord>> {
-    const response = await apiClient.post<RetirementRecord>(
-      '/retirements',
-      payload,
-    );
+    const response = options
+      ? await apiClient.post<RetirementRecord>('/retirements', payload, options)
+      : await apiClient.post<RetirementRecord>('/retirements', payload);
     return this.normalizeResponse(response);
   }
 
@@ -43,6 +43,7 @@ class RetirementService {
    */
   async getHistory(
     query: RetirementHistoryQuery = {},
+    options?: ApiFetchOptions,
   ): Promise<ApiResponse<RetirementHistoryResponse>> {
     const params = new URLSearchParams();
     if (query.startDate) params.set('startDate', query.startDate);
@@ -53,9 +54,9 @@ class RetirementService {
     if (query.limit) params.set('limit', String(query.limit));
 
     const qs = params.toString();
-    const response = await apiClient.get<RetirementHistoryResponse>(
-      `/retirements${qs ? `?${qs}` : ''}`,
-    );
+    const response = options
+      ? await apiClient.get<RetirementHistoryResponse>(`/retirements${qs ? `?${qs}` : ''}`, options)
+      : await apiClient.get<RetirementHistoryResponse>(`/retirements${qs ? `?${qs}` : ''}`);
     return this.normalizeResponse(response);
   }
 
@@ -63,10 +64,10 @@ class RetirementService {
    * GET /api/v1/retirements/:id
    * Fetch details for a specific retirement record.
    */
-  async getById(id: string): Promise<ApiResponse<RetirementRecord>> {
-    const response = await apiClient.get<RetirementRecord>(
-      `/retirements/${encodeURIComponent(id)}`,
-    );
+  async getById(id: string, options?: ApiFetchOptions): Promise<ApiResponse<RetirementRecord>> {
+    const response = options
+      ? await apiClient.get<RetirementRecord>(`/retirements/${encodeURIComponent(id)}`, options)
+      : await apiClient.get<RetirementRecord>(`/retirements/${encodeURIComponent(id)}`);
     return this.normalizeResponse(response);
   }
 
@@ -74,8 +75,10 @@ class RetirementService {
    * GET /api/v1/retirements/stats
    * Fetch aggregate retirement stats for the authenticated company.
    */
-  async getStats(): Promise<ApiResponse<RetirementStats>> {
-    const response = await apiClient.get<RetirementStats>('/retirements/stats');
+  async getStats(options?: ApiFetchOptions): Promise<ApiResponse<RetirementStats>> {
+    const response = options
+      ? await apiClient.get<RetirementStats>('/retirements/stats', options)
+      : await apiClient.get<RetirementStats>('/retirements/stats');
     return this.normalizeResponse(response);
   }
 
@@ -86,14 +89,15 @@ class RetirementService {
   async validate(
     creditId: string,
     amount: number,
+    options?: ApiFetchOptions,
   ): Promise<ApiResponse<RetirementValidationResult>> {
     const params = new URLSearchParams({
       creditId,
       amount: String(amount),
     });
-    const response = await apiClient.get<RetirementValidationResult>(
-      `/retirements/validate?${params.toString()}`,
-    );
+    const response = options
+      ? await apiClient.get<RetirementValidationResult>(`/retirements/validate?${params.toString()}`, options)
+      : await apiClient.get<RetirementValidationResult>(`/retirements/validate?${params.toString()}`);
     return this.normalizeResponse(response);
   }
 
@@ -116,6 +120,7 @@ class RetirementService {
     address: string,
     page = 1,
     limit = 20,
+    options?: ApiFetchOptions,
   ): Promise<
     ApiResponse<{ data: EntityCertificate[]; meta: RetirementHistoryMeta }>
   > {
@@ -123,12 +128,15 @@ class RetirementService {
       page: String(page),
       limit: String(limit),
     });
-    const response = await apiClient.get<{
-      data: EntityCertificate[];
-      meta: RetirementHistoryMeta;
-    }>(
-      `/retirements/entity/${encodeURIComponent(address)}/certificates?${params.toString()}`,
-    );
+    const response = options
+      ? await apiClient.get<{
+          data: EntityCertificate[];
+          meta: RetirementHistoryMeta;
+        }>(`/retirements/entity/${encodeURIComponent(address)}/certificates?${params.toString()}`, options)
+      : await apiClient.get<{
+          data: EntityCertificate[];
+          meta: RetirementHistoryMeta;
+        }>(`/retirements/entity/${encodeURIComponent(address)}/certificates?${params.toString()}`);
     return this.normalizeResponse(response);
   }
 

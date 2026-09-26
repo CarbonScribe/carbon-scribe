@@ -4,7 +4,9 @@ import {
     ServiceHealthCheck,
     SystemMetric,
     SystemAlert,
-    ServiceDependency
+    ServiceDependency,
+    UptimeStat,
+    MaintenanceEvent,
 } from './health.types';
 
 export const fetchDetailedStatusApi = async (): Promise<SystemStatusSnapshot> => {
@@ -38,7 +40,23 @@ export const fetchDependenciesApi = async (): Promise<ServiceDependency[]> => {
     return response.data;
 };
 
-export const fetchUptimeApi = async (): Promise<any> => {
-    const response = await apiClient.get<any>('/health/uptime');
+/**
+ * Fetch uptime statistics from the API
+ * Returns an array of uptime stats for different periods (7d, 30d, 90d)
+ */
+export const fetchUptimeApi = async (): Promise<UptimeStat[]> => {
+    const response = await apiClient.get<UptimeStat[]>('/health/uptime');
+    return response.data;
+};
+
+/**
+ * Fetch the scheduled maintenance calendar from the API.
+ * NOTE: /health/maintenance is not yet implemented on project-portal-backend
+ * (no route, model, or migration exists in internal/health as of this change).
+ * This follows the naming convention of the sibling /health/* routes
+ * (uptime, alerts, dependencies) and is tracked separately as a backend task.
+ */
+export const fetchMaintenanceScheduleApi = async (): Promise<MaintenanceEvent[]> => {
+    const response = await apiClient.get<MaintenanceEvent[]>('/health/maintenance');
     return response.data;
 };

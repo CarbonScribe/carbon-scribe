@@ -25,5 +25,12 @@ module.exports = {
       'error',
       { argsIgnorePattern: '^_', destructuredArrayIgnorePattern: '^_' },
     ],
+    'no-restricted-imports': [
+      'error',
+      {
+        name: 'stellar-sdk',
+        message: 'Use @stellar/stellar-sdk instead. See issue #548.',
+      },
+    ],
   },
 };

@@ -27,11 +27,23 @@ func (s *smokeCollaborationRepo) AddMember(ctx context.Context, member *collabor
 }
 
 func (s *smokeCollaborationRepo) GetMember(ctx context.Context, projectID, userID string) (*collaboration.ProjectMember, error) {
-	return nil, errors.New("not implemented")
+	return &collaboration.ProjectMember{
+		ProjectID: projectID,
+		UserID:    userID,
+		Role:      "owner",
+	}, nil
 }
 
-func (s *smokeCollaborationRepo) ListMembers(ctx context.Context, projectID string) ([]collaboration.ProjectMember, error) {
-	return []collaboration.ProjectMember{}, nil
+func (s *smokeCollaborationRepo) ListMembers(ctx context.Context, projectID string, limit, offset int) ([]collaboration.EnrichedProjectMember, error) {
+	return []collaboration.EnrichedProjectMember{}, nil
+}
+
+func (s *smokeCollaborationRepo) CountMembers(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
+}
+
+func (s *smokeCollaborationRepo) GetEnrichedMember(ctx context.Context, projectID, userID string) (*collaboration.EnrichedProjectMember, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *smokeCollaborationRepo) UpdateMember(ctx context.Context, member *collaboration.ProjectMember) error {
@@ -50,8 +62,20 @@ func (s *smokeCollaborationRepo) GetInvitationByToken(ctx context.Context, token
 	return nil, errors.New("not implemented")
 }
 
-func (s *smokeCollaborationRepo) ListInvitations(ctx context.Context, projectID string) ([]collaboration.ProjectInvitation, error) {
+func (s *smokeCollaborationRepo) ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]collaboration.ProjectInvitation, error) {
 	return []collaboration.ProjectInvitation{}, nil
+}
+
+func (s *smokeCollaborationRepo) CountInvitations(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
+}
+
+func (s *smokeCollaborationRepo) GetInvitation(ctx context.Context, invitationID string) (*collaboration.ProjectInvitation, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *smokeCollaborationRepo) UpdateInvitation(ctx context.Context, invite *collaboration.ProjectInvitation) error {
+	return nil
 }
 
 func (s *smokeCollaborationRepo) CreateActivity(ctx context.Context, activity *collaboration.ActivityLog) error {
@@ -62,12 +86,20 @@ func (s *smokeCollaborationRepo) ListActivities(ctx context.Context, projectID s
 	return []collaboration.ActivityLog{}, nil
 }
 
+func (s *smokeCollaborationRepo) CountActivities(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
+}
+
 func (s *smokeCollaborationRepo) CreateComment(ctx context.Context, comment *collaboration.Comment) error {
 	return nil
 }
 
-func (s *smokeCollaborationRepo) ListComments(ctx context.Context, projectID string) ([]collaboration.Comment, error) {
+func (s *smokeCollaborationRepo) ListComments(ctx context.Context, projectID string, limit, offset int) ([]collaboration.Comment, error) {
 	return []collaboration.Comment{}, nil
+}
+
+func (s *smokeCollaborationRepo) CountComments(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
 }
 
 func (s *smokeCollaborationRepo) CreateTask(ctx context.Context, task *collaboration.Task) error {
@@ -78,8 +110,12 @@ func (s *smokeCollaborationRepo) GetTask(ctx context.Context, taskID string) (*c
 	return nil, errors.New("not implemented")
 }
 
-func (s *smokeCollaborationRepo) ListTasks(ctx context.Context, projectID string) ([]collaboration.Task, error) {
+func (s *smokeCollaborationRepo) ListTasks(ctx context.Context, projectID string, limit, offset int) ([]collaboration.Task, error) {
 	return []collaboration.Task{}, nil
+}
+
+func (s *smokeCollaborationRepo) CountTasks(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
 }
 
 func (s *smokeCollaborationRepo) UpdateTask(ctx context.Context, task *collaboration.Task) error {
@@ -90,8 +126,12 @@ func (s *smokeCollaborationRepo) CreateResource(ctx context.Context, resource *c
 	return nil
 }
 
-func (s *smokeCollaborationRepo) ListResources(ctx context.Context, projectID string) ([]collaboration.SharedResource, error) {
+func (s *smokeCollaborationRepo) ListResources(ctx context.Context, projectID string, limit, offset int) ([]collaboration.SharedResource, error) {
 	return []collaboration.SharedResource{}, nil
+}
+
+func (s *smokeCollaborationRepo) CountResources(ctx context.Context, projectID string) (int64, error) {
+	return 0, nil
 }
 
 func setupCollaborationSmokeRouter(t *testing.T) (*gin.Engine, *auth.TokenManager) {

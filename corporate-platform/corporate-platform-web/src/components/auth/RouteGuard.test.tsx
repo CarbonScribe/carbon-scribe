@@ -2,18 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import RouteGuard from '@/components/auth/RouteGuard';
 import { useAuth } from '@/contexts/AuthContext';
-import { usePathname } from 'next/navigation';
+import { useConnectivity } from '@/contexts/ConnectivityContext';
+import { usePathname, useRouter } from 'next/navigation';
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(),
+  useRouter: vi.fn(),
 }));
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('@/contexts/ConnectivityContext', () => ({
+  useConnectivity: vi.fn(),
+}));
+
 const mockUseAuth = vi.mocked(useAuth);
 const mockUsePathname = vi.mocked(usePathname);
+const mockUseRouter = vi.mocked(useRouter);
+const mockUseConnectivity = vi.mocked(useConnectivity);
 
 function renderGuard() {
   return render(
@@ -26,6 +34,10 @@ function renderGuard() {
 describe('RouteGuard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseRouter.mockReturnValue({ push: vi.fn() } as any);
+    mockUseConnectivity.mockReturnValue({
+      state: { isOnline: true },
+    } as any);
   });
 
   it('renders loading state while auth initializes', () => {

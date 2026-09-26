@@ -5,8 +5,10 @@ import { DutchAuctionService } from './services/dutch-auction.service';
 import { BidProcessorService } from './services/bid-processor.service';
 import { SettlementService } from './services/settlement.service';
 import { PrismaService } from '../shared/database/prisma.service';
+import { SecurityModule } from '../security/security.module';
 
 @Module({
+  imports: [SecurityModule],
   controllers: [AuctionController],
   providers: [
     AuctionService,

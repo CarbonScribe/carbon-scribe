@@ -1,4 +1,3 @@
-// ...existing code...
 package collaboration
 
 import (
@@ -39,12 +38,17 @@ func (m *MockRepository) GetMember(ctx context.Context, projectID, userID string
 	return args.Get(0).(*ProjectMember), args.Error(1)
 }
 
-func (m *MockRepository) ListMembers(ctx context.Context, projectID string) ([]EnrichedProjectMember, error) {
-	args := m.Called(ctx, projectID)
+func (m *MockRepository) ListMembers(ctx context.Context, projectID string, limit, offset int) ([]EnrichedProjectMember, error) {
+	args := m.Called(ctx, projectID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]EnrichedProjectMember), args.Error(1)
+}
+
+func (m *MockRepository) CountMembers(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *MockRepository) UpdateMember(ctx context.Context, member *ProjectMember) error {
@@ -78,12 +82,17 @@ func (m *MockRepository) GetInvitationByToken(ctx context.Context, token string)
 	return args.Get(0).(*ProjectInvitation), args.Error(1)
 }
 
-func (m *MockRepository) ListInvitations(ctx context.Context, projectID string) ([]ProjectInvitation, error) {
-	args := m.Called(ctx, projectID)
+func (m *MockRepository) ListInvitations(ctx context.Context, projectID string, limit, offset int) ([]ProjectInvitation, error) {
+	args := m.Called(ctx, projectID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]ProjectInvitation), args.Error(1)
+}
+
+func (m *MockRepository) CountInvitations(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *MockRepository) UpdateInvitation(ctx context.Context, invite *ProjectInvitation) error {
@@ -104,17 +113,27 @@ func (m *MockRepository) ListActivities(ctx context.Context, projectID string, l
 	return args.Get(0).([]ActivityLog), args.Error(1)
 }
 
+func (m *MockRepository) CountActivities(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
+}
+
 func (m *MockRepository) CreateComment(ctx context.Context, comment *Comment) error {
 	args := m.Called(ctx, comment)
 	return args.Error(0)
 }
 
-func (m *MockRepository) ListComments(ctx context.Context, projectID string) ([]Comment, error) {
-	args := m.Called(ctx, projectID)
+func (m *MockRepository) ListComments(ctx context.Context, projectID string, limit, offset int) ([]Comment, error) {
+	args := m.Called(ctx, projectID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]Comment), args.Error(1)
+}
+
+func (m *MockRepository) CountComments(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *MockRepository) CreateTask(ctx context.Context, task *Task) error {
@@ -130,12 +149,17 @@ func (m *MockRepository) GetTask(ctx context.Context, taskID string) (*Task, err
 	return args.Get(0).(*Task), args.Error(1)
 }
 
-func (m *MockRepository) ListTasks(ctx context.Context, projectID string) ([]Task, error) {
-	args := m.Called(ctx, projectID)
+func (m *MockRepository) ListTasks(ctx context.Context, projectID string, limit, offset int) ([]Task, error) {
+	args := m.Called(ctx, projectID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]Task), args.Error(1)
+}
+
+func (m *MockRepository) CountTasks(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 func (m *MockRepository) UpdateTask(ctx context.Context, task *Task) error {
@@ -148,12 +172,17 @@ func (m *MockRepository) CreateResource(ctx context.Context, resource *SharedRes
 	return args.Error(0)
 }
 
-func (m *MockRepository) ListResources(ctx context.Context, projectID string) ([]SharedResource, error) {
-	args := m.Called(ctx, projectID)
+func (m *MockRepository) ListResources(ctx context.Context, projectID string, limit, offset int) ([]SharedResource, error) {
+	args := m.Called(ctx, projectID, limit, offset)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]SharedResource), args.Error(1)
+}
+
+func (m *MockRepository) CountResources(ctx context.Context, projectID string) (int64, error) {
+	args := m.Called(ctx, projectID)
+	return args.Get(0).(int64), args.Error(1)
 }
 
 func TestCollaborationService_InviteUser_Success(t *testing.T) {
@@ -372,38 +401,42 @@ func TestCollaborationService_ListMembers_Success(t *testing.T) {
 	service := NewService(mockRepo)
 	ctx := context.Background()
 	projectID := "project-123"
+	limit := 20
+	offset := 0
 
-	       expectedMembers := []EnrichedProjectMember{
-		       {ID: "1", ProjectID: projectID, UserID: "user-1", Role: "Owner"},
-		       {ID: "2", ProjectID: projectID, UserID: "user-2", Role: "Contributor"},
-	       }
+	expectedMembers := []EnrichedProjectMember{
+		{ID: "1", ProjectID: projectID, UserID: "user-1", Role: "Owner"},
+		{ID: "2", ProjectID: projectID, UserID: "user-2", Role: "Contributor"},
+	}
 
-	       mockRepo.On("ListMembers", ctx, projectID).Return(expectedMembers, nil)
+	mockRepo.On("ListMembers", ctx, projectID, limit, offset).Return(expectedMembers, nil)
+	mockRepo.On("CountMembers", ctx, projectID).Return(int64(2), nil)
 
-	       // Act
-	       members, err := service.ListMembers(ctx, projectID)
+	// Act
+	members, total, err := service.ListMembers(ctx, projectID, limit, offset)
 
-	       // Assert
-	       require.NoError(t, err)
-	       // The service.ListMembers returns []dto.EnrichedProjectMemberResponse, so map expectedMembers for comparison
-	       var expectedResp []dto.EnrichedProjectMemberResponse
-	       for _, m := range expectedMembers {
-		       expectedResp = append(expectedResp, dto.EnrichedProjectMemberResponse{
-			       UserID:      m.UserID,
-			       DisplayName: m.DisplayName,
-			       Email:       m.Email,
-			       AvatarURL:   m.AvatarURL,
-			       Phone:       m.Phone,
-			       Location:    m.Location,
-			       Title:       m.Title,
-			       Bio:         m.Bio,
-			       Role:        m.Role,
-			       JoinedAt:    m.JoinedAt,
-		       })
-	       }
-	       assert.Equal(t, expectedResp, members)
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	// The service.ListMembers returns []dto.EnrichedProjectMemberResponse, so map expectedMembers for comparison
+	var expectedResp []dto.EnrichedProjectMemberResponse
+	for _, m := range expectedMembers {
+		expectedResp = append(expectedResp, dto.EnrichedProjectMemberResponse{
+			UserID:      m.UserID,
+			DisplayName: m.DisplayName,
+			Email:       m.Email,
+			AvatarURL:   m.AvatarURL,
+			Phone:       m.Phone,
+			Location:    m.Location,
+			Title:       m.Title,
+			Bio:         m.Bio,
+			Role:        m.Role,
+			JoinedAt:    m.JoinedAt,
+		})
+	}
+	assert.Equal(t, expectedResp, members)
 
-	       mockRepo.AssertExpectations(t)
+	mockRepo.AssertExpectations(t)
 }
 
 func TestCollaborationService_ListMembers_RepositoryError(t *testing.T) {
@@ -412,12 +445,14 @@ func TestCollaborationService_ListMembers_RepositoryError(t *testing.T) {
 	service := NewService(mockRepo)
 	ctx := context.Background()
 	projectID := "project-123"
+	limit := 20
+	offset := 0
 
 	expectedErr := errors.New("database error")
-	mockRepo.On("ListMembers", ctx, projectID).Return(nil, expectedErr)
+	mockRepo.On("ListMembers", ctx, projectID, limit, offset).Return(nil, expectedErr)
 
 	// Act
-	members, err := service.ListMembers(ctx, projectID)
+	members, _, err := service.ListMembers(ctx, projectID, limit, offset)
 
 	// Assert
 	assert.Error(t, err)
@@ -515,19 +550,23 @@ func TestCollaborationService_ListInvitations_Success(t *testing.T) {
 	service := NewService(mockRepo)
 	ctx := context.Background()
 	projectID := "project-123"
+	limit := 20
+	offset := 0
 
 	expectedInvitations := []ProjectInvitation{
 		{ID: "1", ProjectID: projectID, Email: "test1@example.com", Role: "Contributor"},
 		{ID: "2", ProjectID: projectID, Email: "test2@example.com", Role: "Viewer"},
 	}
 
-	mockRepo.On("ListInvitations", ctx, projectID).Return(expectedInvitations, nil)
+	mockRepo.On("ListInvitations", ctx, projectID, limit, offset).Return(expectedInvitations, nil)
+	mockRepo.On("CountInvitations", ctx, projectID).Return(int64(2), nil)
 
 	// Act
-	invitations, err := service.ListInvitations(ctx, projectID)
+	invitations, total, err := service.ListInvitations(ctx, projectID, limit, offset)
 
 	// Assert
 	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
 	assert.Equal(t, expectedInvitations, invitations)
 
 	mockRepo.AssertExpectations(t)
@@ -548,12 +587,14 @@ func TestCollaborationService_ListProjectActivities_Success(t *testing.T) {
 	}
 
 	mockRepo.On("ListActivities", ctx, projectID, limit, offset).Return(expectedActivities, nil)
+	mockRepo.On("CountActivities", ctx, projectID).Return(int64(2), nil)
 
 	// Act
-	activities, err := service.ListProjectActivities(ctx, projectID, limit, offset)
+	activities, total, err := service.ListProjectActivities(ctx, projectID, limit, offset)
 
 	// Assert
 	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
 	assert.Equal(t, expectedActivities, activities)
 
 	mockRepo.AssertExpectations(t)

@@ -6,6 +6,7 @@ import { useStore } from '@/lib/store/store';
 import { useRootComments } from '@/lib/store/collaboration/collaboration.selectors';
 import CommentForm from './CommentForm';
 import CommentThread from './CommentThread';
+import { subscribeToComments, unsubscribeFromComments } from '@/lib/ws/collaborationSocket';
 
 interface CommentSectionProps {
   projectId: string;
@@ -15,10 +16,13 @@ export default function CommentSection({ projectId }: CommentSectionProps) {
   const fetchComments = useStore((s) => s.fetchComments);
   const loading = useStore((s) => s.collaborationLoading.comments);
   const rootComments = useRootComments();
+  const receiveComment = useStore((s) => s.receiveComment);
 
   useEffect(() => {
     fetchComments(projectId);
-  }, [projectId, fetchComments]);
+    subscribeToComments(projectId, { onComment: receiveComment });
+    return () => unsubscribeFromComments(projectId);
+  }, [projectId, fetchComments, receiveComment]);
 
   return (
     <div className="space-y-4">

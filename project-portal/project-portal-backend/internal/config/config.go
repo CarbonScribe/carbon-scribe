@@ -20,8 +20,11 @@ type Config struct {
 	Settings      SettingsConfig
 	Auth          AuthConfig
 	Redis         RedisConfig
+	RateLimit     RateLimitConfig
 	Soroban       SorobanConfig
 	Notifications NotificationsConfig
+	MQTT          MQTTConfig
+	SES           SESConfig
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -55,6 +58,13 @@ type SettingsConfig struct {
 	ProfileCDNBase   string
 }
 
+// SESConfig holds configuration for the SES transactional email client.
+// AWS credentials/region/endpoint are shared with AWSConfig; the client is
+// only constructed (see cmd/api/main.go) when FromAddress is set.
+type SESConfig struct {
+	FromAddress string // verified SES sender identity, e.g. "no-reply@carbonscribe.io"
+}
+
 type GeospatialConfig struct {
 	DefaultProvider   string
 	MapboxAccessToken string
@@ -79,11 +89,53 @@ type RedisConfig struct {
 	DB       int
 }
 
+// RateLimitConfig holds per-route rate limiting configuration.
+type RateLimitConfig struct {
+	// Auth endpoints
+	LoginMaxRequests          int    // attempts per window (default: 5)
+	LoginWindowSeconds        int    // window in seconds (default: 900 — 15 min)
+	RegisterMaxRequests       int    // default: 3
+	RegisterWindowSeconds     int    // default: 3600 — 1 hour
+	RefreshMaxRequests        int    // default: 10
+	RefreshWindowSeconds      int    // default: 3600 — 1 hour
+	ForgotPasswordMaxRequests int    // default: 3
+	ForgotPasswordWindowSecs  int    // default: 3600 — 1 hour
+	WalletChallengeMax        int    // default: 5
+	WalletChallengeWindowSecs int    // default: 60 — 1 min
+	// Minting / payment endpoints
+	MintMaxRequests     int // default: 10
+	MintWindowSeconds   int // default: 60
+	PaymentMaxRequests  int // default: 5
+	PaymentWindowSeconds int // default: 60
+	// Whitelist (comma-separated CIDRs or IPs that bypass rate limiting)
+	IPWhitelist string
+	// Graduated cooldown: lock duration multiplier after N consecutive violations
+	GraduatedCooldownEnabled     bool
+	GraduatedCooldownThreshold   int // violations before cooldown doubles (default: 3)
+	GraduatedCooldownBaseSeconds int // initial lock extension in seconds (default: 60)
+}
+
 type SorobanConfig struct {
 	RPCURL              string
 	NetworkPassphrase   string
 	CarbonAssetContract string
 	InventoryCacheTTL   string
+}
+
+// MQTTConfig holds configuration for the IoT telemetry MQTT client.
+// The client is only started (see cmd/api/main.go) when BrokerURL is set.
+type MQTTConfig struct {
+	BrokerURL             string // e.g. "tls://broker.example.com:8883" or "tcp://localhost:1883"
+	ClientID              string
+	Username              string
+	Password              string
+	TLSCACertFile         string // optional custom CA for verifying the broker
+	TLSCertFile           string // client certificate, for mutual TLS
+	TLSKeyFile            string // client private key, for mutual TLS
+	TLSInsecureSkipVerify bool   // dev-only; never enable in production
+	QoS                   int
+	QueueSize             int
+	Workers               int
 }
 
 type NotificationsConfig struct {
@@ -187,11 +239,50 @@ func Load() (*Config, error) {
 			Password: os.Getenv("REDIS_PASSWORD"),
 			DB:       redisDBAbc,
 		},
+		RateLimit: RateLimitConfig{
+			// Auth limits
+			LoginMaxRequests:          getIntOrDefault("RATE_LIMIT_LOGIN_MAX", 5),
+			LoginWindowSeconds:        getIntOrDefault("RATE_LIMIT_LOGIN_WINDOW_SECS", 900),
+			RegisterMaxRequests:       getIntOrDefault("RATE_LIMIT_REGISTER_MAX", 3),
+			RegisterWindowSeconds:     getIntOrDefault("RATE_LIMIT_REGISTER_WINDOW_SECS", 3600),
+			RefreshMaxRequests:        getIntOrDefault("RATE_LIMIT_REFRESH_MAX", 10),
+			RefreshWindowSeconds:      getIntOrDefault("RATE_LIMIT_REFRESH_WINDOW_SECS", 3600),
+			ForgotPasswordMaxRequests: getIntOrDefault("RATE_LIMIT_FORGOT_PASSWORD_MAX", 3),
+			ForgotPasswordWindowSecs:  getIntOrDefault("RATE_LIMIT_FORGOT_PASSWORD_WINDOW_SECS", 3600),
+			WalletChallengeMax:        getIntOrDefault("RATE_LIMIT_WALLET_CHALLENGE_MAX", 5),
+			WalletChallengeWindowSecs: getIntOrDefault("RATE_LIMIT_WALLET_CHALLENGE_WINDOW_SECS", 60),
+			// Minting / payment limits
+			MintMaxRequests:      getIntOrDefault("RATE_LIMIT_MINT_MAX", 10),
+			MintWindowSeconds:    getIntOrDefault("RATE_LIMIT_MINT_WINDOW_SECS", 60),
+			PaymentMaxRequests:   getIntOrDefault("RATE_LIMIT_PAYMENT_MAX", 5),
+			PaymentWindowSeconds: getIntOrDefault("RATE_LIMIT_PAYMENT_WINDOW_SECS", 60),
+			// Whitelist and graduated cooldown
+			IPWhitelist:                  os.Getenv("RATE_LIMIT_IP_WHITELIST"),
+			GraduatedCooldownEnabled:     getEnvOrDefault("RATE_LIMIT_GRADUATED_COOLDOWN", "true") == "true",
+			GraduatedCooldownThreshold:   getIntOrDefault("RATE_LIMIT_COOLDOWN_THRESHOLD", 3),
+			GraduatedCooldownBaseSeconds: getIntOrDefault("RATE_LIMIT_COOLDOWN_BASE_SECS", 60),
+		},
 		Soroban: SorobanConfig{
 			RPCURL:              getEnvOrDefault("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
 			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
+		},
+		SES: SESConfig{
+			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
+		},
+		MQTT: MQTTConfig{
+			BrokerURL:             os.Getenv("MQTT_BROKER_URL"),
+			ClientID:              os.Getenv("MQTT_CLIENT_ID"),
+			Username:              os.Getenv("MQTT_USERNAME"),
+			Password:              os.Getenv("MQTT_PASSWORD"),
+			TLSCACertFile:         os.Getenv("MQTT_TLS_CA_CERT_FILE"),
+			TLSCertFile:           os.Getenv("MQTT_TLS_CERT_FILE"),
+			TLSKeyFile:            os.Getenv("MQTT_TLS_KEY_FILE"),
+			TLSInsecureSkipVerify: os.Getenv("MQTT_TLS_INSECURE_SKIP_VERIFY") == "true",
+			QoS:                   getIntOrDefault("MQTT_QOS", 1),
+			QueueSize:             getIntOrDefault("MQTT_QUEUE_SIZE", 1000),
+			Workers:               getIntOrDefault("MQTT_WORKERS", 4),
 		},
 		Notifications: NotificationsConfig{
 			MongoURI:          getEnvOrDefault("NOTIFICATIONS_MONGO_URI", "mongodb://localhost:27017"),

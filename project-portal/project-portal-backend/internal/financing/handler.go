@@ -5,6 +5,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,10 +15,16 @@ import (
 
 type Handler struct {
 	service Service
+	rl      *middleware.RateLimiter
 }
 
 func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
+}
+
+// WithRateLimiter returns a new Handler with the supplied RateLimiter attached.
+func (h *Handler) WithRateLimiter(rl *middleware.RateLimiter) *Handler {
+	return &Handler{service: h.service, rl: rl}
 }
 
 func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
@@ -28,7 +37,19 @@ func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
 		financing.GET("/credits/:id/status", requirePermission("financing:read"), h.creditStatus)
 		financing.POST("/credits/forward-sale", requirePermission("financing:sell"), h.createForwardSale)
 		financing.GET("/pricing/quote", requirePermission("financing:read"), h.getPriceQuote)
-		financing.POST("/payments/initiate", requirePermission("financing:pay"), h.initiatePayment)
+
+		// initiate-payment: 5 requests per minute per user/IP
+		if h.rl != nil {
+			paymentLimit := h.rl.LimitWithGraduatedCooldown(middleware.RouteConfig{
+				MaxRequests: 5,
+				Window:      1 * time.Minute,
+				KeyPrefix:   "rl:financing:payment",
+			}, 3, 60)
+			financing.POST("/payments/initiate", requirePermission("financing:pay"), paymentLimit, h.initiatePayment)
+		} else {
+			financing.POST("/payments/initiate", requirePermission("financing:pay"), h.initiatePayment)
+		}
+
 		financing.POST("/payouts/distribute", requirePermission("financing:distribute"), h.distributeRevenue)
 		financing.GET("/payouts/:id", requirePermission("financing:read"), h.getPayoutStatus)
 	}

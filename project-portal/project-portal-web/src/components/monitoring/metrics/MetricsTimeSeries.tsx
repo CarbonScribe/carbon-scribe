@@ -1,10 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { useStore } from '@/lib/store/store';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-export default function MetricsTimeSeries() {
+interface MetricsTimeSeriesProps {
+    chartRef?: React.RefObject<HTMLElement | null>;
+}
+
+const MetricsTimeSeries = forwardRef<HTMLElement, MetricsTimeSeriesProps>(function MetricsTimeSeries({ chartRef }, ref) {
     const metrics = useStore((state) => state.metrics);
     const isLoading = useStore((state) => state.healthLoading.isFetchingMetrics);
 
@@ -21,7 +25,7 @@ export default function MetricsTimeSeries() {
     }
 
     return (
-        <div className="h-[300px] w-full">
+        <div className="h-[300px] w-full" ref={chartRef as React.RefObject<HTMLDivElement>}>
             <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={metrics} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
@@ -57,4 +61,6 @@ export default function MetricsTimeSeries() {
             </ResponsiveContainer>
         </div>
     );
-}
+});
+
+export default MetricsTimeSeries;

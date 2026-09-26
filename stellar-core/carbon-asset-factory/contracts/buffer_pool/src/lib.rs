@@ -29,7 +29,11 @@ impl BufferPoolContract {
             return Err(Error::AlreadyExists);
         }
 
-        if !(0..=10000).contains(&initial_percentage) {
+        if initial_percentage == 0 {
+            return Err(Error::ZeroPercentage);
+        }
+
+        if !(1..=10000).contains(&initial_percentage) {
             return Err(Error::InvalidPercentage);
         }
 
@@ -141,9 +145,21 @@ impl BufferPoolContract {
         carbon_contract_caller.require_auth();
 
         let percentage = get_replenishment_percentage(&env);
+
+        // Guard: zero percentage means no auto-deposit (prevents division-by-zero in modulo calc)
+        if percentage == 0 {
+            return Ok(false);
+        }
+
         let modulo = (10000 / percentage) as u32;
 
         if token_id % modulo == 0 {
+            // Check for duplicate token to prevent duplicate custody records
+            if has_custody_record(&env, token_id) {
+                emit_duplicate_auto_deposit_event(&env, token_id, &project_id);
+                return Ok(false);
+            }
+
             let record = CustodyRecord {
                 token_id,
                 deposited_at: env.ledger().timestamp(),
@@ -195,7 +211,11 @@ impl BufferPoolContract {
 
         governance.require_auth();
 
-        if !(0..=10000).contains(&new_percentage) {
+        if new_percentage == 0 {
+            return Err(Error::ZeroPercentage);
+        }
+
+        if !(1..=10000).contains(&new_percentage) {
             return Err(Error::InvalidPercentage);
         }
 

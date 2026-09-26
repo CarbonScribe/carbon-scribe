@@ -64,6 +64,12 @@
                     },
                     {
                       "key": {
+                        "symbol": "max_supply"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
                         "symbol": "methodology_id"
                       },
                       "val": {
@@ -324,6 +330,12 @@
                       "val": {
                         "bytes": "0707070707070707070707070707070707070707070707070707070707070707"
                       }
+                    },
+                    {
+                      "key": {
+                        "symbol": "max_supply"
+                      },
+                      "val": "void"
                     },
                     {
                       "key": {
@@ -642,12 +654,36 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "EventSequence"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "4"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "HostJurisdiction"
                             }
                           ]
                         },
                         "val": {
                           "string": "US"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "MintingFrozen"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": false
                         }
                       },
                       {
@@ -696,6 +732,18 @@
                         },
                         "val": {
                           "string": "C01"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "TotalMinted"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u32": 1
                         }
                       }
                     ]

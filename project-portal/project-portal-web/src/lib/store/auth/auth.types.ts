@@ -61,6 +61,11 @@ export type AuthLoadingState = {
   logout: boolean;
 };
 
+export type WalletState = {
+  publicKey: string | null;
+  connectionState: import("@/lib/stellar/wallet").WalletConnectionState;
+};
+
 export type AuthSlice = {
   user: User | null;
   token: string | null;
@@ -73,7 +78,12 @@ export type AuthSlice = {
   authLoading: AuthLoadingState;
   authError: string | null;
 
+  wallet: WalletState;
+
   login: (email: string, password: string, captcha_token?: string) => Promise<void>;
+  loginWithWallet: (publicKey: string, signedChallenge: string) => Promise<void>;
+  connectWallet: () => Promise<void>;
+  disconnectWallet: () => void;
   register: (data: RegisterPayload) => Promise<RegisterResponse>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;

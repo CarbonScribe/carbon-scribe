@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { MarketplaceService } from './marketplace.service';
+import { RateLimit, RateLimits } from '../rate-limit/rate-limit.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/v1/marketplace')
@@ -20,7 +21,12 @@ export class MarketplaceController {
     private readonly marketplaceService: MarketplaceService,
   ) {}
 
+  /**
+   * Search credits
+   * Rate limited to 20 requests per minute per IP
+   */
   @Get('search')
+  @RateLimit(RateLimits.SEARCH)
   async search(@Query() query: SearchQueryDto) {
     return this.searchService.search(query);
   }
@@ -72,7 +78,12 @@ export class MarketplaceController {
     return this.statsService.getFilters();
   }
 
+  /**
+   * Get similar credits
+   * Rate limited to 30 requests per minute per IP
+   */
   @Get('similar/:creditId')
+  @RateLimit(RateLimits.SIMILAR_CREDITS)
   async similar(@Param('creditId') creditId: string) {
     return this.marketplaceService.getSimilarCredits(creditId);
   }

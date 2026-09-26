@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial/geometry"
+	"carbon-scribe/project-portal/project-portal-backend/internal/geospatial/maps"
 	pkggeojson "carbon-scribe/project-portal/project-portal-backend/pkg/geojson"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type Service interface {
@@ -23,7 +25,7 @@ type Service interface {
 	FindWithin(ctx context.Context, q WithinQuery) ([]NearbyProject, error)
 	Intersect(ctx context.Context, req IntersectRequest) ([]IntersectResult, error)
 	BuildStaticMapURL(ctx context.Context, req StaticMapRequest) (string, error)
-	GetTile(ctx context.Context, z, x, y int, style string) ([]byte, string, bool, error)
+	GetTile(ctx context.Context, z, x, y int, style, format string) ([]byte, string, bool, error)
 	CreateGeofence(ctx context.Context, req CreateGeofenceRequest) (*Geofence, error)
 	CheckProjectGeofences(ctx context.Context, projectID uuid.UUID) ([]GeofenceCheckResult, error)
 	GetAdministrativeBoundaries(ctx context.Context, level int, countryCode string) ([]AdministrativeBoundary, error)
@@ -31,10 +33,11 @@ type Service interface {
 
 type service struct {
 	repo Repository
+	db   *gorm.DB
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, db *gorm.DB) Service {
+	return &service{repo: repo, db: db}
 }
 
 func (s *service) UploadProjectGeometry(ctx context.Context, projectID uuid.UUID, req UploadGeometryRequest) (*ProjectGeometry, error) {
@@ -137,11 +140,16 @@ func (s *service) BuildStaticMapURL(ctx context.Context, req StaticMapRequest) (
 	}
 }
 
-func (s *service) GetTile(ctx context.Context, z, x, y int, style string) ([]byte, string, bool, error) {
+func (s *service) GetTile(ctx context.Context, z, x, y int, style, format string) ([]byte, string, bool, error) {
 	if style == "" {
-		style = "streets-v12"
+		style = maps.StyleStreets
 	}
-	tileKey := fmt.Sprintf("%d/%d/%d/%s", z, x, y, style)
+	if format == "" {
+		format = maps.FormatPNG
+	}
+
+	tileKey := maps.TileKeyWithFormat(z, x, y, style, format)
+
 	cachedData, ct, ok, err := s.repo.GetCachedTile(ctx, tileKey)
 	if err != nil {
 		return nil, "", false, err
@@ -150,15 +158,10 @@ func (s *service) GetTile(ctx context.Context, z, x, y int, style string) ([]byt
 		return cachedData, ct, true, nil
 	}
 
-	provider := strings.ToLower(getEnvOrDefault("MAPS_DEFAULT_PROVIDER", "mapbox"))
-	payload := map[string]any{
-		"provider":  provider,
-		"style":     style,
-		"tile":      map[string]int{"z": z, "x": x, "y": y},
-		"generated": time.Now().UTC().Format(time.RFC3339),
+	data, contentType, err := maps.GenerateTile(ctx, s.db, z, x, y, style, format)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("generate tile: %w", err)
 	}
-	data, _ := json.Marshal(payload)
-	contentType := "application/json"
 
 	ttl := durationOrDefault(os.Getenv("MAPS_TILE_CACHE_TTL"), 24*time.Hour)
 	if err := s.repo.PutCachedTile(ctx, tileKey, data, contentType, style, z, x, y, ttl); err != nil {

@@ -84,6 +84,19 @@ describe('errorParser', () => {
       expect(parsed.message).toBe('Something went wrong');
     });
 
+    it('should extract human readable title from HTML error page strings', () => {
+      const htmlError = '<html><head><title>502 Bad Gateway</title></head><body><h1>502 Bad Gateway</h1></body></html>';
+      const parsed = parseApiError(htmlError, 502);
+      expect(parsed.message).toBe('502 Bad Gateway');
+      expect(parsed.code).toBe(ErrorCode.SERVER_ERROR);
+    });
+
+    it('should extract h1 content from HTML error pages when title is missing', () => {
+      const htmlError = '<html><body><h1>504 Gateway Timeout</h1></body></html>';
+      const parsed = parseApiError(htmlError, 504);
+      expect(parsed.message).toBe('504 Gateway Timeout');
+    });
+
     it('should handle Error objects', () => {
       const error = new Error('Network failure');
       const parsed = parseApiError(error);

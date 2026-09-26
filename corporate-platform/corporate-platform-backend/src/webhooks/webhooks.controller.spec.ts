@@ -4,6 +4,7 @@ import { StellarWebhookService } from './services/stellar-webhook.service';
 import { WebhookDispatcherService } from './services/webhook-dispatcher.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../rbac/guards/roles.guard';
+import { SecurityService } from '../security/security.service';
 
 describe('WebhooksController', () => {
   let controller: WebhooksController;
@@ -29,6 +30,10 @@ describe('WebhooksController', () => {
         {
           provide: WebhookDispatcherService,
           useValue: mockWebhookDispatcherService,
+        },
+        {
+          provide: SecurityService,
+          useValue: { logEvent: jest.fn() },
         },
       ],
     })

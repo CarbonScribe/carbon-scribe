@@ -17,6 +17,9 @@ pub struct CarbonAssetMetadata {
     pub vintage_year: u64,
     pub methodology_id: u32,
     pub geo_hash: BytesN<32>,
+    /// Optional per-asset max supply cap. If set, this asset type cannot be
+    /// minted beyond this count. Uses the contract-level MaxSupply when None.
+    pub max_supply: Option<u32>,
 }
 
 // Shared with RegulatoryCheck contract for validation.

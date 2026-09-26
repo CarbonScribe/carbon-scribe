@@ -12,9 +12,11 @@ import { BalanceChangeHandler } from './handlers/balance-change.handler';
 import { DatabaseModule } from '../shared/database/database.module';
 import { ConfigModule } from '../config/config.module';
 import { EventBusModule } from '../event-bus/event-bus.module';
+import { SecurityModule } from '../security/security.module';
+import { WebhookSignatureGuard } from './guards/webhook-signature.guard';
 
 @Module({
-  imports: [DatabaseModule, ConfigModule, EventBusModule],
+  imports: [DatabaseModule, ConfigModule, EventBusModule, SecurityModule],
   controllers: [WebhooksController],
   providers: [
     StellarWebhookService,
@@ -26,6 +28,7 @@ import { EventBusModule } from '../event-bus/event-bus.module';
     RetirementConfirmationHandler,
     MintEventHandler,
     BalanceChangeHandler,
+    WebhookSignatureGuard,
   ],
   exports: [StellarWebhookService, WebhookDispatcherService],
 })

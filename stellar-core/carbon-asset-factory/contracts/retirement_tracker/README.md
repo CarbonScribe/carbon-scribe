@@ -92,8 +92,8 @@ batch_retire_with_tx_hashes(env, token_ids, retiring_entity, reason, tx_hashes)
 
 - `retire`: executes one retirement with nonce fallback and returns the created record
 - `retire_with_tx_hash`: executes one retirement with a caller-supplied actual transaction hash
-- `batch_retire`: attempts each token with nonce fallback and returns only successful retirements
-- `batch_retire_with_tx_hashes`: attempts each token with caller-supplied transaction hashes
+- `batch_retire`: retires a batch (up to `MAX_BATCH_SIZE`) and returns a `BatchRetireResult` — `succeeded` holds the records that were retired, while `failed` holds a `(token_id, reason)` pair for every token that could not be retired. Each failure also emits a `RetirementFailedEvent`. Rejects the whole call with `BatchTooLarge` if the batch exceeds `MAX_BATCH_SIZE`.
+- `batch_retire_with_tx_hashes`: same failure-reporting behavior as `batch_retire`, with caller-supplied transaction hashes. Additionally rejects with `BatchLengthMismatch` if `token_ids` and `tx_hashes` have different lengths.
 
 ### Ledger Queries
 

@@ -17,6 +17,7 @@ import type {
   CreditQueryParams,
   CreditStats,
 } from '@/types/credit.types';
+import { reportError } from '@/lib/telemetry/errorReporter';
 
 interface UseCreditState<T> {
   data: T | null;
@@ -41,7 +42,7 @@ function useCredit<T>(
       setData(result);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch credit data');
-      console.error('Credit fetch error:', err);
+      reportError(err, 'useCredits', 'error');
     } finally {
       setLoading(false);
     }

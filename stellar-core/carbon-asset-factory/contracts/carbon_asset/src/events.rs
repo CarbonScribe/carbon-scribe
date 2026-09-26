@@ -62,3 +62,48 @@ pub struct Sep41BurnEvent {
     pub from: Address,
     pub amount: i128,
 }
+
+// Mint cap events (issue #472)
+
+/// Emitted when the contract-level max supply is configured by the admin.
+#[contractevent]
+pub struct MintCapSetEvent {
+    pub sequence: u64,
+    pub max_supply: u32,
+    pub set_by: Address,
+}
+
+/// Emitted when the max supply cap is reached during a mint operation.
+#[contractevent]
+pub struct MintCapReachedEvent {
+    pub sequence: u64,
+    pub total_minted: u32,
+    pub max_supply: u32,
+}
+
+/// Emitted when an admin permanently freezes minting.
+#[contractevent]
+pub struct MintingFrozenEvent {
+    pub sequence: u64,
+    pub frozen_by: Address,
+}
+
+// Admin transfer events (issue #557)
+
+/// Emitted when the current admin proposes a successor. get_admin() still
+/// returns current_admin until a matching accept_admin_transfer lands.
+#[contractevent]
+pub struct AdminTransferProposedEvent {
+    pub sequence: u64,
+    pub current_admin: Address,
+    pub proposed_admin: Address,
+}
+
+/// Emitted when a pending admin transfer is accepted and DataKey::Admin is
+/// rotated to new_admin.
+#[contractevent]
+pub struct AdminTransferAcceptedEvent {
+    pub sequence: u64,
+    pub old_admin: Address,
+    pub new_admin: Address,
+}

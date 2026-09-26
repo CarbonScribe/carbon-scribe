@@ -159,7 +159,7 @@ func (c *Client) Search(ctx context.Context, indexName string, query interface{}
 
 // Health checks the cluster health
 func (c *Client) Health(ctx context.Context) error {
-	res, err := c.es.Cluster.Health()
+	res, err := c.es.Cluster.Health(c.es.Cluster.Health.WithContext(ctx))
 	if err != nil {
 		return fmt.Errorf("error getting health: %w", err)
 	}

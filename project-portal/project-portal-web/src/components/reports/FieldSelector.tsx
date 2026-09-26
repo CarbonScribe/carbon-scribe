@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import type { FieldConfig, FieldMetadata } from '@/store/reports.types';
-import { Plus, X } from 'lucide-react';
+import type { FieldConfig, FieldMetadata } from "@/lib/store/store";
+import { Plus, X } from "lucide-react";
 
-type AggregateFunction = 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX';
+type AggregateFunction = "SUM" | "AVG" | "COUNT" | "MIN" | "MAX";
 
 interface FieldSelectorProps {
   availableFields: FieldMetadata[];
@@ -15,11 +15,11 @@ interface FieldSelectorProps {
 }
 
 const AGG_OPTIONS: { value: AggregateFunction; label: string }[] = [
-  { value: 'SUM', label: 'Sum' },
-  { value: 'AVG', label: 'Avg' },
-  { value: 'COUNT', label: 'Count' },
-  { value: 'MIN', label: 'Min' },
-  { value: 'MAX', label: 'Max' },
+  { value: "SUM", label: "Sum" },
+  { value: "AVG", label: "Avg" },
+  { value: "COUNT", label: "Count" },
+  { value: "MIN", label: "Min" },
+  { value: "MAX", label: "Max" },
 ];
 
 export default function FieldSelector({
@@ -44,7 +44,9 @@ export default function FieldSelector({
       <div className="flex items-center justify-between">
         <h4 className="font-semibold text-gray-900">Fields</h4>
         {availableFields.length === 0 && (
-          <span className="text-sm text-gray-500">Load a dataset to see fields</span>
+          <span className="text-sm text-gray-500">
+            Load a dataset to see fields
+          </span>
         )}
       </div>
 
@@ -54,17 +56,27 @@ export default function FieldSelector({
             key={`${field.name}-${idx}`}
             className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200"
           >
-            <span className="flex-1 font-medium text-gray-800 truncate">{field.alias || field.name}</span>
-            {availableFields.find((f) => f.name === field.name)?.is_aggregatable && (
+            <span className="flex-1 font-medium text-gray-800 truncate">
+              {field.alias || field.name}
+            </span>
+            {availableFields.find((f) => f.name === field.name)
+              ?.is_aggregatable && (
               <select
-                value={field.aggregate ?? ''}
-                onChange={(e) => onUpdate(idx, { aggregate: (e.target.value || undefined) as AggregateFunction })}
+                value={field.aggregate ?? ""}
+                onChange={(e) =>
+                  onUpdate(idx, {
+                    aggregate: (e.target.value ||
+                      undefined) as AggregateFunction,
+                  })
+                }
                 className="text-sm border border-gray-300 rounded px-2 py-1"
                 disabled={disabled}
               >
                 <option value="">—</option>
                 {AGG_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
                 ))}
               </select>
             )}

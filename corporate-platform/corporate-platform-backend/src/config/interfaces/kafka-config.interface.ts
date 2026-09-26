@@ -11,4 +11,10 @@ export interface KafkaConfig {
     initialRetryTime?: number;
     retries?: number;
   };
+  groupId: string;
+  producerTimeout: number;
+  consumerTimeout: number;
+  maxRetries: number;
+  retryDelay: number;
+  connectionTimeout: number;
 }

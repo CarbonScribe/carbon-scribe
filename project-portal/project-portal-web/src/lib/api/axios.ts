@@ -61,22 +61,49 @@ export function setOnUnauthorized(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-// Track shown errors to prevent duplicate toasts
-const shownErrors = new Set<string>();
-const ERROR_COOLDOWN = 5000; // 5 seconds
-
-// Track if refresh is already in progress
+// --- Token refresh queue ---
 let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let lastRefreshAttempt = 0;
+const REFRESH_COOLDOWN_MS = 5_000;
+const MAX_RETRY_ATTEMPTS = 3;
 
-function onRefreshed(token: string) {
-  refreshSubscribers.forEach(cb => cb(token));
+interface RefreshQueueItem {
+  resolve: (token: string) => void;
+  reject: (error: Error) => void;
+}
+
+let refreshSubscribers: RefreshQueueItem[] = [];
+
+function onRefreshed(token: string | null) {
+  if (token) {
+    refreshSubscribers.forEach(({ resolve }) => resolve(token));
+  } else {
+    const error = new Error('Token refresh failed');
+    refreshSubscribers.forEach(({ reject }) => reject(error));
+  }
   refreshSubscribers = [];
 }
 
-function addRefreshSubscriber(cb: (token: string) => void) {
-  refreshSubscribers.push(cb);
+function addRefreshSubscriber(): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    refreshSubscribers.push({ resolve, reject });
+  });
 }
+
+function logRefreshAttempt(event: string, url: string, error?: unknown) {
+  const timestamp = new Date().toISOString();
+  const message = error instanceof Error ? error.message : '';
+  console.debug(`[Axios] [${timestamp}] Refresh event: ${event}`, {
+    url,
+    error: message,
+    isRefreshing,
+    queueLength: refreshSubscribers.length,
+  });
+}
+
+// Track shown errors to prevent duplicate toasts
+const shownErrors = new Set<string>();
+const ERROR_COOLDOWN = 5000; // 5 seconds
 
 api.interceptors.response.use(
   (res) => res,
@@ -88,55 +115,73 @@ api.interceptors.response.use(
       requestUrl.includes('/auth/login') ||
       requestUrl.includes('/auth/logout') ||
       requestUrl.includes('/auth/refresh');
-    
-    if (status === 401 && onUnauthorized && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
-      originalRequest._retry = true;
-      
-      // If already refreshing, queue this request
-      if (isRefreshing) {
-        return new Promise((resolve) => {
-          addRefreshSubscriber((token: string) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            resolve(api(originalRequest));
-          });
-        });
+
+    if (status === 401 && originalRequest && !isAuthEndpoint) {
+      const retryCount = originalRequest._retryCount || 0;
+
+      if (retryCount >= MAX_RETRY_ATTEMPTS) {
+        console.error(`[Axios] Max retries (${MAX_RETRY_ATTEMPTS}) exceeded for ${requestUrl}`);
+        logRefreshAttempt('max_retries_exceeded', requestUrl);
+        onUnauthorized?.();
+        return Promise.reject(err);
       }
-      
+
+      originalRequest._retryCount = retryCount + 1;
+
+      if (isRefreshing) {
+        console.debug('[Axios] Refresh in progress, queuing request:', requestUrl);
+        try {
+          const newToken = await addRefreshSubscriber();
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        } catch {
+          return Promise.reject(err);
+        }
+      }
+
+      const now = Date.now();
+      if (now - lastRefreshAttempt < REFRESH_COOLDOWN_MS) {
+        console.warn('[Axios] Refresh on cooldown, rejecting request:', requestUrl);
+        logRefreshAttempt('cooldown', requestUrl);
+        return Promise.reject(err);
+      }
+
       isRefreshing = true;
-      
+      lastRefreshAttempt = now;
+
+      logRefreshAttempt('started', requestUrl);
+
       try {
-        // Attempt to refresh session
         const { useStore } = await import("@/lib/store/store");
         const state = useStore.getState();
-        
         await state.refreshSession();
-        
+
         const newToken = state.token;
-        if (newToken) {
-          // Update auth header
-          setAuthToken(newToken);
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          
-          // Notify queued subscribers
-          onRefreshed(newToken);
-          isRefreshing = false;
-          
-          // Retry original request
-          return api(originalRequest);
+        if (!newToken) {
+          throw new Error('No token returned after refresh');
         }
-      } catch (refreshError) {
+
+        logRefreshAttempt('success', requestUrl);
+        console.debug('[Axios] Token refresh successful, retrying queued requests');
+        setAuthToken(newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        onRefreshed(newToken);
         isRefreshing = false;
-        onRefreshed(''); // Clear subscribers
-        // Refresh failed - show toast and logout
+
+        return api(originalRequest);
+      } catch (refreshError) {
+        logRefreshAttempt('failed', requestUrl, refreshError);
+        console.error('[Axios] Token refresh failed:', refreshError instanceof Error ? refreshError.message : refreshError);
+        isRefreshing = false;
+        onRefreshed(null);
         showErrorToast("Session expired", {
           description: "Please sign in again to continue.",
         });
-        onUnauthorized();
+        onUnauthorized?.();
+        return Promise.reject(err);
       }
-      
-      return Promise.reject(err);
     }
-    
+
     // Prevent duplicate error toasts within cooldown period (for non-401 errors)
     const isTimeout = err.code === 'ECONNABORTED' || err.message?.toLowerCase().includes('timeout');
     const errorMessage = isTimeout
@@ -149,12 +194,11 @@ api.interceptors.response.use(
 
     const errorKey = `${status}-${errorMessage}`;
     const shouldShowToast = !shownErrors.has(errorKey);
-    
+
     if (shouldShowToast && status !== 401) {
       shownErrors.add(errorKey);
       setTimeout(() => shownErrors.delete(errorKey), ERROR_COOLDOWN);
 
-      // Don't show toast for expected errors (forbidden, not found)
       if (status !== 403 && status !== 404) {
         showErrorToast(errorMessage, {
           description: errorDescription,
@@ -162,7 +206,7 @@ api.interceptors.response.use(
         });
       }
     }
-    
+
     return Promise.reject(err);
   },
 );

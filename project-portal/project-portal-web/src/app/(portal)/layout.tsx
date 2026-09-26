@@ -1,27 +1,23 @@
-'use client';
-
+import { ReactNode } from 'react';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import PortalNavbar from '@/components/PortalNavbar';
 import PortalSidebar from '@/components/PortalSidebar';
+import PortalNavbar from '@/components/PortalNavbar';
 
 export default function PortalLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <ProtectedRoute>
-      {/* Skip to main content link for keyboard users */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-emerald-600 focus:text-white focus:rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-      >
-        Skip to main content
-      </a>
-      <PortalNavbar />
-      <div className="flex min-h-[calc(100vh-5rem)] max-h-[calc(100vh-5rem)] overflow-hidden">
+    <ProtectedRoute requireVerifiedEmail={true}>
+      <div className="flex h-screen bg-gray-50">
         <PortalSidebar />
-        <main id="main-content" className="flex-1 p-4 md:p-6 lg:p-8 bg-white/30 backdrop-blur-[1px] overflow-y-auto" tabIndex={-1}>{children}</main>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <PortalNavbar />
+          <main className="flex-1 overflow-y-auto p-6">
+            {children}
+          </main>
+        </div>
       </div>
     </ProtectedRoute>
   );

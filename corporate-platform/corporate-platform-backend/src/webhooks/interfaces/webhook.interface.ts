@@ -24,6 +24,6 @@ export interface WebhookPayload {
 }
 
 export interface IWebhookHandler {
-  handle(payload: any): Promise<void>;
+  handle(payload: any, tx?: any): Promise<void>;
   supports(eventType: string): boolean;
 }

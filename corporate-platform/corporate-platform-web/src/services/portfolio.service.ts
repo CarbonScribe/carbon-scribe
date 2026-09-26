@@ -1,4 +1,4 @@
-import { apiClient, ApiResponse } from './api-client';
+import { apiClient, ApiResponse, ApiFetchOptions } from './api-client';
 
 // Types for Portfolio API responses (can be refined based on backend interfaces)
 export interface PortfolioSummaryMetrics {
@@ -68,35 +68,35 @@ export interface PortfolioAnalytics {
 }
 
 export const portfolioService = {
-  async getSummary(): Promise<ApiResponse<PortfolioSummaryMetrics>> {
-    return apiClient.get<PortfolioSummaryMetrics>('/portfolio/summary');
+  async getSummary(options?: ApiFetchOptions): Promise<ApiResponse<PortfolioSummaryMetrics>> {
+    return apiClient.get<PortfolioSummaryMetrics>('/portfolio/summary', options);
   },
-  async getPerformance(): Promise<ApiResponse<PortfolioPerformance>> {
-    return apiClient.get<PortfolioPerformance>('/portfolio/performance');
+  async getPerformance(options?: ApiFetchOptions): Promise<ApiResponse<PortfolioPerformance>> {
+    return apiClient.get<PortfolioPerformance>('/portfolio/performance', options);
   },
-  async getComposition(): Promise<ApiResponse<PortfolioComposition>> {
-    return apiClient.get<PortfolioComposition>('/portfolio/composition');
+  async getComposition(options?: ApiFetchOptions): Promise<ApiResponse<PortfolioComposition>> {
+    return apiClient.get<PortfolioComposition>('/portfolio/composition', options);
   },
-  async getTimeline(params?: { startDate?: string; endDate?: string; aggregation?: string }): Promise<ApiResponse<PortfolioTimeline>> {
+  async getTimeline(params?: { startDate?: string; endDate?: string; aggregation?: string }, options?: ApiFetchOptions): Promise<ApiResponse<PortfolioTimeline>> {
     const query = params
       ? '?' + new URLSearchParams(params as Record<string, string>).toString()
       : '';
-    return apiClient.get<PortfolioTimeline>(`/portfolio/timeline${query}`);
+    return apiClient.get<PortfolioTimeline>(`/portfolio/timeline${query}`, options);
   },
-  async getRisk(): Promise<ApiResponse<PortfolioRisk>> {
-    return apiClient.get<PortfolioRisk>('/portfolio/risk');
+  async getRisk(options?: ApiFetchOptions): Promise<ApiResponse<PortfolioRisk>> {
+    return apiClient.get<PortfolioRisk>('/portfolio/risk', options);
   },
-  async getHoldings(params?: { page?: number; pageSize?: number }): Promise<ApiResponse<PortfolioHoldingsResponse>> {
+  async getHoldings(params?: { page?: number; pageSize?: number }, options?: ApiFetchOptions): Promise<ApiResponse<PortfolioHoldingsResponse>> {
     const query = params
       ? '?' + new URLSearchParams(params as Record<string, string>).toString()
       : '';
-    return apiClient.get<PortfolioHoldingsResponse>(`/portfolio/holdings${query}`);
+    return apiClient.get<PortfolioHoldingsResponse>(`/portfolio/holdings${query}`, options);
   },
-  async getAnalytics(): Promise<ApiResponse<PortfolioAnalytics>> {
-    return apiClient.get<PortfolioAnalytics>('/portfolio/analytics');
+  async getAnalytics(options?: ApiFetchOptions): Promise<ApiResponse<PortfolioAnalytics>> {
+    return apiClient.get<PortfolioAnalytics>('/portfolio/analytics', options);
   },
-  async getHoldingById(id: string): Promise<ApiResponse<PortfolioHolding>> {
-    return apiClient.get<PortfolioHolding>(`/portfolio/${id}`);
+  async getHoldingById(id: string, options?: ApiFetchOptions): Promise<ApiResponse<PortfolioHolding>> {
+    return apiClient.get<PortfolioHolding>(`/portfolio/${id}`, options);
   },
 };
 

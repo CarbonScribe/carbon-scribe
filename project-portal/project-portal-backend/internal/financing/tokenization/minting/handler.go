@@ -2,6 +2,9 @@ package minting
 
 import (
 	"net/http"
+	"time"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -9,10 +12,16 @@ import (
 
 type Handler struct {
 	service Service
+	rl      *middleware.RateLimiter
 }
 
 func NewHandler(service Service) *Handler {
 	return &Handler{service: service}
+}
+
+// WithRateLimiter returns a new Handler with the supplied RateLimiter attached.
+func (h *Handler) WithRateLimiter(rl *middleware.RateLimiter) *Handler {
+	return &Handler{service: h.service, rl: rl}
 }
 
 // ManualMint handles POST /api/v1/projects/:id/mint
@@ -59,11 +68,21 @@ func (h *Handler) GetMintingStatus(c *gin.Context) {
 	})
 }
 
-// RegisterRoutes registers the minting routes
+// RegisterRoutes registers the minting routes.
+// mint: 10 requests per minute per user/IP
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	projects := rg.Group("/projects/:id")
-	{
+
+	if h.rl != nil {
+		mintLimit := h.rl.LimitWithGraduatedCooldown(middleware.RouteConfig{
+			MaxRequests: 10,
+			Window:      1 * time.Minute,
+			KeyPrefix:   "rl:minting:mint",
+		}, 3, 60)
+		projects.POST("/mint", mintLimit, h.ManualMint)
+	} else {
 		projects.POST("/mint", h.ManualMint)
-		projects.GET("/minting-status", h.GetMintingStatus)
 	}
+
+	projects.GET("/minting-status", h.GetMintingStatus)
 }

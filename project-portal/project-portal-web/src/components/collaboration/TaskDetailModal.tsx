@@ -1,9 +1,8 @@
 'use client';
 
-import { X, Loader2, Calendar, User } from 'lucide-react';
+import { X, Calendar, User } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
-import { showToast } from '@/components/ui/Toast';
-import { TaskStatuses, TaskPriorities } from '@/lib/store/collaboration/collaboration.types';
+import { TaskStatuses } from '@/lib/store/collaboration/collaboration.types';
 import type { Task } from '@/lib/store/collaboration/collaboration.types';
 
 interface TaskDetailModalProps {
@@ -14,14 +13,12 @@ interface TaskDetailModalProps {
 
 export default function TaskDetailModal({ task, isOpen, onClose }: TaskDetailModalProps) {
   const updateTask = useStore((s) => s.updateTask);
-  const loading = useStore((s) => s.collaborationLoading.updateTask);
+  const loading = useStore((s) => task ? s.updatingTaskIds?.includes(task.id) : false);
 
   if (!isOpen || !task) return null;
 
   const handleStatusChange = async (newStatus: string) => {
-    const updated = await updateTask(task.id, { status: newStatus });
-    if (updated) showToast('success', 'Status updated.');
-    else showToast('error', 'Failed to update.');
+    await updateTask(task.id, { status: newStatus });
   };
 
   return (

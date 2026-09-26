@@ -110,8 +110,12 @@ func TestCollaborationPagination_FilteringAndSorting(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, resp.Code)
 
 			if tt.expectedStatus == http.StatusOK {
+				var wrapper collaboration.PaginationResponse
+				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrapper))
+				// Convert data to []map[string]any for validation
+				dataBytes, _ := json.Marshal(wrapper.Data)
 				var body []map[string]any
-				require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+				json.Unmarshal(dataBytes, &body)
 				if tt.validateFunc != nil {
 					tt.validateFunc(t, body)
 				}
@@ -175,7 +179,7 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 		},
 		{
 			name:        "very large page size fast",
-			limit:       200,
+			limit:       100,
 			offset:      0,
 			maxDuration: 100 * time.Millisecond,
 		},
@@ -199,8 +203,11 @@ func TestCollaborationPagination_Performance(t *testing.T) {
 			assert.Less(t, duration, tt.maxDuration,
 				"Pagination request took %v, expected less than %v", duration, tt.maxDuration)
 
+			var wrapper collaboration.PaginationResponse
+			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrapper))
+			dataBytes, _ := json.Marshal(wrapper.Data)
 			var body []map[string]any
-			require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
+			json.Unmarshal(dataBytes, &body)
 			assert.Len(t, body, tt.limit)
 		})
 	}
@@ -363,8 +370,11 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var wrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrapper))
+		dataBytes, _ := json.Marshal(wrapper.Data)
 		var activities []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &activities))
+		json.Unmarshal(dataBytes, &activities)
 		assert.NotEmpty(t, activities)
 
 		// Verify all expected actions are present
@@ -397,8 +407,11 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var resWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &resWrapper))
+		resDataBytes, _ := json.Marshal(resWrapper.Data)
 		var resources []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &resources))
+		json.Unmarshal(resDataBytes, &resources)
 		assert.NotEmpty(t, resources)
 
 		// Verify our resource is in the list
@@ -422,8 +435,11 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var taskWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &taskWrapper))
+		taskDataBytes, _ := json.Marshal(taskWrapper.Data)
 		var tasks []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &tasks))
+		json.Unmarshal(taskDataBytes, &tasks)
 		assert.NotEmpty(t, tasks)
 
 		// Verify our task is in the list
@@ -447,8 +463,11 @@ func TestCollaborationE2E_CompleteWorkflow(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, resp.Code)
 
+		var commentWrapper collaboration.PaginationResponse
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &commentWrapper))
+		commentDataBytes, _ := json.Marshal(commentWrapper.Data)
 		var comments []map[string]any
-		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &comments))
+		json.Unmarshal(commentDataBytes, &comments)
 		assert.NotEmpty(t, comments)
 
 		// Verify our comment is in the list

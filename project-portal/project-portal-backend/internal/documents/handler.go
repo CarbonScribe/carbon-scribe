@@ -1,9 +1,13 @@
 package documents
 
 import (
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -148,6 +152,19 @@ func (h *Handler) Upload(c *gin.Context) {
 
 	doc, err := h.svc.UploadFile(ctx, &req, fh, userID)
 	if err != nil {
+		// Audit-log file validation failures with full detail so security teams
+		// can detect spoofing attempts.
+		var mismatch *ValidationMismatchError
+		if errors.As(err, &mismatch) {
+			logValidationFailure("Upload", c, mismatch.Filename, mismatch.ClaimedMIME, mismatch.DetectedMIME, "MIME type mismatch")
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": mismatch.Error()})
+			return
+		}
+		if isValidationError(err) {
+			logValidationFailure("Upload", c, fh.Filename, fh.Header.Get("Content-Type"), "", err.Error())
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -253,6 +270,18 @@ func (h *Handler) UploadVersion(c *gin.Context) {
 
 	version, err := h.svc.UploadVersion(ctx, id, &req, fh, userID)
 	if err != nil {
+		// Audit-log file validation failures.
+		var mismatch *ValidationMismatchError
+		if errors.As(err, &mismatch) {
+			logValidationFailure("UploadVersion", c, mismatch.Filename, mismatch.ClaimedMIME, mismatch.DetectedMIME, "MIME type mismatch")
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": mismatch.Error()})
+			return
+		}
+		if isValidationError(err) {
+			logValidationFailure("UploadVersion", c, fh.Filename, fh.Header.Get("Content-Type"), "", err.Error())
+			c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -348,3 +377,44 @@ func containsAny(s string, subs ...string) bool {
 	}
 	return false
 }
+
+// logValidationFailure emits a structured audit log entry whenever a file
+// upload is rejected due to MIME type mismatch or content validation failure.
+// Fields are written at WARN level so they can be captured by log aggregators.
+func logValidationFailure(handler string, c *gin.Context, filename, claimedMIME, detectedMIME, reason string) {
+	userID := ""
+	if u := extractUserID(c); u != nil {
+		userID = u.String()
+	}
+	log.Printf(
+		"[SECURITY] file_validation_failure handler=%s ip=%s user_id=%s filename=%q claimed_mime=%q detected_mime=%q reason=%q ts=%s",
+		handler,
+		c.ClientIP(),
+		userID,
+		filename,
+		claimedMIME,
+		detectedMIME,
+		reason,
+		time.Now().UTC().Format(time.RFC3339),
+	)
+}
+
+// isValidationError returns true when the error originated from file content
+// validation (blocked extension, unsupported MIME, magic byte failure, ZIP bomb).
+func isValidationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return containsAny(msg,
+		"file validation failed",
+		"file type not allowed",
+		"unsupported file type",
+		"file content does not match",
+		"ZIP archive rejected",
+		"file exceeds maximum",
+	)
+}
+
+// Ensure unused import (fmt) from original file doesn't cause a compile error.
+var _ = fmt.Sprintf

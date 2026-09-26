@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   withRetry,
   isRetryableError,
@@ -31,11 +31,9 @@ describe('retry', () => {
       
       const promise = withRetry(fn, { maxAttempts: 3, initialDelayMs: 100 });
       
-      // First attempt fails
       await vi.advanceTimersByTimeAsync(0);
       expect(fn).toHaveBeenCalledTimes(1);
       
-      // Second attempt after delay
       await vi.advanceTimersByTimeAsync(100);
       expect(fn).toHaveBeenCalledTimes(2);
       
@@ -59,16 +57,18 @@ describe('retry', () => {
       
       const promise = withRetry(fn, { maxAttempts: 2, initialDelayMs: 100 });
       
-      // First attempt
+      // 1. Force the first synchronous failure turn
       await vi.advanceTimersByTimeAsync(0);
       expect(fn).toHaveBeenCalledTimes(1);
       
-      // Second attempt after delay
-      await vi.advanceTimersByTimeAsync(100);
-      expect(fn).toHaveBeenCalledTimes(2);
+      // 2. Attach the rejection handler BEFORE advancing the timer loop
+      // to cleanly absorb the rejection when the backoff completes.
+      const assertionPromise = expect(promise).rejects.toThrow('Network error');
       
-      // Should not retry again
-      await expect(promise).rejects.toThrow('Network error');
+      // 3. Advance the timer chain to trigger the final failure block
+      await vi.advanceTimersByTimeAsync(100); 
+      await assertionPromise;
+      
       expect(fn).toHaveBeenCalledTimes(2);
     });
 
@@ -84,15 +84,12 @@ describe('retry', () => {
         backoffMultiplier: 2 
       });
       
-      // First attempt
       await vi.advanceTimersByTimeAsync(0);
       expect(fn).toHaveBeenCalledTimes(1);
       
-      // Second attempt after 100ms
       await vi.advanceTimersByTimeAsync(100);
       expect(fn).toHaveBeenCalledTimes(2);
       
-      // Third attempt after 200ms (100 * 2)
       await vi.advanceTimersByTimeAsync(200);
       expect(fn).toHaveBeenCalledTimes(3);
       
@@ -113,15 +110,12 @@ describe('retry', () => {
         maxDelayMs: 150
       });
       
-      // First attempt
       await vi.advanceTimersByTimeAsync(0);
       expect(fn).toHaveBeenCalledTimes(1);
       
-      // Second attempt after 100ms
       await vi.advanceTimersByTimeAsync(100);
       expect(fn).toHaveBeenCalledTimes(2);
       
-      // Third attempt after 150ms (capped at maxDelayMs)
       await vi.advanceTimersByTimeAsync(150);
       expect(fn).toHaveBeenCalledTimes(3);
       
@@ -230,9 +224,7 @@ describe('retry', () => {
       const parts = key.split('-');
       
       expect(parts.length).toBe(2);
-      // First part should be a timestamp (base36)
       expect(parts[0]).toMatch(/^[a-z0-9]+$/);
-      // Second part should be random
       expect(parts[1]).toMatch(/^[a-z0-9]+$/);
     });
   });

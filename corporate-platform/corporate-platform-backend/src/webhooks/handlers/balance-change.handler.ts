@@ -12,7 +12,7 @@ export class BalanceChangeHandler implements IWebhookHandler {
     return eventType === 'account.updated';
   }
 
-  async handle(payload: any): Promise<void> {
+  async handle(payload: any, _tx?: any): Promise<void> {
     this.logger.log(
       `Handling account balance update for: ${payload.accountId}`,
     );

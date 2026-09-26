@@ -142,13 +142,23 @@ describe('ConnectivityContext', () => {
 
     const { result } = renderHook(() => useConnectivity(), { wrapper });
 
-    const beforeTime = result.current.state.lastSuccessfulApiCall;
+    // Store the initial value
+    const beforeTime = result.current.state.lastSuccessfulApiCall ?? 0;
 
     act(() => {
+      // Mock Date.now to return a different value for the API call
+      const originalNow = Date.now;
+      vi.useFakeTimers();
+      vi.setSystemTime(beforeTime + 1000);
+      
       result.current.recordApiCall(true);
+      
+      vi.useRealTimers();
     });
 
-    expect(result.current.state.lastSuccessfulApiCall).toBeGreaterThan(beforeTime);
+    // The value should have increased
+    const afterTime = result.current.state.lastSuccessfulApiCall ?? 0;
+    expect(afterTime).toBeGreaterThan(beforeTime);
   });
 
   it('should not update lastSuccessfulApiCall on failed API call', () => {
@@ -158,7 +168,8 @@ describe('ConnectivityContext', () => {
 
     const { result } = renderHook(() => useConnectivity(), { wrapper });
 
-    const beforeTime = result.current.state.lastSuccessfulApiCall;
+    // Ensure beforeTime is a number, default to 0 if null
+    const beforeTime = result.current.state.lastSuccessfulApiCall ?? 0;
 
     act(() => {
       result.current.recordApiCall(false);
@@ -222,4 +233,3 @@ describe('ConnectivityContext', () => {
     expect(result.current.state.pendingOperations).toBe(0);
   });
 });
-</write_to_file>

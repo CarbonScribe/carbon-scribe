@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CollaborationSlice } from './collaboration.types';
 import { createCollaborationSlice } from './collaborationSlice';
 import * as api from './collaboration.api';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
+
+vi.mock('@/lib/utils/toast', () => ({
+  showSuccessToast: vi.fn(),
+  showErrorToast: vi.fn(),
+}));
 
 // Mock the API module
 vi.mock('./collaboration.api', () => ({
@@ -356,28 +362,50 @@ describe('TeamSlice', () => {
     });
 
     it('should update team task status', async () => {
-      const mockUpdatedTask = {
+      const initialTask = {
         id: 'task-1',
         project_id: 'team-project-1',
         created_by: 'manager-123',
-        title: 'Updated task title',
-        description: 'Updated task description',
-        status: 'done' as const,
+        title: 'Initial task title',
+        description: 'Initial task description',
+        status: 'todo' as const,
         priority: 'medium' as const,
         time_logged: 0,
         created_at: '2023-01-01T00:00:00Z',
+        updated_at: '2023-01-01T00:00:00Z',
+      };
+      slice.tasks = [initialTask];
+      slice.updatingTaskIds = [];
+
+      const mockUpdatedTask = {
+        ...initialTask,
+        title: 'Updated task title',
+        description: 'Updated task description',
+        status: 'done' as const,
         updated_at: '2023-01-03T00:00:00Z',
       };
-      mockApi.updateTaskApi.mockResolvedValue(mockUpdatedTask);
 
-      const result = await slice.updateTask('task-1', {
+      let resolveApi: (val: any) => void;
+      const apiPromise = new Promise((resolve) => { resolveApi = resolve; });
+      mockApi.updateTaskApi.mockReturnValue(apiPromise as any);
+
+      const updatePromise = slice.updateTask('task-1', {
         status: 'done',
       });
 
+      // Assert optimistic update
+      expect(slice.tasks[0].status).toBe('done');
+      expect(slice.updatingTaskIds).toContain('task-1');
       expect(mockApi.updateTaskApi).toHaveBeenCalledWith('task-1', {
         status: 'done',
       });
+
+      resolveApi!(mockUpdatedTask);
+      const result = await updatePromise;
+
       expect(result).toEqual(mockUpdatedTask);
+      expect(slice.updatingTaskIds).not.toContain('task-1');
+      expect(showSuccessToast).toHaveBeenCalledWith('Task updated successfully');
     });
   });
 
@@ -630,6 +658,7 @@ describe('TeamSlice', () => {
       expect(slice.comments).toEqual([]);
       expect(slice.tasks).toEqual([]);
       expect(slice.resources).toEqual([]);
+      expect(slice.updatingTaskIds).toEqual([]);
       expect(slice.collaborationLoading).toEqual({
         members: false,
         invitations: false,

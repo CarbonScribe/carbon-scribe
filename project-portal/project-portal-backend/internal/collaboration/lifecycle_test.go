@@ -536,10 +536,10 @@ func TestInvitationLifecycle_EmailUniquenessInProject(t *testing.T) {
 
 	// Simulate checking for existing pending invitation
 	existingInvitation := *invitation1
-	mockRepo.On("ListInvitations", ctx, projectID).Return([]ProjectInvitation{existingInvitation}, nil)
+	mockRepo.On("ListInvitations", ctx, projectID, 20, 0).Return([]ProjectInvitation{existingInvitation}, nil)
 
 	// Try to create another invitation for the same email
-	invitations, err := mockRepo.ListInvitations(ctx, projectID)
+	invitations, err := mockRepo.ListInvitations(ctx, projectID, 20, 0)
 	require.NoError(t, err)
 
 	// Check for existing pending invitation for the same email

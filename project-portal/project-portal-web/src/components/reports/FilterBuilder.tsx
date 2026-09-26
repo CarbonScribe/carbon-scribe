@@ -1,18 +1,18 @@
-'use client';
+"use client";
 
-import type { FilterConfig } from '@/store/reports.types';
-import { Plus, Trash2 } from 'lucide-react';
+import type { FilterConfig } from "@/lib/store/store";
+import { Plus, Trash2 } from "lucide-react";
 
 const OPERATORS = [
-  { value: 'eq', label: 'Equals' },
-  { value: 'ne', label: 'Not equals' },
-  { value: 'gt', label: 'Greater than' },
-  { value: 'gte', label: 'Greater or equal' },
-  { value: 'lt', label: 'Less than' },
-  { value: 'lte', label: 'Less or equal' },
-  { value: 'like', label: 'Contains' },
-  { value: 'in', label: 'In list' },
-  { value: 'between', label: 'Between' },
+  { value: "eq", label: "Equals" },
+  { value: "ne", label: "Not equals" },
+  { value: "gt", label: "Greater than" },
+  { value: "gte", label: "Greater or equal" },
+  { value: "lt", label: "Less than" },
+  { value: "lte", label: "Less or equal" },
+  { value: "like", label: "Contains" },
+  { value: "in", label: "In list" },
+  { value: "between", label: "Between" },
 ];
 
 interface FilterBuilderProps {
@@ -32,7 +32,12 @@ export default function FilterBuilder({
     const first = fieldOptions[0];
     onChange([
       ...filters,
-      { field: first?.name ?? '', operator: 'eq', value: '', logic: filters.length ? 'AND' : undefined },
+      {
+        field: first?.name ?? "",
+        operator: "eq",
+        value: "",
+        logic: filters.length ? "AND" : undefined,
+      },
     ]);
   };
 
@@ -45,7 +50,7 @@ export default function FilterBuilder({
   const removeFilter = (index: number) => {
     const next = filters.filter((_, i) => i !== index);
     next.forEach((f, i) => {
-      f.logic = i === 0 ? undefined : 'AND';
+      f.logic = i === 0 ? undefined : "AND";
     });
     onChange(next);
   };
@@ -66,16 +71,23 @@ export default function FilterBuilder({
       </div>
 
       {filters.length === 0 && (
-        <p className="text-sm text-gray-500">No filters. Add a condition to narrow results.</p>
+        <p className="text-sm text-gray-500">
+          No filters. Add a condition to narrow results.
+        </p>
       )}
 
       <div className="space-y-2">
         {filters.map((filter, idx) => (
-          <div key={idx} className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div
+            key={idx}
+            className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200"
+          >
             {idx > 0 && (
               <select
-                value={filter.logic ?? 'AND'}
-                onChange={(e) => updateFilter(idx, { logic: e.target.value as 'AND' | 'OR' })}
+                value={filter.logic ?? "AND"}
+                onChange={(e) =>
+                  updateFilter(idx, { logic: e.target.value as "AND" | "OR" })
+                }
                 className="text-sm font-medium text-gray-700 border border-gray-300 rounded px-2 py-1 w-16"
                 disabled={disabled}
               >
@@ -91,7 +103,9 @@ export default function FilterBuilder({
             >
               <option value="">Select field</option>
               {fieldOptions.map((f) => (
-                <option key={f.name} value={f.name}>{f.display_name}</option>
+                <option key={f.name} value={f.name}>
+                  {f.display_name}
+                </option>
               ))}
             </select>
             <select
@@ -101,12 +115,14 @@ export default function FilterBuilder({
               disabled={disabled}
             >
               {OPERATORS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
               ))}
             </select>
             <input
               type="text"
-              value={typeof filter.value === 'string' ? filter.value : ''}
+              value={typeof filter.value === "string" ? filter.value : ""}
               onChange={(e) => updateFilter(idx, { value: e.target.value })}
               placeholder="Value"
               className="text-sm border border-gray-300 rounded px-2 py-1 min-w-[100px]"

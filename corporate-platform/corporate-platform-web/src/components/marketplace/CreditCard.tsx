@@ -20,8 +20,8 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
           <div className="absolute top-4 right-4">
             <div className={`px-3 py-1 rounded-full text-xs font-medium ${
               credit.status === 'available' 
-                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                ? 'badge-success'
+                : 'badge-warning'
             }`}>
               {credit.status.toUpperCase()}
             </div>
@@ -30,16 +30,16 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
             <div className="text-2xl font-bold text-corporate-navy dark:text-white">
               ${credit.pricePerTon}/ton
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-300">Starting from</div>
+            <div className="text-sm text-text-muted dark:text-gray-300">Starting from</div>
           </div>
         </div>
         
         <div className="p-5">
-          <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2 line-clamp-2">
+          <h3 className="font-bold text-lg text-text-primary dark:text-white mb-2 line-clamp-2">
             {credit.projectName}
           </h3>
           
-          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <div className="flex items-center text-sm text-text-secondary dark:text-gray-400 mb-4">
             <MapPin size={14} className="mr-1" />
             {credit.country}
             <Calendar size={14} className="ml-3 mr-1" />
@@ -50,31 +50,31 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
 
           <div className="grid grid-cols-2 gap-3 mb-4">
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Available</div>
-              <div className="font-bold text-gray-900 dark:text-white">{credit.availableAmount.toLocaleString()} tCO₂</div>
+              <div className="text-xs text-text-muted dark:text-gray-400">Available</div>
+              <div className="font-bold text-text-primary dark:text-white">{credit.availableAmount.toLocaleString()} tCO₂</div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Dynamic Score</div>
+              <div className="text-xs text-text-muted dark:text-gray-400">Dynamic Score</div>
               <div className="flex items-center">
                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
                   <div 
                     className={`h-2 rounded-full ${
-                      credit.dynamicScore >= 90 ? 'bg-green-500' :
-                      credit.dynamicScore >= 80 ? 'bg-blue-500' : 'bg-yellow-500'
+                      credit.dynamicScore >= 90 ? 'bg-status-success' :
+                      credit.dynamicScore >= 80 ? 'bg-status-info' : 'bg-status-warning'
                     }`}
                     style={{ width: `${credit.dynamicScore}%` }}
                   ></div>
                 </div>
-                <span className="font-bold text-sm">{credit.dynamicScore}</span>
+                <span className="font-bold text-sm text-text-primary dark:text-white">{credit.dynamicScore}</span>
               </div>
             </div>
           </div>
 
           <div className="mb-4">
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">SDG Impact</div>
+            <div className="text-xs text-text-muted dark:text-gray-400 mb-2">SDG Impact</div>
             <div className="flex flex-wrap gap-1">
               {credit.sdgs.map((sdg: number) => (
-                <span key={sdg} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                <span key={sdg} className="px-2 py-1 bg-status-info-bg dark:bg-status-info-bg-dark text-status-info dark:text-blue-300 rounded text-xs font-medium">
                   {sdg}
                 </span>
               ))}
@@ -112,25 +112,25 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
             <div className="text-2xl font-bold text-corporate-navy dark:text-white mb-1">
               ${credit.pricePerTon}/ton
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-300">Price per ton</div>
+            <div className="text-sm text-text-muted dark:text-gray-300">Price per ton</div>
           </div>
         </div>
         
         <div className="md:w-1/2">
           <div className="flex items-start justify-between mb-2">
-            <h3 className="font-bold text-lg text-gray-900 dark:text-white">
+            <h3 className="font-bold text-lg text-text-primary dark:text-white">
               {credit.projectName}
             </h3>
             <div className={`px-2 py-1 rounded-full text-xs font-medium ${
               credit.status === 'available' 
-                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                ? 'badge-success'
+                : 'badge-warning'
             }`}>
               {credit.status.toUpperCase()}
             </div>
           </div>
           
-          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-3">
+          <div className="flex items-center text-sm text-text-secondary dark:text-gray-400 mb-3">
             <MapPin size={14} className="mr-1" />
             {credit.country}
             <Calendar size={14} className="ml-3 mr-1" />
@@ -141,38 +141,38 @@ export default function CreditCard({ credit, viewMode }: CreditCardProps) {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Available</div>
-              <div className="font-bold text-gray-900 dark:text-white">{credit.availableAmount.toLocaleString()} tCO₂</div>
+              <div className="text-xs text-text-muted dark:text-gray-400">Available</div>
+              <div className="font-bold text-text-primary dark:text-white">{credit.availableAmount.toLocaleString()} tCO₂</div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Methodology</div>
-              <div className="font-medium text-gray-900 dark:text-white text-sm">{credit.methodology}</div>
+              <div className="text-xs text-text-muted dark:text-gray-400">Methodology</div>
+              <div className="font-medium text-text-primary dark:text-white text-sm">{credit.methodology}</div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Dynamic Score</div>
+              <div className="text-xs text-text-muted dark:text-gray-400">Dynamic Score</div>
               <div className="flex items-center">
                 <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
                   <div 
                     className={`h-2 rounded-full ${
-                      credit.dynamicScore >= 90 ? 'bg-green-500' :
-                      credit.dynamicScore >= 80 ? 'bg-blue-500' : 'bg-yellow-500'
+                      credit.dynamicScore >= 90 ? 'bg-status-success' :
+                      credit.dynamicScore >= 80 ? 'bg-status-info' : 'bg-status-warning'
                     }`}
                     style={{ width: `${credit.dynamicScore}%` }}
                   ></div>
                 </div>
-                <span className="font-bold">{credit.dynamicScore}</span>
+                <span className="font-bold text-text-primary dark:text-white">{credit.dynamicScore}</span>
               </div>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">SDGs</div>
-              <div className="flex space-x-1">
+              <div className="text-xs text-text-muted dark:text-gray-400">SDGs</div>
+              <div className="flex flex-wrap gap-1">
                 {credit.sdgs.slice(0, 3).map((sdg: number) => (
-                  <span key={sdg} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded text-xs">
+                  <span key={sdg} className="px-2 py-1 bg-status-info-bg dark:bg-status-info-bg-dark text-status-info dark:text-blue-300 rounded text-xs font-medium">
                     {sdg}
                   </span>
                 ))}
                 {credit.sdgs.length > 3 && (
-                  <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded text-xs">
+                  <span className="px-2 py-1 bg-gray-100 dark:bg-gray-800 text-text-muted dark:text-gray-400 rounded text-xs font-medium">
                     +{credit.sdgs.length - 3}
                   </span>
                 )}

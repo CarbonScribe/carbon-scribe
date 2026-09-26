@@ -11,6 +11,7 @@ import { PermissionsGuard } from '../rbac/guards/permissions.guard';
 import { Reflector } from '@nestjs/core';
 import { IpWhitelistGuard } from '../security/guards/ip-whitelist.guard';
 import { SecurityService } from '../security/security.service';
+import { IdempotencyKeyService } from './idempotency/idempotency-key.service';
 
 describe('RetirementController', () => {
   let controller: RetirementController;
@@ -36,6 +37,9 @@ describe('RetirementController', () => {
     isIpAllowed: jest.fn().mockResolvedValue(true),
     logEvent: jest.fn().mockResolvedValue(undefined),
   };
+  const mockIdempotencyKeyService = {
+    processIdempotencyKey: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -51,6 +55,10 @@ describe('RetirementController', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RbacService, useValue: mockRbacService },
         { provide: SecurityService, useValue: mockSecurityService },
+        {
+          provide: IdempotencyKeyService,
+          useValue: mockIdempotencyKeyService,
+        },
         Reflector,
         PermissionsGuard,
         IpWhitelistGuard,

@@ -17,6 +17,7 @@ export type ErrorCategory =
   | 'rate_limit'        // Too many requests
   | 'conflict'          // Duplicate entry, version conflict
   | 'business_logic'    // Domain-specific errors
+  | 'satellite'         // Satellite imagery and time-lapse errors
   | 'unknown';          // Fallback for unhandled errors
 
 export interface ActionableError {
@@ -98,6 +99,12 @@ export const ERROR_MESSAGES: Record<ErrorCategory, {
     description: 'The requested operation could not be completed.',
     troubleshooting: 'Please review the requirements and try again. Contact support if you need assistance.',
   },
+  satellite: {
+    title: 'Satellite Data Error',
+    description: 'Unable to load satellite imagery or time-lapse data.',
+    troubleshooting: 'Check your connection and try again. If the problem persists, the satellite data may not be available for the selected date range.',
+    supportLink: '/support/satellite-data',
+  },
   unknown: {
     title: 'Unexpected Error',
     description: 'An unexpected error occurred.',
@@ -148,6 +155,14 @@ export function categorizeError(error: unknown, statusCode?: number): ErrorCateg
     if (message.includes('not found') || message.includes('404')) {
       return 'not_found';
     }
+    // Satellite-specific error detection
+    if (message.includes('satellite') || 
+        message.includes('imagery') || 
+        message.includes('timelapse') || 
+        message.includes('ndvi') ||
+        message.includes('export')) {
+      return 'satellite';
+    }
   }
 
   return 'unknown';
@@ -160,6 +175,7 @@ export function getErrorSeverity(category: ErrorCategory): ErrorSeverity {
   switch (category) {
     case 'network':
     case 'server':
+    case 'satellite':
       return 'error';
     case 'authentication':
     case 'permission':
@@ -197,7 +213,7 @@ export function createActionableError(
     category,
     description: messageTemplate.description,
     troubleshootingTip: messageTemplate.troubleshooting,
-    retryable: ['network', 'server', 'rate_limit', 'conflict'].includes(category),
+    retryable: ['network', 'server', 'rate_limit', 'conflict', 'satellite'].includes(category),
     retryAction: options?.retryAction,
     supportLink: messageTemplate.supportLink,
     statusCode,
@@ -238,5 +254,5 @@ export function extractErrorMessage(error: unknown): string {
  */
 export function isRetryableError(error: unknown): boolean {
   const category = categorizeError(error);
-  return ['network', 'server', 'rate_limit', 'conflict'].includes(category);
+  return ['network', 'server', 'rate_limit', 'conflict', 'satellite'].includes(category);
 }

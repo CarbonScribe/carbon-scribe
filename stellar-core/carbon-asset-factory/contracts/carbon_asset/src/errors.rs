@@ -15,4 +15,22 @@ pub enum ContractError {
     RegulatoryNotSet = 10,
     HostJurisdictionNotSet = 11,
     TokenAlreadyBurned = 12,
+    // Mint cap errors (issue #472)
+    SupplyLimitExceeded = 13,
+    MintingIsFrozen = 14,
+    MaxSupplyAlreadySet = 15,
+    MaxSupplyBelowMinted = 16,
+    // Two-step admin transfer errors (issue #557)
+    NoPendingAdmin = 17,
+    NotPendingAdmin = 18,
+    // The call to the regulatory contract itself failed — it isn't
+    // deployed, doesn't export validate_transaction, its return value
+    // didn't deserialize as ValidationResult, or it returned its own
+    // error. Distinct from ComplianceFailed, which means the call
+    // succeeded and the regulatory contract responded non-compliant
+    // (issue #517).
+    ComplianceCallFailed = 19,
+    // Mint counter overflow: NextTokenId or TotalMinted has reached
+    // u32::MAX and cannot be safely incremented without wraparound (issue #611).
+    TokenIdOverflow = 20,
 }

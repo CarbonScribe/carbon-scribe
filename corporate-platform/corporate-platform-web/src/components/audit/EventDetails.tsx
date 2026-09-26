@@ -5,6 +5,7 @@ import { verifyAuditEvent } from '@/lib/api/audit.api';
 import type { AuditEvent, VerificationResult } from '@/types/audit.types';
 import { formatDate, formatEventType, formatAction, formatHash } from '@/lib/utils/audit-formatters';
 import { Shield, ShieldCheck, ShieldX, Loader2 } from 'lucide-react';
+import { reportError } from '@/lib/telemetry/errorReporter';
 
 interface EventDetailsProps {
   event: AuditEvent;
@@ -21,7 +22,7 @@ export default function EventDetails({ event, onClose }: EventDetailsProps) {
       const result = await verifyAuditEvent(event.id);
       setVerification(result);
     } catch (error) {
-      console.error('Verification failed:', error);
+      reportError(error, 'EventDetails', 'error', { operation: 'verifyEvent', eventId: event.id });
     } finally {
       setVerifying(false);
     }

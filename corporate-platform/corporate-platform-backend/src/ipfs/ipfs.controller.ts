@@ -149,8 +149,15 @@ export class IpfsController {
   }
 
   @Get('documents')
-  async listDocuments(@CurrentUser() user: JwtPayload) {
-    return this.upload.listDocuments(user.companyId);
+  async listDocuments(
+    @CurrentUser() user: JwtPayload,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.upload.listDocuments(user.companyId, {
+      page: page ? parseInt(page, 10) : undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
   }
 
   @Get('documents/:referenceId')

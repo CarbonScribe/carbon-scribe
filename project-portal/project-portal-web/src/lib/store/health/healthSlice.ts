@@ -8,6 +8,7 @@ import {
     acknowledgeAlertApi,
     fetchDependenciesApi,
     fetchUptimeApi,
+    fetchMaintenanceScheduleApi,
 } from './health.api';
 import { AxiosError } from 'axios';
 
@@ -18,6 +19,7 @@ const initialState = {
     alerts: [],
     dependencies: [],
     uptimeStats: null,
+    maintenanceEvents: [],
     healthLoading: {
         isFetchingStatus: false,
         isFetchingServices: false,
@@ -25,6 +27,8 @@ const initialState = {
         isFetchingAlerts: false,
         isFetchingDependencies: false,
         isAcknowledgingAlert: false,
+        isFetchingUptime: false,
+        isFetchingMaintenance: false,
     },
     healthErrors: {
         status: null,
@@ -33,6 +37,8 @@ const initialState = {
         alerts: null,
         dependencies: null,
         acknowledge: null,
+        uptime: null,
+        maintenance: null,
     },
 };
 
@@ -144,12 +150,29 @@ export const createHealthSlice: StateCreator<HealthSlice> = (set, get) => ({
         }
     },
 
+    /**
+     * Fetch uptime statistics from the API
+     * Updates the uptimeStats state with the response
+     */
     fetchUptimeStats: async () => {
+        set((state) => ({
+            healthLoading: { ...state.healthLoading, isFetchingUptime: true },
+            healthErrors: { ...state.healthErrors, uptime: null },
+        }));
         try {
             const data = await fetchUptimeApi();
-            set({ uptimeStats: data });
+            set((state) => ({
+                uptimeStats: data,
+                healthLoading: { ...state.healthLoading, isFetchingUptime: false },
+            }));
         } catch (error) {
-            console.error('Failed to fetch uptime stats:', getErrorMessage(error));
+            const errorMessage = getErrorMessage(error);
+            set((state) => ({
+                healthLoading: { ...state.healthLoading, isFetchingUptime: false },
+                healthErrors: { ...state.healthErrors, uptime: errorMessage },
+            }));
+            // Log error but don't throw - we want to handle gracefully
+            console.error('Failed to fetch uptime stats:', errorMessage);
         }
     },
 
@@ -171,6 +194,25 @@ export const createHealthSlice: StateCreator<HealthSlice> = (set, get) => ({
                 healthErrors: { ...state.healthErrors, acknowledge: getErrorMessage(error) },
             }));
             return false;
+        }
+    },
+
+    fetchMaintenanceSchedule: async () => {
+        set((state) => ({
+            healthLoading: { ...state.healthLoading, isFetchingMaintenance: true },
+            healthErrors: { ...state.healthErrors, maintenance: null },
+        }));
+        try {
+            const data = await fetchMaintenanceScheduleApi();
+            set((state) => ({
+                maintenanceEvents: data,
+                healthLoading: { ...state.healthLoading, isFetchingMaintenance: false },
+            }));
+        } catch (error) {
+            set((state) => ({
+                healthLoading: { ...state.healthLoading, isFetchingMaintenance: false },
+                healthErrors: { ...state.healthErrors, maintenance: getErrorMessage(error) },
+            }));
         }
     },
 

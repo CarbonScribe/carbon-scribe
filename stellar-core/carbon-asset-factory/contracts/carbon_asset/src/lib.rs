@@ -3,19 +3,22 @@
 mod errors;
 mod events;
 mod storage;
-mod types;
 #[cfg(test)]
 mod test;
+mod types;
 
 use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String, Symbol, Vec};
 
 use crate::errors::ContractError;
 use crate::events::{
-    ApproveEvent, MintEvent, QualityScoreUpdatedEvent, Sep41BurnEvent, Sep41TransferEvent,
-    StatusChangeEvent, TransferEvent,
+    AdminTransferAcceptedEvent, AdminTransferProposedEvent, ApproveEvent, MintCapReachedEvent,
+    MintCapSetEvent, MintEvent, MintingFrozenEvent, QualityScoreUpdatedEvent, Sep41BurnEvent,
+    Sep41TransferEvent, StatusChangeEvent, TransferEvent,
 };
 use crate::storage::DataKey;
-use crate::types::{AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
+use crate::types::{
+    AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult,
+};
 
 // ========================================================================
 // Contract
@@ -56,6 +59,11 @@ impl CarbonAsset {
             .set(&DataKey::HostJurisdiction, &host_jurisdiction);
         env.storage().instance().set(&DataKey::NextTokenId, &1u32);
         env.storage().instance().set(&DataKey::EventSequence, &0u64);
+        // Initialise mint cap tracking counters
+        env.storage().instance().set(&DataKey::TotalMinted, &0u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::MintingFrozen, &false);
 
         Ok(())
     }
@@ -76,15 +84,74 @@ impl CarbonAsset {
             return Err(ContractError::NotAuthorized);
         }
 
+        // --- Mint cap enforcement (issue #472) ---
+
+        // 1. Check minting freeze flag
+        let frozen: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::MintingFrozen)
+            .unwrap_or(false);
+        if frozen {
+            return Err(ContractError::MintingIsFrozen);
+        }
+
+        // 2. Fetch current total minted count
+        let total_minted: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalMinted)
+            .unwrap_or(0u32);
+
+        // 3. Check contract-level max supply cap if set
+        let max_supply_opt: Option<u32> = env.storage().instance().get(&DataKey::MaxSupply);
+        if let Some(max_supply) = max_supply_opt {
+            if total_minted >= max_supply {
+                // Emit cap-reached event before returning error
+                let sequence: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::EventSequence)
+                    .unwrap_or(0u64);
+                let cap_seq = sequence + 1;
+                env.storage()
+                    .instance()
+                    .set(&DataKey::EventSequence, &cap_seq);
+                MintCapReachedEvent {
+                    sequence: cap_seq,
+                    total_minted,
+                    max_supply,
+                }
+                .publish(&env);
+
+                return Err(ContractError::SupplyLimitExceeded);
+            }
+        }
+
+        // --- Actual token minting ---
+
         let token_id: u32 = env
             .storage()
             .instance()
             .get(&DataKey::NextTokenId)
             .ok_or(ContractError::NotInitialized)?;
 
+        let next_token_id = token_id
+            .checked_add(1)
+            .ok_or(ContractError::TokenIdOverflow)?;
+
+        // Increment total minted counter
+        let next_total_minted = total_minted
+            .checked_add(1)
+            .ok_or(ContractError::TokenIdOverflow)?;
+
         env.storage()
             .instance()
-            .set(&DataKey::NextTokenId, &(token_id + 1));
+            .set(&DataKey::NextTokenId, &next_token_id);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::TotalMinted, &next_total_minted);
 
         env.storage()
             .persistent()
@@ -140,6 +207,27 @@ impl CarbonAsset {
         }
         .publish(&env);
 
+        // Emit cap-reached event if we just hit the cap exactly
+        if let Some(max_supply) = max_supply_opt {
+            if next_total_minted == max_supply {
+                let sequence: u64 = env
+                    .storage()
+                    .instance()
+                    .get(&DataKey::EventSequence)
+                    .unwrap_or(0u64);
+                let cap_seq = sequence + 1;
+                env.storage()
+                    .instance()
+                    .set(&DataKey::EventSequence, &cap_seq);
+                MintCapReachedEvent {
+                    sequence: cap_seq,
+                    total_minted: next_total_minted,
+                    max_supply,
+                }
+                .publish(&env);
+            }
+        }
+
         Ok(token_id)
     }
 
@@ -149,7 +237,11 @@ impl CarbonAsset {
 
     pub fn allowance(env: Env, from: Address, spender: Address) -> i128 {
         let key = DataKey::Allowance(from, spender);
-        if let Some(allowance) = env.storage().persistent().get::<DataKey, AllowanceData>(&key) {
+        if let Some(allowance) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AllowanceData>(&key)
+        {
             if allowance.live_until_ledger < env.ledger().sequence() {
                 0
             } else {
@@ -206,7 +298,12 @@ impl CarbonAsset {
         Self::balance_of(env, owner)
     }
 
-    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), ContractError> {
+    pub fn transfer(
+        env: Env,
+        from: Address,
+        to: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
         from.require_auth();
         Self::transfer_amount_internal(env, from, to, amount)
     }
@@ -225,6 +322,41 @@ impl CarbonAsset {
         env.storage().persistent().set(&key, &allowance);
 
         Self::transfer_amount_internal(env, from, to, amount)
+    }
+
+    /// Transfer a specific token by ID. Unlike the SEP-41 `transfer` which
+    /// takes a count-based amount and greedily selects token IDs via
+    /// `collect_transferable_tokens`, this function moves exactly the specified
+    /// `token_id`.
+    pub fn transfer_token(
+        env: Env,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        Self::transfer_token_internal(env, from, to, token_id, true)
+    }
+
+    /// Transfer a specific token by ID using an allowance (SEP-41-style
+    /// `transfer_from` but token-ID-aware). The caller (`spender`) must have
+    /// been approved by `from` for at least 1 unit of allowance.
+    ///
+    /// This is the correct entry-point for contracts (e.g. `time_lock`) that
+    /// need to move exactly one specific token on behalf of a user.
+    pub fn transfer_token_from(
+        env: Env,
+        spender: Address,
+        from: Address,
+        to: Address,
+        token_id: u32,
+    ) -> Result<(), ContractError> {
+        spender.require_auth();
+
+        let allowance = Self::spend_allowance(env.clone(), from.clone(), spender.clone(), 1)?;
+        let key = DataKey::Allowance(from.clone(), spender);
+        env.storage().persistent().set(&key, &allowance);
+
+        Self::transfer_token_internal(env, from, to, token_id, false)
     }
 
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
@@ -289,9 +421,7 @@ impl CarbonAsset {
         env.storage()
             .persistent()
             .set(&DataKey::Burned(token_id), &true);
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Owner(token_id));
+        env.storage().persistent().remove(&DataKey::Owner(token_id));
 
         Ok(())
     }
@@ -308,19 +438,25 @@ impl CarbonAsset {
     ) -> Result<bool, ContractError> {
         let _status = Self::get_status(env.clone(), token_id)?;
 
-        let regulatory_contract: Option<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::RegulatoryCheck);
+        let regulatory_contract: Option<Address> =
+            env.storage().instance().get(&DataKey::RegulatoryCheck);
 
+        // Fail-open by design: regulatory checking is an opt-in, per-deployment
+        // feature (see set_regulatory_check). A deployment that has never
+        // configured a regulatory contract hasn't opted into compliance
+        // gating at all, so there is no jurisdiction rule to enforce and none
+        // is being claimed — treating every transfer as non-compliant would
+        // brick transfers for every deployment that doesn't use this feature.
+        // ContractError::RegulatoryNotSet is reserved for a path that
+        // requires regulatory config to be present and finds it missing;
+        // this optional hook isn't that path. See
+        // test_before_transfer_without_regulatory_contract_is_fail_open.
         if regulatory_contract.is_none() {
             return Ok(true);
         }
 
-        let host_jurisdiction: Option<String> = env
-            .storage()
-            .instance()
-            .get(&DataKey::HostJurisdiction);
+        let host_jurisdiction: Option<String> =
+            env.storage().instance().get(&DataKey::HostJurisdiction);
 
         let host_jurisdiction = match host_jurisdiction {
             Some(value) => value,
@@ -341,7 +477,26 @@ impl CarbonAsset {
         args.push_back(operation.into_val(&env));
         args.push_back(host_jurisdiction.into_val(&env));
 
-        let result: ValidationResult = env.invoke_contract(&contract, &symbol, args);
+        // try_invoke_contract (rather than the trapping invoke_contract) so a
+        // missing/undeployed contract, a missing validate_transaction export,
+        // an argument mismatch, an internal panic, or a return value that
+        // doesn't deserialize as ValidationResult all surface as a typed
+        // ComplianceCallFailed instead of aborting the whole host invocation.
+        let call_result: Result<
+            Result<ValidationResult, _>,
+            Result<soroban_sdk::Error, soroban_sdk::InvokeError>,
+        > = env.try_invoke_contract::<ValidationResult, soroban_sdk::Error>(
+            &contract, &symbol, args,
+        );
+
+        let result = match call_result {
+            Ok(Ok(value)) => value,
+            // Call succeeded but the returned value didn't deserialize as
+            // ValidationResult, or the call failed outright (contract not
+            // deployed, function not found, argument mismatch, internal
+            // panic, or the contract returned its own typed error).
+            Ok(Err(_)) | Err(_) => return Err(ContractError::ComplianceCallFailed),
+        };
 
         Ok(result.is_compliant && !result.requires_authorization)
     }
@@ -439,8 +594,120 @@ impl CarbonAsset {
     }
 
     // ====================================================================
+    // Admin Transfer (two-step propose/accept, issue #557)
+    // ====================================================================
+    //
+    // DataKey::Admin can only ever change via this propose/accept flow — no
+    // other function in this contract writes it directly. This is
+    // deliberately narrower than the single-step admin-gated setters below
+    // (set_retirement_tracker, set_regulatory_check, set_host_jurisdiction,
+    // set_oracle): those stay one-step by design, since a wrong contract
+    // address there is recoverable by the admin calling the setter again,
+    // whereas a wrong Admin address with no acceptance step would
+    // permanently brick every privileged function in this contract at
+    // once. Only the admin key itself gets the two-step treatment.
+
+    /// Propose `new_admin` as the successor admin. Requires the *current*
+    /// admin's auth. Does not touch DataKey::Admin — get_admin() keeps
+    /// returning the current admin until accept_admin_transfer lands.
+    pub fn propose_admin_transfer(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        AdminTransferProposedEvent {
+            sequence: next_sequence,
+            current_admin: admin,
+            proposed_admin: new_admin,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Accept a pending admin transfer. Requires the auth of the address
+    /// currently in PendingAdmin — only that address may complete the
+    /// rotation. Copies PendingAdmin into Admin and clears PendingAdmin.
+    pub fn accept_admin_transfer(env: Env, caller: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(ContractError::NoPendingAdmin)?;
+
+        if caller != pending_admin {
+            return Err(ContractError::NotPendingAdmin);
+        }
+
+        let old_admin = Self::get_admin(env.clone())?;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        AdminTransferAcceptedEvent {
+            sequence: next_sequence,
+            old_admin,
+            new_admin: pending_admin,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Cancel an in-flight admin transfer proposal. Restricted to the
+    /// *current* admin. Clears PendingAdmin without touching Admin; a
+    /// no-op (but still admin-gated) if nothing was pending.
+    pub fn cancel_admin_transfer(env: Env, caller: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        Ok(())
+    }
+
+    // ====================================================================
     // Admin Configuration
     // ====================================================================
+    //
+    // The setters below remain single-step, admin-gated writes — see the
+    // "Admin Transfer" section above for why only DataKey::Admin itself
+    // gets a propose/accept flow.
 
     pub fn set_retirement_tracker(
         env: Env,
@@ -494,6 +761,91 @@ impl CarbonAsset {
     }
 
     // ====================================================================
+    // Mint Cap Admin Functions (issue #472)
+    // ====================================================================
+
+    /// Set the contract-level maximum supply (mint cap).
+    ///
+    /// Rules:
+    /// - Only the admin may call this.
+    /// - The cap can only be set **once** (immutable after first set).
+    /// - The cap cannot be set below the current `TotalMinted` count.
+    pub fn set_max_supply(env: Env, caller: Address, max_supply: u32) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        // Immutability: cap can only be set once
+        if env.storage().instance().has(&DataKey::MaxSupply) {
+            return Err(ContractError::MaxSupplyAlreadySet);
+        }
+
+        // Cap must be at or above the current total minted
+        let total_minted: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TotalMinted)
+            .unwrap_or(0u32);
+        if max_supply < total_minted {
+            return Err(ContractError::MaxSupplyBelowMinted);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::MaxSupply, &max_supply);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        MintCapSetEvent {
+            sequence: next_sequence,
+            max_supply,
+            set_by: caller,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Permanently freeze minting. Once frozen, no further tokens can be minted.
+    /// This is a one-way, irreversible operation restricted to the admin.
+    pub fn freeze_minting(env: Env, caller: Address) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        // Already frozen is a no-op to keep things idempotent, but we still emit event
+        env.storage().instance().set(&DataKey::MintingFrozen, &true);
+
+        let sequence: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventSequence)
+            .unwrap_or(0u64);
+        let next_sequence = sequence + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventSequence, &next_sequence);
+        MintingFrozenEvent {
+            sequence: next_sequence,
+            frozen_by: caller,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    // ====================================================================
     // Getters
     // ====================================================================
 
@@ -502,6 +854,12 @@ impl CarbonAsset {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(ContractError::NotInitialized)
+    }
+
+    /// Returns the proposed successor admin while a transfer is in flight,
+    /// or None if there is no pending proposal.
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
     }
 
     pub fn get_name(env: Env) -> Result<String, ContractError> {
@@ -526,17 +884,11 @@ impl CarbonAsset {
     }
 
     pub fn name(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Name)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Name).unwrap()
     }
 
     pub fn symbol(env: Env) -> String {
-        env.storage()
-            .instance()
-            .get(&DataKey::Symbol)
-            .unwrap()
+        env.storage().instance().get(&DataKey::Symbol).unwrap()
     }
 
     pub fn get_retirement_tracker(env: Env) -> Result<Address, ContractError> {
@@ -563,6 +915,45 @@ impl CarbonAsset {
             .instance()
             .get(&DataKey::EventSequence)
             .unwrap_or(0u64)
+    }
+
+    /// Returns the configured maximum supply cap, or None if no cap has been set.
+    pub fn get_max_supply(env: Env) -> Option<u32> {
+        env.storage().instance().get(&DataKey::MaxSupply)
+    }
+
+    /// Returns the total number of tokens minted so far.
+    pub fn get_total_minted(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::TotalMinted)
+            .unwrap_or(0u32)
+    }
+
+    /// Returns the number of tokens that can still be minted before the cap is
+    /// reached. Returns None if no cap has been configured.
+    pub fn get_remaining_supply(env: Env) -> Option<u32> {
+        let max_supply: Option<u32> = env.storage().instance().get(&DataKey::MaxSupply);
+        max_supply.map(|cap| {
+            let minted: u32 = env
+                .storage()
+                .instance()
+                .get(&DataKey::TotalMinted)
+                .unwrap_or(0u32);
+            if minted >= cap {
+                0u32
+            } else {
+                cap - minted
+            }
+        })
+    }
+
+    /// Returns true if minting has been permanently frozen by the admin.
+    pub fn is_minting_frozen(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::MintingFrozen)
+            .unwrap_or(false)
     }
 
     pub fn owner_of(env: Env, token_id: u32) -> Result<Address, ContractError> {
@@ -652,6 +1043,10 @@ impl CarbonAsset {
             return Err(ContractError::TransferNotAllowed);
         }
 
+        // The `?` here already propagates ComplianceCallFailed (or any other
+        // ContractError from before_transfer's own storage lookups)
+        // transparently — only an `Ok(false)` (the call succeeded and
+        // responded non-compliant) reaches this explicit ComplianceFailed.
         if !Self::before_transfer(env.clone(), from.clone(), to.clone(), token_id)? {
             return Err(ContractError::ComplianceFailed);
         }
@@ -712,16 +1107,18 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41TransferEvent { sequence: next_sequence, from, to, amount }.publish(&env);
+        Sep41TransferEvent {
+            sequence: next_sequence,
+            from,
+            to,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
 
-    fn burn_amount_internal(
-        env: Env,
-        from: Address,
-        amount: i128,
-    ) -> Result<(), ContractError> {
+    fn burn_amount_internal(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
         if amount <= 0 {
             return Err(ContractError::InvalidStatusTransition);
         }
@@ -741,7 +1138,12 @@ impl CarbonAsset {
         env.storage()
             .instance()
             .set(&DataKey::EventSequence, &next_sequence);
-        Sep41BurnEvent { sequence: next_sequence, from, amount }.publish(&env);
+        Sep41BurnEvent {
+            sequence: next_sequence,
+            from,
+            amount,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -904,7 +1306,9 @@ impl CarbonAsset {
 
         tokens.pop_back();
         if tokens.len() == 0 {
-            env.storage().persistent().remove(&DataKey::OwnerTokens(owner));
+            env.storage()
+                .persistent()
+                .remove(&DataKey::OwnerTokens(owner));
         } else {
             env.storage()
                 .persistent()

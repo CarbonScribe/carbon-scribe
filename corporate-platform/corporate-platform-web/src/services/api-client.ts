@@ -1,7 +1,10 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
-import { parseApiError, ParsedError } from '@/lib/utils/errorParser';
+import { parseApiError, ParsedError, ErrorCode } from '@/lib/utils/errorParser';
 import { withRetry, isRetryableError, RetryOptions, generateIdempotencyKey } from '@/lib/utils/retry';
 import { requestQueue } from '@/lib/utils/requestQueue';
+import { reportError } from '@/lib/telemetry/errorReporter';
+import { requestManager } from '@/lib/api/requestManager';
+import { parseResponseBody } from '@/lib/api/responseParser';
 
 /**
  * Base API Client for handling HTTP requests
@@ -14,6 +17,7 @@ export interface ApiResponse<T> {
   success: boolean;
   data?: T;
   error?: string;
+  isCancelled?: boolean;
   timestamp?: string;
   statusCode?: number;
   parsedError?: ParsedError;
@@ -24,6 +28,9 @@ export interface ApiFetchOptions extends RequestInit {
   retry?: RetryOptions;
   idempotencyKey?: string;
   queueOffline?: boolean; // Whether to queue request when offline
+  signal?: AbortSignal;
+  cancelOnRouteChange?: boolean;
+  deduplicate?: boolean;
 }
 
 class ApiClient {
@@ -82,11 +89,11 @@ class ApiClient {
     // Check if offline and queueOffline is enabled for mutation requests
     const isMutation = options?.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method);
     const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-    
+
     if (isOffline && isMutation && options?.queueOffline) {
       // Queue the request for later
       const headers = this.buildHeaders(options);
-      const requestId = requestQueue.enqueue({
+      requestQueue.enqueue({
         url,
         method: options.method || 'GET',
         headers,
@@ -101,16 +108,46 @@ class ApiClient {
         timestamp: new Date().toISOString(),
         parsedError: {
           message: 'You are offline. This request has been queued and will be retried when you reconnect.',
-          code: 'NETWORK_ERROR',
+          code: ErrorCode.NETWORK_ERROR,
           statusCode: 0,
         },
       };
     }
 
+    const method = options?.method ?? 'GET';
+    const isQuery = method === 'GET';
+    const cancelOnRouteChange = options?.cancelOnRouteChange ?? isQuery;
+    const deduplicate = options?.deduplicate ?? isQuery;
+    const requestKey = requestManager.generateKey(method, url, options?.body);
+
     const executeRequest = async (): Promise<ApiResponse<T>> => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        // Forward any caller-supplied AbortSignal so explicit cancellations
+        // (e.g. rapid filter changes) abort the underlying fetch immediately
+        // without waiting for the timeout to expire.
+        const externalSignal = options?.signal;
+        if (externalSignal) {
+          if (externalSignal.aborted) {
+            clearTimeout(timeoutId);
+            controller.abort(externalSignal.reason);
+          } else {
+            externalSignal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(timeoutId);
+                controller.abort(externalSignal.reason || 'Caller aborted');
+              },
+              { once: true },
+            );
+          }
+        }
+
+        if (cancelOnRouteChange) {
+          requestManager.registerRequest(requestKey, controller, deduplicate);
+        }
 
         const response = await fetch(url, {
           ...options,
@@ -119,16 +156,51 @@ class ApiClient {
         });
 
         clearTimeout(timeoutId);
+        if (cancelOnRouteChange) {
+          requestManager.unregisterRequest(requestKey);
+        }
 
-        const data = await response.json();
+        const parsedResponse = await parseResponseBody<T>(response);
+
+        // Telemetry warning tracking for non-JSON responses
+        if (!parsedResponse.isJson && !parsedResponse.isEmpty && !parsedResponse.isBinary) {
+          reportError(
+            `Received non-JSON response (${parsedResponse.contentType || 'unknown'}) for ${method} ${endpoint}`,
+            'api-client',
+            'warning',
+            {
+              endpoint,
+              status: response.status,
+              contentType: parsedResponse.contentType,
+              bodyPreview: parsedResponse.preview,
+              isHtml: parsedResponse.isHtml,
+            },
+          );
+        }
 
         if (!response.ok) {
-          const parsedError = parseApiError(data, response.status);
+          const errorBody = parsedResponse.data ?? parsedResponse.raw;
+          const parsedError = parseApiError(errorBody, response.status);
           
+          reportError(
+            parsedError.message,
+            'api-client',
+            response.status >= 500 ? 'error' : 'warning',
+            {
+              endpoint,
+              status: response.status,
+              contentType: parsedResponse.contentType,
+              bodyPreview: parsedResponse.preview,
+            },
+          );
+
           // Check if this is a retryable error (5xx, 408, 429)
           const isRetryable = response.status >= 500 || response.status === 408 || response.status === 429;
           if (isRetryable) {
-            throw new Error(parsedError.message);
+            const err = new Error(parsedError.message) as any;
+            err.status = response.status;
+            err.statusCode = response.status;
+            throw err;
           }
           
           return {
@@ -140,9 +212,40 @@ class ApiClient {
           };
         }
 
-        return data as ApiResponse<T>;
-      } catch (error) {
-        const parsedError = parseApiError(error);
+        if (
+          parsedResponse.data &&
+          typeof parsedResponse.data === 'object' &&
+          'success' in (parsedResponse.data as Record<string, unknown>)
+        ) {
+          return {
+            statusCode: response.status,
+            timestamp: new Date().toISOString(),
+            ...(parsedResponse.data as Record<string, unknown>),
+          } as ApiResponse<T>;
+        }
+
+        return {
+          success: true,
+          data: parsedResponse.isEmpty ? undefined : (parsedResponse.data as T),
+          statusCode: response.status,
+          timestamp: new Date().toISOString(),
+        };
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log(`[ApiClient] Request to ${endpoint} cancelled`);
+          if (cancelOnRouteChange) {
+            requestManager.unregisterRequest(requestKey);
+          }
+          return {
+            success: false,
+            isCancelled: true,
+            error: 'Request cancelled',
+            statusCode: 0,
+            timestamp: new Date().toISOString(),
+          };
+        }
+        
+        const parsedError = parseApiError(error, error?.status ?? error?.statusCode);
         
         // Check if this is a retryable network error
         if (isRetryableError(error, 0)) {
@@ -167,17 +270,18 @@ class ApiClient {
             timestamp: new Date().toISOString(),
             parsedError: {
               message: 'You are offline. This request has been queued and will be retried when you reconnect.',
-              code: 'NETWORK_ERROR',
+              code: ErrorCode.NETWORK_ERROR,
               statusCode: 0,
             },
           };
         }
         
-        console.error(`API Error [${endpoint}]:`, parsedError.message);
+        reportError(error, 'api-client', 'error', { endpoint, message: parsedError.message });
 
         return {
           success: false,
           error: parsedError.message,
+          statusCode: error?.statusCode ?? error?.status ?? parsedError.statusCode,
           timestamp: new Date().toISOString(),
           parsedError,
         };
@@ -196,7 +300,7 @@ class ApiClient {
         });
       } catch (error) {
         const parsedError = parseApiError(error);
-        console.error(`API Error [${endpoint}] after retries:`, parsedError.message);
+        reportError(error, 'api-client', 'error', { endpoint, message: parsedError.message, retried: true });
         return {
           success: false,
           error: parsedError.message,

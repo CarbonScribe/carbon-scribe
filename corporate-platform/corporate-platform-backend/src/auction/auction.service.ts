@@ -69,6 +69,10 @@ export class AuctionService {
     });
   }
 
+  /**
+   * Place a bid on an auction
+   * Rate limiting is applied at the controller level via @RateLimit decorator
+   */
   async placeBid(
     auctionId: string,
     userId: string,

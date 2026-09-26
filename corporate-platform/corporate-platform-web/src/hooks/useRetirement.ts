@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { retirementService } from '@/services/retirement.service';
+import type { ApiFetchOptions } from '@/services/api-client';
 import type {
   RetireCreditsPayload,
   RetirementRecord,
@@ -23,9 +24,9 @@ export interface UseRetirementState {
 }
 
 export interface UseRetirementActions {
-  retire: (payload: RetireCreditsPayload) => Promise<RetirementRecord | null>;
-  fetchHistory: (query?: RetirementHistoryQuery) => Promise<void>;
-  fetchStats: () => Promise<void>;
+  retire: (payload: RetireCreditsPayload, options?: ApiFetchOptions) => Promise<RetirementRecord | null>;
+  fetchHistory: (query?: RetirementHistoryQuery, options?: ApiFetchOptions) => Promise<void>;
+  fetchStats: (options?: ApiFetchOptions) => Promise<void>;
   clearRetireError: () => void;
   clearLastRetirement: () => void;
 }
@@ -36,10 +37,24 @@ export interface UseRetirementActions {
  * @param autoFetch - When true, fetches history and stats on mount.
  * @param initialQuery - Initial query parameters for the history fetch.
  */
+const retirementSubmissionGuard = {
+  isSubmitting: false,
+  activeIdempotencyKey: null as string | null,
+};
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `retire-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export function useRetirement(
   autoFetch = false,
   initialQuery: RetirementHistoryQuery = {},
 ): UseRetirementState & UseRetirementActions {
+  const submissionGuardRef = useRef(retirementSubmissionGuard);
   const [history, setHistory] = useState<RetirementHistoryResponse | null>(
     null,
   );
@@ -54,46 +69,80 @@ export function useRetirement(
     useState<RetirementRecord | null>(null);
 
   const fetchHistory = useCallback(
-    async (query: RetirementHistoryQuery = initialQuery) => {
+    async (query: RetirementHistoryQuery = initialQuery, options?: ApiFetchOptions) => {
       setHistoryLoading(true);
       setHistoryError(null);
-      const res = await retirementService.getHistory(query);
-      if (res.success && res.data) {
-        setHistory(res.data);
-      } else {
-        setHistoryError(res.parsedError?.message || res.error ?? 'Failed to fetch retirement history');
+      try {
+        const res = await retirementService.getHistory(query, options);
+        if (res.isCancelled) return; // Skip state update if cancelled
+        if (res.success && res.data) {
+          setHistory(res.data);
+        } else {
+          const errorMsg = (res.parsedError?.message || res.error) ?? 'Failed to fetch retirement history';
+          setHistoryError(errorMsg);
+        }
+      } finally {
+        setHistoryLoading(false);
       }
-      setHistoryLoading(false);
     },
     // intentionally omit initialQuery so callers can pass ad-hoc queries
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (options?: ApiFetchOptions) => {
     setStatsLoading(true);
     setStatsError(null);
-    const res = await retirementService.getStats();
-    if (res.success && res.data) {
-      setStats(res.data);
-    } else {
-      setStatsError(res.parsedError?.message ?? res.error ?? 'Failed to fetch retirement stats');
+    try {
+      const res = await retirementService.getStats(options);
+      if (res.isCancelled) return; // Skip state update if cancelled
+      if (res.success && res.data) {
+        setStats(res.data);
+      } else {
+        setStatsError(res.parsedError?.message ?? res.error ?? 'Failed to fetch retirement stats');
+      }
+    } finally {
+      setStatsLoading(false);
     }
-    setStatsLoading(false);
   }, []);
 
   const retire = useCallback(
-    async (payload: RetireCreditsPayload): Promise<RetirementRecord | null> => {
+    async (payload: RetireCreditsPayload, options?: ApiFetchOptions): Promise<RetirementRecord | null> => {
+      const nextIdempotencyKey = options?.idempotencyKey ?? generateIdempotencyKey();
+
+      if (submissionGuardRef.current.isSubmitting) {
+        return null;
+      }
+
+      submissionGuardRef.current.isSubmitting = true;
+      submissionGuardRef.current.activeIdempotencyKey = nextIdempotencyKey;
       setRetiring(true);
       setRetireError(null);
-      const res = await retirementService.retire(payload);
-      setRetiring(false);
-      if (res.success && res.data) {
-        setLastRetirement(res.data);
-        return res.data;
+
+      try {
+        const res = await retirementService.retire(payload, {
+          ...options,
+          idempotencyKey: nextIdempotencyKey,
+        });
+
+        if (res.isCancelled) {
+          return null;
+        }
+
+        if (res.success && res.data) {
+          setLastRetirement(res.data);
+          return res.data;
+        }
+
+        setRetireError(
+          res.parsedError?.message ?? res.error ?? 'Retirement failed. Please try again.',
+        );
+        return null;
+      } finally {
+        submissionGuardRef.current.isSubmitting = false;
+        submissionGuardRef.current.activeIdempotencyKey = null;
+        setRetiring(false);
       }
-      setRetireError(res.parsedError?.message ?? res.error ?? 'Retirement failed. Please try again.');
-      return null;
     },
     [],
   );
@@ -102,10 +151,16 @@ export function useRetirement(
   const clearLastRetirement = useCallback(() => setLastRetirement(null), []);
 
   useEffect(() => {
+    const abortController = new AbortController();
+    
     if (autoFetch) {
-      fetchHistory(initialQuery);
-      fetchStats();
+      fetchHistory(initialQuery, { signal: abortController.signal });
+      fetchStats({ signal: abortController.signal });
     }
+    
+    return () => {
+      abortController.abort('useRetirement unmounted');
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFetch]);
 

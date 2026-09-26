@@ -3,6 +3,8 @@
  * Queues mutation requests when offline and retries them when connection is restored
  */
 
+import { reportError } from '@/lib/telemetry/errorReporter';
+
 export interface QueuedRequest {
   id: string;
   url: string;
@@ -45,7 +47,7 @@ class RequestQueueManager {
         this.queue = JSON.parse(stored);
       }
     } catch (error) {
-      console.error('Failed to load request queue from storage:', error);
+      reportError(error, 'requestQueue', 'warning', { operation: 'loadFromStorage' });
     }
   }
 
@@ -58,7 +60,7 @@ class RequestQueueManager {
     try {
       localStorage.setItem(this.storageKey, JSON.stringify(this.queue));
     } catch (error) {
-      console.error('Failed to save request queue to storage:', error);
+      reportError(error, 'requestQueue', 'warning', { operation: 'saveToStorage' });
     }
   }
 

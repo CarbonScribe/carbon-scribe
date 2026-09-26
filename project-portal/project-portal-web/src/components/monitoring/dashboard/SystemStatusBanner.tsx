@@ -4,8 +4,7 @@ import React, { useEffect, useMemo } from 'react';
 import { useStore } from '@/lib/store/store';
 import { CheckCircle, AlertTriangle, XCircle, HelpCircle } from 'lucide-react';
 import type { HealthStatus } from '@/lib/store/health/health.types';
-
-const POLL_INTERVAL_MS = 30_000;
+import { HEALTH_CONSTANTS } from '@/lib/constants/health.constants';
 
 function getStatusConfig(status: HealthStatus) {
     switch (status) {
@@ -50,16 +49,29 @@ export default function SystemStatusBanner() {
     const isLoading = useStore((state) => state.healthLoading.isFetchingStatus);
     const statusError = useStore((state) => state.healthErrors.status);
     const fetchDetailedStatus = useStore((state) => state.fetchDetailedStatus);
+    const fetchUptimeStats = useStore((state) => state.fetchUptimeStats);
+    const status = detailedStatus?.overallStatus ?? 'Unknown';
+    const statusConfig = useMemo(() => getStatusConfig(status), [status]);
 
     useEffect(() => {
-        fetchDetailedStatus();
-        const interval = window.setInterval(fetchDetailedStatus, POLL_INTERVAL_MS);
+        // Fetch both status and uptime on mount
+        const fetchData = async () => {
+            await Promise.all([
+                fetchDetailedStatus(),
+                fetchUptimeStats(),
+            ]);
+        };
+        
+        fetchData();
+        
+        // Set up polling interval (using constant from health.constants)
+        const interval = window.setInterval(fetchData, HEALTH_CONSTANTS.UPTIME_POLL_INTERVAL_MS);
         return () => {
             window.clearInterval(interval);
         };
-    }, [fetchDetailedStatus]);
+    }, [fetchDetailedStatus, fetchUptimeStats]);
 
-    if (isLoading) {
+    if (isLoading && !detailedStatus) {
         return (
             <div className="w-full p-4 rounded-lg bg-gray-100 animate-pulse text-gray-500">
                 Checking system status...
@@ -91,9 +103,7 @@ export default function SystemStatusBanner() {
         );
     }
 
-    const status = detailedStatus.overallStatus ?? 'Unknown';
     const affectedServicesCount = Math.max(0, detailedStatus.totalServicesCount - detailedStatus.healthyServicesCount);
-    const statusConfig = useMemo(() => getStatusConfig(status), [status]);
     const updatedAtText = formatUpdatedAt(detailedStatus.timestamp);
 
     return (

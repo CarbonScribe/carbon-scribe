@@ -6,9 +6,11 @@ import { PaymentService } from './services/payment.service';
 import { ReservationService } from './services/reservation.service';
 import { AuditService } from './services/audit.service';
 import { RetirementModule } from '../retirement/retirement.module';
+import { CreditModule } from '../credit/credit.module';
+import { EventBusModule } from '../event-bus/event-bus.module';
 
 @Module({
-  imports: [RetirementModule],
+  imports: [RetirementModule, CreditModule, EventBusModule],
   providers: [
     CartService,
     CheckoutService,

@@ -22,6 +22,8 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/health"
 	"carbon-scribe/project-portal/project-portal-backend/internal/integration"
 	integrationstellar "carbon-scribe/project-portal/project-portal-backend/internal/integration/stellar"
+	"carbon-scribe/project-portal/project-portal-backend/internal/middleware"
+	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
@@ -29,13 +31,16 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/quality"
 	"carbon-scribe/project-portal/project-portal-backend/internal/reports"
-	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/internal/search"
 	"carbon-scribe/project-portal/project-portal-backend/internal/seed"
 	"carbon-scribe/project-portal/project-portal-backend/internal/settings"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
+	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/gin-gonic/gin"
@@ -97,6 +102,47 @@ func main() {
 	searchService := search.NewService(searchRepo)
 	searchHandler := search.NewHandler(searchService)
 
+	// Initialize Redis client and Rate Limiter
+	redisClient := middleware.NewRedisClient(
+		cfg.Redis.Host,
+		cfg.Redis.Port,
+		cfg.Redis.Password,
+		cfg.Redis.DB,
+	)
+	defer redisClient.Close()
+
+	// Probe Redis connectivity — fail open so the server still starts without Redis.
+	var rateLimiter *middleware.RateLimiter
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer redisCancel()
+	if pingErr := redisClient.Ping(redisCtx).Err(); pingErr != nil {
+		log.Printf("⚠️  Redis unavailable (%v) — rate limiting is DISABLED", pingErr)
+	} else {
+		rateLimiter = middleware.NewRateLimiter(redisClient, cfg.RateLimit.IPWhitelist)
+		log.Println("✅ Redis connected — rate limiting enabled")
+	}
+
+	// ============================================================================
+	// Initialize SES Email Client (only if a sender address is configured)
+	// ============================================================================
+	var emailClient aws.EmailClient
+	if cfg.SES.FromAddress != "" {
+		sesClient, sesErr := aws.NewSESClient(aws.SESConfig{
+			Region:          cfg.AWS.Region,
+			AccessKeyID:     cfg.AWS.AccessKeyID,
+			SecretAccessKey: cfg.AWS.SecretAccessKey,
+			Endpoint:        cfg.AWS.Endpoint,
+			FromAddress:     cfg.SES.FromAddress,
+		})
+		if sesErr != nil {
+			log.Fatalf("❌ Failed to configure SES email client: %v", sesErr)
+		}
+		emailClient = sesClient
+		log.Printf("✅ SES email client initialized (from=%s)", cfg.SES.FromAddress)
+	} else {
+		log.Println("ℹ️  SES_FROM_ADDRESS not configured — transactional email is disabled")
+	}
+
 	// Parse JWT token expiries
 	accessTokenExpiry := parseDuration(cfg.Auth.JWTAccessTokenExpiry, 15*time.Minute)
 	refreshTokenExpiry := parseDuration(cfg.Auth.JWTRefreshTokenExpiry, 7*24*time.Hour)
@@ -105,7 +151,11 @@ func main() {
 	tokenManager := auth.NewTokenManager(cfg.Auth.JWTSecret, accessTokenExpiry, refreshTokenExpiry)
 	stellarAuth := auth.NewStellarAuthenticator(cfg.Auth.StellarNetworkPassphrase, 15*time.Minute)
 	authRepo := auth.NewRepository(db)
-	authService := auth.NewService(authRepo, tokenManager, stellarAuth, cfg.Auth.PasswordHashCost)
+	var authServiceOpts []auth.ServiceOption
+	if emailClient != nil {
+		authServiceOpts = append(authServiceOpts, auth.WithEmailer(emailClient, cfg.Auth.EmailVerificationURL, cfg.Auth.PasswordResetURL))
+	}
+	authService := auth.NewService(authRepo, tokenManager, stellarAuth, cfg.Auth.PasswordHashCost, authServiceOpts...)
 	authHandler := auth.NewHandler(authService)
 
 	healthRepo := health.NewRepository(db)
@@ -126,9 +176,17 @@ func main() {
 	// --- Methodology Compliance Validator ---
 	methodologyValidator := validation.NewMethodologyValidator(methodologyCapClient)
 
+	// isProduction mirrors the release-mode signal used for gin.SetMode below:
+	// Debug is only true when explicitly enabled, so an unconfigured
+	// environment fails closed to the stricter production checks.
+	isProduction := !cfg.Debug
+	mintingContractClient, err := minting.NewContractClientFromEnv(isProduction)
+	if err != nil {
+		log.Fatalf("❌ Failed to configure carbon asset minting contract client: %v", err)
+	}
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
-	mintingService := minting.NewService(db, nil, mintingCapValidator)
-	mintingHandler := minting.NewHandler(mintingService)
+	mintingService := minting.NewService(db, mintingContractClient, mintingCapValidator)
+	mintingHandler := minting.NewHandler(mintingService).WithRateLimiter(rateLimiter)
 
 	projectService := project.NewService(projectRepo, methodologyService, mintingService, validation.Validator(methodologyValidator))
 	projectHandler := project.NewHandler(projectService)
@@ -175,11 +233,11 @@ func main() {
 	collaborationHandler := collaboration.NewHandler(collaborationService)
 
 	geospatialRepo := geospatial.NewRepository(db)
-	geospatialService := geospatial.NewService(geospatialRepo)
+	geospatialService := geospatial.NewService(geospatialRepo, db)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
 	financingRepo := financing.NewRepository(db)
 	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService)
-	financingHandler := financing.NewHandler(financingService)
+	financingHandler := financing.NewHandler(financingService).WithRateLimiter(rateLimiter).WithRateLimiter(rateLimiter)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{
 		EncryptionKeyHex: cfg.Settings.EncryptionKeyHex,
@@ -229,6 +287,17 @@ func main() {
 
 	notificationsHandler := notifications.NewHandler(notificationsService)
 
+	// ============================================================================
+	// Initialize Compliance Request Worker
+	// ============================================================================
+
+	workerCtx, workerCancel := context.WithCancel(context.Background())
+	defer workerCancel()
+
+	complianceWorker := workers.NewComplianceRequestWorker(complianceRepo, notificationsService, 5*time.Minute, log.Default())
+	go complianceWorker.Run(workerCtx)
+	log.Println("✅ Compliance request worker started")
+
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
 	inventoryRepo := inventory.NewRepository(db)
@@ -236,6 +305,72 @@ func main() {
 	inventoryService := inventory.NewService(inventoryRepo, sorobanClient, inventoryCacheTTL)
 	inventoryHandler := inventory.NewHandler(inventoryService)
 	log.Println("✅ Credit inventory service initialized")
+
+	// ============================================================================
+	// Initialize Monitoring Service
+	// ============================================================================
+
+	// Get sql.DB from GORM for monitoring repository
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("❌ Failed to get underlying SQL DB for monitoring: %v", err)
+	}
+
+	monitoringRepo := monitoring.NewPostgresRepository(sqlDB)
+	monitoringService := monitoring.NewService(monitoringRepo)
+	monitoringHandler := api.NewMonitoringHandler(monitoringService)
+	log.Println("✅ Monitoring service initialized")
+
+	// ============================================================================
+	// Initialize MQTT IoT Telemetry Client (only if a broker is configured)
+	// ============================================================================
+	var mqttClient *iot.Client
+	if cfg.MQTT.BrokerURL != "" {
+		mqttClient = iot.NewClient(iot.Config{
+			BrokerURL:             cfg.MQTT.BrokerURL,
+			ClientID:              cfg.MQTT.ClientID,
+			Username:              cfg.MQTT.Username,
+			Password:              cfg.MQTT.Password,
+			TLSCACertFile:         cfg.MQTT.TLSCACertFile,
+			TLSCertFile:           cfg.MQTT.TLSCertFile,
+			TLSKeyFile:            cfg.MQTT.TLSKeyFile,
+			TLSInsecureSkipVerify: cfg.MQTT.TLSInsecureSkipVerify,
+			QoS:                   byte(cfg.MQTT.QoS),
+			QueueSize:             cfg.MQTT.QueueSize,
+			Workers:               cfg.MQTT.Workers,
+		}, monitoringService, log.New(log.Writer(), "[mqtt] ", log.LstdFlags))
+
+		health.RegisterComponentStatusProvider("mqtt", func() health.ComponentStatus {
+			status := mqttClient.Status()
+			componentStatus := "up"
+			if !status.Connected {
+				componentStatus = "down"
+			}
+			return health.ComponentStatus{
+				Status:        componentStatus,
+				Details:       status.LastError,
+				LastCheckTime: time.Now(),
+				Metadata: map[string]any{
+					"broker_url":         status.BrokerURL,
+					"messages_received":  status.MessagesReceived,
+					"messages_dropped":   status.MessagesDropped,
+					"queue_depth":        status.QueueDepth,
+					"queue_capacity":     status.QueueCapacity,
+					"last_connected_at":  status.LastConnectedAt,
+					"last_disconnect_at": status.LastDisconnectAt,
+				},
+			}
+		})
+
+		if err := mqttClient.Start(context.Background()); err != nil {
+			log.Printf("⚠️  MQTT client failed to start (%v) — IoT telemetry via MQTT will be unavailable", err)
+			mqttClient = nil
+		} else {
+			log.Printf("✅ MQTT client started, connecting to %s", cfg.MQTT.BrokerURL)
+		}
+	} else {
+		log.Println("ℹ️  MQTT_BROKER_URL not configured — MQTT IoT telemetry client disabled")
+	}
 
 	// Setup Gin
 	if !cfg.Debug {
@@ -248,15 +383,7 @@ func main() {
 	router.Use(corsMiddleware())
 
 	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status":    "healthy",
-			"service":   "carbon-scribe-project-portal",
-			"timestamp": time.Now().Format(time.RFC3339),
-			"version":   "1.0.0",
-			"modules":   []string{"auth", "collaboration", "documents", "integration", "reports", "search", "geospatial", "settings", "financing", "inventory", "notifications"},
-		})
-	})
+	router.GET("/health", HealthHandler(db, esClient, notificationMongoClient))
 
 	// Root API route
 	router.GET("/", func(c *gin.Context) {
@@ -277,6 +404,7 @@ func main() {
 				"financing":     "/api/v1/financing/*",
 				"inventory":     "/api/v1/projects/:id/inventory/*",
 				"notifications": "/api/v1/notifications/*",
+				"monitoring":    "/api/v1/monitoring/*",
 			},
 		})
 	})
@@ -286,7 +414,7 @@ func main() {
 	{
 		// Register auth routes under v1
 		authGroup := v1.Group("/auth")
-		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager)
+		auth.RegisterAuthRoutes(authGroup, authHandler, tokenManager, rateLimiter)
 
 		// Register all project and quality routes (no duplicates)
 		project.RegisterRoutes(router, projectHandler, qualityHandler)
@@ -328,6 +456,18 @@ func main() {
 		financingHandler.RegisterRoutes(v1)
 		mintingHandler.RegisterRoutes(v1)
 
+		// ============================================================================
+		// Register Monitoring Routes under v1
+		// ============================================================================
+		api.RegisterMonitoringRoutes(v1, monitoringHandler)
+
+		// Register the SES bounce/complaint SNS webhook under v1. Registered
+		// unconditionally (independent of emailClient) since SNS can still
+		// deliver events for mail sent before SES was reconfigured, and the
+		// endpoint itself does no harm sitting idle.
+		sesWebhookHandler := api.NewSESWebhookHandler(aws.SESWebhookHandlers{})
+		api.RegisterSESWebhookRoutes(v1, sesWebhookHandler)
+
 		// Ping endpoint for testing
 		v1.GET("/ping", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "pong", "timestamp": time.Now().Unix()})
@@ -365,6 +505,7 @@ func main() {
 		fmt.Println("   - Settings: /api/v1/settings/*")
 		fmt.Println("   - Financing: /api/v1/financing/*")
 		fmt.Println("   - Notifications: /api/v1/notifications/*")
+		fmt.Println("   - Monitoring: /api/v1/monitoring/*")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Server failed to start: %v", err)
@@ -382,6 +523,10 @@ func main() {
 	// Attempt graceful shutdown
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalf("❌ Server forced to shutdown: %v", err)
+	}
+
+	if mqttClient != nil {
+		mqttClient.Stop(ctx)
 	}
 
 	fmt.Println("✅ Server exited gracefully")

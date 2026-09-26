@@ -98,10 +98,15 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
+      // Extract status code from error if available
+      let statusCode: number | undefined;
+      if (error && typeof error === 'object' && 'status' in error) {
+        statusCode = (error as any).status;
+      }
+
       lastError = error instanceof Error ? error : new Error(String(error));
 
       // Check if error is retryable
-      const statusCode = (error as any).status;
       if (!isRetryableError(error, statusCode)) {
         throw lastError;
       }

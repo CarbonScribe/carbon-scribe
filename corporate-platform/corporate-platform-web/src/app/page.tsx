@@ -1,5 +1,3 @@
-'use client'
-
 import DashboardOverview from '@/components/dashboard/DashboardOverview'
 import CreditMarketplace from '@/components/marketplace/CreditMarketplace'
 import RetirementHistory from '@/components/retirement/RetirementHistory'
@@ -7,6 +5,31 @@ import PortfolioAnalytics from '@/components/analytics/PortfolioAnalytics'
 import SustainabilityGoals from '@/components/goals/SustainabilityGoals'
 import QuickActions from '@/components/actions/QuickActions'
 import LiveRetirementFeed from '@/components/feed/LiveRetirementFeed'
+
+/**
+ * ISR Configuration
+ * Revalidate the page every 60 seconds to keep content fresh
+ * while maintaining static generation benefits
+ */
+export const revalidate = 60;
+
+/**
+ * Static Generation Configuration
+ * Force static generation with dynamic parameters allowed
+ * This enables ISR with fallback behavior
+ */
+export const dynamic = 'force-static';
+export const dynamicParams = true;
+
+/**
+ * Generate static params for ISR
+ * This ensures the page is pre-rendered at build time
+ */
+export function generateStaticParams() {
+  // For the home page, we just need a single entry
+  // This ensures the page is statically generated at build time
+  return [{ slug: '' }];
+}
 
 export default function CorporatePlatformHome() {
   return (

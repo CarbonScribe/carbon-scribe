@@ -125,6 +125,11 @@ type Claims struct {
 
 // Request/Response DTOs
 
+// ResendVerificationRequest represents a request to resend an email verification link.
+type ResendVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
 // RegisterRequest represents a user registration request
 type RegisterRequest struct {
 	Email        string `json:"email" binding:"required,email"`
@@ -188,16 +193,17 @@ type AuthResponse struct {
 
 // UserResponse represents user data in responses
 type UserResponse struct {
-	ID            string     `json:"id"`
-	Email         string     `json:"email"`
-	FullName      string     `json:"full_name"`
-	Organization  string     `json:"organization"`
-	Role          string     `json:"role"`
-	EmailVerified bool       `json:"email_verified"`
-	IsActive      bool       `json:"is_active"`
-	WalletAddress string     `json:"wallet_address,omitempty"`
-	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID                   string     `json:"id"`
+	Email                string     `json:"email"`
+	FullName             string     `json:"full_name"`
+	Organization         string     `json:"organization"`
+	Role                 string     `json:"role"`
+	EmailVerified        bool       `json:"email_verified"`
+	VerificationRequired bool       `json:"verification_required"`
+	IsActive             bool       `json:"is_active"`
+	WalletAddress        string     `json:"wallet_address,omitempty"`
+	LastLoginAt          *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
 }
 
 // TokenResponse represents a token response

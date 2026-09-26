@@ -10,6 +10,13 @@ type Rule struct {
 }
 
 type Geofence struct {
-	ID   uuid.UUID
-	Name string
+	ID           uuid.UUID
+	Name         string
+	Geometry     []byte
+	AlertRules   *Rule
+	Metadata     map[string]any
+	IsActive     bool
+	Priority     int
+	CreatedAt    string
+	UpdatedAt    string
 }

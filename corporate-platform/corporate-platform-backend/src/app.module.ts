@@ -37,6 +37,11 @@ import { CbamModule } from './cbam/cbam.module';
 import { SbtiModule } from './sbti/sbti.module';
 import { HealthModule } from './health/health.module';
 import { DevBootstrapSeedService } from './dev/dev-bootstrap-seed.service';
+import { RateLimitModule } from './rate-limit/rate-limit.module';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
+import { ExceptionMappingInterceptor } from './shared/interceptors/exception-mapping.interceptor';
+import { RequestTimeoutInterceptor } from './shared/interceptors/request-timeout.interceptor';
 
 @Module({
   imports: [
@@ -73,9 +78,27 @@ import { DevBootstrapSeedService } from './dev/dev-bootstrap-seed.service';
     CbamModule,
     SbtiModule,
     HealthModule,
+    RateLimitModule,
   ],
   controllers: [AppController],
-  providers: [AppService, DevBootstrapSeedService],
+  providers: [
+    AppService,
+    DevBootstrapSeedService,
+    // Global exception filter registration
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+    // Global interceptor registration
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ExceptionMappingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RequestTimeoutInterceptor,
+    },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

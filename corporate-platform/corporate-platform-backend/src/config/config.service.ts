@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { configSchema } from './validation/config.schema';
+import { PlaceholderDetector } from './validation/placeholder-detector';
 import { AppConfig } from './interfaces/app-config.interface';
 import { DatabaseConfig } from './interfaces/database-config.interface';
 import { RedisConfig } from './interfaces/redis-config.interface';
@@ -15,6 +16,38 @@ import {
   LoggingConfig,
 } from './interfaces/logging-config.interface';
 import { ServicesConfig } from './interfaces/services-config.interface';
+import { TimeoutConfig } from './interfaces/timeout-config.interface';
+import { CircuitBreakerConfig } from './interfaces/circuit-breaker-config.interface';
+
+export interface RateLimitConfig {
+  enabled: boolean;
+  defaultWindowMs: number;
+  defaultMaxRequests: number;
+  redisKeyPrefix: string;
+  enableMetrics: boolean;
+  enableLogging: boolean;
+  whitelistEnabled: boolean;
+}
+
+export const JWT_SECRET_MIN_LENGTH = 32;
+
+/**
+ * Treats any deployment that looks shared/staging as production-like for
+ * secret validation, not just NODE_ENV === 'production' — a staging box
+ * misconfigured with NODE_ENV=development should still reject weak secrets.
+ */
+export function isProductionLikeEnvironment(value: {
+  NODE_ENV?: string;
+  SERVICE_NAME?: string;
+  DEPLOY_ENV?: string;
+}): boolean {
+  if (value.NODE_ENV === 'production') {
+    return true;
+  }
+  const marker =
+    `${value.SERVICE_NAME || ''} ${value.DEPLOY_ENV || ''}`.toLowerCase();
+  return /staging|shared/.test(marker);
+}
 
 export interface AllConfig {
   app: AppConfig;
@@ -25,6 +58,7 @@ export interface AllConfig {
   auth: AuthConfig;
   logging: LoggingConfig;
   services: ServicesConfig;
+  rateLimit: RateLimitConfig;
 }
 
 @Injectable()
@@ -36,7 +70,7 @@ export class ConfigService {
     this.config = this.buildConfig();
   }
 
-  reload() {
+  reload(): void {
     this.loadEnvFile();
     this.config = this.buildConfig();
   }
@@ -73,7 +107,72 @@ export class ConfigService {
     return this.config.services;
   }
 
-  private loadEnvFile() {
+  getRateLimitConfig(): RateLimitConfig {
+    return this.config.rateLimit;
+  }
+
+  /**
+   * Generic get method to maintain compatibility with @nestjs/config
+   * for specific untyped environment variables.
+   */
+  get<T = any>(key: string, defaultValue?: T): T {
+    const value = process.env[key];
+    if (value === undefined) {
+      return defaultValue as T;
+    }
+
+    if (typeof defaultValue === 'number') {
+      return parseInt(value, 10) as unknown as T;
+    }
+
+    // Attempt basic numeric coercion if T is number (implied by usage)
+    if (!isNaN(value as any) && value.trim() !== '') {
+      return Number(value) as unknown as T;
+    }
+
+    return value as unknown as T;
+  }
+
+  /**
+   * Get timeout configuration
+   */
+  getTimeoutConfig(): TimeoutConfig {
+    return {
+      defaultTimeout: parseInt(process.env.DEFAULT_TIMEOUT || '30000', 10),
+      shutdownGracePeriod: parseInt(
+        process.env.SHUTDOWN_GRACE_PERIOD || '30000',
+        10,
+      ),
+      healthCheckTimeout: parseInt(
+        process.env.HEALTH_CHECK_TIMEOUT || '5000',
+        10,
+      ),
+    };
+  }
+
+  /**
+   * Get circuit breaker configuration
+   */
+  getCircuitBreakerConfig(): CircuitBreakerConfig {
+    return {
+      enabled: process.env.CIRCUIT_BREAKER_ENABLED !== 'false',
+      failureThreshold: parseInt(
+        process.env.CIRCUIT_BREAKER_FAILURE_THRESHOLD || '5',
+        10,
+      ),
+      successThreshold: parseInt(
+        process.env.CIRCUIT_BREAKER_SUCCESS_THRESHOLD || '2',
+        10,
+      ),
+      timeout: parseInt(process.env.CIRCUIT_BREAKER_TIMEOUT || '30000', 10),
+      resetTimeout: parseInt(
+        process.env.CIRCUIT_BREAKER_RESET_TIMEOUT || '60000',
+        10,
+      ),
+    };
+  }
+
+  private loadEnvFile(): void {
     const explicitPath = process.env.CONFIG_FILE;
     if (explicitPath && existsSync(explicitPath)) {
       dotenv.config({ path: explicitPath });
@@ -104,13 +203,23 @@ export class ConfigService {
       serviceName: value.SERVICE_NAME,
     };
 
-    if (app.nodeEnv === 'production') {
-      if (!value.DATABASE_URL) {
-        throw new Error('DATABASE_URL is required in production');
-      }
-      if (!value.JWT_SECRET || value.JWT_SECRET === 'dev-jwt-secret') {
+    // Basic production validation (additional validation handled by StartupValidator)
+    const isProductionLike = isProductionLikeEnvironment(value);
+
+    if (app.nodeEnv === 'production' && !value.DATABASE_URL) {
+      throw new Error('DATABASE_URL is required in production');
+    }
+
+    if (isProductionLike) {
+      const placeholderDetector = new PlaceholderDetector();
+      const jwtSecretCheck = placeholderDetector.validateValue(
+        value.JWT_SECRET,
+        'JWT_SECRET',
+        { minLength: JWT_SECRET_MIN_LENGTH },
+      );
+      if (!jwtSecretCheck.isValid) {
         throw new Error(
-          'JWT_SECRET must be set to a secure value in production',
+          `${jwtSecretCheck.message} (minimum ${JWT_SECRET_MIN_LENGTH} characters, no dev/test/placeholder patterns).`,
         );
       }
     }
@@ -124,6 +233,16 @@ export class ConfigService {
       host: value.REDIS_HOST,
       port: value.REDIS_PORT,
       password: value.REDIS_PASSWORD || undefined,
+      // Timeout properties with defaults
+      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      timeout: parseInt(process.env.REDIS_TIMEOUT || '5000', 10),
+      maxRetries: parseInt(process.env.REDIS_MAX_RETRIES || '3', 10),
+      retryDelay: parseInt(process.env.REDIS_RETRY_DELAY || '1000', 10),
+      connectionTimeout: parseInt(
+        process.env.REDIS_CONNECTION_TIMEOUT || '5000',
+        10,
+      ),
+      idleTimeout: parseInt(process.env.REDIS_IDLE_TIMEOUT || '30000', 10),
     };
 
     const kafka: KafkaConfig = {
@@ -145,12 +264,46 @@ export class ConfigService {
         initialRetryTime: value.KAFKA_RETRY_INITIAL,
         retries: value.KAFKA_RETRY_MAX,
       },
+      // Timeout properties with defaults
+      groupId: process.env.KAFKA_GROUP_ID || 'corporate-platform-backend-group',
+      producerTimeout: parseInt(
+        process.env.KAFKA_PRODUCER_TIMEOUT || '10000',
+        10,
+      ),
+      consumerTimeout: parseInt(
+        process.env.KAFKA_CONSUMER_TIMEOUT || '30000',
+        10,
+      ),
+      maxRetries: parseInt(process.env.KAFKA_MAX_RETRIES || '3', 10),
+      retryDelay: parseInt(process.env.KAFKA_RETRY_DELAY || '1000', 10),
+      connectionTimeout: parseInt(
+        process.env.KAFKA_CONNECTION_TIMEOUT || '5000',
+        10,
+      ),
     };
 
     const stellar: StellarConfig = {
       network: value.STELLAR_NETWORK,
       horizonUrl: value.HORIZON_URL || undefined,
       sorobanRpcUrl: value.SOROBAN_RPC_URL || undefined,
+      // Timeout properties with defaults
+      simulateTimeout: parseInt(
+        process.env.STELLAR_SIMULATE_TIMEOUT || '30000',
+        10,
+      ),
+      sendTimeout: parseInt(process.env.STELLAR_SEND_TIMEOUT || '60000', 10),
+      getTransactionTimeout: parseInt(
+        process.env.STELLAR_GET_TX_TIMEOUT || '10000',
+        10,
+      ),
+      getEventsTimeout: parseInt(
+        process.env.STELLAR_GET_EVENTS_TIMEOUT || '15000',
+        10,
+      ),
+      getLatestLedgerTimeout: parseInt(
+        process.env.STELLAR_GET_LEDGER_TIMEOUT || '10000',
+        10,
+      ),
     };
 
     const auth: AuthConfig = {
@@ -173,6 +326,23 @@ export class ConfigService {
       ipfsGateway: value.IPFS_GATEWAY || undefined,
     };
 
+    // Rate limit configuration with environment variable overrides
+    const rateLimit: RateLimitConfig = {
+      enabled: process.env.RATE_LIMIT_ENABLED !== 'false',
+      defaultWindowMs: parseInt(
+        process.env.RATE_LIMIT_DEFAULT_WINDOW_MS || '60000',
+        10,
+      ),
+      defaultMaxRequests: parseInt(
+        process.env.RATE_LIMIT_DEFAULT_MAX_REQUESTS || '10',
+        10,
+      ),
+      redisKeyPrefix: process.env.RATE_LIMIT_REDIS_PREFIX || 'rate-limit',
+      enableMetrics: process.env.RATE_LIMIT_METRICS_ENABLED !== 'false',
+      enableLogging: process.env.RATE_LIMIT_LOGGING_ENABLED !== 'false',
+      whitelistEnabled: process.env.RATE_LIMIT_WHITELIST_ENABLED !== 'false',
+    };
+
     return {
       app,
       database,
@@ -182,6 +352,7 @@ export class ConfigService {
       auth,
       logging,
       services,
+      rateLimit,
     };
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
 import { CreateTargetDto } from './dto/create-target.dto';
 import { SbtiTarget } from './interfaces/sbti-target.interface';
@@ -11,15 +11,21 @@ import {
   AuditEventType,
   AuditAction,
 } from '../audit-trail/interfaces/audit-event.interface';
+import { ProgressTrackingService } from './services/progress-tracking.service';
 
 @Injectable()
 export class SbtiService {
+  private readonly logger = new Logger(SbtiService.name);
+  private dashboardCache = new Map<string, { expires: number; payload: any }>();
+  private readonly dashboardTtlMs = 3 * 60 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly targetValidation: TargetValidationService,
     private readonly retirementService: RetirementService,
     private readonly ghgProtocolService: GhgProtocolService,
     private readonly auditTrailService: AuditTrailService,
+    private readonly progressTracking: ProgressTrackingService,
   ) {}
   // Create SBTi target
   async createTarget(dto: CreateTargetDto): Promise<SbtiTarget> {
@@ -102,17 +108,49 @@ export class SbtiService {
     return result;
   }
 
-  // SBTi progress dashboard
+  // SBTi progress dashboard — chart-ready aggregation via ProgressTrackingService
   async getDashboard(companyId: string): Promise<any> {
-    // TODO: Aggregate and return chart-ready dashboard data
-    // Placeholder: return targets and progress
+    const cached = this.dashboardCache.get(companyId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.payload;
+    }
+
     const targets = await this.prisma.sbtiTarget.findMany({
       where: { companyId },
     });
     const progress = await this.prisma.targetProgress.findMany({
       where: { targetId: { in: targets.map((t) => t.id) } },
     });
-    return { targets, progress };
+
+    let dataQuality: 'ok' | 'partial' = 'ok';
+    let retirementGaps: any[] = [];
+    try {
+      const gapResult = await this.getRetirementGap(companyId);
+      retirementGaps = gapResult.results || [];
+      if (gapResult.dataQuality === 'partial') dataQuality = 'partial';
+    } catch (err) {
+      dataQuality = 'partial';
+      this.logger.warn(
+        `getDashboard: retirement gap aggregation partial for ${companyId}: ${(err as Error).message}`,
+      );
+    }
+
+    const aggregation = this.progressTracking.aggregate(
+      targets as any,
+      progress as any,
+      { dataQuality },
+    );
+
+    const payload = {
+      ...aggregation,
+      retirementGaps,
+      generatedAt: new Date().toISOString(),
+    };
+    this.dashboardCache.set(companyId, {
+      expires: Date.now() + this.dashboardTtlMs,
+      payload,
+    });
+    return payload;
   }
 
   // Calculate retirements needed (retirement gap)
@@ -123,22 +161,25 @@ export class SbtiService {
     });
     // 2. For each target, get GHG emissions and retirements
     const results = [];
+    let anyPartial = false;
     for (const target of targets) {
       // Get total emissions for the target year and scope
       // (Assume ghgProtocolService has a method getTotalEmissions(companyId, year, scope))
       let emissions = 0;
+      let partial = false;
       try {
         emissions = await (this.ghgProtocolService as any).getTotalEmissions(
           companyId,
           target.targetYear,
           target.scope,
         );
-      } catch {
-        // ignore
+      } catch (err) {
+        partial = true;
+        this.logger.warn(
+          `getRetirementGap emissions failed target=${target.id}: ${(err as Error).message}`,
+        );
       }
 
-      // Get total retirements for the target year and scope
-      // (Assume retirementService has a method getTotalRetirements(companyId, year, scope))
       let retirements = 0;
       try {
         retirements = await (this.retirementService as any).getTotalRetirements(
@@ -146,11 +187,13 @@ export class SbtiService {
           target.targetYear,
           target.scope,
         );
-      } catch {
-        // ignore
+      } catch (err) {
+        partial = true;
+        this.logger.warn(
+          `getRetirementGap retirements failed target=${target.id}: ${(err as Error).message}`,
+        );
       }
 
-      // Calculate gap
       const gap = Math.max(0, emissions - retirements);
       results.push({
         targetId: target.id,
@@ -159,8 +202,10 @@ export class SbtiService {
         emissions,
         retirements,
         gap,
+        dataQuality: partial ? 'partial' : 'ok',
       });
+      if (partial) anyPartial = true;
     }
-    return { results };
+    return { results, dataQuality: anyPartial ? 'partial' : 'ok' };
   }
 }

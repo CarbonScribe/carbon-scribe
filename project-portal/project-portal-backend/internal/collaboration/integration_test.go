@@ -100,9 +100,9 @@ func TestCollaborationIntegration_EndToEndFlow(t *testing.T) {
 		router.ServeHTTP(resp, req)
 
 		assert.Equal(t, http.StatusOK, resp.Code)
-		var body []map[string]any
+		var body PaginationResponse
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &body))
-		assert.NotNil(t, body)
+		assert.NotNil(t, body.Data)
 	})
 
 	assert.GreaterOrEqual(t, len(repo.Activities), 3, "expected activities from invite/comment/task operations")

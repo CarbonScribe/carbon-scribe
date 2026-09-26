@@ -18,7 +18,7 @@ export class TransferConfirmationHandler implements IWebhookHandler {
     );
   }
 
-  async handle(payload: any): Promise<void> {
+  async handle(payload: any, _tx?: any): Promise<void> {
     if (payload.operationType !== OperationType.TRANSFER) return;
 
     this.logger.log(`Handling transfer confirmation for hash: ${payload.hash}`);

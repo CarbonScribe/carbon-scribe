@@ -1,13 +1,17 @@
-'use client';
+"use client";
 
-import { BarChart3, Hash, Table, Gauge } from 'lucide-react';
-import type { WidgetType } from '@/store/reports.types';
+import { BarChart3, Hash, Table, Gauge } from "lucide-react";
+import type { WidgetType } from "@/lib/store/store";
 
-const WIDGET_TYPES: { type: WidgetType; label: string; icon: typeof BarChart3 }[] = [
-  { type: 'chart', label: 'Chart', icon: BarChart3 },
-  { type: 'metric', label: 'Metric', icon: Hash },
-  { type: 'table', label: 'Table', icon: Table },
-  { type: 'gauge', label: 'Gauge', icon: Gauge },
+const WIDGET_TYPES: {
+  type: WidgetType;
+  label: string;
+  icon: typeof BarChart3;
+}[] = [
+  { type: "chart", label: "Chart", icon: BarChart3 },
+  { type: "metric", label: "Metric", icon: Hash },
+  { type: "table", label: "Table", icon: Table },
+  { type: "gauge", label: "Gauge", icon: Gauge },
 ];
 
 interface WidgetLibraryProps {
@@ -15,7 +19,10 @@ interface WidgetLibraryProps {
   disabled?: boolean;
 }
 
-export default function WidgetLibrary({ onSelect, disabled }: WidgetLibraryProps) {
+export default function WidgetLibrary({
+  onSelect,
+  disabled,
+}: WidgetLibraryProps) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {WIDGET_TYPES.map(({ type, label, icon: Icon }) => (

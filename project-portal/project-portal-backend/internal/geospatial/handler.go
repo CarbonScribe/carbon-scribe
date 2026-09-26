@@ -174,11 +174,27 @@ func (h *Handler) GetMapTile(c *gin.Context) {
 		return
 	}
 
-	data, contentType, cached, err := h.service.GetTile(c.Request.Context(), z, x, y, c.Query("style"))
+	style := c.DefaultQuery("style", "streets")
+	format := c.DefaultQuery("format", "png")
+
+	data, contentType, cached, err := h.service.GetTile(c.Request.Context(), z, x, y, style, format)
 	if err != nil {
+		c.Header("Content-Type", "application/json")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	if len(data) == 0 {
+		c.Header("Content-Type", contentType)
+		if cached {
+			c.Header("X-Cache", "HIT")
+		} else {
+			c.Header("X-Cache", "MISS")
+		}
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	c.Header("Content-Type", contentType)
 	if cached {
 		c.Header("X-Cache", "HIT")

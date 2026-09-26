@@ -11,6 +11,13 @@ vi.mock('@/services/marketplace.service', () => ({
   },
 }))
 
+// Bypass the 300 ms filter debounce so every filter change triggers an
+// immediate fetch. This keeps race-condition tests deterministic without
+// fake timers (fake timers block waitFor's internal polling, causing timeouts).
+vi.mock('@/hooks/useDebounce', () => ({
+  useDebounce: <T>(value: T) => value,
+}))
+
 const mockSearchCredits = vi.mocked(marketplaceService.searchCredits)
 const mockGetStats = vi.mocked(marketplaceService.getStats)
 const mockGetFilters = vi.mocked(marketplaceService.getFilters)
@@ -159,8 +166,10 @@ describe('useMarketplace', () => {
     })
 
     await waitFor(() => expect(result.current.page).toBe(2))
+    // searchCredits is now called with (query, AbortSignal) — assert both args
     expect(mockSearchCredits).toHaveBeenCalledWith(
       expect.objectContaining({ page: 2 }),
+      expect.any(AbortSignal),
     )
   })
 
@@ -234,5 +243,116 @@ describe('useMarketplace', () => {
     await waitFor(() => {
       expect(mockSearchCredits.mock.calls.length).toBeGreaterThan(callCount)
     })
+  })
+})
+
+// ── Race-condition protection ────────────────────────────────────────────────
+// useDebounce is mocked as an identity function (see top of file) so every
+// filter change triggers an immediate fetch. Race conditions are controlled
+// purely through the order in which mock promises are resolved — no fake
+// timers needed, which means waitFor's internal polling works normally.
+
+describe('useMarketplace – race condition protection', () => {
+  it('discards a stale response when a newer request resolves first', async () => {
+    let resolveStale!: (v: any) => void
+    const staleResult = { success: true, data: { ...mockSearchResult, total: 999 } }
+    const freshResult = { success: true, data: { ...mockSearchResult, total: 42 } }
+
+    // First fetch (initial load) is slow — it becomes stale.
+    mockSearchCredits.mockReturnValueOnce(new Promise((r) => (resolveStale = r)))
+    // Second fetch (after filter change) resolves immediately.
+    mockSearchCredits.mockResolvedValueOnce(freshResult)
+
+    const { result } = renderHook(() => useMarketplace())
+
+    // Changing filters immediately starts a fresh request, superseding the first.
+    act(() => {
+      result.current.setFilters({ ...DEFAULT_FILTERS, query: 'forest' })
+    })
+
+    // Wait for the fresh result to be applied.
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.total).toBe(42)
+
+    // Resolving the stale (first) request must have no effect.
+    await act(async () => {
+      resolveStale(staleResult)
+    })
+
+    expect(result.current.total).toBe(42) // still the fresh value
+    expect(result.current.credits[0]?.id).toBe('credit-1')
+  })
+
+  it('passes an AbortSignal to searchCredits so the HTTP request can be cancelled', async () => {
+    const capturedSignals: (AbortSignal | undefined)[] = []
+
+    mockSearchCredits.mockImplementation((_query, signal) => {
+      capturedSignals.push(signal as AbortSignal | undefined)
+      return Promise.resolve({ success: true, data: mockSearchResult })
+    })
+
+    const { result } = renderHook(() => useMarketplace())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    act(() => {
+      result.current.setFilters({ ...DEFAULT_FILTERS, query: 'new' })
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(capturedSignals.length).toBeGreaterThanOrEqual(2)
+    capturedSignals.forEach((signal) => {
+      expect(signal).toBeInstanceOf(AbortSignal)
+    })
+  })
+
+  it('aborts the previous in-flight request when filters change rapidly', async () => {
+    let resolveFirst!: (v: any) => void
+    const capturedSignals: AbortSignal[] = []
+
+    // First call: slow (never resolves); capture its AbortSignal.
+    mockSearchCredits.mockImplementationOnce((_query, signal) => {
+      if (signal) capturedSignals.push(signal as AbortSignal)
+      return new Promise((r) => (resolveFirst = r))
+    })
+    // Second call: resolves immediately.
+    mockSearchCredits.mockResolvedValueOnce({ success: true, data: mockSearchResult })
+
+    const { result } = renderHook(() => useMarketplace())
+
+    // Second filter change starts a new request and must cancel the first.
+    act(() => {
+      result.current.setFilters({ ...DEFAULT_FILTERS, query: 'fast' })
+    })
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    // The first request's signal must be aborted.
+    expect(capturedSignals).toHaveLength(1)
+    expect(capturedSignals[0].aborted).toBe(true)
+
+    // Resolving the aborted request must not overwrite the current state.
+    const staleTotal = 777
+    await act(async () => {
+      resolveFirst({ success: true, data: { ...mockSearchResult, total: staleTotal } })
+    })
+    expect(result.current.total).not.toBe(staleTotal)
+  })
+
+  it('does not update state after unmount (prevents memory leaks)', async () => {
+    let resolve!: (v: any) => void
+    mockSearchCredits.mockReturnValue(new Promise((r) => (resolve = r)))
+
+    const { result, unmount } = renderHook(() => useMarketplace())
+    expect(result.current.loading).toBe(true)
+
+    unmount()
+
+    // Resolving after unmount must not throw or produce React warnings.
+    await act(async () => {
+      resolve({ success: true, data: mockSearchResult })
+    })
+
+    // No assertions needed — absence of React "state update on unmounted
+    // component" warnings in the test output confirms the fix is working.
   })
 })
