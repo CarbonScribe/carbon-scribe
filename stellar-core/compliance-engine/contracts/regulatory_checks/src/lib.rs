@@ -111,6 +111,15 @@ impl RegulatoryCheck {
             }
         }
 
+        // Version numbering is contract-controlled: a brand-new rule always
+        // starts at version 1, regardless of whatever value the caller put
+        // in `rule.version`.
+        let mut rule = rule;
+        rule.version = 1;
+        env.storage()
+            .persistent()
+            .set(&DataKey::RuleVersion(rule.rule_id.clone()), &1u32);
+
         // Store the rule
         env.storage().persistent().set(&rule_key, &rule);
 
@@ -179,8 +188,59 @@ impl RegulatoryCheck {
             .get(&rule_key)
             .ok_or(ContractError::RuleNotFound)?;
 
+        // Check for logical duplicate/conflict against other *active* rules
+        // (excluding this rule's own current entry — updating a rule to its
+        // own unchanged content, or to a new state that just happens to
+        // resemble its own prior content, is not a conflict).
+        let active_rules: Vec<String> = env
+            .storage()
+            .instance()
+            .get(&DataKey::ActiveRuleIds)
+            .unwrap_or(Vec::new(&env));
+        for rid in active_rules.iter() {
+            if rid == rule.rule_id {
+                continue;
+            }
+            let existing_key = DataKey::Rule(rid.clone());
+            if let Some(existing_rule) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, JurisdictionRule>(&existing_key)
+            {
+                if Self::rules_conflict(&rule, &existing_rule) {
+                    soroban_sdk::log!(
+                        &env,
+                        "Rule conflict: attempted to update rule {:?} into a state that conflicts with existing rule {:?}",
+                        rule,
+                        existing_rule
+                    );
+                    return Err(ContractError::RuleConflict);
+                }
+            }
+        }
+
         // Compute hashes for change detection before overwriting
         let old_rule_hash = events::compute_rule_hash(&env, &old_rule);
+
+        // Archive the pre-update content under its own version number
+        // (#565) — the prior content is retained on-chain, not only its
+        // hash in the emitted event, so it remains queryable via
+        // get_rule_history/get_rule_at_version for audit/legal traceability.
+        env.storage().persistent().set(
+            &DataKey::RuleHistory(rule.rule_id.clone(), old_rule.version),
+            &old_rule,
+        );
+
+        // Version numbering is contract-controlled: always the prior
+        // version + 1, regardless of whatever value the caller put in
+        // `rule.version`.
+        let new_version = old_rule.version + 1;
+        let mut rule = rule;
+        rule.version = new_version;
+        env.storage()
+            .persistent()
+            .set(&DataKey::RuleVersion(rule.rule_id.clone()), &new_version);
+
         let new_rule_hash = events::compute_rule_hash(&env, &rule);
 
         // Store the updated rule
@@ -219,9 +279,22 @@ impl RegulatoryCheck {
 
         let rule_key = DataKey::Rule(rule_id.clone());
 
-        if !env.storage().persistent().has(&rule_key) {
-            return Err(ContractError::RuleNotFound);
-        }
+        let current_rule: JurisdictionRule = env
+            .storage()
+            .persistent()
+            .get(&rule_key)
+            .ok_or(ContractError::RuleNotFound)?;
+
+        // Archive the final content instead of erasing it (#565) — the rule
+        // is no longer active/enforceable, but its content remains
+        // queryable via get_rule_history/get_rule_at_version.
+        // DataKey::RuleVersion(rule_id) is deliberately left in place (not
+        // removed alongside rule_key) so that lookup keeps working after
+        // deactivation.
+        env.storage().persistent().set(
+            &DataKey::RuleHistory(rule_id.clone(), current_rule.version),
+            &current_rule,
+        );
 
         // Remove the rule
         env.storage().persistent().remove(&rule_key);
@@ -529,10 +602,72 @@ impl RegulatoryCheck {
         Ok(())
     }
 
-    /// Get rule by ID
+    /// Get rule by ID. Returns the current, live rule — `None` once the
+    /// rule has been deactivated, even though its content is still
+    /// retrievable via `get_rule_history`/`get_rule_at_version` (#565).
     pub fn get_rule(env: Env, rule_id: String) -> Option<JurisdictionRule> {
         let key = DataKey::Rule(rule_id);
         env.storage().persistent().get(&key)
+    }
+
+    /// Returns every version of a rule ever seen, oldest first: each
+    /// superseded version archived by `update_rule`/`deactivate_rule`,
+    /// followed by the current live version if the rule is still active
+    /// (#565). Returns an empty vector if `rule_id` has never existed.
+    pub fn get_rule_history(env: Env, rule_id: String) -> Vec<JurisdictionRule> {
+        let mut history = Vec::new(&env);
+
+        let latest_version: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RuleVersion(rule_id.clone()))
+            .unwrap_or(0);
+
+        for version in 1..=latest_version {
+            if let Some(archived) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, JurisdictionRule>(&DataKey::RuleHistory(rule_id.clone(), version))
+            {
+                history.push_back(archived);
+            }
+        }
+
+        // The current live version (if the rule is still active) hasn't
+        // been archived yet — it only gets archived on the *next*
+        // update_rule/deactivate_rule call — so append it explicitly.
+        if let Some(current) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, JurisdictionRule>(&DataKey::Rule(rule_id))
+        {
+            history.push_back(current);
+        }
+
+        history
+    }
+
+    /// Resolves a rule's content as of a specific version number, whether
+    /// that version is the current live one or an archived, superseded one
+    /// (#565). Returns `None` if `rule_id` never had that version.
+    pub fn get_rule_at_version(
+        env: Env,
+        rule_id: String,
+        version: u32,
+    ) -> Option<JurisdictionRule> {
+        if let Some(current) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, JurisdictionRule>(&DataKey::Rule(rule_id.clone()))
+        {
+            if current.version == version {
+                return Some(current);
+            }
+        }
+
+        env.storage()
+            .persistent()
+            .get(&DataKey::RuleHistory(rule_id, version))
     }
 
     /// Get all active rule IDs, in raw storage-insertion order.
