@@ -30,8 +30,22 @@ type ProjectCreditCache struct {
 	QualityScore  int64       `json:"quality_score"`
 	IsBurned      bool        `json:"is_burned" gorm:"default:false"`
 	LastSynced    time.Time   `json:"last_synced" gorm:"default:now()"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
+	// ExpiresAt is computed at write time as LastSynced + cacheTTL.
+	// Rows with ExpiresAt <= now (or zero value) are considered expired and
+	// must never be served as fresh. Indexed for efficient expiry purges.
+	ExpiresAt time.Time `json:"expires_at" gorm:"index:idx_project_credit_cache_expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// IsExpired reports whether the cached row is expired relative to now.
+// A zero ExpiresAt is treated as expired so pre-migration rows without an
+// expiry are never silently served as current.
+func (c *ProjectCreditCache) IsExpired(now time.Time) bool {
+	if c.ExpiresAt.IsZero() {
+		return true
+	}
+	return !c.ExpiresAt.After(now)
 }
 
 func (c *ProjectCreditCache) BeforeCreate(tx *gorm.DB) (err error) {
