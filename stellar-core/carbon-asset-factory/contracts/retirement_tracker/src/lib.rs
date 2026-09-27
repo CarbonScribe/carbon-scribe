@@ -652,7 +652,7 @@ mod test {
 
     #[test]
     fn retire_with_tx_hash_records_actual_hash_and_nonce() {
-        let (_env, client, retiring_entity) = setup();
+        let (env, client, retiring_entity) = setup();
         let tx_hash = BytesN::from_array(&env, &[7u8; 32]);
 
         let record = client.retire_with_tx_hash(
