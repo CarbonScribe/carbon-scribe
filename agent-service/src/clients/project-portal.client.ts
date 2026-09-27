@@ -1,6 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import type { ErrorCategory } from "../llm/errors.js";
 
 // Thin HTTP client for project-portal-backend (Go). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
@@ -121,7 +122,131 @@ async function getMethodologies(): Promise<Methodology[]> {
   return parsed.methodologies;
 }
 
+// ---------------------------------------------------------------------------
+// confirmAlert
+// ---------------------------------------------------------------------------
+//
+// The write half of project-portal-backend's notification pipeline
+// (internal/notifications): once a reviewer has approved an alert-triage
+// `escalate` verdict, the agent service pushes the confirmed alert through
+// here so the backend can fan it out over its configured channels/rules.
+//
+// The package's only existing write route today is user-scoped
+// (`POST /api/v1/notifications/send`, whose `SendNotificationRequest` binds a
+// required `user_id` and non-empty `channels` — see
+// internal/notifications/models.go), so a service-to-service caller that only
+// knows which project a monitoring alert belongs to cannot address it. This
+// client targets `POST /internal/notifications/confirmed-alerts` as the
+// project-scoped, service-to-service shape that route should take once added,
+// the same forward-looking contract convention `getMethodologies` uses above.
+// The `Notification` model it validates against (`id`, `project_id`,
+// `category`, `subject`, `status`, `created_at`) is the one the notifications
+// package already returns from `SendNotification`. Adding the backend route
+// is tracked separately.
+
+/**
+ * A confirmed alert pushed into project-portal's notification pipeline.
+ * Mirrors the fields internal/notifications' `Notification` model keys on,
+ * with the agent's triage evidence carried in `metadata` so the reviewer's
+ * approval stays auditable end to end.
+ */
+export interface ConfirmAlertPayload {
+  /** Routing category the notifications package uses to pick rules/templates. */
+  category: string;
+  /** Human-readable subject line. */
+  subject: string;
+  /** Notification body — the triage reasoning the reviewer approved. */
+  content: string;
+  /** Channels to deliver on; omit to let project-portal apply its defaults. */
+  channels?: string[];
+  /**
+   * Idempotency key for this alert (the agent run's requestId). The write is
+   * retried on transient failures, so the backend must de-duplicate on this
+   * value to avoid raising the same alert twice.
+   */
+  idempotencyKey?: string;
+  /** Structured triage evidence (verdict, reasoning, citations, run ids). */
+  metadata?: Record<string, unknown>;
+}
+
+/** The notification project-portal assigns/returns for a confirmed alert. */
+const ConfirmAlertResponseSchema = z.object({
+  /** Notification id assigned by project-portal. */
+  id: z.string(),
+  /** Project the notification was filed against. */
+  project_id: z.string().optional(),
+  category: z.string().optional(),
+  subject: z.string().optional(),
+  /** Notification lifecycle status, e.g. "PENDING" / "SENT" / "FAILED". */
+  status: z.string(),
+  created_at: z.coerce.date().optional(),
+});
+
+export type ConfirmAlertResponse = z.infer<typeof ConfirmAlertResponseSchema>;
+
+/**
+ * Push a human-approved alert-triage escalation into project-portal's
+ * notification pipeline.
+ *
+ * Request: `POST /internal/notifications/confirmed-alerts` on
+ * project-portal-backend, body `{ project_id, ...alertPayload }` (the
+ * idempotency key is sent as an `Idempotency-Key` header, not in the body).
+ * Response body (on success): the created `Notification` — at minimum its
+ * assigned `id` and lifecycle `status`.
+ *
+ * Retries transient network errors or 5xx responses up to
+ * {@link MAX_RETRIES} times with exponential backoff; 4xx responses and
+ * schema-validation failures are not retried and reject immediately. Because
+ * this is a write, callers must supply `alertPayload.idempotencyKey` so a
+ * retried request cannot raise a duplicate notification.
+ *
+ * @throws {z.ZodError} if the response body doesn't match the expected
+ * notification shape — treated as a hard failure rather than passed through
+ * unvalidated.
+ */
+async function confirmAlert(
+  projectId: string,
+  alertPayload: ConfirmAlertPayload,
+): Promise<ConfirmAlertResponse> {
+  const { idempotencyKey, ...body } = alertPayload;
+  const response = await withRetry(() =>
+    http.post(
+      "/internal/notifications/confirmed-alerts",
+      { project_id: projectId, ...body },
+      idempotencyKey
+        ? { headers: { "Idempotency-Key": idempotencyKey } }
+        : undefined,
+    ),
+  );
+  return ConfirmAlertResponseSchema.parse(response.data);
+}
+
+/**
+ * Classify a failure from {@link confirmAlert} so callers can surface *why* a
+ * downstream notification push failed, separately from any failure earlier in
+ * the agent run. Mirrors `shared/llm/errors.ts`' classification for the
+ * Anthropic client: a 4xx is a permanent rejection, no-response/5xx is a
+ * transient one, and an unusable 2xx body (a `z.ZodError`) is a contract
+ * failure that retrying will not fix.
+ */
+export function classifyConfirmAlertError(err: unknown): {
+  category: ErrorCategory;
+  retryable: boolean;
+} {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    if (typeof status === "number") {
+      return status >= 500
+        ? { category: "connection_error", retryable: true }
+        : { category: "invalid_request", retryable: false };
+    }
+    return { category: "connection_error", retryable: true };
+  }
+  return { category: "unknown", retryable: false };
+}
+
 export const projectPortalClient = {
   http,
   getMethodologies,
+  confirmAlert,
 };
