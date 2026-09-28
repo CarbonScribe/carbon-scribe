@@ -31,6 +31,8 @@ export const env = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   agentModel: process.env.AGENT_MODEL ?? "claude-opus-5",
 
+  agentServiceJwtSecret: process.env.AGENT_SERVICE_JWT_SECRET ?? "",
+
   serviceTokenSecrets,
 
   corporatePlatformBaseUrl: required(
