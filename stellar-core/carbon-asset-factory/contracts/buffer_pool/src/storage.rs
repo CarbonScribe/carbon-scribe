@@ -15,6 +15,7 @@ pub const CARBON_CONTRACT: Symbol = symbol_short!("carbon");
 pub const REPLENISH_PCT: Symbol = symbol_short!("rep_pct");
 pub const TVL: Symbol = symbol_short!("tvl");
 pub const CUSTODY: Symbol = symbol_short!("custody");
+pub const PAUSED: Symbol = symbol_short!("paused");
 
 pub fn get_admin(env: &Env) -> Address {
     env.storage().instance().get(&ADMIN).unwrap()
@@ -66,4 +67,14 @@ pub fn set_custody_record(env: &Env, token_id: u32, record: &CustodyRecord) {
 
 pub fn has_custody_record(env: &Env, token_id: u32) -> bool {
     env.storage().persistent().has(&(CUSTODY, token_id))
+}
+
+/// Whether the pool is currently paused. Defaults to false when unset, so
+/// contracts initialized before this flag existed are treated as unpaused.
+pub fn get_paused(env: &Env) -> bool {
+    env.storage().instance().get(&PAUSED).unwrap_or(false)
+}
+
+pub fn set_paused(env: &Env, paused: &bool) {
+    env.storage().instance().set(&PAUSED, paused);
 }

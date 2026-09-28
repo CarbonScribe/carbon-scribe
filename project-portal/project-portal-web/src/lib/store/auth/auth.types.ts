@@ -42,6 +42,7 @@ export interface RefreshResponse {
 export interface LoginCredentials {
   email: string;
   password: string;
+  captcha_token?: string;
 }
 
 export interface RegisterPayload {
@@ -49,6 +50,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   organization?: string;
+  captcha_token?: string;
 }
 
 export type AuthLoadingState = {
@@ -78,7 +80,7 @@ export type AuthSlice = {
 
   wallet: WalletState;
 
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, captcha_token?: string) => Promise<void>;
   loginWithWallet: (publicKey: string, signedChallenge: string) => Promise<void>;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;

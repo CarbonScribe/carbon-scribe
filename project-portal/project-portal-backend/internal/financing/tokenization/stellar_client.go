@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stellar/go/clients/horizonclient"
 	rpcclient "github.com/stellar/go/clients/rpcclient"
 	"github.com/stellar/go/keypair"
 	"github.com/stellar/go/network"
@@ -25,7 +26,7 @@ const (
 	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
 	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
-	defaultSorobanRPCURL         = "https://soroban-testnet.stellar.org:443"
+	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
 
 	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
 	DefaultPollAttempts = 15
@@ -56,11 +57,27 @@ type MintResponse struct {
 
 type Client interface {
 	Mint(ctx context.Context, req MintRequest) (*MintResponse, error)
+
+	// BuildTrustlineTransaction returns an unsigned ChangeTrust transaction
+	// for the buyer's wallet to sign, establishing a trustline for the
+	// given asset. It also verifies the buyer's account exists and is
+	// funded before returning the transaction for signing.
+	BuildTrustlineTransaction(ctx context.Context, req TrustlineRequest) (*TrustlineResponse, error)
+
+	// HasTrustline reports whether accountAddress currently holds a
+	// trustline for the asset identified by assetCode/assetIssuer.
+	HasTrustline(ctx context.Context, accountAddress, assetCode, assetIssuer string) (bool, error)
+
+	// AuthorizeTrustlineIfRequired issues the issuer-side authorization
+	// (SetTrustLineFlags) for assetCode when it is configured as requiring
+	// issuer authorization; it is a no-op otherwise.
+	AuthorizeTrustlineIfRequired(ctx context.Context, buyerAddress, assetCode string) error
 }
 
 type RealStellarClient struct {
 	contractID        string
 	rpc               *rpcclient.Client
+	horizon           horizonclient.ClientInterface
 	networkPassphrase string
 	authority         *keypair.Full
 	pollInterval      time.Duration
@@ -113,14 +130,61 @@ func newRealClientFromEnv() (*RealStellarClient, error) {
 		}
 	}
 
+	horizonURL := strings.TrimSpace(os.Getenv("STELLAR_HORIZON_URL"))
+	if horizonURL == "" {
+		horizonURL = defaultHorizonURL
+	}
+
+	loadTrustlineLimitsFromEnv()
+	loadAuthRequiredAssetsFromEnv()
+
 	return &RealStellarClient{
 		contractID:        contractID,
 		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
+		horizon:           &horizonclient.Client{HorizonURL: horizonURL, HTTP: http.DefaultClient},
 		networkPassphrase: networkPassphrase,
 		authority:         authority,
 		pollInterval:      DefaultPollInterval,
 		pollAttempts:      pollAttempts,
 	}, nil
+}
+
+// loadTrustlineLimitsFromEnv populates DefaultTrustlineLimits from
+// CARBON_ASSET_TRUSTLINE_LIMITS, a comma-separated list of CODE:LIMIT pairs,
+// e.g. "USDC:1000000,CRB2025:1000000000".
+func loadTrustlineLimitsFromEnv() {
+	raw := strings.TrimSpace(os.Getenv("CARBON_ASSET_TRUSTLINE_LIMITS"))
+	if raw == "" {
+		return
+	}
+	for pair := range strings.SplitSeq(raw, ",") {
+		parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		code := strings.ToUpper(strings.TrimSpace(parts[0]))
+		limit := strings.TrimSpace(parts[1])
+		if code == "" || limit == "" {
+			continue
+		}
+		DefaultTrustlineLimits[code] = limit
+	}
+}
+
+// loadAuthRequiredAssetsFromEnv populates AssetsRequiringAuthorization from
+// CARBON_ASSET_AUTH_REQUIRED_CODES, a comma-separated list of asset codes
+// whose issuer has set AUTH_REQUIRED_FLAG.
+func loadAuthRequiredAssetsFromEnv() {
+	raw := strings.TrimSpace(os.Getenv("CARBON_ASSET_AUTH_REQUIRED_CODES"))
+	if raw == "" {
+		return
+	}
+	for code := range strings.SplitSeq(raw, ",") {
+		trimmed := strings.ToUpper(strings.TrimSpace(code))
+		if trimmed != "" {
+			AssetsRequiringAuthorization[trimmed] = true
+		}
+	}
 }
 
 func NewMockStellarClient() Client {
@@ -186,6 +250,15 @@ func (c *RealStellarClient) Mint(ctx context.Context, req MintRequest) (*MintRes
 	if err != nil {
 		return nil, err
 	}
+
+	// Re-verify the recipient's trustline immediately before minting, not
+	// just at onboarding time: a trustline can be removed by the account
+	// holder at any point, and minting to an account without one would
+	// otherwise fail on-chain with no actionable error.
+	if err := c.ensureRecipientTrustline(ctx, owner, strings.TrimSpace(req.AssetCode)); err != nil {
+		return nil, err
+	}
+
 	metaVal, err := buildMetadataVal(req)
 	if err != nil {
 		return nil, err

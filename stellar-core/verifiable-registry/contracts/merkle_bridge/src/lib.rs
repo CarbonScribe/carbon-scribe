@@ -19,12 +19,18 @@ pub enum DataKey {
     CurrentEpoch,
     /// Merkle root for a specific epoch (epoch_id -> root_hash)
     MerkleRoot(u64),
+    /// Proposed, not-yet-finalized root for an epoch
+    PendingRoot(u64),
+    /// Ledger timestamp at which a root proposal was published
+    RootPublishedAt(u64),
+    /// Whether an epoch's pending root was frozen by the admin
+    FrozenRoot(u64),
+    /// Global challenge period in seconds
+    ChallengePeriod,
     /// Whether a registry credit has been minted (registry_credit_id -> bool)
     MintedCredit(String),
     /// Whether a registry credit has been retired (registry_credit_id -> bool)
     RetiredCredit(String),
-    /// Next token ID for minting
-    NextTokenId,
 }
 
 /// Credit status enum for leaf node construction
@@ -52,6 +58,23 @@ pub struct RootUpdatedEvent {
     pub epoch_id: u64,
     pub root_hash: BytesN<32>,
     pub updated_by: Address,
+}
+
+/// Event emitted when an updater proposes a root for the challenge period.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RootProposedEvent {
+    pub epoch_id: u64,
+    pub root_hash: BytesN<32>,
+    pub proposed_by: Address,
+}
+
+/// Event emitted when the admin discards a pending root proposal.
+#[contractevent]
+#[derive(Clone, Debug)]
+pub struct RootFrozenEvent {
+    pub epoch_id: u64,
+    pub frozen_by: Address,
 }
 
 /// Event emitted when a credit is marked as retired
@@ -97,7 +120,19 @@ pub enum MerkleBridgeError {
     CreditIdTooLong = 14,
     /// registry_credit_id contains disallowed characters (only A-Z, a-z, 0-9, '-', '_' allowed)
     CreditIdInvalidCharset = 15,
+    /// A root proposal has not been finalized yet
+    RootNotFinalized = 16,
+    /// The root challenge period has not elapsed
+    ChallengePeriodNotElapsed = 17,
+    /// The pending root has already been frozen
+    RootAlreadyFrozen = 18,
+    /// The cross-contract call into CarbonAsset::mint failed — the contract
+    /// was not deployed, the call trapped, or it returned a non-success
+    /// response (#521).
+    MintFailed = 19,
 }
+
+const DEFAULT_CHALLENGE_PERIOD: u64 = 3600;
 
 // ============ registry_credit_id Validation ============
 
@@ -137,18 +172,22 @@ fn validate_registry_credit_id(id: &String) -> Result<(), MerkleBridgeError> {
     Ok(())
 }
 
-// Note: CarbonAsset contract integration will be added once the CarbonAsset
-// contract is implemented (Issue #1). The mint_wrapped function currently
-// tracks token IDs internally and emits events for indexing.
-//
-// Future integration will include:
-// ```rust
-// mod carbon_asset {
-//     soroban_sdk::contractimport!(
-//         file = "../carbon_asset/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
-//     );
-// }
-// ```
+/// Typed cross-contract binding for the real CarbonAsset contract (#521).
+///
+/// `carbon_asset` lives in the separate `carbon-asset-factory` workspace, not
+/// this one, so there is no Cargo dependency to add: `contractimport!` only
+/// needs the built WASM on disk at compile time (the path below is relative
+/// to this crate's own manifest directory) to generate a typed
+/// `CarbonAssetClient` and `CarbonAssetMetadata`. Building
+/// `carbon-asset-factory`'s WASM is therefore a build-order prerequisite for
+/// this crate — see the CI workflow, which builds it before checking this
+/// workspace.
+mod carbon_asset {
+    soroban_sdk::contractimport!(
+        file =
+            "../../../carbon-asset-factory/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
+    );
+}
 
 /// The MerkleBridge contract for bridging carbon credits from external registries
 #[contract]
@@ -175,7 +214,9 @@ impl MerkleBridge {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Updater, &updater);
         env.storage().instance().set(&DataKey::CurrentEpoch, &0u64);
-        env.storage().instance().set(&DataKey::NextTokenId, &1u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::ChallengePeriod, &DEFAULT_CHALLENGE_PERIOD);
 
         log!(&env, "MerkleBridge initialized with admin: {}", admin);
 
@@ -238,6 +279,20 @@ impl MerkleBridge {
         Ok(())
     }
 
+    /// Set the root challenge period in seconds. Admin-only.
+    pub fn set_challenge_period(
+        env: Env,
+        caller: Address,
+        challenge_period: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::ChallengePeriod, &challenge_period);
+        Ok(())
+    }
+
     /// Update the Merkle root for a new epoch
     ///
     /// # Arguments
@@ -269,26 +324,141 @@ impl MerkleBridge {
             return Err(MerkleBridgeError::NonSequentialEpoch);
         }
 
-        // Store the new root
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
+
+        // A frozen epoch can be proposed again by the updater. The freeze
+        // marker only prevents finalizing the discarded proposal.
         env.storage()
             .persistent()
-            .set(&DataKey::MerkleRoot(epoch_id), &root_hash);
+            .remove(&DataKey::FrozenRoot(epoch_id));
 
-        // Update current epoch
+        // Store the proposal and its publication time. CurrentEpoch and the
+        // final MerkleRoot remain unchanged until finalize_root succeeds.
         env.storage()
-            .instance()
-            .set(&DataKey::CurrentEpoch, &epoch_id);
+            .persistent()
+            .set(&DataKey::PendingRoot(epoch_id), &root_hash);
+        let published_at = env.ledger().timestamp();
+        env.storage()
+            .persistent()
+            .set(&DataKey::RootPublishedAt(epoch_id), &published_at);
 
-        // Emit event
-        RootUpdatedEvent {
+        RootProposedEvent {
             epoch_id,
             root_hash: root_hash.clone(),
-            updated_by: caller.clone(),
+            proposed_by: caller.clone(),
         }
         .publish(&env);
 
-        log!(&env, "Root updated for epoch {}: {:?}", epoch_id, root_hash);
+        log!(
+            &env,
+            "Root proposed for epoch {}: {:?}",
+            epoch_id,
+            root_hash
+        );
 
+        Ok(())
+    }
+
+    /// Finalize a pending root after its challenge period has elapsed.
+    pub fn finalize_root(
+        env: Env,
+        caller: Address,
+        epoch_id: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        if env
+            .storage()
+            .persistent()
+            .get(&DataKey::FrozenRoot(epoch_id))
+            .unwrap_or(false)
+        {
+            return Err(MerkleBridgeError::RootAlreadyFrozen);
+        }
+        let root_hash: BytesN<32> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingRoot(epoch_id))
+            .ok_or(MerkleBridgeError::RootNotFinalized)?;
+        let published_at: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootPublishedAt(epoch_id))
+            .ok_or(MerkleBridgeError::RootNotFinalized)?;
+        let challenge_period: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ChallengePeriod)
+            .unwrap_or(DEFAULT_CHALLENGE_PERIOD);
+        let ready_at = published_at.saturating_add(challenge_period);
+        if env.ledger().timestamp() < ready_at {
+            return Err(MerkleBridgeError::ChallengePeriodNotElapsed);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::MerkleRoot(epoch_id), &root_hash);
+        env.storage()
+            .instance()
+            .set(&DataKey::CurrentEpoch, &epoch_id);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRoot(epoch_id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RootPublishedAt(epoch_id));
+
+        RootUpdatedEvent {
+            epoch_id,
+            root_hash,
+            updated_by: caller,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Admin-only cancellation of a pending root proposal.
+    pub fn freeze_pending_root(
+        env: Env,
+        caller: Address,
+        epoch_id: u64,
+    ) -> Result<(), MerkleBridgeError> {
+        caller.require_auth();
+        Self::require_admin(&env, &caller)?;
+        if env
+            .storage()
+            .persistent()
+            .get(&DataKey::FrozenRoot(epoch_id))
+            .unwrap_or(false)
+        {
+            return Err(MerkleBridgeError::RootAlreadyFrozen);
+        }
+        if !env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
+        env.storage()
+            .persistent()
+            .remove(&DataKey::PendingRoot(epoch_id));
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RootPublishedAt(epoch_id));
+        env.storage()
+            .persistent()
+            .set(&DataKey::FrozenRoot(epoch_id), &true);
+        RootFrozenEvent {
+            epoch_id,
+            frozen_by: caller,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -328,6 +498,13 @@ impl MerkleBridge {
         }
 
         // Get the stored Merkle root for the given epoch
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::PendingRoot(epoch_id))
+        {
+            return Err(MerkleBridgeError::RootNotFinalized);
+        }
         let stored_root: BytesN<32> = env
             .storage()
             .persistent()
@@ -364,15 +541,11 @@ impl MerkleBridge {
             .persistent()
             .set(&DataKey::MintedCredit(registry_credit_id.clone()), &true);
 
-        // Get and increment token ID
-        let token_id: u32 = env
-            .storage()
-            .instance()
-            .get(&DataKey::NextTokenId)
-            .unwrap_or(1);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextTokenId, &(token_id + 1));
+        // Mint the real, canonical token on the configured CarbonAsset
+        // contract (#521). This replaces the old local-only NextTokenId
+        // counter, whose value never corresponded to any real, mintable
+        // token on carbon_asset.
+        let token_id = Self::mint_on_carbon_asset(&env, &registry_credit_id, &caller)?;
 
         // Emit bridged event
         CreditBridgedEvent {
@@ -449,6 +622,27 @@ impl MerkleBridge {
             .ok_or(MerkleBridgeError::RootNotFound)
     }
 
+    /// Get the pending root and the timestamp at which it was proposed.
+    pub fn get_pending_root(env: Env, epoch_id: u64) -> Option<(BytesN<32>, u64)> {
+        let root = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingRoot(epoch_id))?;
+        let published_at = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootPublishedAt(epoch_id))?;
+        Some((root, published_at))
+    }
+
+    /// Get the configured root challenge period in seconds.
+    pub fn get_challenge_period(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::ChallengePeriod)
+            .unwrap_or(DEFAULT_CHALLENGE_PERIOD)
+    }
+
     /// Check if a credit has been minted
     pub fn is_minted(env: Env, registry_credit_id: String) -> bool {
         Self::is_credit_minted(&env, &registry_credit_id)
@@ -484,6 +678,50 @@ impl MerkleBridge {
     }
 
     // ============ Internal Helper Functions ============
+
+    /// Invoke the real CarbonAsset contract's `mint` entrypoint (#521).
+    ///
+    /// `owner` becomes the owner of the newly minted token; this contract's
+    /// own address is passed as CarbonAsset's `caller` argument, since
+    /// `CarbonAsset::mint` requires its caller to equal its configured
+    /// admin — this bridge contract's address must therefore be configured
+    /// as that admin out of band, at deployment time. Soroban authorizes a
+    /// contract acting as itself within its own outgoing call automatically,
+    /// so no explicit signature is required for that argument.
+    ///
+    /// Metadata fields the bridge doesn't have on hand (vintage, methodology,
+    /// geography) are not carried by the external registry's Merkle leaf, so
+    /// `registry_credit_id` doubles as `project_id` and its hash stands in
+    /// for `geo_hash` — enough to make the mint traceable back to the
+    /// bridged credit without inventing data the proof never attested to.
+    ///
+    /// Uses `try_mint` (not the trapping `mint`) so a missing contract, a
+    /// call trap, or a non-success response surfaces as a typed
+    /// `MintFailed` instead of aborting this entire invocation — consistent
+    /// with the `try_invoke_contract` hardening already applied to
+    /// CarbonAsset's own compliance hook.
+    fn mint_on_carbon_asset(
+        env: &Env,
+        registry_credit_id: &String,
+        owner: &Address,
+    ) -> Result<u32, MerkleBridgeError> {
+        let carbon_asset_contract = Self::get_carbon_asset_contract(env.clone())?;
+        let client = carbon_asset::Client::new(env, &carbon_asset_contract);
+
+        let geo_hash: BytesN<32> = env.crypto().sha256(&registry_credit_id.to_bytes()).into();
+        let metadata = carbon_asset::CarbonAssetMetadata {
+            project_id: registry_credit_id.clone(),
+            vintage_year: 0,
+            methodology_id: 0,
+            geo_hash,
+            max_supply: None,
+        };
+
+        match client.try_mint(&env.current_contract_address(), owner, &metadata) {
+            Ok(Ok(token_id)) => Ok(token_id),
+            Ok(Err(_)) | Err(_) => Err(MerkleBridgeError::MintFailed),
+        }
+    }
 
     /// Require the caller to be the admin
     fn require_admin(env: &Env, caller: &Address) -> Result<(), MerkleBridgeError> {
@@ -654,7 +892,7 @@ impl MerkleBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Bytes, Env};
+    use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Bytes, Env};
 
     fn setup_env() -> (Env, Address, Address) {
         let env = Env::default();
@@ -666,6 +904,35 @@ mod tests {
 
     fn create_contract(env: &Env) -> Address {
         env.register(MerkleBridge, ())
+    }
+
+    /// Deploy a CarbonAsset contract configured so `bridge_id` (the
+    /// MerkleBridge instance under test) is its admin, and wire it into the
+    /// bridge — mint_wrapped now performs a real cross-contract mint (#521),
+    /// so every test exercising it needs somewhere real to mint to.
+    fn wire_carbon_asset(
+        env: &Env,
+        bridge_client: &MerkleBridgeClient,
+        bridge_admin: &Address,
+        bridge_id: &Address,
+    ) {
+        let carbon_asset_id = env.register(carbon_asset::WASM, ());
+        let carbon_asset_client = carbon_asset::Client::new(env, &carbon_asset_id);
+        let retirement_tracker = Address::generate(env);
+        carbon_asset_client.initialize(
+            bridge_id,
+            &String::from_str(env, "Bridged Carbon Credit"),
+            &String::from_str(env, "BCC"),
+            &retirement_tracker,
+            &String::from_str(env, "US"),
+        );
+        bridge_client.set_carbon_asset_contract(bridge_admin, &carbon_asset_id);
+    }
+
+    fn finalize_root(env: &Env, client: &MerkleBridgeClient, finalizer: &Address, epoch_id: u64) {
+        env.ledger()
+            .set_timestamp(DEFAULT_CHALLENGE_PERIOD.saturating_mul(epoch_id));
+        client.finalize_root(finalizer, &epoch_id);
     }
 
     /// Helper to compute a leaf hash for testing
@@ -708,6 +975,7 @@ mod tests {
 
         // Initialize should succeed
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Verify state
         assert_eq!(client.get_admin(), admin);
@@ -723,6 +991,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
         client.initialize(&admin, &updater); // Should panic
     }
 
@@ -733,6 +1002,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let new_updater = Address::generate(&env);
         client.set_updater(&admin, &new_updater);
@@ -748,6 +1018,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let not_admin = Address::generate(&env);
         let new_updater = Address::generate(&env);
@@ -761,15 +1032,66 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Create a mock root hash
         let root_hash = BytesN::from_array(&env, &[1u8; 32]);
 
         // Update root for epoch 1
         client.update_root(&updater, &1, &root_hash);
+        assert_eq!(client.get_current_epoch(), 0);
+        assert_eq!(client.get_pending_root(&1), Some((root_hash.clone(), 0)));
+        finalize_root(&env, &client, &admin, 1);
 
         assert_eq!(client.get_current_epoch(), 1);
         assert_eq!(client.get_root(&1), root_hash);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #17)")]
+    fn test_finalize_root_before_challenge_period_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let root_hash = BytesN::from_array(&env, &[1u8; 32]);
+        client.update_root(&updater, &1, &root_hash);
+        client.finalize_root(&admin, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #16)")]
+    fn test_mint_pending_root_fails_until_finalized() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let registry_id = String::from_str(&env, "VER-123-ABC-456");
+        let root_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
+        client.update_root(&updater, &1, &root_hash);
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #18)")]
+    fn test_freeze_pending_root_prevents_finalize() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let root_hash = BytesN::from_array(&env, &[1u8; 32]);
+        client.update_root(&updater, &1, &root_hash);
+        client.freeze_pending_root(&admin, &1);
+        env.ledger().set_timestamp(DEFAULT_CHALLENGE_PERIOD);
+        client.finalize_root(&admin, &1);
     }
 
     #[test]
@@ -780,6 +1102,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let root_hash = BytesN::from_array(&env, &[1u8; 32]);
 
@@ -795,6 +1118,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let not_updater = Address::generate(&env);
         let root_hash = BytesN::from_array(&env, &[1u8; 32]);
@@ -809,6 +1133,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Create a single-leaf Merkle tree
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
@@ -816,6 +1141,7 @@ mod tests {
 
         // For a single leaf tree, the root is the leaf hash itself
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint with empty proof (single leaf)
         let user = Address::generate(&env);
@@ -828,6 +1154,83 @@ mod tests {
         assert!(client.is_minted(&registry_id));
     }
 
+    // ── Real CarbonAsset mint integration (#521) ────────────────────────────
+
+    #[test]
+    fn test_mint_wrapped_mints_a_real_carbon_asset_token() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let registry_id = String::from_str(&env, "VER-521-REAL-001");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-521-REAL-001");
+        client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        let token_id = client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
+
+        // The returned token_id, and the one in CreditBridgedEvent, must be a
+        // real, owned token on the configured CarbonAsset contract — not a
+        // disconnected local counter value.
+        let carbon_asset_id = client.get_carbon_asset_contract();
+        let carbon_asset_client = carbon_asset::Client::new(&env, &carbon_asset_id);
+        assert_eq!(carbon_asset_client.owner_of(&token_id), user);
+
+        assert_eq!(token_id, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #11)")]
+    fn test_mint_wrapped_without_carbon_asset_configured_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        // Deliberately skip wire_carbon_asset: CarbonAssetContract is unset.
+
+        let registry_id = String::from_str(&env, "VER-521-UNSET-001");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-521-UNSET-001");
+        client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1); // Should panic: CarbonAssetNotSet
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #19)")]
+    fn test_mint_wrapped_propagates_carbon_asset_mint_failure() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        // Freeze minting on the CarbonAsset side so the cross-contract mint
+        // call fails there — merkle_bridge must surface this as a typed
+        // MintFailed rather than letting the trap propagate unguarded.
+        let carbon_asset_id = client.get_carbon_asset_contract();
+        let carbon_asset_client = carbon_asset::Client::new(&env, &carbon_asset_id);
+        carbon_asset_client.freeze_minting(&contract_id);
+
+        let registry_id = String::from_str(&env, "VER-521-FAIL-001");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-521-FAIL-001");
+        client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        client.mint_wrapped(&user, &registry_id, &proof, &0, &1); // Should panic: MintFailed
+    }
+
     #[test]
     fn test_mint_wrapped_with_proof() {
         let (env, admin, updater) = setup_env();
@@ -835,6 +1238,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Create a 2-leaf Merkle tree
         let registry_id_1 = "VER-123-ABC-456";
@@ -847,6 +1251,7 @@ mod tests {
         let root = hash_pair(&env, &leaf_1, &leaf_2);
 
         client.update_root(&updater, &1, &root);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint first credit with proof containing second leaf
         let user = Address::generate(&env);
@@ -874,11 +1279,13 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
 
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
@@ -898,10 +1305,12 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Create a leaf hash for a different credit
         let leaf_hash = compute_test_leaf_hash(&env, "VER-DIFFERENT-ID");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Try to mint with wrong registry ID
         let user = Address::generate(&env);
@@ -918,6 +1327,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
 
@@ -935,11 +1345,13 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
 
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mark as retired first
         client.mark_retired(&updater, &registry_id);
@@ -959,6 +1371,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let user = Address::generate(&env);
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
@@ -975,6 +1388,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let carbon_asset_contract = Address::generate(&env);
         client.set_carbon_asset_contract(&admin, &carbon_asset_contract);
@@ -989,6 +1403,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Create 4-leaf tree
         let ids = ["VER-0001", "VER-0002", "VER-0003", "VER-0004"];
@@ -1007,6 +1422,7 @@ mod tests {
         let root = hash_pair(&env, &node_01, &node_23);
 
         client.update_root(&updater, &1, &root);
+        finalize_root(&env, &client, &admin, 1);
 
         // Mint VER-001 (index 0)
         // Proof: [leaf[1], node_23]
@@ -1037,6 +1453,7 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Update roots for multiple epochs
         let root_1 = compute_test_leaf_hash(&env, "EPOCH1-VER-001");
@@ -1044,8 +1461,11 @@ mod tests {
         let root_3 = compute_test_leaf_hash(&env, "EPOCH3-VER-003");
 
         client.update_root(&updater, &1, &root_1);
+        finalize_root(&env, &client, &admin, 1);
         client.update_root(&updater, &2, &root_2);
+        finalize_root(&env, &client, &admin, 2);
         client.update_root(&updater, &3, &root_3);
+        finalize_root(&env, &client, &admin, 3);
 
         assert_eq!(client.get_current_epoch(), 3);
         assert_eq!(client.get_root(&1), root_1);
@@ -1061,9 +1481,11 @@ mod tests {
         let client = MerkleBridgeClient::new(&env, &contract_id);
 
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let leaf_hash = compute_test_leaf_hash(&env, "VER-1234A");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         // Try to mint with leaf_index too large for proof length
         let user = Address::generate(&env);
@@ -1083,6 +1505,7 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let user = Address::generate(&env);
         // 5 chars — below minimum of 8
@@ -1098,6 +1521,7 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let user = Address::generate(&env);
         // 65 chars — above maximum of 64
@@ -1116,6 +1540,7 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         let user = Address::generate(&env);
         // Contains space — not in allowed charset
@@ -1130,11 +1555,13 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Valid ID: alphanumeric + hyphens + underscores, 8–64 chars
         let registry_id = String::from_str(&env, "VER-123-ABC-456");
         let leaf_hash = compute_test_leaf_hash(&env, "VER-123-ABC-456");
         client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
 
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
@@ -1149,6 +1576,7 @@ mod tests {
         let contract_id = create_contract(&env);
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
 
         // Contains dot — not in allowed charset
         let bad_id = String::from_str(&env, "VER.123.ABC.456");
@@ -1160,7 +1588,9 @@ mod tests {
 #[cfg(test)]
 mod benchmarks {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
+    use soroban_sdk::{
+        testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env, String, Vec,
+    };
 
     fn setup_bench_env() -> (Env, Address, Address, MerkleBridgeClient<'static>) {
         let env = Env::default();
@@ -1170,7 +1600,36 @@ mod benchmarks {
         let contract_id = env.register(MerkleBridge, ());
         let client = MerkleBridgeClient::new(&env, &contract_id);
         client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
         (env, admin, updater, client)
+    }
+
+    /// See the identical helper in `mod tests` — mint_wrapped now performs a
+    /// real cross-contract mint (#521), so benchmark runs need somewhere
+    /// real to mint to as well.
+    fn wire_carbon_asset(
+        env: &Env,
+        bridge_client: &MerkleBridgeClient,
+        bridge_admin: &Address,
+        bridge_id: &Address,
+    ) {
+        let carbon_asset_id = env.register(carbon_asset::WASM, ());
+        let carbon_asset_client = carbon_asset::Client::new(env, &carbon_asset_id);
+        let retirement_tracker = Address::generate(env);
+        carbon_asset_client.initialize(
+            bridge_id,
+            &String::from_str(env, "Bridged Carbon Credit"),
+            &String::from_str(env, "BCC"),
+            &retirement_tracker,
+            &String::from_str(env, "US"),
+        );
+        bridge_client.set_carbon_asset_contract(bridge_admin, &carbon_asset_id);
+    }
+
+    fn finalize_root(env: &Env, client: &MerkleBridgeClient, finalizer: &Address, epoch_id: u64) {
+        env.ledger()
+            .set_timestamp(DEFAULT_CHALLENGE_PERIOD.saturating_mul(epoch_id));
+        client.finalize_root(finalizer, &epoch_id);
     }
 
     fn generate_deterministic_sibling(env: &Env, seed: u8) -> BytesN<32> {
@@ -1233,6 +1692,7 @@ mod benchmarks {
             }
 
             client.update_root(&updater, &current_epoch, &current_working_hash);
+            finalize_root(&env, &client, &updater, current_epoch);
 
             env.cost_estimate().budget().reset_default();
 
@@ -1295,6 +1755,7 @@ mod benchmarks {
                 proof_path.push_back(sibling);
 
                 client.update_root(&updater, &sequential_epoch, &combined_root);
+                finalize_root(&env, &client, &updater, sequential_epoch);
                 client.mint_wrapped(&user, &registry_id, &proof_path, &0, &sequential_epoch);
             }
 
@@ -1323,6 +1784,7 @@ mod benchmarks {
             bytes[0] = epoch as u8;
             let root = BytesN::from_array(&env, &bytes);
             client.update_root(&updater, &epoch, &root);
+            finalize_root(&env, &client, &updater, epoch);
         }
 
         env.cost_estimate().budget().reset_default();

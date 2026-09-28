@@ -105,6 +105,14 @@ export class ReservationService {
   /**
    * Remove all expired reservations from the database.
    * Runs every 5 minutes via cron.
+   *
+   * Sweeping a credit's expired reservations and confirmPurchase decrementing
+   * that same credit must not interleave (#545): if the cron deleted a
+   * reservation mid-way through a confirmPurchase transaction that depends on
+   * it still being active, the two could disagree about whether that cart's
+   * hold is still live. Both operations now lock the credit row first — via
+   * the same {@link AvailabilityService.lockCredit} — so whichever gets there
+   * first finishes its whole check-then-write before the other proceeds.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async releaseExpiredReservations(): Promise<void> {
@@ -114,13 +122,42 @@ export class ReservationService {
       where: { expiresAt: { lt: new Date() } },
     });
 
-    const result = await prisma.creditReservation.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
+    if (expired.length === 0) return;
 
-    if (result.count > 0) {
-      this.logger.log(`Released ${result.count} expired credit reservation(s)`);
-      await this.logReleases(expired, 'system', 'reservation expired');
+    const creditIds = Array.from(
+      new Set(expired.map((row: { creditId: string }) => row.creditId)),
+    ) as string[];
+
+    const released: Array<{ creditId: string; quantity: number }> = [];
+
+    for (const creditId of creditIds) {
+      const releasedForCredit = await this.availability.runSerializable(
+        async (txClient: unknown) => {
+          const tx = txClient as any;
+          await this.availability.lockCredit(tx as PrismaTxClient, creditId);
+
+          const staleForCredit = await tx.creditReservation.findMany({
+            where: { creditId, expiresAt: { lt: new Date() } },
+          });
+
+          if (staleForCredit.length === 0) return [];
+
+          await tx.creditReservation.deleteMany({
+            where: { creditId, expiresAt: { lt: new Date() } },
+          });
+
+          return staleForCredit;
+        },
+      );
+
+      released.push(...releasedForCredit);
+    }
+
+    if (released.length > 0) {
+      this.logger.log(
+        `Released ${released.length} expired credit reservation(s)`,
+      );
+      await this.logReleases(released, 'system', 'reservation expired');
     }
   }
 

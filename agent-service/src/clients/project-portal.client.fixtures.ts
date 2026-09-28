@@ -1,4 +1,8 @@
-import type { Methodology } from "./project-portal.client.js";
+import type {
+  ConfirmAlertPayload,
+  ConfirmAlertResponse,
+  Methodology,
+} from "./project-portal.client.js";
 
 // Sample fixture data for exercising projectPortalClient.getMethodologies()
 // without a live project-portal-backend instance — used by this client's
@@ -80,4 +84,50 @@ export const mockMethodologies: Methodology[] = [
 /** The raw wire-shape response body project-portal-backend would send. */
 export const mockMethodologiesResponseBody = {
   methodologies: mockMethodologies,
+};
+
+// ---------------------------------------------------------------------------
+// confirmAlert fixtures
+// ---------------------------------------------------------------------------
+//
+// A confirmed alert-triage escalation, as the approval workflow would push it
+// into project-portal's notification pipeline. Shared by the client tests and
+// the escalate → approve → notify approval-workflow tests so both assert
+// against one contract.
+
+export const mockConfirmAlertPayload: ConfirmAlertPayload = {
+  category: "monitoring.alert",
+  subject: "Confirmed alert for project proj-fixture-1",
+  content:
+    "NDVI drop corroborated by IoT sensor readings and no weather anomaly.",
+  channels: ["IN_APP"],
+  idempotencyKey: "req-fixture-1",
+  metadata: {
+    verdict: "escalate",
+    reasoning:
+      "NDVI drop corroborated by IoT sensor readings and no weather anomaly.",
+    requestId: "req-fixture-1",
+    requestedBy: "user-fixture-1",
+    citations: [{ source: "iot-sensor-7", reference: "reading-4821" }],
+  },
+};
+
+/** The validated, typed notification project-portal returns on success. */
+export const mockConfirmAlertResponse: ConfirmAlertResponse = {
+  id: "notif-fixture-1",
+  project_id: "proj-fixture-1",
+  category: "monitoring.alert",
+  subject: "Confirmed alert for project proj-fixture-1",
+  status: "PENDING",
+  created_at: new Date("2026-09-27T12:00:00.000Z"),
+};
+
+/** The raw wire-shape response body project-portal-backend would send. */
+export const mockConfirmAlertResponseBody = {
+  id: "notif-fixture-1",
+  project_id: "proj-fixture-1",
+  category: "monitoring.alert",
+  subject: "Confirmed alert for project proj-fixture-1",
+  status: "PENDING",
+  created_at: "2026-09-27T12:00:00.000Z",
 };

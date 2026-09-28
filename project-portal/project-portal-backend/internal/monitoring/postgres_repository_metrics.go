@@ -20,7 +20,8 @@ type MetricRepository interface {
 	// QueryMetrics retrieves metrics by name, time range, and service labels
 	QueryMetrics(ctx context.Context, req MetricQueryRequest) ([]SystemMetric, error)
 
-	// GetMetricAggregation computes aggregates (avg, min, max, p95, p99, count) over a time window
+	// GetMetricAggregation computes aggregates (avg, min, max, sum, count, p50, p95, p99)
+	// over a time window. An unsupported aggregation name is rejected with an error.
 	GetMetricAggregation(ctx context.Context, req AggregationRequest) (*MetricAggregationResult, error)
 
 	// GetMetricRate computes the rate of change for a metric over a time window
@@ -69,7 +70,7 @@ type AggregationRequest struct {
 	StartTime    time.Time
 	EndTime      time.Time
 	Interval     string   // "1m", "5m", "1h", "1d"
-	Aggregations []string // "avg", "min", "max", "p95", "p99", "count", "sum"
+	Aggregations []string // "avg", "min", "max", "sum", "count", "p50", "p95", "p99"
 }
 
 // MetricAggregationResult contains aggregated metric values
@@ -269,10 +270,17 @@ func (r *PostgresMetricRepository) GetMetricAggregation(ctx context.Context, req
 			aggFields = append(aggFields, "SUM(value) as sum")
 		case "count":
 			aggFields = append(aggFields, "COUNT(*) as count")
+		case "p50":
+			aggFields = append(aggFields, "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY value) as p50")
 		case "p95":
 			aggFields = append(aggFields, "PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY value) as p95")
 		case "p99":
 			aggFields = append(aggFields, "PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY value) as p99")
+		default:
+			// An unrecognised aggregation would otherwise contribute no SQL
+			// field while still reserving a scan target below, desynchronising
+			// Scan's argument count from the selected columns.
+			return nil, fmt.Errorf("unsupported aggregation %q", agg)
 		}
 	}
 

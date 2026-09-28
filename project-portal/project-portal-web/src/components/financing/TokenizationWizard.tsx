@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Coins, Calculator, FileText, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowRight, Sparkles } from 'lucide-react';
+import { Coins, Calculator, FileText, TrendingUp, AlertCircle, CheckCircle, Clock, ArrowRight, Sparkles, Copy } from 'lucide-react';
 import { type CarbonCredit, type CalculateCreditsRequest, type CreditStatusResponse } from '@/lib/api/financing.api';
 import { useStore } from '@/lib/store/store';
 import type { FinancingCredit } from '@/lib/store/financing/financing.types';
+import { getStellarExpertTxUrl } from '@/lib/stellar/retirement';
 
 interface TokenizationWizardProps {
   projectId: string;
@@ -16,6 +17,33 @@ type WizardStep = 'calculate' | 'review' | 'mint' | 'complete';
 
 const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCreditCreated, onCreditMinted }) => {
   const [currentStep, setCurrentStep] = useState<WizardStep>('calculate');
+  const [copiedHash, setCopiedHash] = useState<string | null>(null);
+
+  const stellarNetwork = (process.env.NEXT_PUBLIC_STELLAR_NETWORK as 'testnet' | 'public') || 'public';
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older browsers or non-secure contexts
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      setCopiedHash(text);
+      setTimeout(() => setCopiedHash(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
   const [formData, setFormData] = useState<CalculateCreditsRequest>({
     methodology_code: 'AM001',
     vintage_year: new Date().getFullYear(),
@@ -409,7 +437,26 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
             {creditStatus?.mint_transaction_hash && (
               <div>
                 <span className="text-sm text-blue-700">Transaction Hash:</span>
-                <div className="font-mono text-xs text-blue-900 break-all">{creditStatus.mint_transaction_hash}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <a
+                    href={getStellarExpertTxUrl(creditStatus.mint_transaction_hash, stellarNetwork)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs text-blue-900 hover:text-blue-700 underline break-all"
+                  >
+                    {creditStatus.mint_transaction_hash}
+                  </a>
+                  <button
+                    onClick={() => creditStatus.mint_transaction_hash && copyToClipboard(creditStatus.mint_transaction_hash)}
+                    className="p-1 hover:bg-blue-100 rounded transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <Copy className="w-4 h-4 text-blue-600" />
+                  </button>
+                  {copiedHash === creditStatus.mint_transaction_hash && (
+                    <span className="text-xs text-blue-600">Copied!</span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -443,7 +490,26 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
             {mintedCredit.mint_transaction_hash && (
               <div>
                 <span className="text-sm text-green-700">Transaction Hash:</span>
-                <div className="font-mono text-xs text-green-900 break-all mt-1">{mintedCredit.mint_transaction_hash}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <a
+                    href={getStellarExpertTxUrl(mintedCredit.mint_transaction_hash, stellarNetwork)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-mono text-xs text-green-900 hover:text-green-700 underline break-all"
+                  >
+                    {mintedCredit.mint_transaction_hash}
+                  </a>
+                  <button
+                    onClick={() => mintedCredit.mint_transaction_hash && copyToClipboard(mintedCredit.mint_transaction_hash)}
+                    className="p-1 hover:bg-green-100 rounded transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    <Copy className="w-4 h-4 text-green-600" />
+                  </button>
+                  {copiedHash === mintedCredit.mint_transaction_hash && (
+                    <span className="text-xs text-green-600">Copied!</span>
+                  )}
+                </div>
               </div>
             )}
             {mintedCredit.minted_at && (

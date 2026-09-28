@@ -1,12 +1,22 @@
 import express from "express";
+import helmet from "helmet";
 import { env } from "./config/env.js";
 import { router } from "./routes/index.js";
 import { errorHandler } from "./shared/middleware/error-handler.js";
+import { helmetOptions } from "./shared/middleware/security-headers.js";
 import { migrateAuditLogSchema } from "./shared/audit/audit-log.migrate.js";
 import { getPool } from "./shared/audit/db.js";
 import { outboxDispatcher } from "./shared/outbox/index.js";
+import { logger } from "./shared/logging/logger.js";
 
 const app = express();
+
+// Baseline HTTP hardening (issue #631), registered before any route so
+// every response — the JSON routes, 401s from the auth middleware, and the
+// error handler's 500s — carries it. The deliberate, JSON-API-oriented
+// policy lives in shared/middleware/security-headers.ts and is shared with
+// the header test, so the shipped configuration is the one under test.
+app.use(helmet(helmetOptions));
 
 app.use(express.json());
 app.use(router);
@@ -19,11 +29,11 @@ async function main() {
   outboxDispatcher.start();
 
   app.listen(env.port, () => {
-    console.log(`agent-service listening on :${env.port}`);
+    logger.info({ port: env.port }, "agent-service listening");
   });
 }
 
 main().catch((err) => {
-  console.error("agent-service failed to start:", err);
+  logger.error({ error: err }, "agent-service failed to start");
   process.exit(1);
 });

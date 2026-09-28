@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, ChevronRight, AlertCircle, Loader2, Eye, EyeOff, Shield, Wallet } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
+import { Turnstile } from 'react-turnstile';
 import { showToast } from '@/components/ui/Toast';
 import AuthNavigation from '@/components/AuthNavigation';
 import { walletChallengeApi } from '@/lib/api/auth.api';
@@ -29,8 +30,9 @@ export default function LoginClient() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
+  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string; captcha?: string }>({});
   const [emailVerificationError, setEmailVerificationError] = useState<string | null>(null);
   const [walletExtensionInstalled, setWalletExtensionInstalled] = useState<boolean | null>(null);
   const [walletSigning, setWalletSigning] = useState(false);
@@ -48,7 +50,7 @@ export default function LoginClient() {
   }, [isHydrated, isAuthenticated, user, router, next]);
 
   const validate = () => {
-    const errors: { email?: string; password?: string } = {};
+    const errors: { email?: string; password?: string; captcha?: string } = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email) {
@@ -59,6 +61,10 @@ export default function LoginClient() {
 
     if (!password) {
       errors.password = 'Password is required';
+    }
+
+    if (!captchaToken) {
+      errors.captcha = 'Please complete the CAPTCHA verification';
     }
 
     return errors;
@@ -78,8 +84,8 @@ export default function LoginClient() {
     }
 
     try {
-      await login(email, password);
-      
+      await login(email, password, captchaToken);
+
       const currentUser = useStore.getState().user;
       if (currentUser && !currentUser.email_verified) {
         setEmailVerificationError(
@@ -91,11 +97,13 @@ export default function LoginClient() {
         );
         return;
       }
-      
+
+      showToast('success', 'Signed in successfully');
       router.replace(next);
     } catch (err: any) {
       console.error('Login error:', err);
-      
+      setCaptchaToken('');
+
       if (err?.response?.data?.error?.includes('verify') || err?.response?.data?.verification_required) {
         setEmailVerificationError(
           'Your email is not verified. Please check your inbox for the verification link or request a new one.'
@@ -370,6 +378,25 @@ export default function LoginClient() {
             {formErrors.password && (
               <p id="login-password-error" className="mt-1 text-sm text-red-600" role="alert">
                 {formErrors.password}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Turnstile
+              sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onError={() => {
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA verification failed. Please try again.' }));
+              }}
+              onExpire={() => {
+                setCaptchaToken('');
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA expired. Please complete it again.' }));
+              }}
+            />
+            {formErrors.captcha && (
+              <p className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.captcha}
               </p>
             )}
           </div>

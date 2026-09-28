@@ -1,6 +1,6 @@
 #![cfg(test)]
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env, String, Vec};
-use tax_attribute::{AttributeDefinition, TaxAttributeContract, TaxAttributeContractClient};
+use tax_attribute::{AttributeDefinition, ContractError, TaxAttributeContract, TaxAttributeContractClient};
 
 fn setup_test_env() -> (Env, TaxAttributeContractClient<'static>, Address, Address) {
     let env = Env::default();
@@ -73,13 +73,13 @@ fn test_attach_future_attribute_succeeds() {
 }
 
 #[test]
-#[should_panic(expected = "Cannot attach an expired attribute")]
 fn test_attach_expired_attribute_fails() {
     let (env, client, _admin, issuer) = setup_test_env();
     setup_ledger(&env, 1);
 
     let definition = create_definition(&env, "tag-expired", 100, 900);
-    client.attach_tax_attribute(&issuer, &1, &definition);
+    let result = client.try_attach_tax_attribute(&issuer, &1, &definition);
+    assert!(matches!(result, Err(Ok(ContractError::AttributeExpired))));
 }
 
 #[test]
@@ -92,6 +92,17 @@ fn test_attach_exactly_at_expiration_boundary_succeeds() {
 
     let attached = client.get_attributes_for_token(&1);
     assert_eq!(attached.len(), 1);
+}
+
+#[test]
+#[should_panic(expected = "InvalidValidityWindow")]
+fn test_attach_inverted_validity_window_fails() {
+    let (env, client, _admin, issuer) = setup_test_env();
+    setup_ledger(&env, 1);
+
+    // Create attribute with inverted window: valid_from > valid_until
+    let definition = create_definition(&env, "tag-inverted", 2000, 1000);
+    client.attach_tax_attribute(&issuer, &1, &definition);
 }
 
 #[test]

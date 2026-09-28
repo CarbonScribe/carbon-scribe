@@ -13,4 +13,8 @@ pub enum Error {
     InvalidState = 7,
     /// Percentage was explicitly set to zero, which would cause division-by-zero in auto_deposit.
     ZeroPercentage = 8,
+    ArithmeticOverflow = 9,
+    /// The pool is paused for incident response; state-mutating calls are
+    /// rejected until governance calls unpause().
+    ContractPaused = 10,
 }

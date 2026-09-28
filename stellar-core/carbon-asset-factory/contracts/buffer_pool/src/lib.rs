@@ -54,6 +54,10 @@ impl BufferPoolContract {
         token_id: u32,
         project_id: String,
     ) -> Result<(), Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let admin = get_admin(&env);
         let carbon_contract = get_carbon_asset_contract(&env);
 
@@ -77,7 +81,8 @@ impl BufferPoolContract {
         set_custody_record(&env, token_id, &record);
 
         let tvl = get_total_value_locked(&env);
-        set_total_value_locked(&env, tvl + 1);
+        let new_tvl = tvl.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
+        set_total_value_locked(&env, new_tvl);
 
         emit_deposit_event(&env, token_id, &caller, &project_id);
 
@@ -92,6 +97,10 @@ impl BufferPoolContract {
         token_id: u32,
         target_invalidated_token: u32,
     ) -> Result<(), Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let governance = get_governance(&env);
 
         if governance_caller != governance {
@@ -122,7 +131,11 @@ impl BufferPoolContract {
             .remove(&(storage::CUSTODY, token_id));
 
         let tvl = get_total_value_locked(&env);
-        set_total_value_locked(&env, tvl - 1);
+        if tvl < 1 {
+            return Err(Error::ArithmeticOverflow);
+        }
+        let new_tvl = tvl.checked_sub(1).ok_or(Error::ArithmeticOverflow)?;
+        set_total_value_locked(&env, new_tvl);
 
         // Emit trace events for off-chain tracking
         emit_withdraw_event(&env, token_id, target_invalidated_token, &governance_caller);
@@ -137,6 +150,10 @@ impl BufferPoolContract {
         project_id: String,
         _total_minted: u32,
     ) -> Result<bool, Error> {
+        if get_paused(&env) {
+            return Err(Error::ContractPaused);
+        }
+
         let carbon_contract = get_carbon_asset_contract(&env);
         if carbon_contract_caller != carbon_contract {
             return Err(Error::Unauthorized);
@@ -170,7 +187,8 @@ impl BufferPoolContract {
             set_custody_record(&env, token_id, &record);
 
             let tvl = get_total_value_locked(&env);
-            set_total_value_locked(&env, tvl + 1);
+            let new_tvl = tvl.checked_add(1).ok_or(Error::ArithmeticOverflow)?;
+            set_total_value_locked(&env, new_tvl);
 
             emit_auto_deposit_event(&env, token_id, &project_id);
 
@@ -222,6 +240,45 @@ impl BufferPoolContract {
         set_replenishment_percentage(&env, new_percentage);
 
         Ok(())
+    }
+
+    /// Freeze deposit(), withdraw_to_replace(), and auto_deposit() for
+    /// incident response. Restricted to governance.
+    pub fn pause(env: Env, caller: Address) -> Result<(), Error> {
+        let governance = get_governance(&env);
+
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        caller.require_auth();
+
+        set_paused(&env, &true);
+
+        emit_pause_event(&env, &caller);
+
+        Ok(())
+    }
+
+    /// Restore normal operation after an incident. Restricted to governance.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), Error> {
+        let governance = get_governance(&env);
+
+        if caller != governance {
+            return Err(Error::Unauthorized);
+        }
+
+        caller.require_auth();
+
+        set_paused(&env, &false);
+
+        emit_unpause_event(&env, &caller);
+
+        Ok(())
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        get_paused(&env)
     }
 
     pub fn get_total_value_locked(env: Env) -> i128 {

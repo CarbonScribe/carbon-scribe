@@ -38,11 +38,15 @@ describe('CheckoutService', () => {
     },
     creditReservation: {
       deleteMany: jest.fn(),
+      findFirst: jest.fn(),
     },
   };
 
   const mockPaymentService = {
     processPayment: jest.fn(),
+    refundPayment: jest
+      .fn()
+      .mockResolvedValue({ success: true, refundId: 'ref_1' }),
   };
 
   const mockUnitOfWork = {
@@ -64,6 +68,8 @@ describe('CheckoutService', () => {
 
   const mockAvailabilityService = {
     decrementWithin: jest.fn().mockResolvedValue({ newAmount: 0 }),
+    runSerializable: jest.fn((cb) => cb(mockPrisma)),
+    lockCredit: jest.fn().mockResolvedValue(true),
   };
 
   const mockProducerService = {
@@ -211,6 +217,13 @@ describe('CheckoutService', () => {
         transactionHash: 'tx_abc',
       });
 
+      mockPrisma.creditReservation.findFirst.mockResolvedValue({
+        cartId: 'cart1',
+        creditId: 'cred1',
+        quantity: 1000,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
       mockAvailabilityService.decrementWithin.mockResolvedValue({
         newAmount: 4000,
       });
@@ -335,14 +348,26 @@ describe('CheckoutService – shared inventory path', () => {
   });
 
   beforeEach(async () => {
-    store = new InMemoryPrisma([
-      {
-        id: 'credit-1',
-        projectName: 'Amazon Rainforest',
-        availableAmount: 100,
-        status: 'available',
-      },
-    ]);
+    store = new InMemoryPrisma(
+      [
+        {
+          id: 'credit-1',
+          projectName: 'Amazon Rainforest',
+          availableAmount: 100,
+          status: 'available',
+        },
+      ],
+      [
+        // The order's own active reservation — required since confirmPurchase
+        // now verifies it is still live before decrementing (#545).
+        {
+          cartId: 'cart1',
+          creditId: 'credit-1',
+          quantity: 60,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      ],
+    );
 
     // Layer the order/cart models the fake does not implement onto the same
     // client so both the availability path and the checkout bookkeeping work,
@@ -384,6 +409,9 @@ describe('CheckoutService – shared inventory path', () => {
               status: 'approved',
               transactionHash: 'tx_1',
             }),
+            refundPayment: jest
+              .fn()
+              .mockResolvedValue({ success: true, refundId: 'ref_1' }),
           },
         },
         {
@@ -460,5 +488,262 @@ describe('CheckoutService – shared inventory path', () => {
     expect(
       store.credits.get('credit-1')!.availableAmount,
     ).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── Reservation expiry cannot cause a stale decrement (#545) ────────────────
+
+describe('CheckoutService – reservation expiry guard', () => {
+  let service: CheckoutService;
+  let store: InMemoryPrisma;
+  const releaseReservations = jest.fn().mockResolvedValue(undefined);
+  const refundPayment = jest
+    .fn()
+    .mockResolvedValue({ success: true, refundId: 'ref_1' });
+
+  const order = {
+    id: 'order1',
+    companyId: 'comp1',
+    userId: 'user1',
+    status: 'pending',
+    paymentMethod: 'credit_card',
+    total: 100,
+    cartId: 'cart1',
+    items: [
+      {
+        id: 'oi1',
+        creditId: 'credit-1',
+        quantity: 30,
+        price: 10,
+        subtotal: 300,
+        credit: { availableAmount: 100, projectName: 'Amazon Rainforest' },
+      },
+    ],
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+
+    // No reservation is seeded for cart1/credit-1 — modelling the reservation
+    // having expired (and been swept by releaseExpiredReservations) between
+    // initiateCheckout and confirmPurchase.
+    store = new InMemoryPrisma([
+      {
+        id: 'credit-1',
+        projectName: 'Amazon Rainforest',
+        availableAmount: 100,
+        status: 'available',
+      },
+    ]);
+
+    const prisma: any = store;
+    store.registerModel('order', {
+      findUnique: jest.fn().mockResolvedValue(order),
+      update: jest.fn().mockImplementation(({ data }: any) => ({
+        ...order,
+        ...data,
+      })),
+    });
+    store.registerModel('cart', { findFirst: jest.fn(), update: jest.fn() });
+    store.registerModel('cartItem', { deleteMany: jest.fn() });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CheckoutService,
+        AvailabilityService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UnitOfWorkService, useValue: { run: jest.fn() } },
+        {
+          provide: PaymentService,
+          useValue: {
+            processPayment: jest.fn().mockResolvedValue({
+              paymentId: 'pay_1',
+              status: 'approved',
+              transactionHash: 'tx_1',
+            }),
+            refundPayment,
+          },
+        },
+        {
+          provide: ReservationService,
+          useValue: { reserveCredits: jest.fn(), releaseReservations },
+        },
+        { provide: AuditService, useValue: { logOrderEvent: jest.fn() } },
+        {
+          provide: PostPurchaseService,
+          useValue: { handleOrderCompleted: jest.fn() },
+        },
+        {
+          provide: ProducerService,
+          useValue: {
+            publish: jest.fn().mockResolvedValue(undefined),
+            publishPending: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(CheckoutService);
+  });
+
+  it('rejects with BadRequestException, refunds, and releases the reservation when it has expired', async () => {
+    await expect(service.confirmPurchase('order1', 'comp1')).rejects.toThrow(
+      BadRequestException,
+    );
+
+    // The floor-guarded decrement never ran — availableAmount is untouched.
+    expect(store.credits.get('credit-1')!.availableAmount).toBe(100);
+    expect(refundPayment).toHaveBeenCalledWith('pay_1');
+    expect(releaseReservations).toHaveBeenCalledWith('cart1');
+  });
+});
+
+// ── Concurrency load test: many confirmPurchase calls, one scarce credit (#545) ─
+
+/**
+ * Fires several simultaneous confirmPurchase calls, each for a distinct order,
+ * against one credit with limited availableAmount, and asserts the total ever
+ * decremented cannot exceed what was available — the core guarantee #545
+ * requires. Orders here are cart-less (Order.cartId is nullable in the
+ * schema — e.g. an administrative or direct order) specifically to isolate
+ * the floor-guard/row-lock race on raw availableAmount from cart-reservation
+ * admission control, which is already covered separately in
+ * reservation.service.spec.ts.
+ */
+describe('CheckoutService – concurrent confirmPurchase load test', () => {
+  let service: CheckoutService;
+  let store: InMemoryPrisma;
+
+  const ORDER_COUNT = 5;
+  const CLAIM_PER_ORDER = 30;
+  const INITIAL_AVAILABLE = 100;
+
+  const makeOrder = (index: number) => ({
+    id: `order-${index}`,
+    companyId: 'comp1',
+    userId: `user-${index}`,
+    status: 'pending',
+    paymentMethod: 'credit_card',
+    total: 300,
+    cartId: null,
+    items: [
+      {
+        id: `oi-${index}`,
+        creditId: 'credit-1',
+        quantity: CLAIM_PER_ORDER,
+        price: 10,
+        subtotal: CLAIM_PER_ORDER * 10,
+        credit: {
+          availableAmount: INITIAL_AVAILABLE,
+          projectName: 'Amazon Rainforest',
+        },
+      },
+    ],
+  });
+
+  beforeEach(async () => {
+    const orders = new Map(
+      Array.from({ length: ORDER_COUNT }, (_, i) => [
+        `order-${i}`,
+        makeOrder(i),
+      ]),
+    );
+
+    store = new InMemoryPrisma([
+      {
+        id: 'credit-1',
+        projectName: 'Amazon Rainforest',
+        availableAmount: INITIAL_AVAILABLE,
+        status: 'available',
+      },
+    ]);
+
+    const prisma: any = store;
+    store.registerModel('order', {
+      findUnique: jest.fn(({ where }: any) => orders.get(where.id) ?? null),
+      update: jest.fn(({ where, data }: any) => {
+        const current = orders.get(where.id);
+        const updated = { ...current, ...data };
+        orders.set(where.id, updated);
+        return updated;
+      }),
+    });
+    store.registerModel('cart', { findFirst: jest.fn(), update: jest.fn() });
+    store.registerModel('cartItem', { deleteMany: jest.fn() });
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CheckoutService,
+        AvailabilityService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: UnitOfWorkService, useValue: { run: jest.fn() } },
+        {
+          provide: PaymentService,
+          useValue: {
+            processPayment: jest.fn().mockResolvedValue({
+              paymentId: 'pay_1',
+              status: 'approved',
+              transactionHash: 'tx_1',
+            }),
+            refundPayment: jest
+              .fn()
+              .mockResolvedValue({ success: true, refundId: 'ref_1' }),
+          },
+        },
+        {
+          provide: ReservationService,
+          useValue: {
+            reserveCredits: jest.fn(),
+            releaseReservations: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: AuditService, useValue: { logOrderEvent: jest.fn() } },
+        {
+          provide: PostPurchaseService,
+          useValue: { handleOrderCompleted: jest.fn() },
+        },
+        {
+          provide: ProducerService,
+          useValue: {
+            publish: jest.fn().mockResolvedValue(undefined),
+            publishPending: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(CheckoutService);
+  });
+
+  it('never lets simultaneous confirmPurchase calls together decrement more than was available', async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: ORDER_COUNT }, (_, i) =>
+        service.confirmPurchase(`order-${i}`, 'comp1'),
+      ),
+    );
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+
+    // 100 available / 30 per order fits exactly 3 orders; the other 2 must
+    // lose the race, whichever they happen to be.
+    expect(fulfilled).toHaveLength(3);
+    expect(rejected).toHaveLength(2);
+    for (const failure of rejected) {
+      expect(failure.reason).toBeInstanceOf(BadRequestException);
+    }
+
+    const remaining = store.credits.get('credit-1')!.availableAmount;
+    expect(remaining).toBe(
+      INITIAL_AVAILABLE - fulfilled.length * CLAIM_PER_ORDER,
+    );
+    expect(remaining).toBeGreaterThanOrEqual(0);
+
+    // Total consumed can never exceed what was actually available.
+    expect(fulfilled.length * CLAIM_PER_ORDER).toBeLessThanOrEqual(
+      INITIAL_AVAILABLE,
+    );
   });
 });

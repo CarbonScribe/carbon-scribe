@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate:icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -36,6 +37,7 @@
     "@types/react-dom": "^19",
     "@types/recharts": "^2.0.1",
     "jsdom": "^27.0.1",
+    "sharp": "^0.34.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.4"

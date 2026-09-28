@@ -26,7 +26,7 @@ const (
 	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
 	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
-	defaultSorobanRPCURL         = "https://soroban-testnet.stellar.org:443"
+	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
 
 	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
 	DefaultPollAttempts = 15
@@ -64,6 +64,28 @@ type service struct {
 	db             *gorm.DB
 	contractClient CarbonAssetContractClient
 	capValidator   *CapValidator
+	retry          RetryPolicy
+}
+
+// retryPolicy returns the service's retry policy, normalised. A zero-value
+// policy (a service built without one) falls back to the defaults rather than
+// looping zero times.
+func (s *service) retryPolicy() RetryPolicy {
+	if s.retry.MaxAttempts < 1 {
+		return DefaultRetryPolicy()
+	}
+	return s.retry
+}
+
+// RetryPolicyConfigurer is implemented by the minting service so callers can
+// override the retry policy resolved from the environment at construction.
+type RetryPolicyConfigurer interface {
+	SetRetryPolicy(policy RetryPolicy)
+}
+
+// SetRetryPolicy overrides the retry policy, e.g. from application config.
+func (s *service) SetRetryPolicy(policy RetryPolicy) {
+	s.retry = policy.normalized()
 }
 
 type CarbonAssetContractClient interface {
@@ -85,6 +107,7 @@ func NewService(db *gorm.DB, client CarbonAssetContractClient, capValidator *Cap
 		db:             db,
 		contractClient: client,
 		capValidator:   capValidator,
+		retry:          RetryPolicyFromEnv(),
 	}
 }
 
@@ -167,9 +190,13 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		vintageYearPtr = &v
 	}
 
-	// Retry logic
+	// Retry logic. Delays grow exponentially with jitter, and a non-retryable
+	// failure — a breached methodology cap, a contract rejection — fails the
+	// job immediately rather than burning the remaining attempts on an
+	// outcome that cannot change.
+	policy := s.retryPolicy()
 	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
 		var mintedTokenID int
 		var mintedTxHash string
 		mintFn := func(mintCtx context.Context) error {
@@ -206,7 +233,30 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 			return
 		}
 		lastErr = err
-		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+
+		if !IsRetryable(err) {
+			log.Printf("minting job %v: non-retryable failure on attempt %d/%d: %v",
+				job.ID, attempt, policy.MaxAttempts, err)
+			break
+		}
+		if attempt == policy.MaxAttempts {
+			break
+		}
+
+		delay := policy.BackoffFor(attempt, nil)
+		log.Printf("minting job %v: attempt %d/%d failed, retrying in %s: %v",
+			job.ID, attempt, policy.MaxAttempts, delay, err)
+
+		// Abandon the wait if the caller's context is already done, rather
+		// than sleeping out the full backoff on a cancelled job.
+		select {
+		case <-ctx.Done():
+			job.Status = "failed"
+			job.Error = ctx.Err().Error()
+			s.db.Save(job)
+			return
+		case <-time.After(delay):
+		}
 	}
 
 	job.Status = "failed"
@@ -339,7 +389,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 	// 1. Load Admin Account
 	account, err := c.rpc.LoadAccount(ctx, c.authority.Address())
 	if err != nil {
-		return 0, "", fmt.Errorf("load authority account: %w", err)
+		return 0, "", classifyMintError("load authority account", err, false)
 	}
 
 	// 2. Prepare Arguments
@@ -387,16 +437,19 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 	simReq := protocol.SimulateTransactionRequest{Transaction: encodedTx, Format: protocol.FormatBase64, AuthMode: protocol.AuthModeRecord}
 	simResp, err := c.rpc.SimulateTransaction(ctx, simReq)
 	if err != nil {
-		return 0, "", fmt.Errorf("simulate mint transaction: %w", err)
+		// Transport failure reaching the simulator - worth another attempt.
+		return 0, "", classifyMintError("simulate mint transaction", err, false)
 	}
 	if simResp.Error != "" {
-		return 0, "", fmt.Errorf("mint simulation failed: %s", simResp.Error)
+		// The contract rejected the invocation; an identical call is
+		// rejected identically next time.
+		return 0, "", Permanent(fmt.Errorf("mint simulation failed: %s", simResp.Error))
 	}
 	if simResp.RestorePreamble != nil {
-		return 0, "", fmt.Errorf("mint simulation indicates restore preamble is required")
+		return 0, "", Permanent(errors.New("mint simulation indicates restore preamble is required"))
 	}
 	if len(simResp.Results) == 0 {
-		return 0, "", fmt.Errorf("mint simulation returned no results")
+		return 0, "", Permanent(errors.New("mint simulation returned no results"))
 	}
 
 	if simResp.Results[0].AuthXDR != nil {
@@ -435,10 +488,12 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 
 	sendResp, err := c.rpc.SendTransaction(ctx, protocol.SendTransactionRequest{Transaction: envelope, Format: protocol.FormatBase64})
 	if err != nil {
-		return 0, "", fmt.Errorf("submit mint transaction: %w", err)
+		// Submission never reached the network - retry.
+		return 0, "", classifyMintError("submit mint transaction", err, false)
 	}
 	if sendResp.ErrorResultXDR != "" {
-		return 0, "", fmt.Errorf("mint submission failed with status %s", sendResp.Status)
+		// The network rejected the envelope itself.
+		return 0, "", Permanent(fmt.Errorf("mint submission failed with status %s", sendResp.Status))
 	}
 
 	txResp, err := c.waitForTransaction(ctx, sendResp.Hash)
@@ -458,13 +513,17 @@ func (c *realContractClient) waitForTransaction(ctx context.Context, hash string
 	for attempt := 0; attempt < DefaultPollAttempts; attempt++ {
 		response, err := c.rpc.GetTransaction(ctx, protocol.GetTransactionRequest{Hash: hash, Format: protocol.FormatBase64})
 		if err != nil {
-			return protocol.GetTransactionResponse{}, fmt.Errorf("poll mint transaction %s: %w", hash, err)
+			return protocol.GetTransactionResponse{}, classifyMintError(
+				fmt.Sprintf("poll mint transaction %s", hash), err, false)
 		}
 		switch response.Status {
 		case protocol.TransactionStatusSuccess:
 			return response, nil
 		case protocol.TransactionStatusFailed:
-			return protocol.GetTransactionResponse{}, fmt.Errorf("mint transaction %s failed on-chain", hash)
+			// Included in a ledger and failed; resubmitting the same operation
+			// fails the same way.
+			return protocol.GetTransactionResponse{}, Permanent(
+				fmt.Errorf("mint transaction %s failed on-chain", hash))
 		case protocol.TransactionStatusNotFound:
 		default:
 			if strings.EqualFold(response.Status, "SUCCESS") {
@@ -478,7 +537,10 @@ func (c *realContractClient) waitForTransaction(ctx context.Context, hash string
 		case <-time.After(DefaultPollInterval):
 		}
 	}
-	return protocol.GetTransactionResponse{}, fmt.Errorf("mint transaction %s was not confirmed before timeout", hash)
+	// Unconfirmed within the polling window: the ledger may still catch up,
+	// so another attempt is worthwhile.
+	return protocol.GetTransactionResponse{}, Transient(
+		fmt.Errorf("mint transaction %s was not confirmed before timeout", hash))
 }
 
 func decodeAuthEntries(encoded []string) ([]xdr.SorobanAuthorizationEntry, error) {

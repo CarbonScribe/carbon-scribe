@@ -216,4 +216,94 @@ describe('useAuctionDetail', () => {
     expect(mockGetAuctionById).toHaveBeenCalledTimes(2);
     expect(mockGetAuctionBids).toHaveBeenCalledTimes(2);
   });
+
+  describe('countdown accuracy hardening', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('computes clockSkewMs from the server-provided timestamp on a poll response', async () => {
+      const localNowAtStart = Date.now();
+      const pollIntervalMs = 15_000;
+      const skewMs = 5_000; // server clock is 5s ahead of the client
+
+      // The mock resolves once the recursive poll timer fires, at which
+      // point fake time will have advanced by pollIntervalMs — so the
+      // serverTime here is set relative to that future instant.
+      mockGetAuctionStatus.mockResolvedValueOnce({
+        success: true,
+        data: mockAuction,
+        serverTime: new Date(localNowAtStart + pollIntervalMs + skewMs).toISOString(),
+      });
+
+      const { result } = renderHook(() => useAuctionDetail('auction-1'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.auction?.status).toBe('active');
+      expect(result.current.clockSkewMs).toBe(0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(pollIntervalMs);
+      });
+
+      expect(mockGetAuctionStatus).toHaveBeenCalledTimes(1);
+      expect(result.current.clockSkewMs).toBe(skewMs);
+    });
+
+    it('triggers an immediate poll when the tab becomes visible again', async () => {
+      const { result } = renderHook(() => useAuctionDetail('auction-1'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.auction?.status).toBe('active');
+      expect(mockGetAuctionStatus).not.toHaveBeenCalled();
+
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(mockGetAuctionStatus).toHaveBeenCalledTimes(1);
+    });
+
+    it('marks data as stale after repeated consecutive poll failures', async () => {
+      mockGetAuctionStatus.mockResolvedValue({
+        success: false,
+        error: 'Service unavailable',
+      });
+
+      const { result } = renderHook(() => useAuctionDetail('auction-1'));
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(result.current.isStale).toBe(false);
+
+      // First two failures back off exponentially but don't flag stale yet.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000); // 1st poll fails
+      });
+      expect(result.current.isStale).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000); // backoff, 2nd poll fails
+      });
+      expect(result.current.isStale).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_000); // backoff, 3rd poll fails
+      });
+      expect(result.current.isStale).toBe(true);
+    });
+  });
 });

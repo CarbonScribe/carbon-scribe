@@ -385,7 +385,13 @@ impl MethodologyLibrary {
             return Err(Error::Unauthorized);
         }
 
-        let mut authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap();
+        // Default to an empty set when the key has never been written so a
+        // missing entry yields a typed Result instead of a host-level panic.
+        let mut authorities: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Authorities)
+            .unwrap_or_else(|| Vec::new(&env));
         if !authorities.contains(&authority) {
             authorities.push_back(authority.clone());
             env.storage().persistent().set(&DataKey::Authorities, &authorities);
@@ -435,7 +441,15 @@ impl MethodologyLibrary {
             return Err(Error::Unauthorized);
         }
 
-        let authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap();
+        // Default to an empty set when the key has never been written so a
+        // missing entry yields a typed Result instead of a host-level panic.
+        // Filtering an empty list produces an empty list, so removing from an
+        // unset authority set is a no-op rather than an error.
+        let authorities: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Authorities)
+            .unwrap_or_else(|| Vec::new(&env));
         let mut new_authorities = Vec::new(&env);
         for auth in authorities.iter() {
             if auth != authority {
@@ -1748,6 +1762,105 @@ mod test {
         assert_eq!(
             client.get_token_by_identity(&new_name, &new_version, &registry),
             Some(token_id)
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Regression tests: add_authority / remove_authority must never panic on
+    // an unset (missing) Authorities storage key; they must treat it as an
+    // empty list and return a typed Result instead of trapping the host.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn test_add_remove_authority_on_freshly_initialized_contract() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        // Sanity: no authority has ever been added, so the set is empty and a
+        // removal proposal for `authority` must be rejected.
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
+        );
+
+        // Removing from an empty authority set is a no-op, not an error.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+
+        // Adding the first authority returns cleanly.
+        assert_eq!(client.try_add_authority(&admin, &authority), Ok(Ok(())));
+
+        // The authority really landed in the set (a removal proposal is now
+        // accepted for it).
+        assert!(client
+            .try_propose_remove_authority(&admin, &authority)
+            .is_ok());
+
+        // Removing it again returns cleanly.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_add_remove_authority_with_missing_authorities_key() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        // Simulate a contract instance whose Authorities key was never written
+        // (e.g. an instance deployed/initialized by an older revision).
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().remove(&DataKey::Authorities);
+        });
+
+        // add_authority must not panic: the missing list is treated as empty.
+        assert_eq!(client.try_add_authority(&admin, &authority), Ok(Ok(())));
+
+        // The authority was actually appended to the re-created list.
+        assert!(client
+            .try_propose_remove_authority(&admin, &authority)
+            .is_ok());
+
+        // remove_authority must not panic either.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+
+        // ...and the authority is genuinely gone from the list afterwards.
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
+        );
+
+        // Removing from a completely absent list is a no-op, not an error.
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().remove(&DataKey::Authorities);
+        });
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
         );
     }
 }
