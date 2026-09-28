@@ -21,9 +21,12 @@ const MIGRATIONS_DIR = join(
  * migration-runner step.
  */
 export async function migrateAuditLogSchema(pool: Queryable): Promise<void> {
-  const sql = readFileSync(
-    join(MIGRATIONS_DIR, "001_create_agent_audit_log.sql"),
-    "utf8",
-  );
-  await pool.query(sql);
+  for (const migration of [
+    "001_create_agent_audit_log.sql",
+    "002_create_agent_approvals.sql",
+    "003_extend_approval_outbox.sql",
+  ]) {
+    const sql = readFileSync(join(MIGRATIONS_DIR, migration), "utf8");
+    await pool.query(sql);
+  }
 }

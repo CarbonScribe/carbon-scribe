@@ -8,6 +8,14 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+function positiveInteger(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
 // Service-to-service auth (issue #579): each upstream caller signs its own
 // short-lived HS256 JWT with its own secret and sends it as
 // `Authorization: Bearer <token>` (the same Bearer convention
@@ -34,6 +42,28 @@ export const env = {
   agentServiceJwtSecret: process.env.AGENT_SERVICE_JWT_SECRET ?? "",
 
   serviceTokenSecrets,
+  approvalReviewerServices: (process.env.APPROVAL_REVIEWER_SERVICES ?? "")
+    .split(",")
+    .map((service) => service.trim())
+    .filter(Boolean),
+  approvalOutboxPollIntervalMs: positiveInteger(
+    "APPROVAL_OUTBOX_POLL_INTERVAL_MS",
+    3000,
+  ),
+  approvalOutboxBatchSize: positiveInteger("APPROVAL_OUTBOX_BATCH_SIZE", 20),
+  approvalOutboxMaxAttempts: positiveInteger("APPROVAL_OUTBOX_MAX_ATTEMPTS", 5),
+  approvalOutboxLockTimeoutMs: positiveInteger(
+    "APPROVAL_OUTBOX_LOCK_TIMEOUT_MS",
+    60000,
+  ),
+  approvalOutboxRetryBaseMs: positiveInteger(
+    "APPROVAL_OUTBOX_RETRY_BASE_MS",
+    1000,
+  ),
+  approvalOutboxRetryMaxMs: positiveInteger(
+    "APPROVAL_OUTBOX_RETRY_MAX_MS",
+    60000,
+  ),
 
   corporatePlatformBaseUrl: required(
     "CORPORATE_PLATFORM_BASE_URL",

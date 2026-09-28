@@ -5,6 +5,7 @@ import { discoveryRouter } from "../agents/discovery/discovery.controller.js";
 import { pddDraftRouter } from "../agents/pdd-draft/pdd-draft.controller.js";
 import { complianceReportRouter } from "../agents/compliance-report/compliance-report.controller.js";
 import { alertTriageRouter } from "../agents/alert-triage/alert-triage.controller.js";
+import { approvalsRouter } from "../shared/approvals/approvals.controller.js";
 
 export const router = Router();
 
@@ -21,3 +22,4 @@ router.use(
   complianceReportRouter,
 );
 router.use("/agents/alert-triage", requireInternalAuth, alertTriageRouter);
+router.use("/approvals", requireInternalAuth, approvalsRouter);
