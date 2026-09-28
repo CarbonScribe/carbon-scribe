@@ -18,6 +18,10 @@ type Service interface {
 	GetCreditDetails(ctx context.Context, projectID uuid.UUID, tokenID uint32) (*CreditDetailResponse, error)
 	GetCreditMetadata(ctx context.Context, tokenID uint32) (*CreditMetadata, error)
 	SyncProjectInventory(ctx context.Context, projectID uuid.UUID, ownerAddress string) error
+	// PurgeExpiredCache deletes rows past expires_at and returns the count removed.
+	PurgeExpiredCache(ctx context.Context) (int64, error)
+	// CacheTTL returns the TTL applied to cache writes.
+	CacheTTL() time.Duration
 }
 
 type service struct {
@@ -130,6 +134,16 @@ func (s *service) GetCreditDetails(ctx context.Context, projectID uuid.UUID, tok
 		}
 		return s.fetchCreditFromChain(ctx, tokenID, status)
 	}
+	// Defense in depth: the repository already filters expired rows, but if an
+	// expired row ever reaches this layer (e.g. a code path bypassing the fresh
+	// filter), never serve it as current — fall back to a live chain read.
+	if cache.IsExpired(time.Now().UTC()) {
+		status, statusErr := s.sorobanClient.GetStatus(ctx, tokenID)
+		if statusErr != nil {
+			return nil, fmt.Errorf("cached credit expired and chain refresh failed: %w", statusErr)
+		}
+		return s.fetchCreditFromChain(ctx, tokenID, status)
+	}
 
 	return &CreditDetailResponse{
 		TokenID:      cache.TokenID,
@@ -171,7 +185,6 @@ func (s *service) SyncProjectInventory(ctx context.Context, projectID uuid.UUID,
 		}
 		caches = append(caches, *cache)
 	}
-
 	if len(caches) > 0 {
 		if err := s.repo.BulkUpsertCreditCache(ctx, caches); err != nil {
 			return fmt.Errorf("failed to cache credits: %w", err)
@@ -179,6 +192,18 @@ func (s *service) SyncProjectInventory(ctx context.Context, projectID uuid.UUID,
 	}
 
 	return nil
+}
+
+// PurgeExpiredCache deletes rows past expires_at to bound table growth.
+// It is invoked periodically by the inventory cache purge worker and can also
+// be called on demand (e.g. from an admin endpoint or maintenance job).
+func (s *service) PurgeExpiredCache(ctx context.Context) (int64, error) {
+	return s.repo.PurgeExpiredCache(ctx)
+}
+
+// CacheTTL returns the TTL applied to cache writes.
+func (s *service) CacheTTL() time.Duration {
+	return s.cacheTTL
 }
 
 func (s *service) fetchTokenData(ctx context.Context, projectID uuid.UUID, tokenID uint32, ownerAddress string) (*ProjectCreditCache, error) {
@@ -195,6 +220,7 @@ func (s *service) fetchTokenData(ctx context.Context, projectID uuid.UUID, token
 	qualityScore, _ := s.sorobanClient.GetQualityScore(ctx, tokenID)
 	burned, _ := s.sorobanClient.IsBurned(ctx, tokenID)
 
+	now := time.Now().UTC()
 	return &ProjectCreditCache{
 		ProjectID:     projectID,
 		TokenID:       tokenID,
@@ -204,6 +230,8 @@ func (s *service) fetchTokenData(ctx context.Context, projectID uuid.UUID, token
 		MethodologyID: metadata.MethodologyID,
 		QualityScore:  qualityScore,
 		IsBurned:      burned,
+		LastSynced:    now,
+		ExpiresAt:     now.Add(s.cacheTTL),
 	}, nil
 }
 

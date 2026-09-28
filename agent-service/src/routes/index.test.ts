@@ -8,7 +8,12 @@ const SECRETS = {
 };
 
 vi.mock("../config/env.js", () => ({
-  env: { serviceTokenSecrets: SECRETS, port: 4500, nodeEnv: "test" },
+  env: {
+    serviceTokenSecrets: SECRETS,
+    approvalReviewerServices: [],
+    port: 4500,
+    nodeEnv: "test",
+  },
 }));
 
 const runDiscoveryAgentMock = vi.fn();
@@ -83,6 +88,30 @@ describe("all four agent routes enforce requireInternalAuth", () => {
   it("does not require auth for /health/liveness", async () => {
     const res = await request(buildApp()).get("/health/liveness");
     expect(res.status).toBe(200);
+  });
+
+  it("requires authentication and an approver-service allowlist for the approval queue", async () => {
+    const unauthenticated = await request(buildApp()).get("/approvals");
+    expect(unauthenticated.status).toBe(401);
+
+    const token = signServiceToken("project-portal", SECRETS["project-portal"]);
+    const authenticated = await request(buildApp())
+      .get("/approvals")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(authenticated.status).toBe(403);
+  });
+
+  it("rejects unauthenticated approve and reject decisions", async () => {
+    const approve = await request(buildApp())
+      .post("/approvals/req-1/approve")
+      .send({ reviewerId: "human-1" });
+    const reject = await request(buildApp())
+      .post("/approvals/req-1/reject")
+      .send({ reviewerId: "human-1" });
+
+    expect(approve.status).toBe(401);
+    expect(reject.status).toBe(401);
   });
 
   it.each(routesUnderAuth)(

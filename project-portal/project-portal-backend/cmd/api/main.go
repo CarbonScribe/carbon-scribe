@@ -62,6 +62,13 @@ func main() {
 		log.Fatalf("❌ Failed to load configuration: %v", err)
 	}
 
+	// Fail fast if security-critical configuration is missing or still set to
+	// an insecure default. Development mode (SERVER_MODE=development/DEBUG=true)
+	// keeps the documented defaults for local convenience.
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("❌ Invalid configuration: %v", err)
+	}
+
 	// Initialize database connection
 	db, err := initDatabase(cfg)
 	if err != nil {
@@ -318,6 +325,16 @@ func main() {
 	inventoryService := inventory.NewService(inventoryRepo, sorobanClient, inventoryCacheTTL)
 	inventoryHandler := inventory.NewHandler(inventoryService)
 	log.Println("✅ Credit inventory service initialized")
+
+	// Periodically purge expired inventory credit cache rows so stale on-chain
+	// data never accumulates. Runs at the cache TTL cadence.
+	inventoryPurgeWorker := workers.NewInventoryCachePurgeWorker(inventoryRepo, inventoryCacheTTL, log.Default())
+	go func() {
+		if err := inventoryPurgeWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Inventory cache purge worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Inventory cache purge worker started")
 
 	// ============================================================================
 	// Initialize Monitoring Service

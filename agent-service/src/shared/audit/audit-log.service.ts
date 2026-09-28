@@ -19,9 +19,19 @@ export interface AgentAuditEntry {
   agent: AgentName;
   requestId: string;
   requestedBy: string;
+  actor?: string;
+  callingService?: string;
   /** Every tool call the agent made this run, in order. */
-  toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
-  status: "drafted" | "needs-approval" | "failed";
+  toolCalls: Array<{ name: string; input: unknown }>;
+  status:
+    | "drafted"
+    | "needs-approval"
+    | "failed"
+    | "approved"
+    | "rejected"
+    | "dispatch-processed"
+    | "dispatch-retry"
+    | "dispatch-failed";
 }
 
 /**
@@ -87,12 +97,14 @@ export class AuditLogService {
   async record(entry: AgentAuditEntry): Promise<void> {
     await this.pool.query(
       `INSERT INTO agent_audit_log
-         (request_id, agent, requested_by, status, tool_calls, occurred_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         entry.requestId,
         entry.agent,
         entry.requestedBy,
+        entry.actor ?? null,
+        entry.callingService ?? null,
         entry.status,
         JSON.stringify(entry.toolCalls),
         entry.timestamp,
@@ -111,11 +123,13 @@ export class AuditLogService {
       request_id: string;
       agent: AgentName;
       requested_by: string;
+      actor: string | null;
+      calling_service: string | null;
       status: AgentAuditEntry["status"];
       tool_calls: AgentAuditEntry["toolCalls"];
       occurred_at: Date;
     }>(
-      `SELECT request_id, agent, requested_by, status, tool_calls, occurred_at
+      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at
        FROM agent_audit_log
        WHERE request_id = $1
        ORDER BY occurred_at ASC, id ASC`,
@@ -127,6 +141,8 @@ export class AuditLogService {
       agent: row.agent,
       requestId: row.request_id,
       requestedBy: row.requested_by,
+      ...(row.actor ? { actor: row.actor } : {}),
+      ...(row.calling_service ? { callingService: row.calling_service } : {}),
       toolCalls: row.tool_calls,
       status: row.status,
     }));
