@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getMock = vi.fn();
+const requestConfigMock = vi.fn();
+let requestInterceptor:
+  | ((config: { headers: Record<string, string> }) => unknown)
+  | undefined;
+
+const agentServiceSecret = "agent-service-test-secret";
+vi.stubEnv("AGENT_SERVICE_JWT_SECRET", agentServiceSecret);
 
 vi.mock("axios", async () => {
   const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -8,13 +15,27 @@ vi.mock("axios", async () => {
     ...actual,
     default: {
       ...actual.default,
-      create: () => ({ get: getMock }),
+      create: () => ({
+        interceptors: {
+          request: {
+            use: (interceptor: typeof requestInterceptor) => {
+              requestInterceptor = interceptor;
+            },
+          },
+        },
+        get: (...args: unknown[]) => {
+          const config = requestInterceptor?.({ headers: {} });
+          requestConfigMock(config);
+          return getMock(...args);
+        },
+      }),
     },
   };
 });
 
 const { corporatePlatformClient } =
   await import("./corporate-platform.client.js");
+const { verifyServiceToken } = await import("../shared/auth/service-token.js");
 const { mockPortfolioResponseBody, mockPortfolio } =
   await import("./corporate-platform.client.fixtures.js");
 
@@ -39,6 +60,7 @@ function axiosError({
 describe("corporatePlatformClient.getPortfolio", () => {
   beforeEach(() => {
     getMock.mockReset();
+    requestConfigMock.mockReset();
   });
 
   it("returns the validated, typed portfolio for a company", async () => {
@@ -49,6 +71,21 @@ describe("corporatePlatformClient.getPortfolio", () => {
 
     expect(result).toEqual(mockPortfolio);
     expect(getMock).toHaveBeenCalledWith("/api/v1/portfolio/company-fixture-1");
+  });
+
+  it("attaches a signed agent-service bearer token to outbound requests", async () => {
+    getMock.mockResolvedValue({ data: mockPortfolioResponseBody });
+
+    await corporatePlatformClient.getPortfolio("company-fixture-1");
+
+    const config = requestConfigMock.mock.lastCall?.[0] as {
+      headers: { Authorization: string };
+    };
+    const [scheme, token] = config.headers.Authorization.split(" ");
+    expect(scheme).toBe("Bearer");
+    expect(
+      verifyServiceToken(token, { "agent-service": agentServiceSecret }),
+    ).toEqual({ service: "agent-service" });
   });
 
   it("URL-encodes the companyId", async () => {
