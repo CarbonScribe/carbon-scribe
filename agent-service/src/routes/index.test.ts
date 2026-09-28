@@ -94,10 +94,7 @@ describe("all four agent routes enforce requireInternalAuth", () => {
     const unauthenticated = await request(buildApp()).get("/approvals");
     expect(unauthenticated.status).toBe(401);
 
-    const token = signServiceToken(
-      "project-portal",
-      SECRETS["project-portal"],
-    );
+    const token = signServiceToken("project-portal", SECRETS["project-portal"]);
     const authenticated = await request(buildApp())
       .get("/approvals")
       .set("Authorization", `Bearer ${token}`);
