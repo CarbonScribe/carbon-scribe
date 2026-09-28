@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getMock = vi.fn();
 const requestConfigMock = vi.fn();
 let requestInterceptor:
-  | ((config: { headers: Record<string, string> }) => unknown)
-  | undefined;
+  ((config: { headers: Record<string, string> }) => unknown) | undefined;
 
 const agentServiceSecret = "agent-service-test-secret";
 vi.stubEnv("AGENT_SERVICE_JWT_SECRET", agentServiceSecret);
