@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
   auditLog: { record: (...args: unknown[]) => auditRecord(...args) },
+  // Pass output through unchanged in tests — truncation is covered by
+  // audit-log.service.test.ts, not by agent-level tests.
+  truncateToolOutput: (output: unknown) => output,
 }));
 
 const toolRunnerMock = vi.fn();
@@ -176,6 +179,7 @@ describe("runComplianceReportAgent", () => {
               periodStart: "2026-01-01",
               periodEnd: "2026-06-30",
             },
+            output: null,
           },
         ],
       }),

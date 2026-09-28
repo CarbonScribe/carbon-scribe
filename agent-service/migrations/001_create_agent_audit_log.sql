@@ -18,6 +18,30 @@
 -- src/shared/audit/audit-log.migrate.ts) rather than via a separate
 -- migration-runner CLI, since this is presently agent-service's only
 -- table.
+--
+-- tool_calls column shape (JSONB array):
+--   Each element records one tool invocation made by the agent during the
+--   run.  Since the initial schema (issue #578) the shape has been
+--   extended to capture the tool's return value alongside its name and
+--   arguments (issue #XXX):
+--
+--     {
+--       "name":   string,          -- tool identifier, e.g. "search_marketplace_credits"
+--       "input":  object | null,   -- arguments the agent passed to the tool
+--       "output": object | string | array | null
+--                                  -- value the tool returned; may be a
+--                                     truncation sentinel when the raw
+--                                     payload exceeds AUDIT_TOOL_OUTPUT_MAX_BYTES
+--                                     (default 8 KiB):
+--                                     { "__truncated": true,
+--                                       "byteLength": <number>,
+--                                       "preview": "<first 8192 chars>" }
+--     }
+--
+--   Rows written before the output field was introduced will have entries
+--   without an "output" key; consumers must treat a missing key the same
+--   as null.  No DDL change is required — JSONB is schema-free and the
+--   column default of '[]' already covers the empty case.
 
 CREATE TABLE IF NOT EXISTS agent_audit_log (
     id BIGSERIAL PRIMARY KEY,

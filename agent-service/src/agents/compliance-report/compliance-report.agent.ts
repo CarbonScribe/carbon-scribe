@@ -2,7 +2,10 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
-import { auditLog } from "../../shared/audit/audit-log.service.js";
+import {
+  auditLog,
+  truncateToolOutput,
+} from "../../shared/audit/audit-log.service.js";
 import {
   checkApproval,
   COMPLIANCE_REPORT_ACTION_TYPES,
@@ -62,6 +65,7 @@ const MAX_ITERATIONS = 8;
 interface ToolCallRecord {
   name: string;
   input: unknown;
+  output: unknown;
 }
 
 export async function runComplianceReportAgent(
@@ -83,6 +87,21 @@ export async function runComplianceReportAgent(
   });
 
   function extractToolCalls(): ToolCallRecord[] {
+    // First pass: collect every tool_result content block from user turns,
+    // keyed by the tool_use_id they correspond to.
+    const resultsByUseId = new Map<string, unknown>();
+    for (const message of runner.params.messages) {
+      if (message.role !== "user" || typeof message.content === "string") {
+        continue;
+      }
+      for (const block of message.content) {
+        if (block.type === "tool_result") {
+          resultsByUseId.set(block.tool_use_id as string, block.content);
+        }
+      }
+    }
+
+    // Second pass: pair each tool_use block with its result.
     const calls: ToolCallRecord[] = [];
     for (const message of runner.params.messages) {
       if (message.role !== "assistant" || typeof message.content === "string") {
@@ -90,7 +109,12 @@ export async function runComplianceReportAgent(
       }
       for (const block of message.content) {
         if (block.type === "tool_use") {
-          calls.push({ name: block.name, input: block.input });
+          const rawOutput = resultsByUseId.get(block.id as string);
+          calls.push({
+            name: block.name,
+            input: block.input,
+            output: truncateToolOutput(rawOutput ?? null),
+          });
         }
       }
     }

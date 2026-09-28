@@ -20,8 +20,43 @@ export interface AgentAuditEntry {
   requestId: string;
   requestedBy: string;
   /** Every tool call the agent made this run, in order. */
-  toolCalls: Array<{ name: string; input: unknown }>;
+  toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
   status: "drafted" | "needs-approval" | "failed";
+}
+
+/**
+ * Maximum byte length for a single tool output before it is truncated in the
+ * audit log. Prevents excessively large marketplace listings or satellite
+ * payloads from growing agent_audit_log unboundedly.
+ *
+ * 8 KiB is large enough to preserve all meaningful evidence for compliance
+ * review (a typical retirement-evidence record or credit listing is well
+ * under 2 KiB) while providing a hard ceiling on any single tool_calls
+ * JSONB entry. Adjust via the AUDIT_TOOL_OUTPUT_MAX_BYTES environment
+ * variable if operational needs change.
+ */
+export const TOOL_OUTPUT_MAX_BYTES =
+  Number(process.env["AUDIT_TOOL_OUTPUT_MAX_BYTES"]) || 8192;
+
+/**
+ * Serialise `output` to a JSON string and, if it exceeds
+ * `TOOL_OUTPUT_MAX_BYTES`, replace the value with a truncation sentinel that
+ * records the original byte length so a reviewer knows data was elided.
+ *
+ * The returned value is a plain JS object (not a string) — it will be
+ * re-serialised together with the rest of the toolCalls array by
+ * `JSON.stringify` in `record()`.
+ */
+export function truncateToolOutput(output: unknown): unknown {
+  const serialised = JSON.stringify(output);
+  if (serialised.length <= TOOL_OUTPUT_MAX_BYTES) {
+    return output;
+  }
+  return {
+    __truncated: true,
+    byteLength: serialised.length,
+    preview: serialised.slice(0, TOOL_OUTPUT_MAX_BYTES),
+  };
 }
 
 // Persistent sink for agent-service's audit trail (issue #578).
