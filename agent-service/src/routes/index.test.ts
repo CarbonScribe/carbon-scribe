@@ -90,6 +90,16 @@ describe("all four agent routes enforce requireInternalAuth", () => {
     expect(res.status).toBe(200);
   });
 
+  it("does not require auth for /openapi.json and /openapi.yaml", async () => {
+    const jsonRes = await request(buildApp()).get("/openapi.json");
+    expect(jsonRes.status).toBe(200);
+    expect(jsonRes.body.openapi).toBe("3.0.3");
+
+    const yamlRes = await request(buildApp()).get("/openapi.yaml");
+    expect(yamlRes.status).toBe(200);
+    expect(yamlRes.text).toContain("openapi: 3.0.3");
+  });
+
   it("requires authentication and an approver-service allowlist for the approval queue", async () => {
     const unauthenticated = await request(buildApp()).get("/approvals");
     expect(unauthenticated.status).toBe(401);

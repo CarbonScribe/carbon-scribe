@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
+    "generate:openapi": "tsx src/openapi/generate.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run"
   },

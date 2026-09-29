@@ -6,8 +6,12 @@ import { pddDraftRouter } from "../agents/pdd-draft/pdd-draft.controller.js";
 import { complianceReportRouter } from "../agents/compliance-report/compliance-report.controller.js";
 import { alertTriageRouter } from "../agents/alert-triage/alert-triage.controller.js";
 import { approvalsRouter } from "../shared/approvals/approvals.controller.js";
+import { openapiRouter } from "../openapi/openapi.controller.js";
 
 export const router = Router();
+
+// OpenAPI spec routes (issue #632) — unauthenticated contract discovery
+router.use(openapiRouter);
 
 // Liveness/readiness probes (issue #580) — unauthenticated, same as the
 // flat /health route this replaces, since these are polled by an
