@@ -515,3 +515,63 @@ fn test_record_event_before_init_returns_not_initialized() {
     );
     assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
 }
+
+// ---------------------------------------------------------------------------
+// Event ID collision prevention (issue #634)
+// ---------------------------------------------------------------------------
+
+/// Test that two events with the same tx_hash and timestamp receive distinct
+/// event IDs due to the nonce increment, and both are stored successfully.
+#[test]
+fn test_same_tx_same_timestamp_produces_distinct_event_ids() {
+    let (env, client, _admin, emitter) = setup();
+
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
+    let primary_id = String::from_str(&env, "project-123");
+    let event_data = String::from_str(&env, "{\"amount\": 100}");
+    // Use the same tx_hash for both events to simulate same-transaction calls
+    let tx_hash = BytesN::from_array(&env, &[0; 32]);
+
+    // Force the same timestamp for both events by not advancing the ledger
+    let event_id_1 = client.record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+
+    // Record a second event with the same tx_hash and timestamp
+    let event_id_2 = client.record_event(
+        &emitter,
+        &event_type,
+        &primary_id,
+        &None,
+        &event_data,
+        &tx_hash,
+    );
+
+    // The event IDs must be different due to the nonce
+    assert_ne!(event_id_1, event_id_2, "Event IDs must be distinct even with same tx_hash and timestamp");
+
+    // Both events must be retrievable independently
+    let stored_event_1 = client.get_event(&event_id_1);
+    let stored_event_2 = client.get_event(&event_id_2);
+
+    assert!(stored_event_1.is_some(), "First event must be stored");
+    assert!(stored_event_2.is_some(), "Second event must be stored");
+
+    // Verify both events have the same tx_hash and timestamp but different event_ids
+    let event_1 = stored_event_1.unwrap();
+    let event_2 = stored_event_2.unwrap();
+
+    assert_eq!(event_1.tx_hash, tx_hash);
+    assert_eq!(event_2.tx_hash, tx_hash);
+    assert_eq!(event_1.timestamp, event_2.timestamp, "Timestamps must be identical");
+    assert_ne!(event_1.event_id, event_2.event_id, "Event IDs must differ");
+
+    // Both events should appear in the entity index
+    let entity_events = client.get_events_by_entity(&primary_id);
+    assert_eq!(entity_events.len(), 2, "Both events must be indexed by entity");
+}

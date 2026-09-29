@@ -14,4 +14,6 @@ pub enum AuditTrailError {
     EmitterNotAuthorized = 3,
     /// event_data exceeds MAX_EVENT_PAYLOAD_SIZE.
     PayloadTooLarge = 4,
+    /// An event with the same event_id already exists (collision detected).
+    EventIdCollision = 5,
 }

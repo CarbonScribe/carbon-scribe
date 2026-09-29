@@ -129,6 +129,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "0"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RetentionPeriod"
                             }
                           ]

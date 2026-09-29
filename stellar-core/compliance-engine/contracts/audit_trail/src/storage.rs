@@ -36,4 +36,7 @@ pub enum DataKey {
     TotalEventCount,
     /// Running total of approximate event bytes (instance storage).
     TotalEventBytes,
+    /// Monotonically increasing nonce used to ensure unique event IDs
+    /// (instance storage).
+    EventNonce,
 }

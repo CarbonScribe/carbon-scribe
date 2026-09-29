@@ -163,10 +163,10 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                      "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
                     }
                   ]
                 }
@@ -215,7 +215,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                      "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                     }
                   ]
                 }
@@ -264,7 +264,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
                     }
                   ]
                 }
@@ -313,10 +313,10 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                      "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
                     }
                   ]
                 }
@@ -337,7 +337,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                  "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                 }
               ]
             },
@@ -357,115 +357,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "MINT"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "primary_entity_id"
-                      },
-                      "val": {
-                        "string": "shared-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "1"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0606060606060606060606060606060606060606060606060606060606060606"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                      "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                     }
                   ]
                 },
@@ -493,7 +385,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                        "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                       }
                     },
                     {
@@ -532,6 +424,114 @@
                       },
                       "val": {
                         "bytes": "0505050505050505050505050505050505050505050505050505050505050505"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "MINT"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "shared-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "1"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0606060606060606060606060606060606060606060606060606060606060606"
                       }
                     }
                   ]
@@ -595,10 +595,10 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "d76fc41fc199f72d0f31f323ca858fa2add9c8a03ec6891f58ffc189c614979e"
+                      "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
                     },
                     {
-                      "bytes": "11a19e846496a0c09bb557e2808eb729a68c605927f80ec8362f568c0d4694d2"
+                      "bytes": "e43e350c6bef197b8d61790ba816cb2bdcaa931b588707698feb33e62469a04c"
                     }
                   ]
                 }
@@ -687,6 +687,18 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "2"
                         }
                       },
                       {

@@ -180,7 +180,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                      "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                     }
                   ]
                 }
@@ -229,7 +229,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                      "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                     }
                   ]
                 }
@@ -278,7 +278,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                      "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                     }
                   ]
                 }
@@ -299,7 +299,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                  "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                 }
               ]
             },
@@ -319,7 +319,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                      "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                     }
                   ]
                 },
@@ -347,7 +347,7 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                        "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                       }
                     },
                     {
@@ -449,7 +449,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "643d8018498c21b4d09ed59ae5c0558ade4328f54803be791f0d3b6775bef818"
+                      "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
                     }
                   ]
                 }
@@ -530,6 +530,18 @@
                               }
                             }
                           ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "2"
                         }
                       },
                       {

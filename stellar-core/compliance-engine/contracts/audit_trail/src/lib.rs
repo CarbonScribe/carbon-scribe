@@ -77,6 +77,10 @@ impl AuditTrailContract {
             .instance()
             .set(&DataKey::RetentionPeriod, &(90u64 * 86400u64));
 
+        env.storage()
+            .instance()
+            .set(&DataKey::EventNonce, &0u64);
+
         Self::extend_instance_ttl(&env);
         Ok(())
     }
@@ -182,7 +186,9 @@ impl AuditTrailContract {
     ///
     /// # Returns
     ///
-    /// The unique 32-byte event ID derived from `sha256(tx_hash ‖ timestamp)`.
+    /// The unique 32-byte event ID derived from `sha256(tx_hash ‖ timestamp ‖ nonce)`.
+    /// The nonce is a monotonically increasing counter that ensures uniqueness even
+    /// when multiple events are recorded within the same transaction and ledger timestamp.
     pub fn record_event(
         env: Env,
         caller: Address,
@@ -223,10 +229,22 @@ impl AuditTrailContract {
 
         let timestamp = env.ledger().timestamp();
 
-        // Derive a deterministic event ID from tx_hash and timestamp.
+        // Get and increment the nonce to ensure unique event IDs.
+        let nonce: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::EventNonce)
+            .unwrap_or(0);
+        let next_nonce = nonce + 1;
+        env.storage()
+            .instance()
+            .set(&DataKey::EventNonce, &next_nonce);
+
+        // Derive a deterministic event ID from tx_hash, timestamp, and nonce.
         let mut hash_payload = Bytes::new(&env);
         hash_payload.append(&Bytes::from_slice(&env, &tx_hash.to_array()));
         hash_payload.append(&Bytes::from_slice(&env, &timestamp.to_be_bytes()));
+        hash_payload.append(&Bytes::from_slice(&env, &nonce.to_be_bytes()));
         let event_id: BytesN<32> = env.crypto().sha256(&hash_payload).into();
 
         let event_size = 32u64
@@ -256,6 +274,10 @@ impl AuditTrailContract {
 
         // Persist event.
         let event_key = DataKey::Events(event_id.clone());
+        // Check for collision before writing to prevent silent overwrites.
+        if env.storage().persistent().has(&event_key) {
+            return Err(AuditTrailError::EventIdCollision);
+        }
         env.storage().persistent().set(&event_key, &event);
         Self::extend_key_ttl(&env, &event_key, timestamp);
 
