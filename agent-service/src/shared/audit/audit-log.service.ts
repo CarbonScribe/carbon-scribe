@@ -57,7 +57,11 @@ export interface AgentAuditEntry {
 // boundary via each agent route's existing error handler) rather than
 // silently discarding the entry a caller believed was durably recorded.
 export class AuditLogService {
-  constructor(private readonly pool: Queryable = getPool()) {}
+  constructor(private readonly customPool?: Queryable) {}
+
+  private get pool(): Queryable {
+    return this.customPool ?? getPool();
+  }
 
   async record(entry: AgentAuditEntry): Promise<void> {
     await this.pool.query(

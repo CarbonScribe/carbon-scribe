@@ -10,7 +10,9 @@
     "start": "node dist/main.js",
     "start:dev": "tsx watch src/main.ts",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "loadtest": "tsx loadtest/run.ts",
+    "test:load": "tsx loadtest/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
@@ -24,6 +26,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/autocannon": "^7.12.7",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.3.1",
@@ -31,6 +34,7 @@
     "@types/supertest": "^6.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "autocannon": "^8.0.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",
