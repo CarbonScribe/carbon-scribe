@@ -143,6 +143,8 @@ type AuthConfig struct {
 	EmailVerificationURL     string
 	PasswordResetURL         string
 	StellarNetworkPassphrase string
+	MaxLoginAttempts         int
+	LockoutDuration          time.Duration
 }
 
 type RedisConfig struct {
@@ -295,6 +297,8 @@ func Load() (*Config, error) {
 			EmailVerificationURL:     getEnvOrDefault("EMAIL_VERIFICATION_URL", "https://app.carbonscribe.local/verify-email"),
 			PasswordResetURL:         getEnvOrDefault("PASSWORD_RESET_URL", "https://app.carbonscribe.local/reset-password"),
 			StellarNetworkPassphrase: getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
+			MaxLoginAttempts:         getIntOrDefault("AUTH_MAX_LOGIN_ATTEMPTS", 5),
+			LockoutDuration:          getDurationOrDefault("AUTH_LOCKOUT_DURATION", time.Duration(getIntOrDefault("AUTH_LOCKOUT_DURATION_SECS", 900))*time.Second),
 		},
 		Redis: RedisConfig{
 			Host:     getEnvOrDefault("REDIS_HOST", "localhost"),

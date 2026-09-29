@@ -68,6 +68,43 @@ func (r *Repository) UpdateUserLastLogin(userID string) error {
 	return r.db.Model(&User{}).Where("id = ?", userID).Update("last_login_at", time.Now()).Error
 }
 
+// UpdateUserLockout updates a user's failed login attempt counter and locked_until timestamp.
+func (r *Repository) UpdateUserLockout(userID string, attempts int, lockedUntil *time.Time) error {
+	return r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"failed_login_attempts": attempts,
+		"locked_until":          lockedUntil,
+		"updated_at":            time.Now(),
+	}).Error
+}
+
+// RecordUserLoginFailure atomically increments a user's counter and locks at the threshold.
+func (r *Repository) RecordUserLoginFailure(userID string, maxAttempts int, duration time.Duration) (int, *time.Time, error) {
+	lockedUntil := time.Now().Add(duration)
+	result := r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"failed_login_attempts": gorm.Expr("failed_login_attempts + 1"),
+		"locked_until": gorm.Expr("CASE WHEN failed_login_attempts + 1 >= ? THEN ? ELSE locked_until END", maxAttempts, lockedUntil),
+		"updated_at": time.Now(),
+	})
+	if result.Error != nil {
+		return 0, nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, nil, ErrUserNotFound
+	}
+	user, err := r.GetUserByID(userID)
+	if err != nil { return 0, nil, err }
+	return user.FailedLoginAttempts, user.LockedUntil, nil
+}
+
+// ClearUserLockout resets a user's failed login attempt count to 0 and clears locked_until.
+func (r *Repository) ClearUserLockout(userID string) error {
+	return r.db.Model(&User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+		"failed_login_attempts": 0,
+		"locked_until":          gorm.Expr("NULL"),
+		"updated_at":            time.Now(),
+	}).Error
+}
+
 // DeleteUser soft deletes a user (sets is_active to false)
 func (r *Repository) DeleteUser(userID string) error {
 	return r.db.Model(&User{}).Where("id = ?", userID).Update("is_active", false).Error
