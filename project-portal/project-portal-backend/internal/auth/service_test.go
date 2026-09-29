@@ -206,7 +206,6 @@ func TestBuildTokenLink(t *testing.T) {
 
 func TestAccountLockoutThresholdReached(t *testing.T) {
 	svc, repo, _ := newAuthTestService(t, WithLockoutConfig(3, 10*time.Minute))
-	user := &User{ID: "user-lockout-1", Email: "lockout1@example.com", PasswordHash: "$2a$04$z9V7HlVvVvVvVvVvVvVvVu.604W6J2a9V7HlVvVvVvVvVvVvVvVu.", EmailVerified: true, IsActive: true}
 	// Hash password properly
 	_, token, err := svc.Register("lockout1@example.com", "Password123!", "Lockout Test 1", "Org")
 	require.NoError(t, err)
