@@ -17,6 +17,7 @@ vi.mock("axios", async () => {
 
 const { projectPortalClient, classifyConfirmAlertError } =
   await import("./project-portal.client.js");
+const { env } = await import("../config/env.js");
 const {
   mockMethodologiesResponseBody,
   mockMethodologies,
@@ -89,6 +90,17 @@ describe("projectPortalClient.getMethodologies", () => {
     await expect(projectPortalClient.getMethodologies()).rejects.toThrow();
     // Initial attempt + MAX_RETRIES retries.
     expect(getMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns fixture data directly without HTTP calls when mock mode is enabled", async () => {
+    env.mockProjectPortal = true;
+    try {
+      const result = await projectPortalClient.getMethodologies();
+      expect(result).toEqual(mockMethodologies);
+      expect(getMock).not.toHaveBeenCalled();
+    } finally {
+      env.mockProjectPortal = false;
+    }
   });
 });
 
@@ -174,6 +186,25 @@ describe("projectPortalClient.confirmAlert", () => {
         mockConfirmAlertPayload,
       ),
     ).rejects.toThrow();
+  });
+
+  it("returns fixture data directly without HTTP calls when mock mode is enabled", async () => {
+    env.mockProjectPortal = true;
+    try {
+      const result = await projectPortalClient.confirmAlert(
+        "proj-custom-99",
+        mockConfirmAlertPayload,
+      );
+      expect(result).toEqual({
+        ...mockConfirmAlertResponse,
+        project_id: "proj-custom-99",
+        category: mockConfirmAlertPayload.category,
+        subject: mockConfirmAlertPayload.subject,
+      });
+      expect(postMock).not.toHaveBeenCalled();
+    } finally {
+      env.mockProjectPortal = false;
+    }
   });
 });
 
