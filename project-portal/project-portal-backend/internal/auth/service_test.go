@@ -23,6 +23,7 @@ func newAuthTestService(t *testing.T, opts ...ServiceOption) (*Service, *Reposit
 	require.NoError(t, db.Exec("CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT, wallet_address TEXT, full_name TEXT, organization TEXT, role TEXT, email_verified BOOLEAN, is_active BOOLEAN, failed_login_attempts INT DEFAULT 0, locked_until DATETIME, last_login_at DATETIME, created_at DATETIME, updated_at DATETIME)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE auth_tokens (id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, user_id TEXT NOT NULL, token_type TEXT NOT NULL, expires_at DATETIME NOT NULL, used BOOLEAN, used_at DATETIME, created_at DATETIME)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE user_sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, access_token_id TEXT UNIQUE NOT NULL, refresh_token_id TEXT UNIQUE NOT NULL, ip_address TEXT, user_agent TEXT, expires_at DATETIME NOT NULL, is_revoked BOOLEAN DEFAULT FALSE, created_at DATETIME)").Error)
+	require.NoError(t, db.Exec("CREATE TABLE role_permissions (role TEXT PRIMARY KEY, permissions TEXT, description TEXT, created_at DATETIME, updated_at DATETIME)").Error)
 	repo := NewRepository(db)
 	tm := NewTokenManager("test-secret", 15*time.Minute, 24*time.Hour)
 	return NewService(repo, tm, NewStellarAuthenticator("test-passphrase", time.Minute), 4, opts...), repo, db
@@ -336,7 +337,11 @@ func TestRepositoryLoginFailureIncrementIsThresholded(t *testing.T) {
 		attempts, lockedUntil, recordErr := repo.RecordUserLoginFailure(user.ID, DefaultMaxLoginAttempts, DefaultLockoutDuration)
 		require.NoError(t, recordErr)
 		require.Equal(t, want, attempts)
-		if want < DefaultMaxLoginAttempts { require.Nil(t, lockedUntil) } else { require.NotNil(t, lockedUntil) }
+		if want < DefaultMaxLoginAttempts {
+			require.Nil(t, lockedUntil)
+		} else {
+			require.NotNil(t, lockedUntil)
+		}
 	}
 }
 
