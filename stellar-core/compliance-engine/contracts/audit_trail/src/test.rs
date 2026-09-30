@@ -97,7 +97,7 @@ fn test_legacy_stored_event_remains_readable() {
 
     let tx_hash = BytesN::from_array(&env, &[42; 32]);
     let timestamp = env.ledger().timestamp();
-    let event_id = AuditTrailContract::derive_event_id(&env, &tx_hash, timestamp, None);
+    let event_id = AuditTrailContract::derive_legacy_event_id(&env, &tx_hash, timestamp, None);
     let legacy_event = LegacyAuditEvent {
         event_id: event_id.clone(),
         timestamp,
@@ -144,6 +144,53 @@ fn test_oversized_event_payload() {
         &tx_hash,
     );
     assert_eq!(result, Err(Ok(AuditTrailError::PayloadTooLarge)));
+}
+
+#[test]
+fn test_event_id_collision_returns_typed_error_without_overwriting() {
+    let env = Env::default();
+    let contract_id = env.register(AuditTrailContract, ());
+    let client = AuditTrailContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let emitter = Address::generate(&env);
+    client.initialize(&admin);
+    env.mock_all_auths();
+    client.authorize_emitter(&emitter);
+
+    let timestamp = env.ledger().timestamp();
+    let tx_hash = BytesN::from_array(&env, &[55; 32]);
+    let event_id = AuditTrailContract::derive_event_id(&env, &tx_hash, timestamp, 0, None);
+    let existing_type = String::from_str(&env, "EXISTING_EVENT");
+    let existing_event = AuditEvent {
+        event_id: event_id.clone(),
+        timestamp,
+        event_type: existing_type.clone(),
+        emitting_contract: emitter.clone(),
+        primary_entity_id: String::from_str(&env, "existing-entity"),
+        secondary_entity_id: None,
+        event_data: String::from_str(&env, "existing"),
+        tx_hash: tx_hash.clone(),
+        event_nonce: Some(0),
+        prev_event_hash: None,
+    };
+    env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .set(&DataKey::Events(event_id.clone()), &existing_event);
+    });
+
+    let result = client.try_record_event(
+        &emitter,
+        &String::from_str(&env, "NEW_EVENT"),
+        &String::from_str(&env, "new-entity"),
+        &None,
+        &String::from_str(&env, "new"),
+        &tx_hash,
+    );
+
+    assert_eq!(result, Err(Ok(AuditTrailError::EventIdCollision)));
+    assert_eq!(client.get_event(&event_id).unwrap().event_type, existing_type);
+    assert_eq!(client.get_event_count(), 0);
 }
 
 #[test]
@@ -415,9 +462,11 @@ fn test_hash_chain_links_events_and_detects_skips() {
     let event_type = String::from_str(&env, "CHAIN_TEST");
     let primary_id = String::from_str(&env, "chain-entity");
     let event_data = String::from_str(&env, "{}");
-    // Reuse the same transaction hash and ledger timestamp to prove that the
-    // predecessor hash itself changes the derived event ID.
+    // Reuse the same transaction hash and explicitly hold the ledger timestamp
+    // constant to prove that each call still gets an independent event ID.
     let tx_hash = BytesN::from_array(&env, &[10; 32]);
+    let timestamp = env.ledger().timestamp();
+    env.ledger().set_timestamp(timestamp);
 
     let first_id = client.record_event(
         &emitter,
@@ -442,6 +491,14 @@ fn test_hash_chain_links_events_and_detects_skips() {
     assert_ne!(second_id, first_id);
     let second = client.get_event(&second_id).unwrap();
     assert_eq!(second.prev_event_hash, Some(first_id.clone()));
+    assert_eq!(first.tx_hash, tx_hash);
+    assert_eq!(second.tx_hash, tx_hash);
+    assert_eq!(first.timestamp, timestamp);
+    assert_eq!(second.timestamp, timestamp);
+    assert_eq!(first.event_nonce, Some(0));
+    assert_eq!(second.event_nonce, Some(1));
+    assert!(client.get_event(&first_id).is_some());
+    assert!(client.get_event(&second_id).is_some());
 
     let third_id = client.record_event(
         &emitter,
@@ -452,6 +509,7 @@ fn test_hash_chain_links_events_and_detects_skips() {
         &tx_hash,
     );
     assert_ne!(third_id, second_id);
+    assert_eq!(client.get_event(&third_id).unwrap().event_nonce, Some(2));
     assert_eq!(client.get_chain_tip(), Some(third_id.clone()));
 
     let mut complete_chain = Vec::new(&env);
