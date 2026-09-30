@@ -1,7 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
+import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
 import { auditLog } from "../../shared/audit/audit-log.service.js";
 import {
   checkApproval,
@@ -101,7 +101,8 @@ export async function runComplianceReportAgent(
   try {
     finalMessage = await runner;
   } catch (err) {
-    return failRun(req, extractToolCalls(), describeRunnerError(err));
+    const classified = classifyAnthropicError(err, "Compliance-report agent");
+    return failRun(req, extractToolCalls(), classified.message, classified);
   }
 
   const toolCalls = extractToolCalls();
@@ -186,26 +187,11 @@ export async function runComplianceReportAgent(
   };
 }
 
-// The tool runner already catches an individual tool's run() throwing and
-// feeds it back to the model as an is_error tool_result (see
-// generateToolResponse in @anthropic-ai/sdk's BetaToolRunner) — the model
-// gets a chance to recover or flag the affected section as a gap. An error
-// only reaches here for a genuine Anthropic API failure (network, auth,
-// rate limit, 5xx) or something outside that per-tool recovery path, so the
-// two are distinguished by whether it is an Anthropic.APIError.
-function describeRunnerError(err: unknown): string {
-  if (err instanceof Anthropic.APIError) {
-    return `Anthropic API error: ${err.message}`;
-  }
-  return `Compliance-report agent tool execution failed: ${
-    err instanceof Error ? err.message : String(err)
-  }`;
-}
-
 async function failRun(
   req: AgentRunRequest,
   toolCalls: ToolCallRecord[],
   message: string,
+  errorInfo?: { category: ErrorCategory; retryable: boolean },
 ): Promise<AgentRunResult> {
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -221,5 +207,7 @@ async function failRun(
     requestId: req.requestId,
     status: "failed",
     output: { error: message },
+    errorCategory: errorInfo?.category,
+    retryable: errorInfo?.retryable,
   };
 }

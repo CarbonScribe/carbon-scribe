@@ -1108,3 +1108,106 @@ func scanStatusSnapshots(rows *sql.Rows) ([]SystemStatusSnapshot, error) {
 	}
 	return snapshots, rows.Err()
 }
+
+// ============================================================================
+// Notification Delivery Log Methods
+// ============================================================================
+
+// SaveNotificationDeliveryLog inserts a notification delivery log entry.
+func (r *PostgresRepository) SaveNotificationDeliveryLog(ctx context.Context, log *NotificationDeliveryLog) error {
+	detailsJSON, err := json.Marshal(log.Details)
+	if err != nil {
+		return fmt.Errorf("marshal details: %w", err)
+	}
+
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO notification_delivery_logs
+			(id, alert_id, rule_id, channel, status, attempt_count, error, error_code, details, sent_at, delivered_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		log.ID, log.AlertID, log.RuleID, log.Channel, log.Status,
+		log.AttemptCount, log.Error, log.ErrorCode, detailsJSON,
+		log.SentAt, log.DeliveredAt, log.CreatedAt, log.UpdatedAt)
+	return err
+}
+
+// GetNotificationDeliveryLogs retrieves delivery logs for a specific alert.
+func (r *PostgresRepository) GetNotificationDeliveryLogs(ctx context.Context, alertID string, limit int) ([]NotificationDeliveryLog, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, alert_id, rule_id, channel, status, attempt_count, error, error_code, details,
+		       sent_at, delivered_at, created_at, updated_at
+		FROM notification_delivery_logs
+		WHERE alert_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`, alertID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanNotificationDeliveryLogs(rows)
+}
+
+// GetNotificationDeliveryLogsByRule retrieves delivery logs for a specific rule.
+func (r *PostgresRepository) GetNotificationDeliveryLogsByRule(ctx context.Context, ruleID string, limit int) ([]NotificationDeliveryLog, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, alert_id, rule_id, channel, status, attempt_count, error, error_code, details,
+		       sent_at, delivered_at, created_at, updated_at
+		FROM notification_delivery_logs
+		WHERE rule_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2`, ruleID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanNotificationDeliveryLogs(rows)
+}
+
+// MarkNotificationDeliverySuccess marks a delivery log as successful.
+func (r *PostgresRepository) MarkNotificationDeliverySuccess(ctx context.Context, logID string) error {
+	now := time.Now()
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE notification_delivery_logs
+		SET status = $1, delivered_at = $2, updated_at = $2
+		WHERE id = $3`,
+		NotificationDeliveryStatusSuccess, now, logID)
+	return err
+}
+
+// MarkNotificationDeliveryFailed marks a delivery log as failed.
+func (r *PostgresRepository) MarkNotificationDeliveryFailed(ctx context.Context, logID string, errMsg string) error {
+	now := time.Now()
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE notification_delivery_logs
+		SET status = $1, error = $2, updated_at = $3
+		WHERE id = $4`,
+		NotificationDeliveryStatusFailed, errMsg, now, logID)
+	return err
+}
+
+// scanNotificationDeliveryLogs is a helper to scan notification delivery logs from rows.
+func scanNotificationDeliveryLogs(rows *sql.Rows) ([]NotificationDeliveryLog, error) {
+	var logs []NotificationDeliveryLog
+	for rows.Next() {
+		var log NotificationDeliveryLog
+		var detailsJSON []byte
+		var sentAt, deliveredAt sql.NullTime
+		if err := rows.Scan(&log.ID, &log.AlertID, &log.RuleID, &log.Channel, &log.Status,
+			&log.AttemptCount, &log.Error, &log.ErrorCode, &detailsJSON,
+			&sentAt, &deliveredAt, &log.CreatedAt, &log.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if sentAt.Valid {
+			log.SentAt = &sentAt.Time
+		}
+		if deliveredAt.Valid {
+			log.DeliveredAt = &deliveredAt.Time
+		}
+		if len(detailsJSON) > 0 {
+			_ = json.Unmarshal(detailsJSON, &log.Details)
+		}
+		logs = append(logs, log)
+	}
+	return logs, rows.Err()
+}

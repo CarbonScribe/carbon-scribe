@@ -19,6 +19,15 @@ export interface ApiResponse<T> {
   error?: string;
   isCancelled?: boolean;
   timestamp?: string;
+  /**
+   * The HTTP `Date` response header, verbatim from the server that handled
+   * this request. Unlike `timestamp` (which is always the client's own
+   * clock), this is a genuine server-originated time and can be diffed
+   * against `Date.now()` to compute clock-skew correction. Undefined when
+   * the response carried no `Date` header (e.g. queued/offline responses,
+   * or responses fabricated locally rather than received over HTTP).
+   */
+  serverTime?: string;
   statusCode?: number;
   parsedError?: ParsedError;
 }
@@ -161,6 +170,7 @@ class ApiClient {
         }
 
         const parsedResponse = await parseResponseBody<T>(response);
+        const serverTime = response.headers.get('date') ?? undefined;
 
         // Telemetry warning tracking for non-JSON responses
         if (!parsedResponse.isJson && !parsedResponse.isEmpty && !parsedResponse.isBinary) {
@@ -208,6 +218,7 @@ class ApiClient {
             error: parsedError.message,
             statusCode: response.status,
             timestamp: new Date().toISOString(),
+            serverTime,
             parsedError,
           };
         }
@@ -220,6 +231,7 @@ class ApiClient {
           return {
             statusCode: response.status,
             timestamp: new Date().toISOString(),
+            serverTime,
             ...(parsedResponse.data as Record<string, unknown>),
           } as ApiResponse<T>;
         }
@@ -229,6 +241,7 @@ class ApiClient {
           data: parsedResponse.isEmpty ? undefined : (parsedResponse.data as T),
           statusCode: response.status,
           timestamp: new Date().toISOString(),
+          serverTime,
         };
       } catch (error: any) {
         if (error.name === 'AbortError') {

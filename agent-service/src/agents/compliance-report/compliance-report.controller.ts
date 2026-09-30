@@ -4,6 +4,7 @@ import type {
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
 import { runComplianceReportAgent } from "./compliance-report.agent.js";
+import { approvalService } from "../../shared/approvals/approval.service.js";
 
 export const complianceReportRouter = Router();
 
@@ -30,6 +31,7 @@ complianceReportRouter.post("/run", async (req, res, next) => {
     // can't be poisoned by a spoofed requestedBy.
     const requestedBy = req.callingService ?? body.requestedBy;
     const result = await runComplianceReportAgent({ ...body, requestedBy });
+    await approvalService.queue(result, requestedBy, body.input);
     res.status(statusCodeFor(result)).json(result);
   } catch (err) {
     next(err);

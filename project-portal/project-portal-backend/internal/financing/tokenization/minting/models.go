@@ -23,6 +23,14 @@ type MintedToken struct {
     ID             uuid.UUID `json:"id" gorm:"type:uuid;primary_key;default:gen_random_uuid()"`
     JobID          uuid.UUID `json:"job_id" gorm:"not null"`
     TokenID        int       `json:"token_id" gorm:"not null"`
+    // TxHash is the Soroban transaction hash the token was minted in. It is
+    // always populated — for the mock contract client it carries the
+    // "MOCK_TX_HASH_" prefixed placeholder, never a blank value.
+    TxHash         string    `json:"tx_hash" gorm:"not null"`
+    // IsMock marks a token minted through the explicit, non-production-only
+    // mock contract client, so mock data can never be mistaken for a real
+    // on-chain mint. Always false for tokens minted in production.
+    IsMock         bool      `json:"is_mock" gorm:"not null;default:false"`
     ProjectID      uuid.UUID `json:"project_id" gorm:"not null"`
     VintageYear    int       `json:"vintage_year" gorm:"not null"`
     MethodologyID  int       `json:"methodology_id" gorm:"not null"`

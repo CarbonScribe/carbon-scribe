@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunResult } from "../../shared/types/agent.types.js";
 
 const runAlertTriageAgentMock = vi.fn();
+vi.mock("../../shared/approvals/approval.service.js", () => ({
+  approvalService: { queue: vi.fn().mockResolvedValue(undefined) },
+}));
 vi.mock("./alert-triage.agent.js", () => ({
   runAlertTriageAgent: (...args: unknown[]) => runAlertTriageAgentMock(...args),
 }));
@@ -63,7 +66,9 @@ describe("alertTriageRouter POST /run", () => {
       agent: "alert-triage",
       requestId: "req-3",
       status: "failed",
-      output: { error: "Anthropic API error: internal error" },
+      output: { error: "API error (500): internal error" },
+      errorCategory: "connection_error",
+      retryable: true,
     };
     runAlertTriageAgentMock.mockResolvedValue(result);
 

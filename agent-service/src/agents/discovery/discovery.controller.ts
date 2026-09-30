@@ -4,6 +4,7 @@ import type {
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
 import { runDiscoveryAgent } from "./discovery.agent.js";
+import { approvalService } from "../../shared/approvals/approval.service.js";
 
 export const discoveryRouter = Router();
 
@@ -30,6 +31,7 @@ discoveryRouter.post("/run", async (req, res, next) => {
     // can't be poisoned by a spoofed requestedBy.
     const requestedBy = req.callingService ?? body.requestedBy;
     const result = await runDiscoveryAgent({ ...body, requestedBy });
+    await approvalService.queue(result, requestedBy, body.input);
     res.status(statusCodeFor(result)).json(result);
   } catch (err) {
     next(err);

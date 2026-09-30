@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#grad)"/>
+  <defs>
+    <linearGradient id="grad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a2540"/>
+      <stop offset="100%" stop-color="#1a5db5"/>
+    </linearGradient>
+  </defs>
+  <!-- Leaf shape -->
+  <path d="M256 48 C372 48, 464 140, 464 256 C464 372, 372 464, 256 464 C140 464, 48 372, 48 256 C48 140, 140 48, 256 48 Z" fill="#00d4aa" opacity="0.9"/>
+  <!-- Central vein -->
+  <path d="M256 420 C256 420, 240 320, 228 240 C216 160, 256 72, 256 72" stroke="white" stroke-width="10" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <!-- Left veins -->
+  <path d="M246 360 C208 344, 160 320, 132 280" stroke="white" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M234 292 C198 272, 164 248, 136 212" stroke="white" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- Right veins -->
+  <path d="M266 360 C304 344, 352 320, 380 280" stroke="white" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M278 292 C314 272, 348 248, 376 212" stroke="white" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- CS wordmark -->
+  <text x="256" y="310" text-anchor="middle" font-size="128" font-weight="800" fill="white" font-family="system-ui, -apple-system, sans-serif" opacity="0.95">CS</text>
+</svg>

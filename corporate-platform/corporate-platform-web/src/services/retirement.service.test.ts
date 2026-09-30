@@ -71,6 +71,31 @@ describe('RetirementService', () => {
       expect(result.data?.amount).toBe(500);
     });
 
+    it('keeps the same idempotency key when one is provided', async () => {
+      const key = 'submit-123';
+      mockPost.mockResolvedValue({ success: true, data: mockRecord });
+
+      const result = await retirementService.retire(
+        {
+          creditId: 'credit-1',
+          amount: 500,
+          purpose: 'scope1',
+        },
+        { idempotencyKey: key },
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockPost).toHaveBeenCalledWith(
+        '/retirements',
+        {
+          creditId: 'credit-1',
+          amount: 500,
+          purpose: 'scope1',
+        },
+        { idempotencyKey: key },
+      );
+    });
+
     it('forwards API errors', async () => {
       mockPost.mockResolvedValue({
         success: false,

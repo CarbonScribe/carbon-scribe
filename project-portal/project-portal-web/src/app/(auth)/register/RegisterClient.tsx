@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store/store';
 import { Mail, Lock, ChevronRight, AlertCircle, Loader2, User, Building2 } from 'lucide-react';
+import { Turnstile } from 'react-turnstile';
 import { showToast } from '@/components/ui/Toast';
 import AuthNavigation from '@/components/AuthNavigation';
 
@@ -25,7 +26,8 @@ export default function RegisterClient() {
   const [organization, setOrganization] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [formErrors, setFormErrors] = useState<{ full_name?: string; email?: string; password?: string }>({});
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [formErrors, setFormErrors] = useState<{ full_name?: string; email?: string; password?: string; captcha?: string }>({});
 
   const hasFormErrors = Object.values(formErrors).some((msg) => !!msg);
 
@@ -36,7 +38,7 @@ export default function RegisterClient() {
   }, [isHydrated, isAuthenticated, router, next]);
 
   const validate = () => {
-    const errors: { full_name?: string; email?: string; password?: string } = {};
+    const errors: { full_name?: string; email?: string; password?: string; captcha?: string } = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!full_name) {
@@ -53,6 +55,10 @@ export default function RegisterClient() {
       errors.password = 'Password is required';
     } else if (password.length < 8) {
       errors.password = 'Minimum 8 characters';
+    }
+
+    if (!captchaToken) {
+      errors.captcha = 'Please complete the CAPTCHA verification';
     }
 
     return errors;
@@ -76,6 +82,7 @@ export default function RegisterClient() {
         email,
         password,
         organization: organization.trim() || undefined,
+        captcha_token: captchaToken,
       });
       
       // Show success toast with verification message
@@ -89,6 +96,7 @@ export default function RegisterClient() {
     } catch (err: any) {
       console.error('Register submission error:', err);
       showToast('error', err?.response?.data?.error || err?.message || 'Registration failed');
+      setCaptchaToken('');
     }
   }
 
@@ -252,6 +260,25 @@ export default function RegisterClient() {
             {formErrors.password && (
               <p id="register-password-error" className="mt-1 text-sm text-red-600" role="alert">
                 {formErrors.password}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Turnstile
+              sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''}
+              onSuccess={(token) => setCaptchaToken(token)}
+              onError={() => {
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA verification failed. Please try again.' }));
+              }}
+              onExpire={() => {
+                setCaptchaToken('');
+                setFormErrors((p) => ({ ...p, captcha: 'CAPTCHA expired. Please complete it again.' }));
+              }}
+            />
+            {formErrors.captcha && (
+              <p className="mt-1 text-sm text-red-600" role="alert">
+                {formErrors.captcha}
               </p>
             )}
           </div>

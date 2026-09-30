@@ -266,6 +266,9 @@ STELLAR_SECRET_KEY=your_secret
 AWS_REGION=us-east-1
 AWS_S3_BUCKET=carbon-documents
 
+# AWS SES (transactional email — see "SES Email Delivery" below)
+SES_FROM_ADDRESS=noreply@carbonscribe.com
+
 # Local development seeding
 SEED_DEV_USERS=true
 ```
@@ -357,6 +360,58 @@ CARBON_ASSET_USE_MOCK=false
 
 For mainnet deployment, set `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` to public-network values and provide funded, whitelisted operational keys.
 
+## Stellar Trustline Setup for Buyers
+
+A buyer's Stellar account must hold a trustline for an asset (the carbon
+credit itself, or a stablecoin like USDC used for payment) before any
+transfer into that account can succeed. The platform cannot sign on behalf
+of buyer-controlled accounts, so the backend only builds and returns an
+**unsigned** `ChangeTrust` transaction for the buyer's own wallet to sign
+and submit.
+
+Flow:
+1. Buyer requests a trustline transaction for the asset they need to hold.
+2. Backend verifies the buyer's account exists and is funded, then returns
+   an unsigned `ChangeTrust` transaction XDR.
+3. Buyer signs the XDR with their own wallet and submits it to the network.
+4. Immediately before any credit is minted/transferred to the buyer, the
+   backend re-verifies the trustline still exists — a trustline can be
+   removed by the account holder at any time — and rejects the mint with a
+   specific `trustline_missing` error instead of a generic failure if it is
+   gone.
+
+New endpoint:
+- `POST /api/v1/financing/trustlines`
+
+Request body:
+```json
+{
+  "buyer_public_key": "GABC...",
+  "payment_provider": "stellar",
+  "asset_code": "CRB2025",
+  "asset_issuer": "GISSUER...",
+  "limit": "1000000"
+}
+```
+`asset_code` may be omitted when `currency` is supplied instead; it is then
+derived via the existing `NormalizeAssetCode` helper (e.g. `USD` -> `USDC`).
+`payment_provider` must be a Stellar provider (`stellar`/`stellar_network`,
+checked via `IsStellarProvider`) — trustline setup does not apply to other
+payment rails.
+
+Environment variables:
+```bash
+STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
+CARBON_ASSET_TRUSTLINE_LIMITS=USDC:1000000,CRB2025:1000000000
+CARBON_ASSET_AUTH_REQUIRED_CODES=CRB2025
+```
+`CARBON_ASSET_TRUSTLINE_LIMITS` sets the default `ChangeTrust` limit per
+asset code when a request does not specify one; unlisted codes fall back to
+the maximum trustline limit. `CARBON_ASSET_AUTH_REQUIRED_CODES` lists asset
+codes whose issuer has set `AUTH_REQUIRED_FLAG` — for those, the platform
+issues a `SetTrustLineFlags` authorization transaction once the buyer's
+trustline is observed on-chain.
+
 ## Collaboration API Authentication Update
 
 Collaboration write operations now enforce JWT authentication and derive actor identity from token context. This removes impersonation risk from client-provided identity fields and ensures audit/activity attribution is server-controlled.
@@ -420,4 +475,54 @@ Updated examples:
 ### Attribution and Auditing
 
 Activity logs for collaboration writes now use the authenticated `user_id` from JWT claims. Any identity value supplied by clients is ignored.
+
+## SES Email Delivery
+
+Transactional email (registration verification, password reset, and — once `internal/monitoring/alerts` is wired up in `cmd/api/main.go` — alert notifications) is sent through Amazon SES via `pkg/aws.SESClient`. The client only starts if `SES_FROM_ADDRESS` is set; without it, verification/reset links are logged to the server console instead of emailed (fine for local dev, not for production).
+
+### Environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `SES_FROM_ADDRESS` | Yes, to enable email | The verified sender identity emails are sent from. Validated at startup — an unset or malformed value fails config validation (or, if set, the API refuses to start). |
+| `AWS_REGION` | Yes, to enable email | Region SES sends from. Shared with the other AWS clients in this backend. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | No | Static credentials. Omit to use the default AWS credential chain (instance role, `~/.aws/credentials`, etc.) — the recommended approach in any deployed environment. |
+| `AWS_ENDPOINT_URL` | No | Overrides the SES endpoint (e.g. for a local SES-compatible emulator). |
+
+### Verified identity setup
+
+SES requires the `SES_FROM_ADDRESS` identity (or the domain it belongs to) to be verified before it can send mail, and new accounts start in the SES sandbox, which additionally requires every **recipient** address to be verified too.
+
+1. In the SES console (or via `aws sesv2 create-email-identity`), verify either the exact `SES_FROM_ADDRESS` mailbox or, preferably, the whole sending domain (adds the DKIM CNAME records SES gives you to your DNS zone — this also gets you DKIM-signed mail and lets you use any address `@yourdomain`).
+2. Configure SPF (a `TXT` record including `include:amazonses.com`) and DMARC for the sending domain, so mail from `SES_FROM_ADDRESS` reliably lands in inboxes instead of spam.
+3. While in the SES sandbox, verify each recipient address you intend to test with, or request production access (SES console → **Account dashboard** → **Request production access**) to send to arbitrary recipients.
+
+### Required IAM permissions
+
+The credentials the backend runs as (an IAM role in any real deployment; `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` locally) need at minimum:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ses:SendEmail",
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Scope `Resource` down to the specific verified identity's ARN (`arn:aws:ses:<region>:<account-id>:identity/<domain-or-address>`) once you know it, rather than leaving it as `*`.
+
+### Bounce and complaint handling
+
+`POST /api/v1/webhooks/ses` receives bounce, complaint, and delivery events via an SNS topic subscribed to SES's event publishing:
+
+1. Create an SNS topic and subscribe `https://<your-api-host>/api/v1/webhooks/ses` to it (protocol: HTTPS).
+2. In the SES console, on the verified identity, add that SNS topic as the destination for **Bounces**, **Complaints**, and (optionally) **Deliveries** under "Feedback notifications" or a configuration set's event destinations.
+3. The endpoint automatically confirms the SNS subscription handshake (`SubscriptionConfirmation`) the first time SNS delivers to it — no manual confirmation step needed.
+
+Every message's signature is cryptographically verified (SNS `SignatureVersion` 1) before it's processed, and both the signing certificate URL and the subscription-confirmation URL are required to be HTTPS `*.amazonaws.com` URLs, so a forged POST to this endpoint can never be mistaken for a real SNS message. Bounce and complaint events are logged with the affected recipient(s) and reason; wire `aws.SESWebhookHandlers.OnBounce`/`OnComplaint` (passed into `api.NewSESWebhookHandler` in `cmd/api/main.go`) to take further action, such as suppressing future sends to a hard-bounced address.
 

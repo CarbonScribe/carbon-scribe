@@ -23,6 +23,7 @@ pub enum Error {
     InvalidRegistryLink = 13,
     InvalidRegistry = 14,
     MetadataTooLong = 15,
+    DuplicateMethodologyIdentity = 16,
 }
 
 #[contracttype]
@@ -66,6 +67,9 @@ pub enum DataKey {
     DelayPeriod,
     NextProposalId,
     AuthorityProposal(u32),
+    // Maps a (name, version, registry) identity triple to the token_id it
+    // was minted as, so mint/update can reject duplicate identities.
+    IdentityIndex(String, String, String),
 }
 
 #[contract]
@@ -145,6 +149,10 @@ impl MethodologyLibrary {
         Ok(())
     }
 
+    fn identity_key(name: &String, version: &String, registry: &String) -> DataKey {
+        DataKey::IdentityIndex(name.clone(), version.clone(), registry.clone())
+    }
+
     fn is_whitespace_only(bytes: &Bytes) -> bool {
         for i in 0..bytes.len() {
             if !bytes.get(i).unwrap().is_ascii_whitespace() {
@@ -222,10 +230,16 @@ impl MethodologyLibrary {
             return Err(Error::MetadataMismatch);
         }
 
+        let identity_key = Self::identity_key(&meta.name, &meta.version, &meta.registry);
+        if env.storage().persistent().has(&identity_key) {
+            return Err(Error::DuplicateMethodologyIdentity);
+        }
+
         let token_id: u32 = env.storage().persistent().get(&DataKey::NextTokenId).ok_or(Error::NotInitialized)?;
-        
+
         env.storage().persistent().set(&DataKey::Methodology(token_id), &meta);
         env.storage().persistent().set(&DataKey::Owner(token_id), &owner);
+        env.storage().persistent().set(&identity_key, &token_id);
         env.storage().persistent().set(&DataKey::NextTokenId, &(token_id + 1));
 
         env.events().publish(
@@ -253,6 +267,23 @@ impl MethodologyLibrary {
         // Only the issuing authority can update metadata
         if existing.issuing_authority != caller {
             return Err(Error::Unauthorized);
+        }
+
+        let identity_changed = existing.name != meta.name
+            || existing.version != meta.version
+            || existing.registry != meta.registry;
+
+        if identity_changed {
+            let new_identity_key = Self::identity_key(&meta.name, &meta.version, &meta.registry);
+            if let Some(colliding_token_id) = env.storage().persistent().get::<DataKey, u32>(&new_identity_key) {
+                if colliding_token_id != token_id {
+                    return Err(Error::DuplicateMethodologyIdentity);
+                }
+            }
+
+            let old_identity_key = Self::identity_key(&existing.name, &existing.version, &existing.registry);
+            env.storage().persistent().remove(&old_identity_key);
+            env.storage().persistent().set(&new_identity_key, &token_id);
         }
 
         // Update metadata in storage
@@ -328,6 +359,11 @@ impl MethodologyLibrary {
             .ok_or(Error::TokenNotFound)
     }
 
+    pub fn get_token_by_identity(env: Env, name: String, version: String, registry: String) -> Option<u32> {
+        let key = Self::identity_key(&name, &version, &registry);
+        env.storage().persistent().get(&key)
+    }
+
     pub fn is_valid_methodology(env: Env, token_id: u32) -> bool {
         let meta_res = Self::get_methodology_meta(env.clone(), token_id);
         if let Ok(meta) = meta_res {
@@ -349,7 +385,13 @@ impl MethodologyLibrary {
             return Err(Error::Unauthorized);
         }
 
-        let mut authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap();
+        // Default to an empty set when the key has never been written so a
+        // missing entry yields a typed Result instead of a host-level panic.
+        let mut authorities: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Authorities)
+            .unwrap_or_else(|| Vec::new(&env));
         if !authorities.contains(&authority) {
             authorities.push_back(authority.clone());
             env.storage().persistent().set(&DataKey::Authorities, &authorities);
@@ -399,7 +441,15 @@ impl MethodologyLibrary {
             return Err(Error::Unauthorized);
         }
 
-        let authorities: Vec<Address> = env.storage().persistent().get(&DataKey::Authorities).unwrap();
+        // Default to an empty set when the key has never been written so a
+        // missing entry yields a typed Result instead of a host-level panic.
+        // Filtering an empty list produces an empty list, so removing from an
+        // unset authority set is a no-op rather than an error.
+        let authorities: Vec<Address> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Authorities)
+            .unwrap_or_else(|| Vec::new(&env));
         let mut new_authorities = Vec::new(&env);
         for auth in authorities.iter() {
             if auth != authority {
@@ -1410,5 +1460,407 @@ mod test {
 
         let result3 = client.try_mint_methodology(&authority, &owner, &meta3);
         assert_eq!(result3, Err(Ok(Error::InvalidVersion)));
+    }
+
+    #[test]
+    fn test_duplicate_identity_rejected_same_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(token_id, 1);
+
+        // Same (name, version, registry) again — must be rejected even
+        // though every field individually passes format validation.
+        let result = client.try_mint_methodology(&authority, &owner, &meta);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+    }
+
+    #[test]
+    fn test_duplicate_identity_rejected_regardless_of_authority() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority_a = Address::generate(&env);
+        let authority_b = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority_a);
+        client.add_authority(&admin, &authority_b);
+
+        let meta_a = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority_a.clone(),
+            ipfs_cid: None,
+        };
+
+        let token_id = client.mint_methodology(&authority_a, &owner, &meta_a);
+        assert_eq!(token_id, 1);
+
+        // A different, also-authorized authority tries to mint the exact
+        // same identity as its own token — must still be rejected.
+        let meta_b = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://different-host.example.org"),
+            issuing_authority: authority_b.clone(),
+            ipfs_cid: None,
+        };
+
+        let result = client.try_mint_methodology(&authority_b, &owner, &meta_b);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+    }
+
+    #[test]
+    fn test_same_name_different_version_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta_v1 = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id_v1 = client.mint_methodology(&authority, &owner, &meta_v1);
+        assert_eq!(token_id_v1, 1);
+
+        // Same name and registry, distinct version ("1.0.0" vs "1.0.1") —
+        // a distinct identity, so this must succeed.
+        let meta_v2 = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.1"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id_v2 = client.mint_methodology(&authority, &owner, &meta_v2);
+        assert_eq!(token_id_v2, 2);
+        assert_ne!(token_id_v1, token_id_v2);
+    }
+
+    #[test]
+    fn test_get_token_by_identity_resolves_known_triple() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let name = String::from_str(&env, "Improved Forest Management");
+        let version = String::from_str(&env, "1.0.0");
+        let registry = String::from_str(&env, "VERRA");
+
+        let meta = MethodologyMeta {
+            name: name.clone(),
+            version: version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+
+        let resolved = client.get_token_by_identity(&name, &version, &registry);
+        assert_eq!(resolved, Some(token_id));
+
+        let unknown = client.get_token_by_identity(
+            &name,
+            &String::from_str(&env, "9.9.9"),
+            &registry,
+        );
+        assert_eq!(unknown, None);
+    }
+
+    #[test]
+    fn test_update_identity_collision_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta_a = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_a = client.mint_methodology(&authority, &owner, &meta_a);
+
+        let meta_b = MethodologyMeta {
+            name: String::from_str(&env, "Avoided Deforestation"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_b = client.mint_methodology(&authority, &owner, &meta_b);
+        assert_ne!(token_a, token_b);
+
+        // Updating token_b's identity to collide with token_a's must be rejected.
+        let colliding_update = MethodologyMeta {
+            name: String::from_str(&env, "Improved Forest Management"),
+            version: String::from_str(&env, "1.0.0"),
+            registry: String::from_str(&env, "VERRA"),
+            registry_link: String::from_str(&env, "https://verra.org/alt"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let result = client.try_update_methodology_metadata(&authority, &token_b, &colliding_update);
+        assert_eq!(result, Err(Ok(Error::DuplicateMethodologyIdentity)));
+
+        // token_b's original identity must remain intact and resolvable.
+        assert_eq!(
+            client.get_token_by_identity(
+                &String::from_str(&env, "Avoided Deforestation"),
+                &String::from_str(&env, "1.0.0"),
+                &String::from_str(&env, "VERRA"),
+            ),
+            Some(token_b)
+        );
+    }
+
+    #[test]
+    fn test_update_identity_new_triple_succeeds_and_updates_index() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let old_name = String::from_str(&env, "Improved Forest Management");
+        let old_version = String::from_str(&env, "1.0.0");
+        let registry = String::from_str(&env, "VERRA");
+
+        let meta = MethodologyMeta {
+            name: old_name.clone(),
+            version: old_version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(
+            client.get_token_by_identity(&old_name, &old_version, &registry),
+            Some(token_id)
+        );
+
+        let new_name = String::from_str(&env, "Improved Forest Management v2");
+        let new_version = String::from_str(&env, "2.0.0");
+        let updated_meta = MethodologyMeta {
+            name: new_name.clone(),
+            version: new_version.clone(),
+            registry: registry.clone(),
+            registry_link: String::from_str(&env, "https://verra.org/updated"),
+            issuing_authority: authority.clone(),
+            ipfs_cid: None,
+        };
+        client.update_methodology_metadata(&authority, &token_id, &updated_meta);
+
+        // Old identity no longer resolves; new identity resolves to the same token.
+        assert_eq!(
+            client.get_token_by_identity(&old_name, &old_version, &registry),
+            None
+        );
+        assert_eq!(
+            client.get_token_by_identity(&new_name, &new_version, &registry),
+            Some(token_id)
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Regression tests: add_authority / remove_authority must never panic on
+    // an unset (missing) Authorities storage key; they must treat it as an
+    // empty list and return a typed Result instead of trapping the host.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn test_add_remove_authority_on_freshly_initialized_contract() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        // Sanity: no authority has ever been added, so the set is empty and a
+        // removal proposal for `authority` must be rejected.
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
+        );
+
+        // Removing from an empty authority set is a no-op, not an error.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+
+        // Adding the first authority returns cleanly.
+        assert_eq!(client.try_add_authority(&admin, &authority), Ok(Ok(())));
+
+        // The authority really landed in the set (a removal proposal is now
+        // accepted for it).
+        assert!(client
+            .try_propose_remove_authority(&admin, &authority)
+            .is_ok());
+
+        // Removing it again returns cleanly.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_add_remove_authority_with_missing_authorities_key() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+
+        // Simulate a contract instance whose Authorities key was never written
+        // (e.g. an instance deployed/initialized by an older revision).
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().remove(&DataKey::Authorities);
+        });
+
+        // add_authority must not panic: the missing list is treated as empty.
+        assert_eq!(client.try_add_authority(&admin, &authority), Ok(Ok(())));
+
+        // The authority was actually appended to the re-created list.
+        assert!(client
+            .try_propose_remove_authority(&admin, &authority)
+            .is_ok());
+
+        // remove_authority must not panic either.
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+
+        // ...and the authority is genuinely gone from the list afterwards.
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
+        );
+
+        // Removing from a completely absent list is a no-op, not an error.
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().remove(&DataKey::Authorities);
+        });
+        assert_eq!(client.try_remove_authority(&admin, &authority), Ok(Ok(())));
+        assert_eq!(
+            client.try_propose_remove_authority(&admin, &authority),
+            Err(Ok(Error::NotAuthorizedAuthority))
+        );
     }
 }

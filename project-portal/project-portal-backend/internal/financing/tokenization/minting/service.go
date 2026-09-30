@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -22,8 +23,28 @@ import (
 )
 
 const (
+	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
-	defaultSorobanRPCURL         = "https://soroban-testnet.stellar.org:443"
+	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
+	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
+
+	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
+	DefaultPollAttempts = 15
+
+	// DefaultPollInterval is the duration between transaction status polling attempts.
+	DefaultPollInterval = 2 * time.Second
+
+	// MintTransactionTimeoutSeconds is the timeout in seconds for mint transactions.
+	MintTransactionTimeoutSeconds = 300
+
+	// MintingUseMockClientEnvVar explicitly opts into the in-memory mock
+	// contract client. It is only ever honored outside production — see
+	// NewContractClientFromEnv.
+	MintingUseMockClientEnvVar = "MINTING_USE_MOCK_CLIENT"
+
+	// mockTxHashPrefix marks a MintedToken row produced by the mock
+	// contract client so it can never be mistaken for a real on-chain mint.
+	mockTxHashPrefix = "MOCK_TX_HASH_"
 )
 
 // CarbonAssetMetadata represents the metadata for a carbon asset credit
@@ -43,20 +64,50 @@ type service struct {
 	db             *gorm.DB
 	contractClient CarbonAssetContractClient
 	capValidator   *CapValidator
+	retry          RetryPolicy
+}
+
+// retryPolicy returns the service's retry policy, normalised. A zero-value
+// policy (a service built without one) falls back to the defaults rather than
+// looping zero times.
+func (s *service) retryPolicy() RetryPolicy {
+	if s.retry.MaxAttempts < 1 {
+		return DefaultRetryPolicy()
+	}
+	return s.retry
+}
+
+// RetryPolicyConfigurer is implemented by the minting service so callers can
+// override the retry policy resolved from the environment at construction.
+type RetryPolicyConfigurer interface {
+	SetRetryPolicy(policy RetryPolicy)
+}
+
+// SetRetryPolicy overrides the retry policy, e.g. from application config.
+func (s *service) SetRetryPolicy(policy RetryPolicy) {
+	s.retry = policy.normalized()
 }
 
 type CarbonAssetContractClient interface {
 	Mint(ctx context.Context, owner string, metadata CarbonAssetMetadata) (tokenID int, txHash string, err error)
 }
 
+// NewService constructs the minting service. client must be non-nil: callers
+// are expected to resolve it explicitly via NewContractClientFromEnv (and
+// handle the error it can return) or inject an explicit mock/fake for tests.
+// NewService itself performs no env-based fallback, so production wiring can
+// never silently degrade to the mock client.
 func NewService(db *gorm.DB, client CarbonAssetContractClient, capValidator *CapValidator) Service {
 	if client == nil {
-		client = NewContractClientFromEnv()
+		panic("minting: NewService requires a non-nil CarbonAssetContractClient; " +
+			"construct one via NewContractClientFromEnv and handle its error, " +
+			"or pass an explicit client for tests")
 	}
 	return &service{
 		db:             db,
 		contractClient: client,
 		capValidator:   capValidator,
+		retry:          RetryPolicyFromEnv(),
 	}
 }
 
@@ -103,16 +154,10 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 
 	// In a real scenario, we would determine the owner physical address from the project wallet
 	// Using a placeholder address for demonstration
-	ownerAddress := os.Getenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER")
-	if ownerAddress == "" {
-		ownerAddress = os.Getenv("CARBON_ASSET_AUTHORITY_PUBLIC_KEY")
-	}
-	if ownerAddress == "" {
-		ownerAddress = os.Getenv("STELLAR_PUBLIC_KEY")
-	}
-	if strings.TrimSpace(ownerAddress) == "" {
+	ownerAddress, ownerErr := resolveDefaultOwnerAddress()
+	if ownerErr != nil {
 		job.Status = "failed"
-		job.Error = "missing CARBON_ASSET_DEFAULT_PROJECT_OWNER or CARBON_ASSET_AUTHORITY_PUBLIC_KEY"
+		job.Error = ownerErr.Error()
 		s.db.Save(job)
 		return
 	}
@@ -145,9 +190,13 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		vintageYearPtr = &v
 	}
 
-	// Retry logic
+	// Retry logic. Delays grow exponentially with jitter, and a non-retryable
+	// failure — a breached methodology cap, a contract rejection — fails the
+	// job immediately rather than burning the remaining attempts on an
+	// outcome that cannot change.
+	policy := s.retryPolicy()
 	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
+	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
 		var mintedTokenID int
 		var mintedTxHash string
 		mintFn := func(mintCtx context.Context) error {
@@ -174,6 +223,8 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 			mintedToken := &MintedToken{
 				JobID:         job.ID,
 				TokenID:       mintedTokenID,
+				TxHash:        mintedTxHash,
+				IsMock:        isMockContractClient(s.contractClient),
 				ProjectID:     job.ProjectID,
 				VintageYear:   int(metadata.VintageYear),
 				MethodologyID: int(metadata.MethodologyID),
@@ -182,7 +233,30 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 			return
 		}
 		lastErr = err
-		time.Sleep(time.Duration(attempt) * 2 * time.Second)
+
+		if !IsRetryable(err) {
+			log.Printf("minting job %v: non-retryable failure on attempt %d/%d: %v",
+				job.ID, attempt, policy.MaxAttempts, err)
+			break
+		}
+		if attempt == policy.MaxAttempts {
+			break
+		}
+
+		delay := policy.BackoffFor(attempt, nil)
+		log.Printf("minting job %v: attempt %d/%d failed, retrying in %s: %v",
+			job.ID, attempt, policy.MaxAttempts, delay, err)
+
+		// Abandon the wait if the caller's context is already done, rather
+		// than sleeping out the full backoff on a cancelled job.
+		select {
+		case <-ctx.Done():
+			job.Status = "failed"
+			job.Error = ctx.Err().Error()
+			s.db.Save(job)
+			return
+		case <-time.After(delay):
+		}
 	}
 
 	job.Status = "failed"
@@ -214,7 +288,29 @@ type realContractClient struct {
 	rpc               *rpcclient.Client
 }
 
-func NewContractClientFromEnv() CarbonAssetContractClient {
+// NewContractClientFromEnv resolves the carbon asset contract client from
+// environment configuration. isProduction gates which failure modes are
+// tolerated:
+//
+//   - MINTING_USE_MOCK_CLIENT=true opts into the in-memory mock client, but
+//     is only ever honored outside production; setting it in production is
+//     an error, never a silent no-op.
+//   - A missing or unparsable signing key is always an error — it never
+//     silently downgrades to the mock client, in production or otherwise.
+//     Outside production, use MINTING_USE_MOCK_CLIENT=true explicitly if a
+//     real key isn't available.
+func NewContractClientFromEnv(isProduction bool) (CarbonAssetContractClient, error) {
+	if useMock := strings.EqualFold(strings.TrimSpace(os.Getenv(MintingUseMockClientEnvVar)), "true"); useMock {
+		if isProduction {
+			return nil, fmt.Errorf(
+				"%s=true is not permitted in production; configure CARBON_ASSET_AUTHORITY_SECRET_KEY or STELLAR_SECRET_KEY instead",
+				MintingUseMockClientEnvVar,
+			)
+		}
+		log.Printf("⚠️  %s=true: minting will use the mock contract client (non-production only)", MintingUseMockClientEnvVar)
+		return &mockContractClient{}, nil
+	}
+
 	contractID := strings.TrimSpace(os.Getenv("CARBON_ASSET_CONTRACT_ID"))
 	if contractID == "" {
 		contractID = DefaultCarbonAssetContractID
@@ -225,13 +321,18 @@ func NewContractClientFromEnv() CarbonAssetContractClient {
 		seed = strings.TrimSpace(os.Getenv("STELLAR_SECRET_KEY"))
 	}
 	if seed == "" {
-		// Mock implementation if no key provided
-		return &mockContractClient{}
+		return nil, fmt.Errorf(
+			"CARBON_ASSET_AUTHORITY_SECRET_KEY or STELLAR_SECRET_KEY must be set to a valid Stellar signing key; "+
+				"set %s=true to use the mock client outside production",
+			MintingUseMockClientEnvVar,
+		)
 	}
 
 	authority, err := keypair.ParseFull(seed)
 	if err != nil {
-		return &mockContractClient{}
+		return nil, fmt.Errorf(
+			"CARBON_ASSET_AUTHORITY_SECRET_KEY/STELLAR_SECRET_KEY is not a valid Stellar signing key: %w", err,
+		)
 	}
 	rpcURL := os.Getenv("STELLAR_RPC_URL")
 	if rpcURL == "" {
@@ -248,7 +349,36 @@ func NewContractClientFromEnv() CarbonAssetContractClient {
 		networkPassphrase: networkPass,
 		authority:         authority,
 		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
+	}, nil
+}
+
+// resolveDefaultOwnerAddress determines the placeholder mint recipient from
+// CARBON_ASSET_DEFAULT_PROJECT_OWNER, then CARBON_ASSET_AUTHORITY_PUBLIC_KEY,
+// then STELLAR_PUBLIC_KEY, and validates that whichever is set is a
+// syntactically valid Stellar account address — an unconfigured or malformed
+// value fails explicitly rather than proceeding with a bad address.
+func resolveDefaultOwnerAddress() (string, error) {
+	var source string
+	ownerAddress := os.Getenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER")
+	source = "CARBON_ASSET_DEFAULT_PROJECT_OWNER"
+	if strings.TrimSpace(ownerAddress) == "" {
+		ownerAddress = os.Getenv("CARBON_ASSET_AUTHORITY_PUBLIC_KEY")
+		source = "CARBON_ASSET_AUTHORITY_PUBLIC_KEY"
 	}
+	if strings.TrimSpace(ownerAddress) == "" {
+		ownerAddress = os.Getenv("STELLAR_PUBLIC_KEY")
+		source = "STELLAR_PUBLIC_KEY"
+	}
+	ownerAddress = strings.TrimSpace(ownerAddress)
+	if ownerAddress == "" {
+		return "", errors.New(
+			"missing CARBON_ASSET_DEFAULT_PROJECT_OWNER, CARBON_ASSET_AUTHORITY_PUBLIC_KEY, or STELLAR_PUBLIC_KEY",
+		)
+	}
+	if _, err := keypair.ParseAddress(ownerAddress); err != nil {
+		return "", fmt.Errorf("%s is not a valid Stellar account address: %w", source, err)
+	}
+	return ownerAddress, nil
 }
 
 func (c *realContractClient) Mint(ctx context.Context, owner string, metadata CarbonAssetMetadata) (int, string, error) {
@@ -259,7 +389,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 	// 1. Load Admin Account
 	account, err := c.rpc.LoadAccount(ctx, c.authority.Address())
 	if err != nil {
-		return 0, "", fmt.Errorf("load authority account: %w", err)
+		return 0, "", classifyMintError("load authority account", err, false)
 	}
 
 	// 2. Prepare Arguments
@@ -294,7 +424,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return 0, "", fmt.Errorf("build simulation transaction: %w", err)
@@ -307,16 +437,19 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 	simReq := protocol.SimulateTransactionRequest{Transaction: encodedTx, Format: protocol.FormatBase64, AuthMode: protocol.AuthModeRecord}
 	simResp, err := c.rpc.SimulateTransaction(ctx, simReq)
 	if err != nil {
-		return 0, "", fmt.Errorf("simulate mint transaction: %w", err)
+		// Transport failure reaching the simulator - worth another attempt.
+		return 0, "", classifyMintError("simulate mint transaction", err, false)
 	}
 	if simResp.Error != "" {
-		return 0, "", fmt.Errorf("mint simulation failed: %s", simResp.Error)
+		// The contract rejected the invocation; an identical call is
+		// rejected identically next time.
+		return 0, "", Permanent(fmt.Errorf("mint simulation failed: %s", simResp.Error))
 	}
 	if simResp.RestorePreamble != nil {
-		return 0, "", fmt.Errorf("mint simulation indicates restore preamble is required")
+		return 0, "", Permanent(errors.New("mint simulation indicates restore preamble is required"))
 	}
 	if len(simResp.Results) == 0 {
-		return 0, "", fmt.Errorf("mint simulation returned no results")
+		return 0, "", Permanent(errors.New("mint simulation returned no results"))
 	}
 
 	if simResp.Results[0].AuthXDR != nil {
@@ -338,7 +471,7 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 		IncrementSequenceNum: true,
 		Operations:           []txnbuild.Operation{&op},
 		BaseFee:              txnbuild.MinBaseFee + simResp.MinResourceFee,
-		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(300)},
+		Preconditions:        txnbuild.Preconditions{TimeBounds: txnbuild.NewTimeout(MintTransactionTimeoutSeconds)},
 	})
 	if err != nil {
 		return 0, "", fmt.Errorf("build submit transaction: %w", err)
@@ -355,10 +488,12 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 
 	sendResp, err := c.rpc.SendTransaction(ctx, protocol.SendTransactionRequest{Transaction: envelope, Format: protocol.FormatBase64})
 	if err != nil {
-		return 0, "", fmt.Errorf("submit mint transaction: %w", err)
+		// Submission never reached the network - retry.
+		return 0, "", classifyMintError("submit mint transaction", err, false)
 	}
 	if sendResp.ErrorResultXDR != "" {
-		return 0, "", fmt.Errorf("mint submission failed with status %s", sendResp.Status)
+		// The network rejected the envelope itself.
+		return 0, "", Permanent(fmt.Errorf("mint submission failed with status %s", sendResp.Status))
 	}
 
 	txResp, err := c.waitForTransaction(ctx, sendResp.Hash)
@@ -375,16 +510,20 @@ func (c *realContractClient) Mint(ctx context.Context, owner string, metadata Ca
 }
 
 func (c *realContractClient) waitForTransaction(ctx context.Context, hash string) (protocol.GetTransactionResponse, error) {
-	for attempt := 0; attempt < 15; attempt++ {
+	for attempt := 0; attempt < DefaultPollAttempts; attempt++ {
 		response, err := c.rpc.GetTransaction(ctx, protocol.GetTransactionRequest{Hash: hash, Format: protocol.FormatBase64})
 		if err != nil {
-			return protocol.GetTransactionResponse{}, fmt.Errorf("poll mint transaction %s: %w", hash, err)
+			return protocol.GetTransactionResponse{}, classifyMintError(
+				fmt.Sprintf("poll mint transaction %s", hash), err, false)
 		}
 		switch response.Status {
 		case protocol.TransactionStatusSuccess:
 			return response, nil
 		case protocol.TransactionStatusFailed:
-			return protocol.GetTransactionResponse{}, fmt.Errorf("mint transaction %s failed on-chain", hash)
+			// Included in a ledger and failed; resubmitting the same operation
+			// fails the same way.
+			return protocol.GetTransactionResponse{}, Permanent(
+				fmt.Errorf("mint transaction %s failed on-chain", hash))
 		case protocol.TransactionStatusNotFound:
 		default:
 			if strings.EqualFold(response.Status, "SUCCESS") {
@@ -395,10 +534,13 @@ func (c *realContractClient) waitForTransaction(ctx context.Context, hash string
 		select {
 		case <-ctx.Done():
 			return protocol.GetTransactionResponse{}, ctx.Err()
-		case <-time.After(2 * time.Second):
+		case <-time.After(DefaultPollInterval):
 		}
 	}
-	return protocol.GetTransactionResponse{}, fmt.Errorf("mint transaction %s was not confirmed before timeout", hash)
+	// Unconfirmed within the polling window: the ledger may still catch up,
+	// so another attempt is worthwhile.
+	return protocol.GetTransactionResponse{}, Transient(
+		fmt.Errorf("mint transaction %s was not confirmed before timeout", hash))
 }
 
 func decodeAuthEntries(encoded []string) ([]xdr.SorobanAuthorizationEntry, error) {
@@ -492,10 +634,30 @@ func bytes32Val(b [32]byte) xdr.ScVal {
 	return scVal
 }
 
-// Mock implementation for development
+// Mock implementation for development. Only reachable via NewContractClientFromEnv
+// when MintingUseMockClientEnvVar is explicitly set outside production.
 type mockContractClient struct{}
 
 func (m *mockContractClient) Mint(ctx context.Context, owner string, metadata CarbonAssetMetadata) (int, string, error) {
 	time.Sleep(1 * time.Second)
-	return int(time.Now().Unix() % 10000), "MOCK_TX_HASH_" + metadata.ProjectID, nil
+	return int(time.Now().Unix() % 10000), mockTxHashPrefix + metadata.ProjectID, nil
+}
+
+// isMockClient marks mockContractClient so processMintingJob can flag any
+// MintedToken row it produces, so mock data can never be mistaken for a
+// real on-chain mint.
+func (m *mockContractClient) isMockClient() bool { return true }
+
+// mockClientMarker is implemented only by mockContractClient. It is checked
+// via type assertion rather than widening the public CarbonAssetContractClient
+// interface, so external test doubles that only implement Mint are unaffected.
+type mockClientMarker interface {
+	isMockClient() bool
+}
+
+// isMockContractClient reports whether client is the mock implementation,
+// used to flag MintedToken.IsMock.
+func isMockContractClient(client CarbonAssetContractClient) bool {
+	marker, ok := client.(mockClientMarker)
+	return ok && marker.isMockClient()
 }

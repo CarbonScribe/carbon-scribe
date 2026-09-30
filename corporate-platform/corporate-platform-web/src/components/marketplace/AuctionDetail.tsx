@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -12,6 +13,7 @@ import {
   MapPin,
   Calendar,
   Shield,
+  WifiOff,
 } from 'lucide-react';
 import { useAuctionDetail } from '@/hooks/useAuction';
 import PlaceBidForm from './PlaceBidForm';
@@ -30,14 +32,51 @@ const STATUS_STYLES: Record<AuctionStatus, string> = {
     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
 };
 
-function timeRemaining(endTime: string): string {
-  const ms = new Date(endTime).getTime() - Date.now();
+function timeRemaining(endTime: string, now: number): string {
+  const ms = new Date(endTime).getTime() - now;
   if (ms <= 0) return 'Ended';
   const h = Math.floor(ms / 3_600_000);
   const m = Math.floor((ms % 3_600_000) / 60_000);
   const s = Math.floor((ms % 60_000) / 1_000);
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m ${s}s`;
+}
+
+/**
+ * Ticks once a second, returning an estimated "true now" (`Date.now()`
+ * corrected by `clockSkewMs`) that advances using `performance.now()` deltas
+ * rather than repeated `Date.now()` reads. This keeps the on-screen countdown
+ * from jumping if the system wall clock changes mid-session (NTP sync, user
+ * changing the OS clock, DST, etc.) — only a genuine poll re-anchors it.
+ */
+function useCorrectedNow(clockSkewMs: number, lastUpdatedAtPerf: number | null): number {
+  const [, forceTick] = useState(0);
+  const anchorRef = useRef({
+    perf: performance.now(),
+    estimatedNow: Date.now() + clockSkewMs,
+  });
+
+  useEffect(() => {
+    anchorRef.current = {
+      perf: performance.now(),
+      estimatedNow: Date.now() + clockSkewMs,
+    };
+  }, [clockSkewMs, lastUpdatedAtPerf]);
+
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return anchorRef.current.estimatedNow + (performance.now() - anchorRef.current.perf);
+}
+
+function secondsAgoLabel(lastUpdatedAtPerf: number | null): string | null {
+  if (lastUpdatedAtPerf === null) return null;
+  const secondsAgo = Math.max(0, Math.round((performance.now() - lastUpdatedAtPerf) / 1000));
+  if (secondsAgo < 1) return 'Updated just now';
+  if (secondsAgo === 1) return 'Updated 1s ago';
+  return `Updated ${secondsAgo}s ago`;
 }
 
 interface AuctionDetailProps {
@@ -54,10 +93,17 @@ export default function AuctionDetail({ auctionId }: AuctionDetailProps) {
     bidError,
     bidSuccess,
     placingBid,
+    clockSkewMs,
+    lastUpdatedAtPerf,
+    isStale,
     placeBid,
     refresh,
     clearBidFeedback,
   } = useAuctionDetail(auctionId);
+
+  // Hooks must run unconditionally, so the corrected-now ticker is derived
+  // here, ahead of the loading/error early returns below.
+  const correctedNow = useCorrectedNow(clockSkewMs, lastUpdatedAtPerf);
 
   if (loading) {
     return (
@@ -105,14 +151,32 @@ export default function AuctionDetail({ auctionId }: AuctionDetailProps) {
           <ArrowLeft size={16} />
           All Auctions
         </Link>
-        <button
-          onClick={refresh}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-corporate-blue dark:text-gray-400 dark:hover:text-corporate-blue transition-colors"
-        >
-          <RefreshCw size={14} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {isActive && secondsAgoLabel(lastUpdatedAtPerf) && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {secondsAgoLabel(lastUpdatedAtPerf)}
+            </span>
+          )}
+          <button
+            onClick={refresh}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-corporate-blue dark:text-gray-400 dark:hover:text-corporate-blue transition-colors"
+          >
+            <RefreshCw size={14} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {isActive && isStale && (
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-4 py-2 text-sm"
+        >
+          <WifiOff size={16} />
+          Live data may be stale — we&apos;re having trouble reaching the
+          server. Displayed values reflect the last successful update.
+        </div>
+      )}
 
       {/* Hero card */}
       <div className="bg-linear-to-r from-corporate-navy via-corporate-blue to-corporate-teal rounded-2xl p-6 text-white shadow-xl">
@@ -127,7 +191,7 @@ export default function AuctionDetail({ auctionId }: AuctionDetailProps) {
               {isActive && (
                 <span className="flex items-center gap-1 text-sm text-blue-200">
                   <Clock size={14} />
-                  {timeRemaining(auction.endTime)} remaining
+                  {timeRemaining(auction.endTime, correctedNow)} remaining
                 </span>
               )}
             </div>

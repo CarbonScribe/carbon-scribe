@@ -1,4 +1,8 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  SIGNING_PROVIDER_TRANSFER,
+  SigningProvider,
+} from './signing/signing-provider.interface';
 import { PrismaService } from '../shared/database/prisma.service';
 import { InitiateTransferDto } from './dto/transfer.dto';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -33,7 +37,11 @@ export class TransferService {
   private readonly rpcServer: StellarSdk.rpc.Server;
   private readonly networkPassphrase = StellarSdk.Networks.TESTNET;
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(SIGNING_PROVIDER_TRANSFER)
+    private readonly signingProvider: SigningProvider,
+  ) {
     this.rpcServer = new StellarSdk.rpc.Server(
       'https://soroban-testnet.stellar.org',
     );
@@ -108,15 +116,10 @@ export class TransferService {
         `Executing transfer ${transferId} (try ${retryCount + 1})`,
       );
 
-      // Simulate/Trigger contract call
-      // In a real environment, we'd sign with the backend's key (acting as spender)
-      // For this test/integration proxy we'll construct the transaction and submit if a key is provided.
-      const secret = process.env.STELLAR_SECRET_KEY;
-      if (secret) {
-        const keypair = StellarSdk.Keypair.fromSecret(secret);
-        const sourceAccount = await this.rpcServer.getAccount(
-          keypair.publicKey(),
-        );
+      // Sign through SigningProvider — simulate only when STELLAR_SIGNING_MODE!=live
+      if (this.signingProvider.isLive()) {
+        const publicKey = await this.signingProvider.getPublicKey();
+        const sourceAccount = await this.rpcServer.getAccount(publicKey);
 
         const contract = new StellarSdk.Contract(contractId);
         const tx = new StellarSdk.TransactionBuilder(sourceAccount, {
@@ -126,7 +129,7 @@ export class TransferService {
           .addOperation(
             contract.call(
               'transfer_from',
-              nativeToScVal(keypair.publicKey(), { type: 'address' }),
+              nativeToScVal(publicKey, { type: 'address' }),
               nativeToScVal(fromAddress, { type: 'address' }),
               nativeToScVal(toAddress, { type: 'address' }),
               nativeToScVal(amount, { type: 'i128' }),
@@ -135,9 +138,24 @@ export class TransferService {
           .setTimeout(30)
           .build();
 
-        tx.sign(keypair);
+        const signed = await this.signingProvider.signTransaction(
+          tx.toXDR(),
+          this.networkPassphrase,
+        );
+        this.logger.log(
+          JSON.stringify({
+            event: 'transfer_signed',
+            transferId,
+            signingPublicKey: signed.publicKey,
+            keyId: signed.keyId ?? this.signingProvider.keyId,
+          }),
+        );
+        const signedTx = StellarSdk.TransactionBuilder.fromXDR(
+          signed.signedXdr,
+          this.networkPassphrase,
+        );
 
-        const response = await this.rpcServer.sendTransaction(tx);
+        const response = await this.rpcServer.sendTransaction(signedTx as any);
 
         if (response.status === 'ERROR') {
           throw new Error(`Stellar RPC Error: ${JSON.stringify(response)}`);
@@ -146,8 +164,6 @@ export class TransferService {
         const hash = response.hash;
 
         const prisma = this.prisma as any;
-        // Broadcast acknowledged: SUBMITTED -> PENDING. The hash is now
-        // available so the UI can link out to the explorer while it waits.
         await prisma.creditTransfer.update({
           where: { id: transferId },
           data: {
@@ -164,9 +180,9 @@ export class TransferService {
           },
         });
       } else {
-        // Mock successful transaction if no secret key provided
         this.logger.warn(
-          `No STELLAR_SECRET_KEY provided, simulating successful transfer for ${transferId}`,
+          `STELLAR_SIGNING_MODE is not live — simulating transfer ${transferId} ` +
+            `(keyId=${this.signingProvider.keyId})`,
         );
         const mockHash = `simulated_tx_${Date.now()}`;
         const prisma = this.prisma as any;

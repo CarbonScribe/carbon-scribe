@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRunResult } from "../../shared/types/agent.types.js";
 
 const runComplianceReportAgentMock = vi.fn();
+vi.mock("../../shared/approvals/approval.service.js", () => ({
+  approvalService: { queue: vi.fn().mockResolvedValue(undefined) },
+}));
 vi.mock("./compliance-report.agent.js", () => ({
   runComplianceReportAgent: (...args: unknown[]) =>
     runComplianceReportAgentMock(...args),
@@ -48,7 +51,9 @@ describe("complianceReportRouter POST /run", () => {
       agent: "compliance-report",
       requestId: "req-2",
       status: "failed",
-      output: { error: "Anthropic API error: internal error" },
+      output: { error: "API error (500): internal error" },
+      errorCategory: "connection_error",
+      retryable: true,
     };
     runComplianceReportAgentMock.mockResolvedValue(result);
 

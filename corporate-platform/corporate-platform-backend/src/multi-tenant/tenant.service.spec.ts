@@ -2,13 +2,19 @@ import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { sign } from 'jsonwebtoken';
 import { Request } from 'express';
 import { TenantService } from './tenant.service';
+import { ConfigService } from '../config/config.service';
 
 describe('TenantService', () => {
   let service: TenantService;
 
   beforeEach(() => {
-    service = new TenantService();
     process.env.JWT_SECRET = 'tenant-test-secret';
+    const configService = {
+      getAuthConfig: jest
+        .fn()
+        .mockReturnValue({ jwtSecret: process.env.JWT_SECRET }),
+    } as unknown as ConfigService;
+    service = new TenantService(configService);
     process.env.TENANT_BASE_DOMAIN = 'platform.com';
     delete process.env.TENANT_SYSTEM_BYPASS_TOKEN;
   });

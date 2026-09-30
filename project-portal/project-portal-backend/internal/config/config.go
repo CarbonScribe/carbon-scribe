@@ -1,11 +1,36 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
+
+const (
+	// DefaultJWTSecret is the historical hardcoded fallback for JWT_SECRET.
+	// It is convenient for local development but publishes the key that signs
+	// every session token, so Validate rejects it outside development. Kept in
+	// sync with the fallback used in Load.
+	DefaultJWTSecret = "your-secret-key-change-in-production"
+
+	// MinJWTSecretLength is the minimum accepted JWT secret length outside
+	// development. HMAC-backed tokens should use at least a 256-bit key; using
+	// characters here is a proxy for entropy in the common case.
+	MinJWTSecretLength = 32
+)
+
+// insecureDatabaseMarkers are substrings that only appear in the documented
+// example/placeholder database URLs. Their presence in a non-development
+// deployment means the real credentials were never configured.
+var insecureDatabaseMarkers = []string{
+	"your_secure_password_here",
+	"your_password",
+	"change_in_production",
+	"user:password@",
+}
 
 // Config holds application configuration
 type Config struct {
@@ -23,6 +48,46 @@ type Config struct {
 	RateLimit     RateLimitConfig
 	Soroban       SorobanConfig
 	Notifications NotificationsConfig
+	MQTT          MQTTConfig
+	SES           SESConfig
+	Monitoring    MonitoringConfig
+	Minting       MintingConfig
+}
+
+// MonitoringConfig holds monitoring-module settings.
+type MonitoringConfig struct {
+	SLA SLAConfig
+}
+
+// SLAConfig holds the SLA thresholds the performance analytics service
+// benchmarks observed monitoring data against. A zero threshold means
+// "not configured": that metric is reported but not judged, so an unset SLA
+// can never manufacture a breach.
+type SLAConfig struct {
+	// Latency ceilings, in milliseconds.
+	LatencyP50Ms float64
+	LatencyP95Ms float64
+	LatencyP99Ms float64
+	// MaxErrorRate is a ceiling expressed as a fraction in [0,1] (0.01 = 1%).
+	MaxErrorRate float64
+	// MinUptime is a floor expressed as a fraction in [0,1] (0.999 = 99.9%).
+	MinUptime float64
+	// Names of the stored metrics the observed latency and error rate are
+	// read from.
+	LatencyMetricName   string
+	ErrorRateMetricName string
+}
+
+// MintingConfig holds the retry policy for Soroban carbon-credit minting.
+// Backoff grows exponentially from BaseBackoff, doubling per attempt, capped
+// at MaxBackoff, with jitter applied to each delay.
+type MintingConfig struct {
+	MaxAttempts int
+	BaseBackoff time.Duration
+	MaxBackoff  time.Duration
+	// JitterFactor is the fraction of the computed delay that is randomised,
+	// in [0,1]. 0.2 means the actual delay lands in [0.8d, 1.0d].
+	JitterFactor float64
 }
 
 // ElasticsearchConfig holds configuration for Elasticsearch
@@ -54,6 +119,13 @@ type SettingsConfig struct {
 	EncryptionKeyHex string
 	APIKeyPrefix     string
 	ProfileCDNBase   string
+}
+
+// SESConfig holds configuration for the SES transactional email client.
+// AWS credentials/region/endpoint are shared with AWSConfig; the client is
+// only constructed (see cmd/api/main.go) when FromAddress is set.
+type SESConfig struct {
+	FromAddress string // verified SES sender identity, e.g. "no-reply@carbonscribe.io"
 }
 
 type GeospatialConfig struct {
@@ -111,6 +183,22 @@ type SorobanConfig struct {
 	NetworkPassphrase   string
 	CarbonAssetContract string
 	InventoryCacheTTL   string
+}
+
+// MQTTConfig holds configuration for the IoT telemetry MQTT client.
+// The client is only started (see cmd/api/main.go) when BrokerURL is set.
+type MQTTConfig struct {
+	BrokerURL             string // e.g. "tls://broker.example.com:8883" or "tcp://localhost:1883"
+	ClientID              string
+	Username              string
+	Password              string
+	TLSCACertFile         string // optional custom CA for verifying the broker
+	TLSCertFile           string // client certificate, for mutual TLS
+	TLSKeyFile            string // client private key, for mutual TLS
+	TLSInsecureSkipVerify bool   // dev-only; never enable in production
+	QoS                   int
+	QueueSize             int
+	Workers               int
 }
 
 type NotificationsConfig struct {
@@ -200,7 +288,7 @@ func Load() (*Config, error) {
 			ProfileCDNBase:   getEnvOrDefault("SETTINGS_PROFILE_CDN_BASE", "https://cdn.carbonscribe.local"),
 		},
 		Auth: AuthConfig{
-			JWTSecret:                getEnvOrDefault("JWT_SECRET", "your-secret-key-change-in-production"),
+			JWTSecret:                getEnvOrDefault("JWT_SECRET", DefaultJWTSecret),
 			JWTAccessTokenExpiry:     getEnvOrDefault("JWT_ACCESS_TOKEN_EXPIRY", "15m"),
 			JWTRefreshTokenExpiry:    getEnvOrDefault("JWT_REFRESH_TOKEN_EXPIRY", "7d"),
 			PasswordHashCost:         passwordHashCost,
@@ -243,6 +331,22 @@ func Load() (*Config, error) {
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
 		},
+		SES: SESConfig{
+			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
+		},
+		MQTT: MQTTConfig{
+			BrokerURL:             os.Getenv("MQTT_BROKER_URL"),
+			ClientID:              os.Getenv("MQTT_CLIENT_ID"),
+			Username:              os.Getenv("MQTT_USERNAME"),
+			Password:              os.Getenv("MQTT_PASSWORD"),
+			TLSCACertFile:         os.Getenv("MQTT_TLS_CA_CERT_FILE"),
+			TLSCertFile:           os.Getenv("MQTT_TLS_CERT_FILE"),
+			TLSKeyFile:            os.Getenv("MQTT_TLS_KEY_FILE"),
+			TLSInsecureSkipVerify: os.Getenv("MQTT_TLS_INSECURE_SKIP_VERIFY") == "true",
+			QoS:                   getIntOrDefault("MQTT_QOS", 1),
+			QueueSize:             getIntOrDefault("MQTT_QUEUE_SIZE", 1000),
+			Workers:               getIntOrDefault("MQTT_WORKERS", 4),
+		},
 		Notifications: NotificationsConfig{
 			MongoURI:          getEnvOrDefault("NOTIFICATIONS_MONGO_URI", "mongodb://localhost:27017"),
 			MongoDatabase:     getEnvOrDefault("NOTIFICATIONS_MONGO_DB", "carbon_scribe_notifications"),
@@ -254,7 +358,120 @@ func Load() (*Config, error) {
 			TwilioAuthToken:   os.Getenv("TWILIO_AUTH_TOKEN"),
 			TwilioFromNumber:  os.Getenv("TWILIO_FROM_NUMBER"),
 		},
+		Monitoring: MonitoringConfig{
+			SLA: SLAConfig{
+				LatencyP50Ms:        getFloatOrDefault("SLA_LATENCY_P50_MS", 100),
+				LatencyP95Ms:        getFloatOrDefault("SLA_LATENCY_P95_MS", 300),
+				LatencyP99Ms:        getFloatOrDefault("SLA_LATENCY_P99_MS", 750),
+				MaxErrorRate:        getFloatOrDefault("SLA_MAX_ERROR_RATE", 0.01),
+				MinUptime:           getFloatOrDefault("SLA_MIN_UPTIME", 0.99),
+				LatencyMetricName:   getEnvOrDefault("SLA_LATENCY_METRIC", "api_request_latency_ms"),
+				ErrorRateMetricName: getEnvOrDefault("SLA_ERROR_RATE_METRIC", "api_error_rate"),
+			},
+		},
+		Minting: MintingConfig{
+			MaxAttempts:  getIntOrDefault("MINTING_MAX_ATTEMPTS", 3),
+			BaseBackoff:  getDurationOrDefault("MINTING_BACKOFF_BASE", 2*time.Second),
+			MaxBackoff:   getDurationOrDefault("MINTING_BACKOFF_MAX", 60*time.Second),
+			JitterFactor: getFloatOrDefault("MINTING_BACKOFF_JITTER", 0.2),
+		},
 	}, nil
+}
+
+// Validate checks that security-critical configuration is present and is not
+// left at an insecure default. It is intended to be called once at startup,
+// immediately after Load, so a misconfigured deployment fails fast instead of
+// booting with a publicly-known secret and only failing at the first request
+// that needs it.
+//
+// Development mode (SERVER_MODE=development or DEBUG=true) keeps the
+// documented defaults for local convenience. Every other mode fails closed:
+// an unset SERVER_MODE is treated as production, mirroring the minting client
+// check in cmd/api/main.go.
+func (c *Config) Validate() error {
+	if c.Debug {
+		return nil
+	}
+
+	var problems []string
+
+	// JWT signing secret — signs every session token.
+	switch {
+	case strings.TrimSpace(c.Auth.JWTSecret) == "":
+		problems = append(problems, "JWT_SECRET must be set: it signs every session token")
+	case c.Auth.JWTSecret == DefaultJWTSecret:
+		problems = append(problems, fmt.Sprintf("JWT_SECRET is still the documented insecure default (%q); set a unique random value", DefaultJWTSecret))
+	case len(c.Auth.JWTSecret) < MinJWTSecretLength:
+		problems = append(problems, fmt.Sprintf("JWT_SECRET must be at least %d characters to resist brute-forcing", MinJWTSecretLength))
+	}
+
+	// Settings encryption key — encrypts stored integration credentials.
+	if err := validateEncryptionKey(c.Settings.EncryptionKeyHex); err != nil {
+		problems = append(problems, fmt.Sprintf("SETTINGS_ENCRYPTION_KEY_HEX %v", err))
+	}
+
+	// Database connection string.
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		problems = append(problems, "DATABASE_URL must be set")
+	} else if marker := findInsecureDatabaseMarker(c.DatabaseURL); marker != "" {
+		problems = append(problems, fmt.Sprintf("DATABASE_URL still contains the placeholder %q; set the real database credentials", marker))
+	}
+
+	// SMS credentials are only required when a real provider is selected, so a
+	// mock/default deployment is never blocked by unrelated settings.
+	if strings.EqualFold(strings.TrimSpace(c.Notifications.SMSProvider), "twilio") {
+		requiredSMSFields := []struct {
+			name  string
+			value string
+		}{
+			{"TWILIO_ACCOUNT_SID", c.Notifications.TwilioAccountSID},
+			{"TWILIO_AUTH_TOKEN", c.Notifications.TwilioAuthToken},
+			{"TWILIO_FROM_NUMBER", c.Notifications.TwilioFromNumber},
+		}
+		for _, field := range requiredSMSFields {
+			if strings.TrimSpace(field.value) == "" {
+				problems = append(problems, fmt.Sprintf("%s is required when SMS_PROVIDER=twilio", field.name))
+			}
+		}
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("invalid configuration — refusing to start:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	return nil
+}
+
+// validateEncryptionKey ensures SETTINGS_ENCRYPTION_KEY_HEX is a usable AES
+// key. The settings vault accepts 16, 24 or 32-byte keys, i.e. 32, 48 or 64
+// hex characters. An empty key is rejected outside development because
+// settings.NewService otherwise silently falls back to a hardcoded dev key.
+func validateEncryptionKey(hexKey string) error {
+	trimmed := strings.TrimSpace(hexKey)
+	if trimmed == "" {
+		return fmt.Errorf("must be set to a random 32-byte key encoded as 64 hex characters")
+	}
+	decoded, err := hex.DecodeString(trimmed)
+	if err != nil {
+		return fmt.Errorf("must be valid hex: %v", err)
+	}
+	switch len(decoded) {
+	case 16, 24, 32:
+		return nil
+	default:
+		return fmt.Errorf("must decode to a 16, 24 or 32-byte AES key (got %d bytes)", len(decoded))
+	}
+}
+
+// findInsecureDatabaseMarker returns the first placeholder marker found in the
+// database URL, or the empty string when none are present.
+func findInsecureDatabaseMarker(databaseURL string) string {
+	lower := strings.ToLower(databaseURL)
+	for _, marker := range insecureDatabaseMarkers {
+		if strings.Contains(lower, marker) {
+			return marker
+		}
+	}
+	return ""
 }
 
 func getEnvOrDefault(key, defaultVal string) string {
@@ -270,6 +487,34 @@ func getIntOrDefault(key string, defaultVal int) int {
 		return defaultVal
 	}
 	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
+}
+
+// getFloatOrDefault reads a float64 from the environment, falling back to
+// defaultVal when unset or unparsable.
+func getFloatOrDefault(key string, defaultVal float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
+}
+
+// getDurationOrDefault reads a Go duration string (e.g. "2s", "500ms") from
+// the environment, falling back to defaultVal when unset or unparsable.
+func getDurationOrDefault(key string, defaultVal time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := time.ParseDuration(v)
 	if err != nil {
 		return defaultVal
 	}

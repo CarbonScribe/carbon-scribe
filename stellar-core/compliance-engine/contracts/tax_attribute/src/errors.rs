@@ -12,4 +12,5 @@ pub enum ContractError {
     AttributeExpired = 6,
     AttributeNotAttached = 7,
     InvalidToken = 8,
+    InvalidValidityWindow = 9,
 }

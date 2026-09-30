@@ -12,7 +12,7 @@ export class MintEventHandler implements IWebhookHandler {
     return eventType === 'contract.mint';
   }
 
-  async handle(payload: any): Promise<void> {
+  async handle(payload: any, _tx?: any): Promise<void> {
     this.logger.log(`Handling mint event from contract: ${payload.contractId}`);
 
     // In a real implementation, we would update the Credit inventory

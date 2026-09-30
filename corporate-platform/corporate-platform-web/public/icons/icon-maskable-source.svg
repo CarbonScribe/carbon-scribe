@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full bleed background (maskable icons must fill the entire canvas) -->
+  <rect width="512" height="512" fill="url(#grad-maskable)"/>
+  <defs>
+    <linearGradient id="grad-maskable" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a2540"/>
+      <stop offset="100%" stop-color="#1a5db5"/>
+    </linearGradient>
+  </defs>
+  <!-- Safe zone: content within central 80% (approx 102–410) -->
+  <!-- Leaf shape — scaled to fit safe zone -->
+  <path d="M256 102 C330 102, 410 162, 410 256 C410 350, 330 410, 256 410 C182 410, 102 350, 102 256 C102 162, 182 102, 256 102 Z" fill="#00d4aa" opacity="0.9"/>
+  <!-- Central vein -->
+  <path d="M256 390 C256 390, 244 310, 236 256 C228 200, 256 118, 256 118" stroke="white" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <!-- Left veins -->
+  <path d="M248 340 C222 328, 192 310, 170 280" stroke="white" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M240 282 C216 268, 194 252, 174 224" stroke="white" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- Right veins -->
+  <path d="M264 340 C290 328, 320 310, 342 280" stroke="white" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M272 282 C296 268, 318 252, 338 224" stroke="white" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <!-- CS wordmark -->
+  <text x="256" y="298" text-anchor="middle" font-size="100" font-weight="800" fill="white" font-family="system-ui, -apple-system, sans-serif" opacity="0.95">CS</text>
+</svg>

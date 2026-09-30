@@ -150,15 +150,38 @@ describe("runDiscoveryAgent", () => {
     });
 
     expect(result.status).toBe("failed");
-    expect((result.output as { error: string }).error).toContain(
-      "Anthropic API error",
-    );
+    expect((result.output as { error: string }).error).toContain("API error");
+    expect(result.errorCategory).toBe("connection_error");
+    expect(result.retryable).toBe(true);
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({
         agent: "discovery",
         requestId: "req-2",
         status: "failed",
       }),
+    );
+  });
+
+  it("classifies rate limit errors as retryable", async () => {
+    const rateLimitError = new Anthropic.RateLimitError(
+      429,
+      { message: "rate limit exceeded" },
+      "rate limit exceeded",
+      new Headers(),
+    );
+    toolRunnerMock.mockReturnValue(fakeRunner({ error: rateLimitError }));
+
+    const result = await runDiscoveryAgent({
+      requestId: "req-6",
+      requestedBy: "user-1",
+      input: {},
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.errorCategory).toBe("rate_limited");
+    expect(result.retryable).toBe(true);
+    expect((result.output as { error: string }).error).toContain(
+      "Rate limit exceeded",
     );
   });
 

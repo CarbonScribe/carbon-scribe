@@ -207,9 +207,20 @@ export class UploadService {
     );
   }
 
-  async listDocuments(companyId?: string) {
+  async listDocuments(
+    companyId?: string,
+    pagination?: { page?: number; limit?: number },
+  ) {
+    const take = pagination?.limit;
+    const skip =
+      pagination?.page && pagination?.limit
+        ? (pagination.page - 1) * pagination.limit
+        : undefined;
+
     return this.prisma.ipfsDocument.findMany({
       where: companyId ? { companyId } : {},
+      ...(skip !== undefined ? { skip } : {}),
+      ...(take !== undefined ? { take } : {}),
     });
   }
 

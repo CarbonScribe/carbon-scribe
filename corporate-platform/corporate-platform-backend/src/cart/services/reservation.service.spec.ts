@@ -226,4 +226,49 @@ describe('ReservationService', () => {
       }),
     );
   });
+
+  /**
+   * The sweep and a confirmPurchase decrementing the same credit must not
+   * interleave (#545): both now lock the credit row before touching its
+   * reservations, so the sweep runs through the same Serializable +
+   * row-lock discipline as every other inventory-affecting operation.
+   */
+  it('locks the affected credit row via a Serializable transaction while sweeping', async () => {
+    await build(
+      [credit(100)],
+      [
+        {
+          cartId: 'cart-stale',
+          creditId: 'credit-1',
+          quantity: 25,
+          expiresAt: new Date(Date.now() - 60_000),
+        },
+      ],
+    );
+
+    await service.releaseExpiredReservations();
+
+    expect(store.isolationLevels).toContain('Serializable');
+  });
+
+  it('does nothing when there are no expired reservations', async () => {
+    await build(
+      [credit(100)],
+      [
+        {
+          cartId: 'cart-live',
+          creditId: 'credit-1',
+          quantity: 10,
+          expiresAt: new Date(Date.now() + 60_000),
+        },
+      ],
+    );
+
+    await service.releaseExpiredReservations();
+
+    expect(store.reservations).toHaveLength(1);
+    expect(store.availabilityLogs).toHaveLength(0);
+    // No expired rows at all — the sweep must not even open a transaction.
+    expect(store.transactionCount).toBe(0);
+  });
 });

@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { geospatialApi } from "@/lib/geospatial/api";
 import { getCarbonScribeSource } from "@/lib/geospatial/mapbox";
 import { useStore } from "@/lib/store/store";
@@ -34,6 +36,8 @@ interface CarbonMapProps {
   onMapReady?: (map: mapboxgl.Map) => void;
   /** Callback when a project is clicked */
   onProjectClick?: (projectId: string, coordinates: [number, number]) => void;
+  /** Callback when a boundary is saved */
+  onBoundarySaved?: (geometry: GeoJSON.GeoJSON) => void;
 }
 
 // ============================================================================
@@ -57,6 +61,117 @@ const MAP_STYLES = {
 type MapStyle = keyof typeof MAP_STYLES;
 
 // ============================================================================
+// Polygon Validation Utilities
+// ============================================================================
+
+/**
+ * Calculate the area of a polygon in square meters using the shoelace formula
+ */
+const calculatePolygonArea = (coordinates: number[][]): number => {
+  if (coordinates.length < 3) return 0;
+  
+  let area = 0;
+  const n = coordinates.length;
+  
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += coordinates[i][0] * coordinates[j][1];
+    area -= coordinates[j][0] * coordinates[i][1];
+  }
+  
+  return Math.abs(area / 2);
+};
+
+/**
+ * Check if a polygon self-intersects using a simple segment intersection check
+ */
+const hasSelfIntersection = (coordinates: number[][]): boolean => {
+  const n = coordinates.length;
+  if (n < 4) return false;
+  
+  // Helper to check if two line segments intersect
+ const segmentsIntersect = (p1: number[], p2: number[], p3: number[], p4: number[]): boolean => {
+    const d1 = direction(p3, p4, p1);
+    const d2 = direction(p3, p4, p2);
+    const d3 = direction(p1, p2, p3);
+    const d4 = direction(p1, p2, p4);
+    
+    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+      return true;
+    }
+    
+    return false;
+  };
+  
+  const direction = (p1: number[], p2: number[], p3: number[]): number => {
+    return (p3[0] - p1[0]) * (p2[1] - p1[1]) - (p2[0] - p1[0]) * (p3[1] - p1[1]);
+  };
+  
+  // Check each pair of non-adjacent segments
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      // Skip adjacent segments and the first/last segment pair
+      if (i === 0 && j === n - 1) continue;
+      
+      if (segmentsIntersect(
+        coordinates[i],
+        coordinates[(i + 1) % n],
+        coordinates[j],
+        coordinates[(j + 1) % n]
+      )) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+};
+
+/**
+ * Validate a polygon geometry
+ * @returns { valid: boolean, error?: string }
+ */
+const validatePolygon = (geometry: GeoJSON.GeoJSON): { valid: boolean; error?: string } => {
+  if (geometry.type !== "Polygon") {
+    return { valid: false, error: "Only polygon geometries are allowed" };
+  }
+  
+  const polygon = geometry as GeoJSON.Polygon;
+  const coordinates = polygon.coordinates[0];
+  
+  if (coordinates.length < 4) {
+    return { valid: false, error: "Polygon must have at least 4 points (3 + closing point)" };
+  }
+  
+  // Check if first and last points match (closed polygon)
+  const first = coordinates[0];
+  const last = coordinates[coordinates.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    return { valid: false, error: "Polygon must be closed (first and last points must match)" };
+  }
+  
+  // Check for self-intersection
+  if (hasSelfIntersection(coordinates)) {
+    return { valid: false, error: "Polygon cannot self-intersect" };
+  }
+  
+  // Calculate area (in approximate square degrees, convert to hectares for validation)
+  const areaSqDegrees = calculatePolygonArea(coordinates);
+  const areaHectares = areaSqDegrees * 12300; // Rough conversion for validation
+  
+  if (areaHectares < 0.01) {
+    return { valid: false, error: "Polygon area is too small (minimum 0.01 hectares)" };
+  }
+  
+  if (areaHectares > 100000) {
+    return { valid: false, error: "Polygon area is too large (maximum 100,000 hectares)" };
+  }
+  
+  return { valid: true };
+};
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -71,6 +186,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   initialCenter = DEFAULT_CENTER,
   onMapReady,
   onProjectClick,
+  onBoundarySaved,
 }) => {
   // Refs
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -78,6 +194,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   const markers = useRef<mapboxgl.Marker[]>([]);
   const popups = useRef<mapboxgl.Popup[]>([]);
   const layers = useRef<string[]>([]);
+  const drawControl = useRef<MapboxDraw | null>(null);
 
   // State
   const [loading, setLoading] = useState(true);
@@ -89,6 +206,10 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   const [geometryLoading, setGeometryLoading] = useState(true);
   const [geometryError, setGeometryError] = useState<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [draftGeometry, setDraftGeometry] = useState<GeoJSON.GeoJSON | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Store - using the main store with selector
   const {
@@ -168,6 +289,123 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   }, [projectId, showSatellite, fetchSatelliteTimeSeries]);
 
   // ============================================================================
+  // Draw Event Handlers
+  // ============================================================================
+
+  const handleDrawCreate = useCallback((e: any) => {
+    if (!e.features || e.features.length === 0) return;
+    
+    const feature = e.features[0];
+    if (feature.geometry.type !== "Polygon") {
+      setValidationError("Only polygon shapes are allowed");
+      if (drawControl.current) {
+        drawControl.current.delete(feature.id);
+      }
+      return;
+    }
+
+    // Validate the polygon
+    const validation = validatePolygon(feature.geometry);
+    if (!validation.valid) {
+      setValidationError(validation.error || "Invalid polygon");
+      if (drawControl.current) {
+        drawControl.current.delete(feature.id);
+      }
+      return;
+    }
+
+    setDraftGeometry(feature.geometry);
+    setIsDrawing(true);
+    setValidationError(null);
+  }, []);
+
+  const handleDrawUpdate = useCallback((e: any) => {
+    if (!e.features || e.features.length === 0) return;
+    
+    const feature = e.features[0];
+    
+    // Validate the updated polygon
+    const validation = validatePolygon(feature.geometry);
+    if (!validation.valid) {
+      setValidationError(validation.error || "Invalid polygon");
+    } else {
+      setDraftGeometry(feature.geometry);
+      setValidationError(null);
+    }
+  }, []);
+
+  const handleDrawDelete = useCallback(() => {
+    setDraftGeometry(null);
+    setIsDrawing(false);
+    setValidationError(null);
+  }, []);
+
+  const handleSaveBoundary = useCallback(async () => {
+    if (!draftGeometry || !projectId) return;
+
+    setIsSaving(true);
+    setValidationError(null);
+
+    try {
+      // Validate before saving
+      const validation = validatePolygon(draftGeometry);
+      if (!validation.valid) {
+        setValidationError(validation.error || "Invalid polygon");
+        setIsSaving(false);
+        return;
+      }
+
+      // Upload geometry to API
+      await geospatialApi.uploadGeometry(projectId, draftGeometry);
+      
+      // Update local state
+      setGeometry({
+        projectId,
+        geometry: draftGeometry,
+      } as ProjectGeometry);
+
+      // Clear draft
+      if (drawControl.current) {
+        drawControl.current.deleteAll();
+      }
+      setDraftGeometry(null);
+      setIsDrawing(false);
+
+      // Call callback
+      if (onBoundarySaved) {
+        onBoundarySaved(draftGeometry);
+      }
+
+      // Refresh geometry from API
+      const updatedGeometry = await geospatialApi.getProjectGeometry(projectId);
+      setGeometry(updatedGeometry as ProjectGeometry);
+    } catch (err: any) {
+      setValidationError(err.message || "Failed to save boundary");
+      showErrorToast("Failed to save boundary");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [draftGeometry, projectId, onBoundarySaved]);
+
+  const handleCancelDrawing = useCallback(() => {
+    if (drawControl.current) {
+      drawControl.current.deleteAll();
+    }
+    setDraftGeometry(null);
+    setIsDrawing(false);
+    setValidationError(null);
+  }, []);
+
+  const handleClearDrawing = useCallback(() => {
+    if (drawControl.current) {
+      drawControl.current.deleteAll();
+    }
+    setDraftGeometry(null);
+    setIsDrawing(false);
+    setValidationError(null);
+  }, []);
+
+  // ============================================================================
   // Initialize Map
   // ============================================================================
 
@@ -224,6 +462,99 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
               "raster-contrast": 0.1,
             },
           });
+
+          // Add MapboxDraw control if editable
+          if (editable) {
+            const draw = new MapboxDraw({
+              displayControlsDefault: false,
+              controls: {
+                polygon: true,
+                trash: true,
+              },
+              defaultMode: "simple_select",
+              styles: [
+                {
+                  id: "gl-draw-polygon-fill-inactive",
+                  type: "fill",
+                  filter: ["all", ["==", "active", "false"], ["==", "$type", "Polygon"]],
+                  paint: {
+                    "fill-color": "#3B82F6",
+                    "fill-opacity": 0.3,
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-fill-active",
+                  type: "fill",
+                  filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+                  paint: {
+                    "fill-color": "#3B82F6",
+                    "fill-opacity": 0.5,
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-stroke-inactive",
+                  type: "line",
+                  filter: ["all", ["==", "active", "false"], ["==", "$type", "Polygon"]],
+                  layout: {
+                    "line-cap": "round",
+                    "line-join": "round",
+                  },
+                  paint: {
+                    "line-color": "#2563EB",
+                    "line-width": 3,
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-stroke-active",
+                  type: "line",
+                  filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+                  layout: {
+                    "line-cap": "round",
+                    "line-join": "round",
+                  },
+                  paint: {
+                    "line-color": "#2563EB",
+                    "line-width": 3,
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-midpoint",
+                  type: "circle",
+                  filter: ["all", ["==", "$type", "Point"], ["==", "meta", "vertex"], ["==", "meta", "midpoint"]],
+                  paint: {
+                    "circle-radius": 5,
+                    "circle-color": "#3B82F6",
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-vertex-active",
+                  type: "circle",
+                  filter: ["all", ["==", "$type", "Point"], ["==", "meta", "vertex"], ["==", "active", "true"]],
+                  paint: {
+                    "circle-radius": 5,
+                    "circle-color": "#3B82F6",
+                  },
+                },
+                {
+                  id: "gl-draw-polygon-vertex-inactive",
+                  type: "circle",
+                  filter: ["all", ["==", "$type", "Point"], ["==", "meta", "vertex"], ["==", "active", "false"]],
+                  paint: {
+                    "circle-radius": 5,
+                    "circle-color": "#3B82F6",
+                  },
+                },
+              ],
+            });
+
+            mapInstance.addControl(draw, "top-left");
+            drawControl.current = draw;
+
+            // Handle draw events
+            mapInstance.on("draw.create", handleDrawCreate);
+            mapInstance.on("draw.update", handleDrawUpdate);
+            mapInstance.on("draw.delete", handleDrawDelete);
+          }
 
           // Call onMapReady callback
           if (onMapReady) {
@@ -808,18 +1139,52 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
         </div>
       )}
 
-      {/* Edit Mode */}
+      {/* Drawing Controls */}
       {editable && mapLoaded && (
-        <div className="absolute bottom-4 right-4 z-10">
-          <button
-            onClick={() => {
-              // Trigger geometry upload/update
-              console.log("Edit mode triggered for project:", projectId);
-            }}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg shadow-md hover:bg-green-700 transition text-sm"
-          >
-            ✏️ Edit Boundary
-          </button>
+        <div className="absolute bottom-4 right-4 z-10 flex flex-col space-y-2">
+          {/* Validation Error */}
+          {validationError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-600 max-w-xs">
+              ⚠️ {validationError}
+            </div>
+          )}
+
+          {/* Drawing Action Buttons */}
+          {isDrawing && (
+            <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-2 flex flex-col space-y-1">
+              <button
+                onClick={handleSaveBoundary}
+                disabled={isSaving || !!validationError}
+                className={`px-3 py-2 text-xs rounded transition text-white ${
+                  isSaving || validationError
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+              >
+                {isSaving ? "Saving..." : "💾 Save Boundary"}
+              </button>
+              <button
+                onClick={handleCancelDrawing}
+                className="px-3 py-2 text-xs rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition"
+              >
+                ❌ Cancel
+              </button>
+              <button
+                onClick={handleClearDrawing}
+                className="px-3 py-2 text-xs rounded bg-red-100 text-red-600 hover:bg-red-200 transition"
+              >
+                🗑️ Clear
+              </button>
+            </div>
+          )}
+
+          {/* Drawing Instructions */}
+          {!isDrawing && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-600 max-w-xs">
+              <p className="font-medium">📐 Draw Mode Active</p>
+              <p className="mt-1">Use the polygon tool in the top-left to draw your project boundary.</p>
+            </div>
+          )}
         </div>
       )}
     </div>

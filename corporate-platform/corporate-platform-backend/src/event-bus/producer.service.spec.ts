@@ -4,14 +4,28 @@ import { KafkaService } from './kafka.service';
 import { ConfigService } from '../config/config.service';
 import { EventValidatorService } from './event-validator.service';
 import { DeadLetterService } from './dead-letter/dead-letter.service';
+import { OutboxService } from './outbox.service';
 
 describe('ProducerService', () => {
   let service: ProducerService;
-  let kafkaService: jest.Mocked<KafkaService>;
   let mockProducer: { send: jest.Mock };
+  let outboxService: {
+    create: jest.Mock;
+    createMany: jest.Mock;
+    publish: jest.Mock;
+  };
 
   beforeEach(async () => {
     mockProducer = { send: jest.fn() };
+    outboxService = {
+      create: jest.fn().mockImplementation((input) => ({ id: input.key })),
+      createMany: jest
+        .fn()
+        .mockImplementation((inputs) =>
+          inputs.map((input: { key: string }) => ({ id: input.key })),
+        ),
+      publish: jest.fn().mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,11 +63,11 @@ describe('ProducerService', () => {
             sendToDeadLetter: jest.fn(),
           },
         },
+        { provide: OutboxService, useValue: outboxService },
       ],
     }).compile();
 
     service = module.get<ProducerService>(ProducerService);
-    kafkaService = module.get<KafkaService>(KafkaService) as any;
   });
 
   it('should be defined', () => {
@@ -76,16 +90,11 @@ describe('ProducerService', () => {
 
       await service.publish(topic, event);
 
-      expect(kafkaService.getProducer).toHaveBeenCalled();
-      expect(mockProducer.send).toHaveBeenCalledWith({
-        topic,
-        messages: [
-          {
-            key: 'comp-1',
-            value: JSON.stringify(event),
-          },
-        ],
-      });
+      expect(outboxService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ topic, payload: event }),
+        undefined,
+      );
+      expect(outboxService.publish).toHaveBeenCalled();
     });
 
     it('should use userId as key if companyId is missing', async () => {
@@ -103,15 +112,10 @@ describe('ProducerService', () => {
 
       await service.publish(topic, event);
 
-      expect(mockProducer.send).toHaveBeenCalledWith({
-        topic,
-        messages: [
-          {
-            key: 'user-1',
-            value: JSON.stringify(event),
-          },
-        ],
-      });
+      expect(outboxService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ topic, payload: event }),
+        undefined,
+      );
     });
 
     it('should throw an error if the producer fails', async () => {
@@ -126,11 +130,9 @@ describe('ProducerService', () => {
         version: '1.0',
       };
 
-      mockProducer.send.mockRejectedValue(new Error('Kafka failed'));
+      outboxService.publish.mockResolvedValue(false);
 
-      await expect(service.publish(topic, event)).rejects.toThrow(
-        'Kafka failed',
-      );
+      await expect(service.publish(topic, event)).resolves.toBeUndefined();
     });
   });
 
@@ -166,13 +168,13 @@ describe('ProducerService', () => {
 
       await service.publishBatch('my-topic', events);
 
-      expect(mockProducer.send).toHaveBeenCalledWith({
-        topic: 'my-topic',
-        messages: [
-          { key: 'comp1', value: JSON.stringify(events[0]) },
-          { key: 'usr2', value: JSON.stringify(events[1]) },
-        ],
-      });
+      expect(outboxService.createMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ topic: 'my-topic', payload: events[0] }),
+          expect.objectContaining({ topic: 'my-topic', payload: events[1] }),
+        ]),
+        undefined,
+      );
     });
   });
 });

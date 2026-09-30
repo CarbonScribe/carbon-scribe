@@ -78,4 +78,14 @@ type Repository interface {
 	ListStatusSnapshots(ctx context.Context, limit int) ([]SystemStatusSnapshot, error)
 	GetStatusSnapshotsByTimeRange(ctx context.Context, start, end time.Time) ([]SystemStatusSnapshot, error)
 	GetSystemStatusSummary(ctx context.Context) (*SystemStatusSummary, error)
+
+	// ============================================================================
+	// Notification Delivery Log Methods
+	// ============================================================================
+
+	SaveNotificationDeliveryLog(ctx context.Context, log *NotificationDeliveryLog) error
+	GetNotificationDeliveryLogs(ctx context.Context, alertID string, limit int) ([]NotificationDeliveryLog, error)
+	GetNotificationDeliveryLogsByRule(ctx context.Context, ruleID string, limit int) ([]NotificationDeliveryLog, error)
+	MarkNotificationDeliverySuccess(ctx context.Context, logID string) error
+	MarkNotificationDeliveryFailed(ctx context.Context, logID string, errMsg string) error
 }

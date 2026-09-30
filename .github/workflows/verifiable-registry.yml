@@ -3,9 +3,11 @@ on:
   push:
     paths:
       - 'stellar-core/verifiable-registry/**'
+      - 'stellar-core/carbon-asset-factory/contracts/carbon_asset/**'
   pull_request:
     paths:
       - 'stellar-core/verifiable-registry/**'
+      - 'stellar-core/carbon-asset-factory/contracts/carbon_asset/**'
 
 jobs:
   build-and-test:
@@ -13,15 +15,25 @@ jobs:
     defaults:
       run:
         working-directory: stellar-core/verifiable-registry
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      
+          targets: wasm32-unknown-unknown
+
+      # merkle_bridge (#521) imports carbon_asset's compiled WASM via
+      # soroban_sdk::contractimport! for a typed cross-contract mint call.
+      # carbon_asset lives in the separate carbon-asset-factory workspace, so
+      # its WASM has to be built here first — contractimport! only reads a
+      # file off disk, it isn't a Cargo dependency, so nothing else builds it.
+      - name: Build carbon_asset WASM (dependency for merkle_bridge)
+        working-directory: stellar-core/carbon-asset-factory
+        run: cargo build -p carbon_asset --target wasm32-unknown-unknown --release --verbose
+
       - name: Verify Rust project
         run: |
           if [ ! -f "Cargo.toml" ]; then
@@ -29,10 +41,10 @@ jobs:
             exit 1
           fi
           echo "✅ Rust project verified"
-      
+
       - name: Check
         run: cargo check --verbose
         continue-on-error: false
-      
+
       - name: Test
         run: cargo test --verbose

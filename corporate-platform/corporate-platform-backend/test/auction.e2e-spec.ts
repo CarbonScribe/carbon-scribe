@@ -19,7 +19,7 @@ describe('Auction API Integration Tests', () => {
   let app: INestApplication;
   const mockCompanyId = 'test-company-id-1';
   const mockAuthToken = 'valid-jwt-token';
-  
+
   const mockPrismaService = new Proxy({} as any, {
     get: (target, prop) => {
       if (typeof prop === 'string' && !target[prop]) {
@@ -78,15 +78,11 @@ describe('Auction API Integration Tests', () => {
 
   describe('Unauthenticated Requests', () => {
     it('should return 401 for GET /api/v1/auctions', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/auctions')
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/v1/auctions').expect(401);
     });
 
     it('should return 401 for GET /api/v1/auctions/:id', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/auctions/1')
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/v1/auctions/1').expect(401);
     });
 
     it('should return 401 for POST /api/v1/auctions', async () => {
@@ -125,7 +121,7 @@ describe('Auction API Integration Tests', () => {
   describe('Authenticated Requests', () => {
     it('should allow GET /api/v1/auctions when authenticated', async () => {
       mockPrismaService.findMany = jest.fn().mockResolvedValue([]);
-      
+
       await request(app.getHttpServer())
         .get('/api/v1/auctions')
         .set('Authorization', `Bearer ${mockAuthToken}`)

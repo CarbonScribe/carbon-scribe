@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { queryAuditEvents, exportAuditEvents } from '@/lib/api/audit.api';
 import type { AuditEvent, AuditQueryParams, AuditEventType, AuditAction } from '@/types/audit.types';
 import { formatDate, formatEventType, formatAction } from '@/lib/utils/audit-formatters';
@@ -9,6 +10,7 @@ import { useAccessibility } from '@/hooks/useAccessibility';
 import { useAnnouncement } from '@/hooks/useAnnouncement';
 import { IconButton } from '@/components/common/IconButton';
 import { AccessibleIcon } from '@/components/common/AccessibleIcon';
+import { Pagination } from '@/components/common/Pagination';
 
 interface AuditTrailViewerProps {
   entityType?: string;
@@ -52,6 +54,38 @@ export default function AuditTrailViewer({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  const rowVirtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 48,
+    overscan: 5,
+    initialRect: { width: 1000, height: 400 },
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0;
+
+  const rowsToRender =
+    virtualRows.length > 0
+      ? virtualRows.map((vr) => ({
+          index: vr.index,
+          key: vr.key,
+          event: events[vr.index],
+          measureRef: rowVirtualizer.measureElement,
+        }))
+      : events.map((event, idx) => ({
+          index: idx,
+          key: event.id || idx,
+          event,
+          measureRef: undefined,
+        }));
 
   useEffect(() => {
     loadEvents();
@@ -379,13 +413,13 @@ export default function AuditTrailViewer({
 
       {/* Events Table */}
       <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden mt-4">
-        <div className="overflow-x-auto">
+        <div ref={tableContainerRef} className="overflow-x-auto max-h-[500px] overflow-y-auto">
           <table 
             className="w-full"
             role="table"
             aria-label="Audit events"
           >
-            <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 z-10">
               <tr role="row">
                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Timestamp
@@ -407,39 +441,54 @@ export default function AuditTrailViewer({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {events.map((event) => (
-                <tr 
-                  key={event.id} 
-                  className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                  role="row"
-                >
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-200">
-                    {formatDate(event.timestamp)}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs">
-                      {formatEventType(event.eventType)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      event.action === 'CREATE' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
-                      event.action === 'DELETE' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
-                      'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
-                    }`}>
-                      {formatAction(event.action)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                    {event.entityType}: {event.entityId.substring(0, 8)}...
-                  </td>
-                  {!compact && (
-                    <td className="px-4 py-3 text-sm font-mono text-xs text-gray-500 dark:text-gray-400">
-                      {event.hash.substring(0, 16)}...
-                    </td>
-                  )}
+              {paddingTop > 0 && (
+                <tr>
+                  <td colSpan={compact ? 4 : 5} style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} />
                 </tr>
-              ))}
+              )}
+              {rowsToRender.map(({ index, key, event, measureRef }) => {
+                if (!event) return null;
+                return (
+                  <tr 
+                    key={event.id || key} 
+                    data-index={index}
+                    ref={measureRef}
+                    className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    role="row"
+                  >
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-200">
+                      {formatDate(event.timestamp)}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs">
+                        {formatEventType(event.eventType)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        event.action === 'CREATE' ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200' :
+                        event.action === 'DELETE' ? 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200' :
+                        'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                      }`}>
+                        {formatAction(event.action)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                      {event.entityType}: {event.entityId.substring(0, 8)}...
+                    </td>
+                    {!compact && (
+                      <td className="px-4 py-3 text-sm font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {event.hash.substring(0, 16)}...
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {paddingBottom > 0 && (
+                <tr>
+                  <td colSpan={compact ? 4 : 5} style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -456,32 +505,19 @@ export default function AuditTrailViewer({
 
         {/* Pagination */}
         {!compact && totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm text-gray-600 dark:text-gray-400" aria-live="polite">
-              Showing {(page - 1) * (filters.limit || 20) + 1} to {Math.min(page * (filters.limit || 20), total)} of {total} events
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
-                aria-label="Previous page"
-              >
-                Previous
-              </button>
-              <span className="px-3 py-1 text-sm text-gray-600 dark:text-gray-400" aria-live="polite">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
-                aria-label="Next page"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={filters.limit || 20}
+            itemLabel="events"
+            onPageChange={(newPage) => setPage(newPage)}
+            onPageSizeChange={(newSize) => {
+              setFilters((prev) => ({ ...prev, limit: newSize }));
+              setPage(1);
+            }}
+            showPageSizeSelector
+          />
         )}
       </div>
     </div>

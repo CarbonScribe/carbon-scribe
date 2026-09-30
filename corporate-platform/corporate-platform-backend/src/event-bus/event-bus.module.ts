@@ -8,10 +8,12 @@ import { KafkaHealthController } from './kafka-health.controller';
 import { CacheModule } from '../cache/cache.module';
 import { EventValidatorService } from './event-validator.service';
 import { EventValidatorModule } from './event-validator.module';
+import { OutboxService } from './outbox.service';
+import { OutboxController } from './outbox.controller';
 
 @Module({
   imports: [CacheModule, EventValidatorModule],
-  controllers: [KafkaHealthController],
+  controllers: [KafkaHealthController, OutboxController],
   providers: [
     KafkaService,
     TopicManager,
@@ -19,6 +21,7 @@ import { EventValidatorModule } from './event-validator.module';
     ConsumerService,
     DeadLetterService,
     EventValidatorService,
+    OutboxService,
   ],
   exports: [
     KafkaService,
@@ -26,6 +29,7 @@ import { EventValidatorModule } from './event-validator.module';
     ConsumerService,
     EventValidatorService,
     DeadLetterService,
+    OutboxService,
   ],
 })
 export class EventBusModule {}

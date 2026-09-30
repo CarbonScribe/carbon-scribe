@@ -41,12 +41,29 @@ export const configSchema = Joi.object({
   STELLAR_NETWORK: Joi.string().default('testnet'),
   HORIZON_URL: Joi.string().uri().allow(''),
   SOROBAN_RPC_URL: Joi.string().uri().allow(''),
+  // Signing (#542): explicit mode — never treat missing secret as silent simulate
+  STELLAR_SIGNING_MODE: Joi.string()
+    .valid('simulate', 'live')
+    .default('simulate'),
+  STELLAR_SIGNING_PROVIDER: Joi.string()
+    .valid('env', 'kms', 'vault')
+    .default('env'),
+  STELLAR_SECRET_KEY: Joi.string().allow('', null),
+  STELLAR_TRANSFER_SECRET_KEY: Joi.string().allow('', null),
+  STELLAR_KMS_KEY_ID: Joi.string().allow('', null),
+  STELLAR_KMS_PUBLIC_KEY: Joi.string().allow('', null),
+  STELLAR_VAULT_KEY_PATH: Joi.string().allow('', null),
 
   // ============================================================
   // Auth Configuration
   // ============================================================
-  JWT_SECRET: Joi.string().default('dev-jwt-secret'),
+  // No default: an unset JWT_SECRET must fail validation in every
+  // environment rather than silently resolving to a known weak value.
+  JWT_SECRET: Joi.string().required(),
   JWT_EXPIRY: Joi.string().default('15m'),
+  // Optional marker so shared/staging deployments that don't set
+  // NODE_ENV=production still get production-grade secret checks.
+  DEPLOY_ENV: Joi.string().allow('').optional(),
 
   // ============================================================
   // Logging Configuration

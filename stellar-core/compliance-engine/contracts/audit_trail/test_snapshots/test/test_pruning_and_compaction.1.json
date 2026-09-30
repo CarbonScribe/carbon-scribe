@@ -130,6 +130,8 @@
     [],
     [],
     [],
+    [],
+    [],
     []
   ],
   "ledger": {
@@ -181,6 +183,7 @@
                   "vec": [
                     {
                       "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                      "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                     }
                   ]
                 }
@@ -230,6 +233,7 @@
                   "vec": [
                     {
                       "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                      "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                     }
                   ]
                 }
@@ -279,6 +283,7 @@
                   "vec": [
                     {
                       "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                      "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                     }
                   ]
                 }
@@ -300,6 +305,7 @@
                 },
                 {
                   "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                  "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                 }
               ]
             },
@@ -320,6 +326,7 @@
                     },
                     {
                       "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                      "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                     }
                   ]
                 },
@@ -348,6 +355,7 @@
                       },
                       "val": {
                         "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                        "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                       }
                     },
                     {
@@ -356,6 +364,14 @@
                       },
                       "val": {
                         "string": "TEST_EVENT"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
                       }
                     },
                     {
@@ -450,6 +466,7 @@
                   "vec": [
                     {
                       "bytes": "a69fda3045a47a903242269bafcf5e11002748f332060f6545d52b6945fe92d6"
+                      "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                     }
                   ]
                 }
@@ -537,11 +554,13 @@
                           "vec": [
                             {
                               "symbol": "EventNonce"
+                              "symbol": "ChainTip"
                             }
                           ]
                         },
                         "val": {
                           "u64": "2"
+                          "bytes": "07a788e741f9f1c4ff3b69b5de474d447370a074183e0f7dbf62205803ac9fcf"
                         }
                       },
                       {
@@ -565,7 +584,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "126"
+                          "u64": "158"
                         }
                       },
                       {

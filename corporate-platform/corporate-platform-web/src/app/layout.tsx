@@ -50,10 +50,19 @@ export const metadata: Metadata = {
     description: 'Purchase, manage, and retire carbon credits with transparent, on-chain verification',
   },
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    // favicon.ico in src/app/ is served by Next.js App Router automatically.
+    // apple-touch-icon.png is served by src/app/apple-icon.tsx (App Router).
+    // Additional PNG favicons are served by src/app/icon.tsx (App Router).
+    // No static paths needed here — App Router wires these up automatically.
+    icon: [
+      { url: '/icons/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/icons/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: '/favicon.ico',
   },
-  manifest: '/site.webmanifest',
+  // manifest.ts in src/app/ generates the /manifest.webmanifest route.
+  manifest: '/manifest.webmanifest',
   // Cache control for the page itself (handled by Next.js ISR)
   // This is a hint for crawlers and social media previews
   other: {
@@ -81,8 +90,10 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
+        {/* theme-color matches manifest.ts theme_color (#1a5db5) for light,
+            and corporate-navy (#0a2540) for dark — consistent with the brand palette */}
+        <meta name="theme-color" content="#1a5db5" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0a2540" media="(prefers-color-scheme: dark)" />
         {/* Inline theme script to prevent FOUC */}
         <ThemeScript />
       </head>

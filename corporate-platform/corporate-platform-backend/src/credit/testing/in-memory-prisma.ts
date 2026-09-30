@@ -361,6 +361,9 @@ export class InMemoryPrisma {
 
   private buildReservationApi(ctx: TransactionContext | null) {
     return {
+      findFirst: async ({ where }: { where?: Where } = {}) =>
+        this.allReservations(ctx).find((row) => matches(row, where)) ?? null,
+
       findMany: async ({ where }: { where?: Where } = {}) =>
         this.allReservations(ctx).filter((row) => matches(row, where)),
 

@@ -7,6 +7,13 @@ import { useCompliance } from '@/hooks/useCompliance'
 import { ComplianceReport, ComplianceStatusItem, ComplianceFramework } from '@/types'
 import { useHydrated } from '@/hooks/useHydrated'
 
+export interface PortfolioHoldingsPagination {
+  total: number
+  page: number
+  pageSize: number
+  pages: number
+}
+
 interface CorporateContextType {
   company: any
   credits: any[]
@@ -15,8 +22,11 @@ interface CorporateContextType {
   portfolioSummary: PortfolioSummaryMetrics | null
   portfolioAnalytics: PortfolioAnalytics | null
   portfolioHoldings: PortfolioHolding[]
+  portfolioHoldingsPagination: PortfolioHoldingsPagination
   portfolioLoading: boolean
   portfolioError: string | null
+  fetchPortfolioHoldings: (params?: { page?: number; pageSize?: number }) => Promise<void>
+  setHoldingsPage: (page: number, pageSize?: number) => Promise<void>
   selectedCredit: any | null
   setSelectedCredit: (credit: any) => void
   addToCart: (credit: any) => void
@@ -47,6 +57,12 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
   const [portfolioSummary, setPortfolioSummary] = useState<PortfolioSummaryMetrics | null>(null)
   const [portfolioAnalytics, setPortfolioAnalytics] = useState<PortfolioAnalytics | null>(null)
   const [portfolioHoldings, setPortfolioHoldings] = useState<PortfolioHolding[]>([])
+  const [portfolioHoldingsPagination, setPortfolioHoldingsPagination] = useState<PortfolioHoldingsPagination>({
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    pages: 1,
+  })
   const [portfolioLoading, setPortfolioLoading] = useState(false)
   const [portfolioError, setPortfolioError] = useState<string | null>(null)
   const [selectedCredit, setSelectedCredit] = useState<any>(null)
@@ -58,6 +74,36 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
   const [complianceReport, setComplianceReport] = useState<ComplianceReport | null>(null)
   const [complianceStatuses, setComplianceStatuses] = useState<ComplianceStatusItem[] | null>(null)
 
+  const fetchPortfolioHoldings = async (params?: { page?: number; pageSize?: number }) => {
+    const targetPage = params?.page ?? portfolioHoldingsPagination.page
+    const targetPageSize = params?.pageSize ?? portfolioHoldingsPagination.pageSize
+    setPortfolioLoading(true)
+    setPortfolioError(null)
+    try {
+      const holdingsRes = await portfolioService.getHoldings({ page: targetPage, pageSize: targetPageSize })
+      if (holdingsRes.success && holdingsRes.data) {
+        const raw = holdingsRes.data
+        const holdingsList = Array.isArray(raw) ? raw : (raw.data || [])
+        const total = raw && typeof raw === 'object' && 'total' in raw ? (raw.total ?? holdingsList.length) : holdingsList.length
+        const page = raw && typeof raw === 'object' && 'page' in raw ? (raw.page ?? targetPage) : targetPage
+        const pageSize = raw && typeof raw === 'object' && 'pageSize' in raw ? (raw.pageSize ?? targetPageSize) : targetPageSize
+        const pages = raw && typeof raw === 'object' && 'pages' in raw ? (raw.pages ?? Math.max(1, Math.ceil(total / pageSize))) : Math.max(1, Math.ceil(total / pageSize))
+
+        setPortfolioHoldings(holdingsList)
+        setPortfolioHoldingsPagination({ total, page, pageSize, pages })
+      } else {
+        setPortfolioError(holdingsRes.error || 'Failed to load holdings')
+      }
+    } catch (err: any) {
+      setPortfolioError(err?.message || 'Portfolio API error')
+    } finally {
+      setPortfolioLoading(false)
+    }
+  }
+
+  const setHoldingsPage = async (page: number, pageSize?: number) => {
+    await fetchPortfolioHoldings({ page, pageSize })
+  }
 
   // Fetch portfolio data on mount - only runs on client
   useEffect(() => {
@@ -76,8 +122,19 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
         else setPortfolioError(summaryRes.error || 'Failed to load summary');
         if (analyticsRes.success) setPortfolioAnalytics(analyticsRes.data!);
         else setPortfolioError(analyticsRes.error || 'Failed to load analytics');
-        if (holdingsRes.success) setPortfolioHoldings(holdingsRes.data?.data || []);
-        else setPortfolioError(holdingsRes.error || 'Failed to load holdings');
+        if (holdingsRes.success && holdingsRes.data) {
+          const raw = holdingsRes.data;
+          const holdingsList = Array.isArray(raw) ? raw : (raw.data || []);
+          const total = raw && typeof raw === 'object' && 'total' in raw ? (raw.total ?? holdingsList.length) : holdingsList.length;
+          const page = raw && typeof raw === 'object' && 'page' in raw ? (raw.page ?? 1) : 1;
+          const pageSize = raw && typeof raw === 'object' && 'pageSize' in raw ? (raw.pageSize ?? 20) : 20;
+          const pages = raw && typeof raw === 'object' && 'pages' in raw ? (raw.pages ?? Math.max(1, Math.ceil(total / pageSize))) : Math.max(1, Math.ceil(total / pageSize));
+
+          setPortfolioHoldings(holdingsList);
+          setPortfolioHoldingsPagination({ total, page, pageSize, pages });
+        } else {
+          setPortfolioError(holdingsRes.error || 'Failed to load holdings');
+        }
       })
       .catch((err) => setPortfolioError(err.message || 'Portfolio API error'))
       .finally(() => setPortfolioLoading(false));
@@ -126,8 +183,11 @@ export function CorporateProvider({ children }: { children: ReactNode }) {
       portfolioSummary,
       portfolioAnalytics,
       portfolioHoldings,
+      portfolioHoldingsPagination,
       portfolioLoading,
       portfolioError,
+      fetchPortfolioHoldings,
+      setHoldingsPage,
       selectedCredit,
       setSelectedCredit,
       addToCart,

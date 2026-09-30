@@ -8,7 +8,7 @@ import { ConfigService } from '../../config/config.service';
 import { StellarWebhookService } from './stellar-webhook.service';
 import { WebhookDispatcherService } from './webhook-dispatcher.service';
 import { TransactionStatus } from '../interfaces/webhook.interface';
-import { Horizon } from 'stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
 
 @Injectable()
 export class HorizonListenerService implements OnModuleInit, OnModuleDestroy {

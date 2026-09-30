@@ -1,6 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import { signServiceToken } from "../shared/auth/service-token.js";
 
 // Thin HTTP client for corporate-platform-backend (NestJS). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
@@ -10,15 +11,24 @@ import { env } from "../config/env.js";
 //   - listMarketplaceCredits(filters)
 //   - getComplianceFramework(framework: "csrd" | "cbam" | "corsia" | "sbti" | "ghg-protocol")
 //   - getRetirementHistory(companyId)
-// Outbound auth (agent-service authenticating itself to
-// corporate-platform-backend) is a separate, not-yet-specified concern —
-// out of scope for issue #579, which replaced the shared-secret check on
-// agent-service's own inbound routes (see
-// shared/middleware/auth.middleware.ts). corporate-platform-backend has no
-// service-to-service auth guard today regardless of what header this
-// client sends, so there is nothing to authenticate against yet.
+// Outbound requests use the same short-lived HS256 service-token format as
+// agent-service's inbound auth, with issuer "agent-service". The backend
+// must register AGENT_SERVICE_JWT_SECRET for that issuer and enforce it with
+// a matching service-token guard before these credentials are authenticated.
 const http = axios.create({
   baseURL: env.corporatePlatformBaseUrl,
+});
+
+http.interceptors.request.use((config) => {
+  if (!env.agentServiceJwtSecret) {
+    throw new Error("Missing required env var: AGENT_SERVICE_JWT_SECRET");
+  }
+
+  config.headers.Authorization = `Bearer ${signServiceToken(
+    "agent-service",
+    env.agentServiceJwtSecret,
+  )}`;
+  return config;
 });
 
 // ---------------------------------------------------------------------------

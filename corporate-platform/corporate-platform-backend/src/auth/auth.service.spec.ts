@@ -58,7 +58,10 @@ describe('AuthService Refresh Token Reuse', () => {
   });
 
   it('should detect reuse and invalidate sessions', async () => {
-    (jwt.verify as jest.Mock).mockReturnValue({ sessionId: 'session-1', sub: 'user-1' });
+    (jwt.verify as jest.Mock).mockReturnValue({
+      sessionId: 'session-1',
+      sub: 'user-1',
+    });
 
     (prisma.session.findUnique as jest.Mock).mockResolvedValue({
       id: 'session-1',
@@ -97,7 +100,10 @@ describe('AuthService Refresh Token Reuse', () => {
   });
 
   it('should lock session after 5 failed attempts', async () => {
-    (jwt.verify as jest.Mock).mockReturnValue({ sessionId: 'session-1', sub: 'user-1' });
+    (jwt.verify as jest.Mock).mockReturnValue({
+      sessionId: 'session-1',
+      sub: 'user-1',
+    });
 
     (prisma.session.findUnique as jest.Mock).mockResolvedValue({
       id: 'session-1',
@@ -127,7 +133,10 @@ describe('AuthService Refresh Token Reuse', () => {
   });
 
   it('should reject locked sessions', async () => {
-    (jwt.verify as jest.Mock).mockReturnValue({ sessionId: 'session-1', sub: 'user-1' });
+    (jwt.verify as jest.Mock).mockReturnValue({
+      sessionId: 'session-1',
+      sub: 'user-1',
+    });
 
     (prisma.session.findUnique as jest.Mock).mockResolvedValue({
       id: 'session-1',

@@ -5,6 +5,7 @@ import { StartupValidator } from './config/validation/startup-validator';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './shared/filters/http-exception.filter';
 import { ExceptionMappingInterceptor } from './shared/interceptors/exception-mapping.interceptor';
 import { LoggerService } from './logger/logger.service';
@@ -25,7 +26,8 @@ function isLocalDevOrigin(origin: string): boolean {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableShutdownHooks();
 
   const configService = app.get(ConfigService);
@@ -307,6 +309,8 @@ async function bootstrap() {
       'X-Requested-With',
       'X-Tenant-Id',
       'X-Api-Key',
+      'X-Webhook-Signature',
+      'X-Webhook-Timestamp',
       'x-api-key',
       'Accept',
       'Origin',

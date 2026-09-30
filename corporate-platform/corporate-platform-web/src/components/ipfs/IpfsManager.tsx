@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -11,9 +11,13 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAuth } from '@/contexts/AuthContext'
-import { ipfsService } from '@/services/ipfs.service'
+import { ipfsService, CHUNKED_UPLOAD_THRESHOLD } from '@/services/ipfs.service'
+import { useChunkedUpload } from '@/hooks/useChunkedUpload'
+import { Pagination } from '@/components/common/Pagination'
 import type { IpfsDocumentRecord, IpfsDocumentType } from '@/types/ipfs'
 
 const documentTypes: IpfsDocumentType[] = [
@@ -24,27 +28,29 @@ const documentTypes: IpfsDocumentType[] = [
   'UNKNOWN',
 ]
 
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result || '')
-      const base64 = result.includes(',') ? result.split(',')[1] : result
-      resolve(base64)
-    }
-    reader.onerror = () => reject(new Error('Unable to read file'))
-    reader.readAsDataURL(file)
-  })
+/** Derive a stable session key from file identity for upload resume. */
+function sessionKeyFor(file: File): string {
+  return `${file.name}__${file.size}__${file.lastModified}`
 }
+
+interface UploadState {
+  busy: boolean
+  percent: number | null
+}
+
+const idle: UploadState = { busy: false, percent: null }
 
 export default function IpfsManager() {
   const { user } = useAuth()
 
   const [documents, setDocuments] = useState<IpfsDocumentRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const tableContainerRef = useRef<HTMLDivElement>(null)
 
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadType, setUploadType] = useState<IpfsDocumentType>('REPORT')
@@ -63,12 +69,64 @@ export default function IpfsManager() {
   const [retirementId, setRetirementId] = useState('')
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
 
+  // Per-section upload progress (single, batch, certificate)
+  const [singleUpload, setSingleUpload] = useState<UploadState>(idle)
+  const [batchUpload, setBatchUpload] = useState<UploadState>(idle)
+  const [certUpload, setCertUpload] = useState<UploadState>(idle)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [lookupBusy, setLookupBusy] = useState(false)
+
+  const chunked = useChunkedUpload()
+  // A ref to the current section's upload controller so cancel works generically
+  const activeSectionRef = useRef<'single' | 'batch' | 'cert' | null>(null)
+
   const filteredDocs = useMemo(() => {
     if (!uploadRef.trim()) return documents
     return documents.filter((doc) => doc.referenceId === uploadRef.trim())
   }, [documents, uploadRef])
 
-  const loadDocuments = async () => {
+  const totalPages = Math.max(1, Math.ceil(filteredDocs.length / pageSize))
+  const safePage = Math.min(Math.max(1, page), totalPages)
+
+  const paginatedDocs = useMemo(() => {
+    const start = (safePage - 1) * pageSize
+    return filteredDocs.slice(start, start + pageSize)
+  }, [filteredDocs, safePage, pageSize])
+
+  const rowVirtualizer = useVirtualizer({
+    count: paginatedDocs.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 48,
+    overscan: 5,
+    initialRect: { width: 1000, height: 400 },
+  })
+
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const totalSize = rowVirtualizer.getTotalSize()
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0
+
+  const rowsToRender = useMemo(() => {
+    if (virtualRows.length > 0) {
+      return virtualRows.map((vr) => ({
+        index: vr.index,
+        key: vr.key,
+        doc: paginatedDocs[vr.index],
+        measureRef: rowVirtualizer.measureElement,
+      }))
+    }
+    return paginatedDocs.map((doc, idx) => ({
+      index: idx,
+      key: doc.id || idx,
+      doc,
+      measureRef: undefined,
+    }))
+  }, [virtualRows, paginatedDocs, rowVirtualizer.measureElement])
+
+  const loadDocuments = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -80,13 +138,33 @@ export default function IpfsManager() {
       return
     }
 
-    setDocuments(response.data || [])
+    const data = response.data
+    const list = Array.isArray(data) ? data : (data as any)?.data || []
+    setDocuments(list)
     setLoading(false)
-  }
+  }, [user?.companyId])
 
   useEffect(() => {
     void loadDocuments()
-  }, [user?.companyId])
+  }, [loadDocuments])
+
+  // Resume interrupted uploads when connectivity is restored
+  useEffect(() => {
+    const onOnline = () => {
+      if (chunked.uploading) return
+      // Nothing to auto-resume — user will re-trigger; the session is persisted
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [chunked.uploading])
+
+  const cancelUpload = useCallback(() => {
+    chunked.cancel()
+  }, [chunked])
+
+  // ---------------------------------------------------------------------------
+  // Single upload
+  // ---------------------------------------------------------------------------
 
   const onSingleUpload = async (event: FormEvent) => {
     event.preventDefault()
@@ -95,27 +173,62 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
     setError(null)
     setSuccess(null)
+    activeSectionRef.current = 'single'
+    chunked.reset()
 
-    const response = await ipfsService.uploadDocument(uploadFile, {
+    const metadata: Record<string, string> = {
       companyId: user.companyId,
       documentType: uploadType,
       referenceId: uploadRef.trim(),
-    })
+    }
+
+    if (uploadFile.size >= CHUNKED_UPLOAD_THRESHOLD) {
+      setSingleUpload({ busy: true, percent: 0 })
+
+      const result = await chunked.start({
+        url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ipfs/upload/chunked`,
+        file: uploadFile,
+        metadata,
+        sessionKey: sessionKeyFor(uploadFile),
+      })
+
+      setSingleUpload(idle)
+      activeSectionRef.current = null
+
+      if (!result) {
+        setError(chunked.error || 'Upload cancelled')
+        return
+      }
+
+      setSuccess(`Uploaded file to CID ${result.cid}`)
+      setUploadFile(null)
+      await loadDocuments()
+      return
+    }
+
+    // Small file — standard FormData path
+    setSingleUpload({ busy: true, percent: null })
+
+    const response = await ipfsService.uploadDocument(uploadFile, metadata)
+
+    setSingleUpload(idle)
+    activeSectionRef.current = null
 
     if (!response.success || response.data?.error) {
       setError(response.error || response.data?.error || 'Upload failed')
-      setBusy(false)
       return
     }
 
     setSuccess(`Uploaded file to CID ${response.data?.cid}`)
     setUploadFile(null)
     await loadDocuments()
-    setBusy(false)
   }
+
+  // ---------------------------------------------------------------------------
+  // Batch upload — serialized, one file at a time
+  // ---------------------------------------------------------------------------
 
   const onBatchUpload = async () => {
     if (!batchFiles.length || !user?.companyId) {
@@ -123,42 +236,72 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
     setError(null)
     setSuccess(null)
+    activeSectionRef.current = 'batch'
+    chunked.reset()
 
-    try {
-      const files = await Promise.all(
-        batchFiles.map(async (file) => ({
-          fileName: file.name,
-          content: await fileToBase64(file),
-        })),
-      )
-
-      const response = await ipfsService.batchUpload({
-        files,
-        metadata: {
-          companyId: user.companyId,
-          documentType: uploadType,
-          referenceId: uploadRef.trim(),
-        },
-      })
-
-      if (!response.success) {
-        setError(response.error || 'Batch upload failed')
-        setBusy(false)
-        return
-      }
-
-      setSuccess(`Batch upload completed for ${response.data?.length || 0} file(s).`)
-      setBatchFiles([])
-      await loadDocuments()
-    } catch (batchError) {
-      setError(batchError instanceof Error ? batchError.message : 'Batch upload failed')
-    } finally {
-      setBusy(false)
+    const metadata: Record<string, string> = {
+      companyId: user.companyId,
+      documentType: uploadType,
+      referenceId: uploadRef.trim(),
     }
+
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'
+    const results: string[] = []
+    const smallFiles: typeof batchFiles = []
+
+    // Split into large (chunked) and small files
+    for (const file of batchFiles) {
+      if (file.size >= CHUNKED_UPLOAD_THRESHOLD) {
+        setBatchUpload({ busy: true, percent: 0 })
+
+        const result = await chunked.start({
+          url: `${apiBase}/ipfs/upload/chunked`,
+          file,
+          metadata,
+          sessionKey: sessionKeyFor(file),
+        })
+
+        if (!result) {
+          setBatchUpload(idle)
+          activeSectionRef.current = null
+          setError(chunked.error || 'Batch upload cancelled')
+          return
+        }
+
+        results.push(result.cid)
+      } else {
+        smallFiles.push(file)
+      }
+    }
+
+    // Send small files sequentially (not concurrently) to avoid memory spikes
+    if (smallFiles.length) {
+      setBatchUpload({ busy: true, percent: null })
+
+      for (const file of smallFiles) {
+        const response = await ipfsService.uploadDocument(file, metadata)
+        if (!response.success) {
+          setBatchUpload(idle)
+          activeSectionRef.current = null
+          setError(response.error || 'Batch upload failed')
+          return
+        }
+        if (response.data?.cid) results.push(response.data.cid)
+      }
+    }
+
+    setBatchUpload(idle)
+    activeSectionRef.current = null
+    setSuccess(`Batch upload completed for ${results.length} file(s).`)
+    setBatchFiles([])
+    await loadDocuments()
   }
+
+  // ---------------------------------------------------------------------------
+  // Batch pin
+  // ---------------------------------------------------------------------------
 
   const onBatchPin = async () => {
     const cids = batchPinCids
@@ -171,20 +314,25 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
+    setPinBusy(true)
     setError(null)
     setSuccess(null)
 
     const response = await ipfsService.batchPin(cids)
+
+    setPinBusy(false)
+
     if (!response.success) {
       setError(response.error || 'Batch pin failed')
-      setBusy(false)
       return
     }
 
     setSuccess(`Batch pin completed for ${response.data?.length || 0} CID(s).`)
-    setBusy(false)
   }
+
+  // ---------------------------------------------------------------------------
+  // CID retrieval
+  // ---------------------------------------------------------------------------
 
   const onLookupCid = async () => {
     if (!cidLookup.trim()) {
@@ -192,7 +340,7 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
+    setLookupBusy(true)
     setError(null)
     setCidData(null)
     setCidMetadata(null)
@@ -202,33 +350,38 @@ export default function IpfsManager() {
       ipfsService.getMetadata(cidLookup.trim()),
     ])
 
+    setLookupBusy(false)
+
     if (!fileResponse.success || fileResponse.data?.error) {
       setError(fileResponse.error || fileResponse.data?.error || 'CID retrieval failed')
-      setBusy(false)
       return
     }
 
     setCidData(fileResponse.data)
     setCidMetadata(metadataResponse.data || null)
-    setBusy(false)
   }
 
+  // ---------------------------------------------------------------------------
+  // Delete
+  // ---------------------------------------------------------------------------
+
   const onDeleteCid = async (cid: string) => {
-    setBusy(true)
     setError(null)
     setSuccess(null)
 
     const response = await ipfsService.deleteByCid(cid)
     if (!response.success) {
       setError(response.error || 'Delete failed')
-      setBusy(false)
       return
     }
 
     setSuccess(`Deleted/unpinned CID ${cid}.`)
     await loadDocuments()
-    setBusy(false)
   }
+
+  // ---------------------------------------------------------------------------
+  // Certificate anchoring
+  // ---------------------------------------------------------------------------
 
   const onAnchorCertificate = async () => {
     if (!retirementId.trim()) {
@@ -241,13 +394,44 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
     setError(null)
     setSuccess(null)
+    activeSectionRef.current = 'cert'
+    chunked.reset()
 
-    const content = await fileToBase64(certificateFile)
+    if (certificateFile.size >= CHUNKED_UPLOAD_THRESHOLD) {
+      setCertUpload({ busy: true, percent: 0 })
+
+      const result = await chunked.start({
+        url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ipfs/upload/chunked`,
+        file: certificateFile,
+        metadata: {
+          companyId: user.companyId,
+          retirementId: retirementId.trim(),
+          mimeType: certificateFile.type || 'application/pdf',
+          source: 'web-ui',
+        },
+        sessionKey: sessionKeyFor(certificateFile),
+      })
+
+      setCertUpload(idle)
+      activeSectionRef.current = null
+
+      if (!result) {
+        setError(chunked.error || 'Certificate upload cancelled')
+        return
+      }
+
+      const cid = result.cid
+      setSuccess(`Certificate anchored successfully${cid ? `: ${cid}` : ''}.`)
+      await loadDocuments()
+      return
+    }
+
+    // Small cert — existing path
+    setCertUpload({ busy: true, percent: null })
+
     const response = await ipfsService.anchorCertificate(retirementId.trim(), {
-      content,
       fileName: certificateFile.name,
       fileSize: certificateFile.size,
       mimeType: certificateFile.type || 'application/pdf',
@@ -255,17 +439,22 @@ export default function IpfsManager() {
       metadata: { source: 'web-ui' },
     })
 
+    setCertUpload(idle)
+    activeSectionRef.current = null
+
     if (!response.success) {
       setError(response.error || 'Certificate anchoring failed')
-      setBusy(false)
       return
     }
 
     const cid = (response.data as any)?.cid
     setSuccess(`Certificate anchored successfully${cid ? `: ${cid}` : ''}.`)
     await loadDocuments()
-    setBusy(false)
   }
+
+  // ---------------------------------------------------------------------------
+  // Certificate verification
+  // ---------------------------------------------------------------------------
 
   const onVerifyCertificate = async () => {
     if (!verifyCid.trim()) {
@@ -273,20 +462,63 @@ export default function IpfsManager() {
       return
     }
 
-    setBusy(true)
     setError(null)
     setVerifyResult(null)
 
     const response = await ipfsService.verifyCertificate(verifyCid.trim())
     if (!response.success) {
       setError(response.error || 'Verification failed')
-      setBusy(false)
       return
     }
 
     setVerifyResult(response.data)
-    setBusy(false)
   }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  const anyBusy = singleUpload.busy || batchUpload.busy || certUpload.busy || pinBusy || lookupBusy
+
+  /** Render a progress bar when percent is known, or a simple spinner bar otherwise. */
+  function ProgressBar({ state }: { state: UploadState }) {
+    if (!state.busy) return null
+    return (
+      <div className="mt-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={state.percent ?? undefined}>
+        <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <span>{state.percent !== null ? `${state.percent}%` : 'Uploading…'}</span>
+          <button
+            type="button"
+            className="text-red-500 hover:text-red-400 inline-flex items-center gap-1 text-xs"
+            onClick={cancelUpload}
+            aria-label="Cancel upload"
+          >
+            <X size={12} /> Cancel
+          </button>
+        </div>
+        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+          <div
+            className="bg-green-500 h-1.5 rounded-full transition-all duration-200"
+            style={{ width: state.percent !== null ? `${state.percent}%` : '100%' }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Sync chunked hook progress into the active section
+  useEffect(() => {
+    if (!chunked.progress) return
+    const pct = chunked.progress.percent
+
+    if (activeSectionRef.current === 'single') {
+      setSingleUpload((prev) => ({ ...prev, percent: pct }))
+    } else if (activeSectionRef.current === 'batch') {
+      setBatchUpload((prev) => ({ ...prev, percent: pct }))
+    } else if (activeSectionRef.current === 'cert') {
+      setCertUpload((prev) => ({ ...prev, percent: pct }))
+    }
+  }, [chunked.progress])
 
   return (
     <div className="space-y-6">
@@ -316,9 +548,13 @@ export default function IpfsManager() {
         )}
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* Single Upload */}
           <form className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4" onSubmit={onSingleUpload}>
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><Upload size={16} className="mr-2" /> Single Upload</h3>
             <input type="file" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
+            {uploadFile && uploadFile.size >= CHUNKED_UPLOAD_THRESHOLD && (
+              <p className="text-xs text-blue-600 dark:text-blue-400">Large file — resumable chunked upload will be used.</p>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <select value={uploadType} onChange={(event) => setUploadType(event.target.value as IpfsDocumentType)} className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900">
                 {documentTypes.map((type) => (
@@ -332,9 +568,11 @@ export default function IpfsManager() {
                 className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
               />
             </div>
-            <button className="corporate-btn-primary px-4 py-2 text-sm" type="submit" disabled={busy || !uploadFile}>Upload</button>
+            <button className="corporate-btn-primary px-4 py-2 text-sm" type="submit" disabled={anyBusy || !uploadFile}>Upload</button>
+            <ProgressBar state={singleUpload} />
           </form>
 
+          {/* Batch Operations */}
           <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><FileUp size={16} className="mr-2" /> Batch Operations</h3>
             <input
@@ -342,20 +580,22 @@ export default function IpfsManager() {
               multiple
               onChange={(event: ChangeEvent<HTMLInputElement>) => setBatchFiles(Array.from(event.target.files || []))}
             />
-            <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={busy || !batchFiles.length} onClick={() => void onBatchUpload()}>
+            <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={anyBusy || !batchFiles.length} onClick={() => void onBatchUpload()}>
               Batch Upload {batchFiles.length > 0 ? `(${batchFiles.length})` : ''}
             </button>
+            <ProgressBar state={batchUpload} />
             <textarea
               value={batchPinCids}
               onChange={(event) => setBatchPinCids(event.target.value)}
               placeholder="Enter CIDs separated by comma, space, or newline"
               className="w-full min-h-24 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
             />
-            <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={busy} onClick={() => void onBatchPin()}>
-              Pin CIDs
+            <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={anyBusy} onClick={() => void onBatchPin()}>
+              {pinBusy ? 'Pinning…' : 'Pin CIDs'}
             </button>
           </div>
 
+          {/* CID Retrieval */}
           <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><Link2 size={16} className="mr-2" /> CID Retrieval</h3>
             <div className="flex gap-2">
@@ -365,8 +605,8 @@ export default function IpfsManager() {
                 placeholder="Enter CID"
                 className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
               />
-              <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" onClick={() => void onLookupCid()}>
-                Retrieve
+              <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={lookupBusy} onClick={() => void onLookupCid()}>
+                {lookupBusy ? '…' : 'Retrieve'}
               </button>
             </div>
             {cidData && (
@@ -379,6 +619,7 @@ export default function IpfsManager() {
             )}
           </div>
 
+          {/* Certificates */}
           <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><ShieldCheck size={16} className="mr-2" /> Certificates</h3>
             <input
@@ -388,9 +629,13 @@ export default function IpfsManager() {
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
             />
             <input type="file" accept="application/pdf" onChange={(event) => setCertificateFile(event.target.files?.[0] || null)} />
-            <button className="corporate-btn-primary px-4 py-2 text-sm" type="button" disabled={busy || !certificateFile} onClick={() => void onAnchorCertificate()}>
+            {certificateFile && certificateFile.size >= CHUNKED_UPLOAD_THRESHOLD && (
+              <p className="text-xs text-blue-600 dark:text-blue-400">Large file — resumable chunked upload will be used.</p>
+            )}
+            <button className="corporate-btn-primary px-4 py-2 text-sm" type="button" disabled={anyBusy || !certificateFile} onClick={() => void onAnchorCertificate()}>
               <FileCheck size={14} className="mr-2" /> Generate/Anchor Certificate
             </button>
+            <ProgressBar state={certUpload} />
 
             <div className="flex gap-2">
               <input
@@ -399,7 +644,7 @@ export default function IpfsManager() {
                 placeholder="Certificate CID"
                 className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
               />
-              <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={busy} onClick={() => void onVerifyCertificate()}>
+              <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={anyBusy} onClick={() => void onVerifyCertificate()}>
                 Verify
               </button>
             </div>
@@ -417,46 +662,82 @@ export default function IpfsManager() {
         </div>
       </div>
 
-      <div className="corporate-card p-6">
-        <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Document Records</h3>
+      <div className="corporate-card overflow-hidden">
+        <div className="p-6 pb-4">
+          <h3 className="font-semibold text-gray-900 dark:text-white">Document Records</h3>
+        </div>
         {loading ? (
-          <div className="text-sm text-gray-600 dark:text-gray-400">Loading documents...</div>
+          <div className="p-6 text-sm text-gray-600 dark:text-gray-400">Loading documents...</div>
         ) : filteredDocs.length === 0 ? (
-          <div className="text-sm text-gray-600 dark:text-gray-400">No documents found for the current filter/company.</div>
+          <div className="p-6 text-sm text-gray-600 dark:text-gray-400">No documents found for the current filter/company.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                  <th className="pb-2">Type</th>
-                  <th className="pb-2">Reference</th>
-                  <th className="pb-2">File</th>
-                  <th className="pb-2">CID</th>
-                  <th className="pb-2">Pinned</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                {filteredDocs.map((doc) => (
-                  <tr key={doc.id}>
-                    <td className="py-3">{doc.documentType}</td>
-                    <td className="py-3">{doc.referenceId}</td>
-                    <td className="py-3">{doc.fileName}</td>
-                    <td className="py-3 max-w-40 truncate" title={doc.ipfsCid}>{doc.ipfsCid}</td>
-                    <td className="py-3">{doc.pinned ? 'Yes' : 'No'}</td>
-                    <td className="py-3">
-                      <button
-                        className="text-red-600 hover:text-red-500 inline-flex items-center"
-                        type="button"
-                        onClick={() => void onDeleteCid(doc.ipfsCid)}
-                      >
-                        <Trash2 size={14} className="mr-1" /> Delete
-                      </button>
-                    </td>
+          <div>
+            <div ref={tableContainerRef} className="overflow-x-auto max-h-[500px] overflow-y-auto px-6">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white dark:bg-gray-900 z-10">
+                  <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th className="pb-2">Type</th>
+                    <th className="pb-2">Reference</th>
+                    <th className="pb-2">File</th>
+                    <th className="pb-2">CID</th>
+                    <th className="pb-2">Pinned</th>
+                    <th className="pb-2">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {paddingTop > 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                  {rowsToRender.map(({ index, key, doc, measureRef }) => {
+                    if (!doc) return null
+                    return (
+                      <tr
+                        key={doc.id || key}
+                        data-index={index}
+                        ref={measureRef}
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                      >
+                        <td className="py-3">{doc.documentType}</td>
+                        <td className="py-3">{doc.referenceId}</td>
+                        <td className="py-3">{doc.fileName}</td>
+                        <td className="py-3 max-w-40 truncate" title={doc.ipfsCid}>{doc.ipfsCid}</td>
+                        <td className="py-3">{doc.pinned ? 'Yes' : 'No'}</td>
+                        <td className="py-3">
+                          <button
+                            className="text-red-600 hover:text-red-500 inline-flex items-center"
+                            type="button"
+                            onClick={() => void onDeleteCid(doc.ipfsCid)}
+                          >
+                            <Trash2 size={14} className="mr-1" /> Delete
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {paddingBottom > 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={safePage}
+              totalPages={totalPages}
+              total={filteredDocs.length}
+              pageSize={pageSize}
+              itemLabel="documents"
+              onPageChange={(newPage) => setPage(newPage)}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize)
+                setPage(1)
+              }}
+              showPageSizeSelector
+            />
           </div>
         )}
       </div>

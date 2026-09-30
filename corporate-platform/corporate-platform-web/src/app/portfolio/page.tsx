@@ -1,23 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { 
   TrendingUp, 
   TrendingDown, 
   DollarSign, 
   Package, 
   Globe, 
-  BarChart3,
-  Download,
-  Calendar,
-  MapPin,
-  Shield,
-  PieChart,
-  LineChart as LineChartIcon,
-  Award,
-  Target
+  BarChart3, 
+  Download, 
+  Calendar, 
+  MapPin, 
+  Shield, 
+  PieChart, 
+  LineChart as LineChartIcon, 
+  Award, 
+  Target 
 } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCorporate } from '@/contexts/CorporateContext'
+import { Pagination } from '@/components/common/Pagination'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
 
 export default function PortfolioPage() {
@@ -25,10 +27,13 @@ export default function PortfolioPage() {
     portfolioSummary,
     portfolioAnalytics,
     portfolioHoldings,
+    portfolioHoldingsPagination,
+    fetchPortfolioHoldings,
     portfolioLoading,
     portfolioError,
   } = useCorporate();
   const [timeRange, setTimeRange] = useState<'1m' | '3m' | '6m' | '1y' | 'all'>('6m');
+  const transactionsContainerRef = useRef<HTMLDivElement>(null);
 
   // Prepare data from API
   const growthData = portfolioAnalytics?.timeline?.portfolioGrowth?.monthly?.map((item: any) => ({
@@ -52,6 +57,37 @@ export default function PortfolioPage() {
     date: (h as any).purchaseDate || '', // fallback if not typed
     status: 'Completed', // TODO: map real status if available
   }));
+
+  const rowVirtualizer = useVirtualizer({
+    count: recentTransactions.length,
+    getScrollElement: () => transactionsContainerRef.current,
+    estimateSize: () => 56,
+    overscan: 5,
+    initialRect: { width: 1000, height: 400 },
+  });
+
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+  const paddingTop = virtualRows.length > 0 ? virtualRows[0]?.start || 0 : 0;
+  const paddingBottom =
+    virtualRows.length > 0
+      ? totalSize - (virtualRows[virtualRows.length - 1]?.end || 0)
+      : 0;
+
+  const rowsToRender =
+    virtualRows.length > 0
+      ? virtualRows.map((vr) => ({
+          index: vr.index,
+          key: vr.key,
+          tx: recentTransactions[vr.index],
+          measureRef: rowVirtualizer.measureElement,
+        }))
+      : recentTransactions.map((tx, idx) => ({
+          index: idx,
+          key: tx.id || idx,
+          tx,
+          measureRef: undefined,
+        }));
 
   const performanceMetrics = portfolioAnalytics ? [
     { label: 'Portfolio Value', value: `$${portfolioAnalytics.performance.portfolioValue?.toLocaleString()}`, change: '+12.5%', trend: 'up', icon: DollarSign },
@@ -180,8 +216,8 @@ export default function PortfolioPage() {
           </div>
 
           {/* Recent Transactions */}
-          <div className="corporate-card p-6">
-            <div className="flex items-center justify-between mb-6">
+          <div className="corporate-card overflow-hidden">
+            <div className="p-6 pb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">Recent Transactions</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Purchase and retirement activity</p>
@@ -191,58 +227,97 @@ export default function PortfolioPage() {
                 Export CSV
               </button>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                    <th className="pb-3 font-medium">Date</th>
-                    <th className="pb-3 font-medium">Type</th>
-                    <th className="pb-3 font-medium">Project</th>
-                    <th className="pb-3 font-medium">Amount</th>
-                    <th className="pb-3 font-medium">Price</th>
-                    <th className="pb-3 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {recentTransactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                      <td className="py-4">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {new Date(tx.date).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          tx.type === 'Purchase'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                        }`}>
-                          {tx.type}
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{tx.project}</div>
-                      </td>
-                      <td className="py-4">
-                        <div className="font-bold text-gray-900 dark:text-white">{tx.amount.toLocaleString()} tCO₂</div>
-                      </td>
-                      <td className="py-4">
-                        <div className="text-gray-600 dark:text-gray-400">${tx.price}/ton</div>
-                      </td>
-                      <td className="py-4">
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          tx.status === 'Completed'
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-                        }`}>
-                          {tx.status}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {recentTransactions.length === 0 ? (
+              <div className="p-6 text-sm text-gray-600 dark:text-gray-400">No transactions found.</div>
+            ) : (
+              <div>
+                <div ref={transactionsContainerRef} className="overflow-x-auto max-h-[400px] overflow-y-auto px-6">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-white dark:bg-gray-900 z-10">
+                      <tr className="text-left text-sm text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                        <th className="pb-3 font-medium">Date</th>
+                        <th className="pb-3 font-medium">Type</th>
+                        <th className="pb-3 font-medium">Project</th>
+                        <th className="pb-3 font-medium">Amount</th>
+                        <th className="pb-3 font-medium">Price</th>
+                        <th className="pb-3 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {paddingTop > 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ height: `${paddingTop}px`, padding: 0, border: 0 }} />
+                        </tr>
+                      )}
+                      {rowsToRender.map(({ index, key, tx, measureRef }) => {
+                        if (!tx) return null
+                        return (
+                          <tr
+                            key={tx.id || key}
+                            data-index={index}
+                            ref={measureRef}
+                            className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                          >
+                            <td className="py-4">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {tx.date ? new Date(tx.date).toLocaleDateString() : 'N/A'}
+                              </div>
+                            </td>
+                            <td className="py-4">
+                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                tx.type === 'Purchase'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                                  : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                              }`}>
+                                {tx.type}
+                              </div>
+                            </td>
+                            <td className="py-4">
+                              <div className="font-medium text-gray-900 dark:text-white">{tx.project}</div>
+                            </td>
+                            <td className="py-4">
+                              <div className="font-bold text-gray-900 dark:text-white">{tx.amount.toLocaleString()} tCO₂</div>
+                            </td>
+                            <td className="py-4">
+                              <div className="text-gray-600 dark:text-gray-400">${tx.price}/ton</div>
+                            </td>
+                            <td className="py-4">
+                              <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                tx.status === 'Completed'
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                                  : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                              }`}>
+                                {tx.status}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {paddingBottom > 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ height: `${paddingBottom}px`, padding: 0, border: 0 }} />
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <Pagination
+                  page={portfolioHoldingsPagination.page}
+                  totalPages={portfolioHoldingsPagination.pages}
+                  total={portfolioHoldingsPagination.total}
+                  pageSize={portfolioHoldingsPagination.pageSize}
+                  itemLabel="transactions"
+                  onPageChange={(newPage) => {
+                    void fetchPortfolioHoldings({ page: newPage, pageSize: portfolioHoldingsPagination.pageSize })
+                  }}
+                  onPageSizeChange={(newSize) => {
+                    void fetchPortfolioHoldings({ page: 1, pageSize: newSize })
+                  }}
+                  showPageSizeSelector
+                />
+              </div>
+            )}
           </div>
         </div>
 

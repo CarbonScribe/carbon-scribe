@@ -5,24 +5,47 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 )
 
 // NotificationService handles alert notifications.
 type NotificationService struct {
 	httpClient *http.Client
+	// emailer is optional: when nil, sendEmail/sendResolutionEmail fall
+	// back to logging instead of failing.
+	emailer aws.EmailClient
+}
+
+// NotificationServiceOption configures optional NotificationService
+// dependencies.
+type NotificationServiceOption func(*NotificationService)
+
+// WithEmailClient wires a transactional email client into the service so
+// alert/resolution notifications are actually emailed to
+// EmailConfig.To recipients instead of only being logged.
+func WithEmailClient(emailer aws.EmailClient) NotificationServiceOption {
+	return func(n *NotificationService) {
+		n.emailer = emailer
+	}
 }
 
 // NewNotificationService creates a new NotificationService.
-func NewNotificationService() *NotificationService {
-	return &NotificationService{
+func NewNotificationService(opts ...NotificationServiceOption) *NotificationService {
+	n := &NotificationService{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
 	}
+	for _, opt := range opts {
+		opt(n)
+	}
+	return n
 }
 
 // SendAlert sends a notification for a triggered alert.
@@ -63,15 +86,53 @@ func (n *NotificationService) SendAlertResolution(ctx context.Context, alert *mo
 	}
 }
 
-// sendEmail sends an email notification.
+// sendEmail sends an email notification for a triggered alert.
 func (n *NotificationService) sendEmail(ctx context.Context, alert *monitoring.SystemAlert, rule *AlertRule) {
-	// Placeholder for email integration
-	fmt.Printf("[EMAIL] Alert: %s - %s\n", alert.Title, alert.Message)
+	n.sendAlertEmail(ctx, alert, rule, "triggered")
 }
 
-// sendResolutionEmail sends a resolution email notification.
+// sendResolutionEmail sends an email notification for a resolved alert.
 func (n *NotificationService) sendResolutionEmail(ctx context.Context, alert *monitoring.SystemAlert, rule *AlertRule) {
-	fmt.Printf("[EMAIL] Resolved: %s - %s\n", alert.Title, alert.Message)
+	n.sendAlertEmail(ctx, alert, rule, "resolved")
+}
+
+// sendAlertEmail renders and sends (or, with no email client configured,
+// logs) an alert notification email to every recipient configured on the
+// rule's EmailConfig.
+func (n *NotificationService) sendAlertEmail(ctx context.Context, alert *monitoring.SystemAlert, rule *AlertRule, status string) {
+	if rule.Notification == nil || rule.Notification.Email == nil || len(rule.Notification.Email.To) == 0 {
+		log.Printf("[EMAIL] %s: %s - %s (no recipients configured)", strings.ToUpper(status), alert.Title, alert.Message)
+		return
+	}
+
+	timestamp := alert.CreatedAt
+	if status == "resolved" && alert.ResolvedAt != nil {
+		timestamp = *alert.ResolvedAt
+	}
+
+	subject, htmlBody, textBody := aws.RenderAlertEmail(aws.AlertEmailData{
+		Title:       alert.Title,
+		Message:     alert.Message,
+		Severity:    string(alert.Severity),
+		ServiceName: alert.ServiceName,
+		Status:      status,
+		Timestamp:   timestamp,
+	})
+	if rule.Notification.Email.Subject != "" {
+		subject = rule.Notification.Email.Subject
+	}
+
+	if n.emailer == nil {
+		log.Printf("[EMAIL] %s: %s - %s (no email client configured; would send to %v)",
+			strings.ToUpper(status), alert.Title, alert.Message, rule.Notification.Email.To)
+		return
+	}
+
+	for _, to := range rule.Notification.Email.To {
+		if err := n.emailer.SendEmail(ctx, to, subject, htmlBody, textBody); err != nil {
+			log.Printf("alerts: failed to send %s email to %s for alert %s: %v", status, to, alert.ID, err)
+		}
+	}
 }
 
 // sendWebhook sends a webhook notification.
