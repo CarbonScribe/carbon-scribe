@@ -17,7 +17,11 @@ interface OutboxRow {
 }
 
 export class PostgresOutboxRepository implements OutboxRepository {
-  constructor(private readonly pool: Queryable = getPool()) {}
+  constructor(private readonly customPool?: Queryable) {}
+
+  private get pool(): Queryable {
+    return this.customPool ?? getPool();
+  }
 
   async claimBatch(
     limit: number,

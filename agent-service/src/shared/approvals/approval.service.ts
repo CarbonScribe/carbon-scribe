@@ -48,7 +48,11 @@ export class ApprovalConflictError extends Error {
 }
 
 export class ApprovalService {
-  constructor(private readonly pool: Queryable = getPool()) {}
+  constructor(private readonly customPool?: Queryable) {}
+
+  private get pool(): Queryable {
+    return this.customPool ?? getPool();
+  }
 
   async queue(
     result: AgentRunResult,
