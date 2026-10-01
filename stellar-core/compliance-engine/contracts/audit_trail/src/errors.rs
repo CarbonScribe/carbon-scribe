@@ -14,4 +14,8 @@ pub enum AuditTrailError {
     EmitterNotAuthorized = 3,
     /// event_data exceeds MAX_EVENT_PAYLOAD_SIZE.
     PayloadTooLarge = 4,
+    /// The derived event ID is already present in persistent storage.
+    EventIdCollision = 5,
+    /// The per-contract event nonce cannot be incremented further.
+    EventNonceExhausted = 6,
 }
