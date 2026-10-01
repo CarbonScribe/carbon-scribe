@@ -3,6 +3,8 @@ package auth
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -56,7 +58,28 @@ func (h *Handler) Login(c *gin.Context) {
 
 	authResp, err := h.service.Login(req.Email, req.Password, ipAddress, userAgent)
 	if err != nil {
-		if errors.Is(err, ErrEmailNotVerified) {
+		if errors.Is(err, ErrAccountLocked) {
+			var lockedErr *AccountLockedError
+			if errors.As(err, &lockedErr) {
+				retryAfter := 900
+				if lockedErr.LockedUntil != nil {
+					retryAfter = int(time.Until(*lockedErr.LockedUntil).Seconds())
+				}
+				if retryAfter < 0 {
+					retryAfter = 0
+				}
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+				c.JSON(http.StatusLocked, gin.H{
+					"error":               err.Error(),
+					"locked":              true,
+					"locked_until":        lockedErr.LockedUntil,
+					"retry_after_seconds": retryAfter,
+				})
+			} else {
+				c.Header("Retry-After", "900")
+				c.JSON(http.StatusLocked, gin.H{"error": err.Error(), "locked": true, "retry_after_seconds": 900})
+			}
+		} else if errors.Is(err, ErrEmailNotVerified) {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "verification_required": true})
 		} else {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -80,7 +103,27 @@ func (h *Handler) WalletLogin(c *gin.Context) {
 
 	authResp, err := h.service.WalletLogin(req.PublicKey, req.SignedChallenge, ipAddress, userAgent)
 	if err != nil {
-		if errors.Is(err, ErrEmailNotVerified) {
+		if errors.Is(err, ErrAccountLocked) {
+			var lockedErr *AccountLockedError
+			if errors.As(err, &lockedErr) {
+				retryAfter := 900
+				if lockedErr.LockedUntil != nil {
+					retryAfter = int(time.Until(*lockedErr.LockedUntil).Seconds())
+				}
+				if retryAfter < 0 {
+					retryAfter = 0
+				}
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+				c.JSON(http.StatusLocked, gin.H{
+					"error":               err.Error(),
+					"locked":              true,
+					"locked_until":        lockedErr.LockedUntil,
+					"retry_after_seconds": retryAfter,
+				})
+			} else {
+				c.JSON(http.StatusLocked, gin.H{"error": err.Error(), "locked": true})
+			}
+		} else if errors.Is(err, ErrEmailNotVerified) {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "verification_required": true})
 		} else {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
@@ -316,5 +359,37 @@ func (h *Handler) GenerateWalletChallenge(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"challenge":  challenge,
 		"expires_in": 900, // 15 minutes
+	})
+}
+
+// UnlockUser handles admin request to manually clear a user's lockout state
+func (h *Handler) UnlockUser(c *gin.Context) {
+	targetUserID := c.Param("id")
+	if targetUserID == "" {
+		var req struct {
+			UserID string `json:"user_id" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err == nil {
+			targetUserID = req.UserID
+		}
+	}
+
+	if targetUserID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "user_id is required"})
+		return
+	}
+
+	if err := h.service.ClearLockout(targetUserID); err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "User account successfully unlocked",
+		"user_id": targetUserID,
 	})
 }

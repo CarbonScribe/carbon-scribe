@@ -97,5 +97,8 @@ func RegisterAuthRoutes(router *gin.RouterGroup, handler *Handler, tokenManager 
 		protected.PUT("/me", handler.UpdateProfile)
 		protected.POST("/change-password", handler.ChangePassword)
 		protected.POST("/logout", handler.Logout)
+
+		// Admin support route for manual user account unlock
+		protected.POST("/users/:id/unlock", RequireRole("admin"), handler.UnlockUser)
 	}
 }

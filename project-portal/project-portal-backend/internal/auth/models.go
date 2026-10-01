@@ -17,11 +17,13 @@ type User struct {
 	FullName      string     `json:"full_name" gorm:"type:varchar(255)"`
 	Organization  string     `json:"organization" gorm:"type:varchar(255)"`
 	Role          string     `json:"role" gorm:"type:varchar(50);default:'farmer';index"`
-	EmailVerified bool       `json:"email_verified" gorm:"default:false"`
-	IsActive      bool       `json:"is_active" gorm:"default:true"`
-	LastLoginAt   *time.Time `json:"last_login_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	EmailVerified        bool       `json:"email_verified" gorm:"default:false"`
+	IsActive             bool       `json:"is_active" gorm:"default:true"`
+	FailedLoginAttempts  int        `json:"failed_login_attempts" gorm:"default:0"`
+	LockedUntil          *time.Time `json:"locked_until,omitempty"`
+	LastLoginAt          *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt            time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 
 	// Relations
 	Sessions []UserSession `json:"-" gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
