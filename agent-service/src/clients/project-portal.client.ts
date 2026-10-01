@@ -2,6 +2,10 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import type { ErrorCategory } from "../llm/errors.js";
+import {
+  mockConfirmAlertResponse,
+  mockMethodologies,
+} from "./project-portal.client.fixtures.js";
 
 // Thin HTTP client for project-portal-backend (Go). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
@@ -117,6 +121,9 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
  * passed through unvalidated.
  */
 async function getMethodologies(): Promise<Methodology[]> {
+  if (env.mockProjectPortal) {
+    return mockMethodologies;
+  }
   const response = await withRetry(() => http.get("/methodologies"));
   const parsed = MethodologiesResponseSchema.parse(response.data);
   return parsed.methodologies;
@@ -208,6 +215,14 @@ async function confirmAlert(
   projectId: string,
   alertPayload: ConfirmAlertPayload,
 ): Promise<ConfirmAlertResponse> {
+  if (env.mockProjectPortal) {
+    return {
+      ...mockConfirmAlertResponse,
+      project_id: projectId,
+      category: alertPayload.category ?? mockConfirmAlertResponse.category,
+      subject: alertPayload.subject ?? mockConfirmAlertResponse.subject,
+    };
+  }
   const { idempotencyKey, ...body } = alertPayload;
   const response = await withRetry(() =>
     http.post(

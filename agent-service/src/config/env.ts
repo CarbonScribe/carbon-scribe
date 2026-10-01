@@ -16,6 +16,14 @@ function positiveInteger(name: string, fallback: number): number {
   return value;
 }
 
+function boolean(name: string, fallback = false): boolean {
+  const value = process.env[name];
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+  return value.toLowerCase() === "true" || value === "1";
+}
+
 // Service-to-service auth (issue #579): each upstream caller signs its own
 // short-lived HS256 JWT with its own secret and sends it as
 // `Authorization: Bearer <token>` (the same Bearer convention
@@ -73,6 +81,9 @@ export const env = {
     "PROJECT_PORTAL_BASE_URL",
     "http://localhost:8080",
   ),
+  mockProjectPortal:
+    boolean("AGENT_SERVICE_MOCK_PROJECT_PORTAL") ||
+    boolean("MOCK_PROJECT_PORTAL"),
 
   agentAuditDatabaseUrl: required(
     "AGENT_AUDIT_DATABASE_URL",

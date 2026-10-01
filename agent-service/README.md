@@ -7,13 +7,15 @@ Standalone agentic AI microservice for the CarbonScribe platform. Powers automat
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
-- [Architecture & Agents](#-architecture--agents)
 - [API Documentation & OpenAPI Spec](#-api-documentation--openapi-spec)
 - [Authentication](#-authentication)
 - [Route Catalog](#-route-catalog)
 - [Client Integration (Go & NestJS)](#-client-integration-go--nestjs)
 - [Environment Configuration](#-environment-configuration)
 - [Development & Testing](#-development--testing)
+  - [Mock Mode for Local Development](#-mock-mode-for-local-development)
+  - [Load Testing](#-load-testing)
+- [Folder Structure](#-folder-structure)
 - [License](#-license)
 
 ---
@@ -60,7 +62,7 @@ Authorization: Bearer <signed-jwt-token>
 ```
 
 - **Algorithm:** HS256
-- **Signing Secrets:** Configured per calling service issuer via `SERVICE_TOKEN_SECRETS` (e.g. `corporate-platform`, `project-portal`).
+- **Signing Secrets:** Configured per calling service issuer via `CORPORATE_PLATFORM_JWT_SECRET` and `PROJECT_PORTAL_JWT_SECRET`.
 - **Identity Propagation:** The verified issuer is extracted from the token's `iss` claim and set as `req.callingService` for audit logging and role verification.
 - **Public Routes:** `/health/liveness`, `/health/readiness`, `/openapi.json`, and `/openapi.yaml` are unauthenticated for orchestrators and client tooling.
 
@@ -129,23 +131,40 @@ npx openapi-typescript ../../agent-service/openapi.yaml -o src/agents/agent-serv
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `PORT` | HTTP port for agent-service | `4500` |
+| `PORT` | HTTP server port | `4500` |
 | `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API Key | _(required in production)_ |
-| `DEFAULT_MODEL` | Claude model name | `claude-3-5-sonnet-20241022` |
-| `SERVICE_TOKEN_SECRETS` | JSON mapping of `issuer -> secret` for inbound service JWTs | `{}` |
-| `APPROVAL_REVIEWER_SERVICES` | Comma-separated list of service issuers authorized to review approvals | `""` |
-| `DATABASE_URL` | PostgreSQL connection string for audit and approval outbox | _(required)_ |
-| `CORPORATE_PLATFORM_URL` | Base URL for corporate-platform-backend | `http://localhost:3000` |
-| `PROJECT_PORTAL_URL` | Base URL for project-portal-backend | `http://localhost:8080` |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API key | Required for LLM calls |
+| `AGENT_MODEL` | Claude model identifier | `claude-opus-5` |
+| `AGENT_SERVICE_JWT_SECRET` | Secret used to sign outbound service tokens | - |
+| `CORPORATE_PLATFORM_JWT_SECRET` | Inbound JWT secret for corporate-platform calls | - |
+| `PROJECT_PORTAL_JWT_SECRET` | Inbound JWT secret for project-portal calls | - |
+| `APPROVAL_REVIEWER_SERVICES` | Comma-separated list of services permitted to review approvals | `""` |
+| `APPROVAL_OUTBOX_POLL_INTERVAL_MS` | Outbox polling interval in milliseconds | `3000` |
+| `APPROVAL_OUTBOX_BATCH_SIZE` | Outbox batch processing size | `20` |
+| `APPROVAL_OUTBOX_MAX_ATTEMPTS` | Outbox maximum delivery retry attempts | `5` |
+| `APPROVAL_OUTBOX_LOCK_TIMEOUT_MS` | Outbox row lock timeout in milliseconds | `60000` |
+| `APPROVAL_OUTBOX_RETRY_BASE_MS` | Outbox exponential backoff base delay in ms | `1000` |
+| `APPROVAL_OUTBOX_RETRY_MAX_MS` | Outbox exponential backoff max delay in ms | `60000` |
+| `CORPORATE_PLATFORM_BASE_URL` | Base URL for corporate-platform backend | `http://localhost:3000` |
+| `PROJECT_PORTAL_BASE_URL` | Base URL for project-portal backend | `http://localhost:8080` |
+| `AGENT_SERVICE_MOCK_PROJECT_PORTAL` | When `true`, returns fixture data for project-portal without HTTP calls | `false` |
+| `AGENT_AUDIT_DATABASE_URL` | PostgreSQL connection string for audit log & approvals | `postgres://postgres:postgres@localhost:5432/agent_service` |
 
 ---
 
 ## 🛠️ Development & Testing
 
+### Setup & Run
+
 ```bash
 # Install dependencies
 npm install
+
+# Copy environment template
+cp .env.example .env
+
+# Run development mode with hot reloading
+npm run start:dev
 
 # Run unit and integration tests
 npm test
@@ -158,6 +177,46 @@ npm run lint
 
 # Generate OpenAPI artifacts
 npm run generate:openapi
+```
+
+### 🧪 Mock Mode for Local Development
+
+To develop locally or test agent workflows (such as PDD drafting or alert triage) without requiring a running `project-portal-backend` instance, enable Mock / Fixture Mode:
+
+```bash
+AGENT_SERVICE_MOCK_PROJECT_PORTAL=true
+```
+
+When enabled, `projectPortalClient` methods (`getMethodologies`, `confirmAlert`) resolve directly from static fixture data in `src/clients/project-portal.client.fixtures.ts` instead of issuing outbound HTTP requests.
+
+### 📊 Load Testing
+
+Run the automated concurrency and load testing suite:
+
+```bash
+npm run loadtest
+```
+
+For more details on load test benchmarks and options, see [LOAD_TESTING.md](./LOAD_TESTING.md).
+
+---
+
+## 📁 Folder Structure
+
+```
+agent-service/
+├── loadtest/            # Concurrency & load testing suite
+├── migrations/          # PostgreSQL database migrations
+├── src/
+│   ├── agents/          # Domain agent implementations (discovery, pdd-draft, etc.)
+│   ├── clients/         # Upstream HTTP clients & fixtures (corporate-platform, project-portal)
+│   ├── config/          # Environment configuration & validation
+│   ├── health/          # Health and readiness probe endpoints
+│   ├── llm/             # Anthropic client and error handling
+│   ├── openapi/         # OpenAPI specification and controllers
+│   ├── routes/          # Express route definitions
+│   └── shared/          # Shared auth, guardrails, outbox, and audit logging
+└── test/                # Integration and end-to-end tests
 ```
 
 ---
