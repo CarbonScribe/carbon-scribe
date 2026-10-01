@@ -160,6 +160,7 @@ func main() {
 	stellarAuth := auth.NewStellarAuthenticator(cfg.Auth.StellarNetworkPassphrase, 15*time.Minute)
 	authRepo := auth.NewRepository(db)
 	var authServiceOpts []auth.ServiceOption
+	authServiceOpts = append(authServiceOpts, auth.WithLockoutConfig(cfg.Auth.MaxLoginAttempts, cfg.Auth.LockoutDuration))
 	if emailClient != nil {
 		authServiceOpts = append(authServiceOpts, auth.WithEmailer(emailClient, cfg.Auth.EmailVerificationURL, cfg.Auth.PasswordResetURL))
 	}
