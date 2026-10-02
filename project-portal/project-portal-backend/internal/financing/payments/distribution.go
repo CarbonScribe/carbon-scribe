@@ -20,10 +20,13 @@ type DistributionInput struct {
 }
 
 type BeneficiaryAmount struct {
-	UserID      uuid.UUID
-	Percent     float64
-	Amount      float64
-	TaxWithheld float64
+	UserID          uuid.UUID
+	Percent         float64
+	Amount          float64
+	TaxWithheld     float64
+	Status          string
+	TransactionHash string
+	FailureReason   string
 }
 
 type DistributionOutput struct {
