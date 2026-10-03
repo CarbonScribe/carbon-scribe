@@ -22,7 +22,7 @@ export interface AgentAuditEntry {
   actor?: string;
   callingService?: string;
   /** Every tool call the agent made this run, in order. */
-  toolCalls: Array<{ name: string; input: unknown }>;
+  toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
   status:
     | "drafted"
     | "needs-approval"
