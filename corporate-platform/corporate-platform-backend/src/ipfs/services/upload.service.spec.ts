@@ -34,6 +34,8 @@ describe('UploadService hash persistence', () => {
     ipfsDocument: {
       findFirst: jest.fn(),
       create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
   } as any;
 
@@ -155,4 +157,93 @@ describe('UploadService hash persistence', () => {
 
     expect(mockPrisma.ipfsDocument.create).not.toHaveBeenCalled();
   });
+
+  describe('listDocuments', () => {
+    it('applies default pagination when no params are provided', async () => {
+      const mockDocs = [{ id: 'doc-1' }, { id: 'doc-2' }];
+      mockPrisma.ipfsDocument.findMany.mockResolvedValue(mockDocs);
+      mockPrisma.ipfsDocument.count.mockResolvedValue(2);
+
+      const result = await service.listDocuments('company-1');
+
+      expect(mockPrisma.ipfsDocument.findMany).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+        skip: 0,
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(mockPrisma.ipfsDocument.count).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+      });
+      expect(result).toEqual({
+        documents: mockDocs,
+        total: 2,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+        hasMore: false,
+      });
+    });
+
+    it('handles custom page and limit with correct skip and take', async () => {
+      const mockDocs = [{ id: 'doc-11' }];
+      mockPrisma.ipfsDocument.findMany.mockResolvedValue(mockDocs);
+      mockPrisma.ipfsDocument.count.mockResolvedValue(25);
+
+      const result = await service.listDocuments('company-1', {
+        page: 2,
+        limit: 10,
+      });
+
+      expect(mockPrisma.ipfsDocument.findMany).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+        skip: 10,
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result.page).toBe(2);
+      expect(result.limit).toBe(10);
+      expect(result.total).toBe(25);
+      expect(result.totalPages).toBe(3);
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('clamps limit to MAX_PAGE_LIMIT when limit exceeds 100', async () => {
+      mockPrisma.ipfsDocument.findMany.mockResolvedValue([]);
+      mockPrisma.ipfsDocument.count.mockResolvedValue(0);
+
+      const result = await service.listDocuments('company-1', {
+        page: 1,
+        limit: 500,
+      });
+
+      expect(mockPrisma.ipfsDocument.findMany).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+        skip: 0,
+        take: 100,
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result.limit).toBe(100);
+    });
+
+    it('defaults to page 1 and default limit when invalid or zero values are passed', async () => {
+      mockPrisma.ipfsDocument.findMany.mockResolvedValue([]);
+      mockPrisma.ipfsDocument.count.mockResolvedValue(0);
+
+      const result = await service.listDocuments('company-1', {
+        page: -5,
+        limit: 0,
+      });
+
+      expect(mockPrisma.ipfsDocument.findMany).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+        skip: 0,
+        take: 20,
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+    });
+  });
 });
+

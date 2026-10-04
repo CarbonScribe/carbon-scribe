@@ -16,6 +16,9 @@ import {
 import { RetrievalService } from './retrieval.service';
 import * as NodeClam from 'clamscan';
 
+export const DEFAULT_PAGE_LIMIT = 20;
+export const MAX_PAGE_LIMIT = 100;
+
 @Injectable()
 export class UploadService {
   private readonly logger = new Logger(UploadService.name);
@@ -211,17 +214,47 @@ export class UploadService {
     companyId?: string,
     pagination?: { page?: number; limit?: number },
   ) {
-    const take = pagination?.limit;
-    const skip =
-      pagination?.page && pagination?.limit
-        ? (pagination.page - 1) * pagination.limit
-        : undefined;
+    const page =
+      pagination?.page && pagination.page > 0
+        ? Math.floor(pagination.page)
+        : 1;
 
-    return this.prisma.ipfsDocument.findMany({
-      where: companyId ? { companyId } : {},
-      ...(skip !== undefined ? { skip } : {}),
-      ...(take !== undefined ? { take } : {}),
-    });
+    let limit =
+      pagination?.limit !== undefined
+        ? Math.floor(pagination.limit)
+        : DEFAULT_PAGE_LIMIT;
+
+    if (limit <= 0) {
+      limit = DEFAULT_PAGE_LIMIT;
+    } else if (limit > MAX_PAGE_LIMIT) {
+      limit = MAX_PAGE_LIMIT;
+    }
+
+    const skip = (page - 1) * limit;
+    const take = limit;
+    const where = companyId ? { companyId } : {};
+
+    const [documents, total] = await Promise.all([
+      this.prisma.ipfsDocument.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.ipfsDocument.count({ where }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+    const hasMore = page < totalPages;
+
+    return {
+      documents,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasMore,
+    };
   }
 
   async getByReference(referenceId: string) {
