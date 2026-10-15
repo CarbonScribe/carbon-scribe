@@ -33,4 +33,5 @@ pub enum ContractError {
     // Mint counter overflow: NextTokenId or TotalMinted has reached
     // u32::MAX and cannot be safely incremented without wraparound (issue #611).
     TokenIdOverflow = 20,
+    InvalidMetadata = 21,
 }
