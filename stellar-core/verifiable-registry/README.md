@@ -36,3 +36,12 @@ The `merkle_bridge` implementation scales predictably with tree structural volum
 ### Key Observation
 
 Even at a depth of **20 levels** (supporting over **1 million leaves**), the bridge consumes only approximately **1.03 million CPU instructions**, leaving **98.96% of available execution capacity unused**. This demonstrates substantial scalability headroom for future growth while maintaining predictable verification costs.
+
+## Supported IPFS CIDs
+
+The registry validates CIDv0 values encoded as base58btc and CIDv1 values
+encoded with lowercase base32 (`b`). CIDv0 must contain a SHA2-256 multihash
+with a 32-byte digest. CIDv1 supports the `dag-pb` and `raw` codecs with that
+same multihash. Other multibase encodings (including base58btc CIDv1, base16,
+and base64 variants), codecs, and multihash functions are rejected with
+`InvalidCidFormat`.
