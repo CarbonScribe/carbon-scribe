@@ -3,6 +3,19 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { useMarketplace, DEFAULT_FILTERS, PAGE_SIZE } from '@/hooks/useMarketplace'
 import { marketplaceService } from '@/services/marketplace.service'
 
+const navigationMocks = vi.hoisted(() => ({
+  search: '',
+  replace: vi.fn((href: string) => {
+    navigationMocks.search = href.split('?')[1] ?? ''
+  }),
+}))
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/marketplace',
+  useRouter: () => ({ replace: navigationMocks.replace }),
+  useSearchParams: () => new URLSearchParams(navigationMocks.search),
+}))
+
 vi.mock('@/services/marketplace.service', () => ({
   marketplaceService: {
     searchCredits: vi.fn(),
@@ -55,6 +68,7 @@ const mockSearchResult = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  navigationMocks.search = ''
   mockSearchCredits.mockResolvedValue({ success: true, data: mockSearchResult })
   mockGetStats.mockResolvedValue({
     success: true,
@@ -85,6 +99,37 @@ describe('useMarketplace', () => {
     expect(result.current.page).toBe(1)
     expect(result.current.filters).toEqual(DEFAULT_FILTERS)
     expect(result.current.pageSize).toBe(PAGE_SIZE)
+  })
+
+  it('restores filters and page from the marketplace URL on mount', () => {
+    navigationMocks.search =
+      'q=forest&priceMin=10&priceMax=50&methodology=REDD%2B&country=Brazil&sdg=13&sdg=15&vintageFrom=2020&sortBy=price&sortOrder=desc&page=3'
+
+    const { result } = renderHook(() => useMarketplace())
+
+    expect(result.current.filters).toEqual({
+      ...DEFAULT_FILTERS,
+      query: 'forest',
+      priceRange: [10, 50],
+      methodologies: ['REDD+'],
+      countries: ['Brazil'],
+      sdgs: [13, 15],
+      vintage: [2020, 2025],
+      sortBy: 'price',
+      sortOrder: 'desc',
+    })
+    expect(result.current.page).toBe(3)
+
+    expect(mockSearchCredits).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 3,
+        query: 'forest',
+        priceMin: 10,
+        priceMax: 50,
+        sdgs: [13, 15],
+      }),
+      expect.any(AbortSignal),
+    )
   })
 
   it('loads credits on mount', async () => {
@@ -155,6 +200,10 @@ describe('useMarketplace', () => {
       expect(result.current.page).toBe(1)
       expect(result.current.filters.query).toBe('forest')
     })
+    expect(navigationMocks.replace).toHaveBeenLastCalledWith(
+      '/marketplace?q=forest',
+      { scroll: false },
+    )
   })
 
   it('setPage updates page and triggers re-fetch', async () => {
@@ -166,6 +215,10 @@ describe('useMarketplace', () => {
     })
 
     await waitFor(() => expect(result.current.page).toBe(2))
+    expect(navigationMocks.replace).toHaveBeenLastCalledWith(
+      '/marketplace?page=2',
+      { scroll: false },
+    )
     // searchCredits is now called with (query, AbortSignal) — assert both args
     expect(mockSearchCredits).toHaveBeenCalledWith(
       expect.objectContaining({ page: 2 }),
