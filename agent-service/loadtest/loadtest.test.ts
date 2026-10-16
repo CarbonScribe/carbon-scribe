@@ -4,7 +4,7 @@ import {
   COMPLIANCE_REPORT_FIXTURE_OUTPUT,
   createMockAnthropicClient,
   DISCOVERY_FIXTURE_OUTPUT,
-  PDD_FIXTURE_OUTPUT,
+  PDA_FIXTURE_OUTPUT,
 } from "./fixtures.js";
 import {
   formatResultsMarkdown,
@@ -19,9 +19,13 @@ describe("Load Testing Module", () => {
     it("generates correct fixture responses for all agents", async () => {
       const client = createMockAnthropicClient({ latencyMs: 5 });
 
-      const discoveryRunner = client.beta.messages.toolRunner({
-        system: "You are the credit-discovery agent",
-      } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
+      const discoveryRunner = client.beta.messages.toolRunner(
+        {
+          system: "You are the credit-discovery agent",
+        } as unknown as Parameters<
+          typeof client.beta.messages.toolRunner
+> [0],
+      );
       const discoveryMsg = await discoveryRunner;
       expect(discoveryMsg.stop_reason).toBe("end_turn");
       expect(discoveryMsg.content[0]).toMatchObject({
@@ -29,27 +33,39 @@ describe("Load Testing Module", () => {
         text: JSON.stringify(DISCOVERY_FIXTURE_OUTPUT),
       });
 
-      const pddRunner = client.beta.messages.toolRunner({
-        system: "You are the PDD drafting agent",
-      } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
+      const pddRunner = client.beta.messages.toolRunner(
+        {
+          system: "You are the PDD drafting agent",
+        } as unknown as Parameters<
+          typeof client.beta.messages.toolRunner
+> [0],
+      );
       const pddMsg = await pddRunner;
       expect(pddMsg.content[0]).toMatchObject({
         type: "text",
         text: JSON.stringify(PDD_FIXTURE_OUTPUT),
       });
 
-      const complianceRunner = client.beta.messages.toolRunner({
-        system: "You are the compliance-report agent",
-      } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
+      const complianceRunner = client.beta.messages.toolRunner(
+        {
+          system: "You are the compliance-report agent",
+        } as unknown as Parameters<
+          typeof client.beta.messages.toolRunner
+> [0],
+      );
       const complianceMsg = await complianceRunner;
       expect(complianceMsg.content[0]).toMatchObject({
         type: "text",
         text: JSON.stringify(COMPLIANCE_REPORT_FIXTURE_OUTPUT),
       });
 
-      const alertRunner = client.beta.messages.toolRunner({
-        system: "You are the alert-triage agent",
-      } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
+      const alertRunner = client.beta.messages.toolRunner(
+        {
+          system: "You are the alert-triage agent",
+        } as unknown as Parameters<
+          typeof client.beta.messages.toolRunner
+> [0],
+      );
       const alertMsg = await alertRunner;
       expect(alertMsg.content[0]).toMatchObject({
         type: "text",

@@ -261,7 +261,7 @@ describe("runAlertTriageAgent", () => {
 
   it("returns a failed result when the final output cannot be parsed against the schema", async () => {
     toolRunnerMock.mockReturnValue(
-      fakeRunner({
+      fakeRunner( {
         finalMessage: {
           stop_reason: "end_turn",
           content: [{ type: "text", text: "not json" }],
