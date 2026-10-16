@@ -23,7 +23,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          targets: wasm32v1-none
 
       # merkle_bridge (#521) imports carbon_asset's compiled WASM via
       # soroban_sdk::contractimport! for a typed cross-contract mint call.
@@ -32,7 +32,7 @@ jobs:
       # file off disk, it isn't a Cargo dependency, so nothing else builds it.
       - name: Build carbon_asset WASM (dependency for merkle_bridge)
         working-directory: stellar-core/carbon-asset-factory
-        run: cargo build -p carbon_asset --target wasm32-unknown-unknown --release --verbose
+        run: cargo build -p carbon_asset --target wasm32v1-none --release --verbose
 
       - name: Verify Rust project
         run: |
