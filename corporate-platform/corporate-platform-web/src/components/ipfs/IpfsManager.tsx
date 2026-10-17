@@ -33,6 +33,116 @@ function sessionKeyFor(file: File): string {
   return `${file.name}__${file.size}__${file.lastModified}`
 }
 
+export interface DuplicateCheckResult {
+  isDuplicate: boolean
+  matchedBy: 'filename' | 'content-hash' | null
+  existingDoc: IpfsDocumentRecord | null
+  message: string
+}
+
+export interface DocumentIndex {
+  byName: Map<string, IpfsDocumentRecord>
+  byHash: Map<string, IpfsDocumentRecord>
+}
+
+/**
+ * Builds an index of existing documents for O(1) duplicate lookups.
+ * Time complexity: O(N) where N is number of documents.
+ * Space complexity: O(N) map entries.
+ */
+export function buildDocumentIndex(documents: IpfsDocumentRecord[]): DocumentIndex {
+  const byName = new Map<string, IpfsDocumentRecord>()
+  const byHash = new Map<string, IpfsDocumentRecord>()
+
+  for (const doc of documents) {
+    if (doc.fileName) {
+      byName.set(doc.fileName.trim().toLowerCase(), doc)
+    }
+    const hash = (doc.contentHash || (doc.metadata as any)?.contentHash || (doc.metadata as any)?.sha256) as string | undefined
+    if (hash) {
+      byHash.set(hash.trim().toLowerCase(), doc)
+    }
+  }
+
+  return { byName, byHash }
+}
+
+/**
+ * Checks whether a candidate file is a duplicate of an existing document.
+ * Time complexity: O(1) map lookups.
+ */
+export function checkDuplicate(
+  file: File,
+  contentHash: string | null,
+  index: DocumentIndex,
+  referenceId?: string
+): DuplicateCheckResult {
+  const normalizedHash = contentHash?.trim().toLowerCase()
+  if (normalizedHash && index.byHash.has(normalizedHash)) {
+    const existingDoc = index.byHash.get(normalizedHash)!
+    return {
+      isDuplicate: true,
+      matchedBy: 'content-hash',
+      existingDoc,
+      message: `This file appears to already be uploaded (identical content hash matching "${existingDoc.fileName}").`,
+    }
+  }
+
+  const normalizedName = file.name.trim().toLowerCase()
+  if (index.byName.has(normalizedName)) {
+    const existingDoc = index.byName.get(normalizedName)!
+    const trimmedRef = referenceId?.trim()
+    const refMatch = trimmedRef && existingDoc.referenceId?.trim().toLowerCase() === trimmedRef.toLowerCase()
+    const details = refMatch
+      ? `"${existingDoc.fileName}" with matching reference "${existingDoc.referenceId}"`
+      : `"${existingDoc.fileName}"`
+    return {
+      isDuplicate: true,
+      matchedBy: 'filename',
+      existingDoc,
+      message: `This file appears to already be uploaded (matches existing document ${details}).`,
+    }
+  }
+
+  return {
+    isDuplicate: false,
+    matchedBy: null,
+    existingDoc: null,
+    message: '',
+  }
+}
+
+/**
+ * Compute SHA-256 hash of a file using Web Crypto API.
+ * Time complexity: O(S) where S is file size.
+ * Space complexity: O(1) auxiliary space beyond buffer.
+ */
+export async function computeFileSha256(file: File | Blob): Promise<string> {
+  const cryptoSubtle =
+    (typeof window !== 'undefined' && window.crypto?.subtle) ||
+    (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle)
+
+  if (!cryptoSubtle) {
+    throw new Error('Web Cryptography API is not available')
+  }
+
+  let buffer: ArrayBuffer
+  if (typeof file.arrayBuffer === 'function') {
+    buffer = await file.arrayBuffer()
+  } else {
+    buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as ArrayBuffer)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
+  const hashBuffer = await cryptoSubtle.digest('SHA-256', new Uint8Array(buffer))
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 interface UploadState {
   busy: boolean
   percent: number | null
@@ -69,12 +179,54 @@ export default function IpfsManager() {
   const [retirementId, setRetirementId] = useState('')
   const [certificateFile, setCertificateFile] = useState<File | null>(null)
 
-  // Per-section upload progress (single, batch, certificate)
   const [singleUpload, setSingleUpload] = useState<UploadState>(idle)
   const [batchUpload, setBatchUpload] = useState<UploadState>(idle)
   const [certUpload, setCertUpload] = useState<UploadState>(idle)
   const [pinBusy, setPinBusy] = useState(false)
   const [lookupBusy, setLookupBusy] = useState(false)
+
+  const docIndex = useMemo(() => buildDocumentIndex(documents), [documents])
+  const singleFileInputRef = useRef<HTMLInputElement>(null)
+  const batchFileInputRef = useRef<HTMLInputElement>(null)
+
+  const [singleFileHash, setSingleFileHash] = useState<string | null>(null)
+  const [singleDuplicate, setSingleDuplicate] = useState<DuplicateCheckResult | null>(null)
+  const [singleOverride, setSingleOverride] = useState(false)
+  const singleHashSeq = useRef(0)
+
+  const [batchFileHashes, setBatchFileHashes] = useState<Map<string, string>>(new Map())
+  const [batchDuplicates, setBatchDuplicates] = useState<Map<string, DuplicateCheckResult>>(new Map())
+  const [batchOverride, setBatchOverride] = useState(false)
+  const batchHashSeq = useRef(0)
+
+  useEffect(() => {
+    if (!uploadFile) {
+      setSingleDuplicate(null)
+      return
+    }
+    const check = checkDuplicate(uploadFile, singleFileHash, docIndex, uploadRef.trim())
+    if (check.isDuplicate) {
+      setSingleDuplicate(check)
+    } else {
+      setSingleDuplicate(null)
+    }
+  }, [uploadFile, singleFileHash, docIndex, uploadRef])
+
+  useEffect(() => {
+    if (!batchFiles.length) {
+      setBatchDuplicates(new Map())
+      return
+    }
+    const duplicates = new Map<string, DuplicateCheckResult>()
+    for (const file of batchFiles) {
+      const hash = batchFileHashes.get(file.name) || null
+      const check = checkDuplicate(file, hash, docIndex, uploadRef.trim())
+      if (check.isDuplicate) {
+        duplicates.set(file.name, check)
+      }
+    }
+    setBatchDuplicates(duplicates)
+  }, [batchFiles, batchFileHashes, docIndex, uploadRef])
 
   const chunked = useChunkedUpload()
   // A ref to the current section's upload controller so cancel works generically
@@ -166,11 +318,61 @@ export default function IpfsManager() {
   // Single upload
   // ---------------------------------------------------------------------------
 
-  const onSingleUpload = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!uploadFile || !user?.companyId) {
+  const handleSingleFileChange = async (file: File | null) => {
+    setUploadFile(file)
+    setSingleOverride(false)
+    setError(null)
+    setSuccess(null)
+
+    if (!file) {
+      setSingleFileHash(null)
+      setSingleDuplicate(null)
+      return
+    }
+
+    const immediate = checkDuplicate(file, null, docIndex, uploadRef.trim())
+    if (immediate.isDuplicate) {
+      setSingleDuplicate(immediate)
+    } else {
+      setSingleDuplicate(null)
+    }
+
+    const seq = ++singleHashSeq.current
+    try {
+      const hash = await computeFileSha256(file)
+      if (singleHashSeq.current !== seq) return
+      setSingleFileHash(hash)
+      const hashCheck = checkDuplicate(file, hash, docIndex, uploadRef.trim())
+      if (hashCheck.isDuplicate) {
+        setSingleDuplicate(hashCheck)
+      }
+    } catch {
+      if (singleHashSeq.current !== seq) return
+      setSingleFileHash(null)
+    }
+  }
+
+  const performSingleUpload = async (file: File, override = false) => {
+    if (!user?.companyId) {
       setError('Choose a file and ensure company context is available.')
       return
+    }
+
+    if (!override) {
+      let hash = singleFileHash
+      if (!hash) {
+        try {
+          hash = await computeFileSha256(file)
+          setSingleFileHash(hash)
+        } catch {
+          // ignore
+        }
+      }
+      const dup = checkDuplicate(file, hash, docIndex, uploadRef.trim())
+      if (dup.isDuplicate) {
+        setSingleDuplicate(dup)
+        return
+      }
     }
 
     setError(null)
@@ -182,16 +384,17 @@ export default function IpfsManager() {
       companyId: user.companyId,
       documentType: uploadType,
       referenceId: uploadRef.trim(),
+      ...(singleFileHash ? { contentHash: singleFileHash } : {}),
     }
 
-    if (uploadFile.size >= CHUNKED_UPLOAD_THRESHOLD) {
+    if (file.size >= CHUNKED_UPLOAD_THRESHOLD) {
       setSingleUpload({ busy: true, percent: 0 })
 
       const result = await chunked.start({
         url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ipfs/upload/chunked`,
-        file: uploadFile,
+        file,
         metadata,
-        sessionKey: sessionKeyFor(uploadFile),
+        sessionKey: sessionKeyFor(file),
       })
 
       setSingleUpload(idle)
@@ -204,14 +407,17 @@ export default function IpfsManager() {
 
       setSuccess(`Uploaded file to CID ${result.cid}`)
       setUploadFile(null)
+      setSingleFileHash(null)
+      setSingleDuplicate(null)
+      setSingleOverride(false)
+      if (singleFileInputRef.current) singleFileInputRef.current.value = ''
       await loadDocuments()
       return
     }
 
-    // Small file — standard FormData path
     setSingleUpload({ busy: true, percent: null })
 
-    const response = await ipfsService.uploadDocument(uploadFile, metadata)
+    const response = await ipfsService.uploadDocument(file, metadata)
 
     setSingleUpload(idle)
     activeSectionRef.current = null
@@ -223,17 +429,133 @@ export default function IpfsManager() {
 
     setSuccess(`Uploaded file to CID ${response.data?.cid}`)
     setUploadFile(null)
+    setSingleFileHash(null)
+    setSingleDuplicate(null)
+    setSingleOverride(false)
+    if (singleFileInputRef.current) singleFileInputRef.current.value = ''
     await loadDocuments()
+  }
+
+  const onSingleUpload = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!uploadFile || !user?.companyId) {
+      setError('Choose a file and ensure company context is available.')
+      return
+    }
+
+    if (singleDuplicate?.isDuplicate && !singleOverride) {
+      return
+    }
+
+    await performSingleUpload(uploadFile, singleOverride)
+  }
+
+  const handleSingleUploadOverride = async () => {
+    if (!uploadFile) return
+    setSingleOverride(true)
+    await performSingleUpload(uploadFile, true)
   }
 
   // ---------------------------------------------------------------------------
   // Batch upload — serialized, one file at a time
   // ---------------------------------------------------------------------------
 
-  const onBatchUpload = async () => {
-    if (!batchFiles.length || !user?.companyId) {
+  const handleBatchFilesChange = async (files: File[]) => {
+    setBatchFiles(files)
+    setBatchOverride(false)
+    setError(null)
+    setSuccess(null)
+
+    if (!files.length) {
+      setBatchFileHashes(new Map())
+      setBatchDuplicates(new Map())
+      return
+    }
+
+    const duplicates = new Map<string, DuplicateCheckResult>()
+    const seenNames = new Set<string>()
+
+    for (const file of files) {
+      const norm = file.name.trim().toLowerCase()
+      if (seenNames.has(norm)) {
+        duplicates.set(file.name, {
+          isDuplicate: true,
+          matchedBy: 'filename',
+          existingDoc: null,
+          message: `This file appears to already be uploaded (duplicate file "${file.name}" selected within batch).`,
+        })
+      }
+      seenNames.add(norm)
+
+      const res = checkDuplicate(file, null, docIndex, uploadRef.trim())
+      if (res.isDuplicate) {
+        duplicates.set(file.name, res)
+      }
+    }
+    setBatchDuplicates(new Map(duplicates))
+
+    const seq = ++batchHashSeq.current
+    const hashes = new Map<string, string>()
+
+    for (const file of files) {
+      try {
+        const hash = await computeFileSha256(file)
+        if (batchHashSeq.current !== seq) return
+        hashes.set(file.name, hash)
+        const hashCheck = checkDuplicate(file, hash, docIndex, uploadRef.trim())
+        if (hashCheck.isDuplicate) {
+          duplicates.set(file.name, hashCheck)
+        }
+      } catch {
+        // Fallback to filename matching if hashing fails
+      }
+    }
+
+    if (batchHashSeq.current === seq) {
+      setBatchFileHashes(hashes)
+      setBatchDuplicates(new Map(duplicates))
+    }
+  }
+
+  const performBatchUpload = async (files: File[], override = false) => {
+    if (!files.length || !user?.companyId) {
       setError('Select at least one file for batch upload.')
       return
+    }
+
+    if (!override) {
+      const currentDuplicates = new Map<string, DuplicateCheckResult>()
+      const seenNames = new Set<string>()
+
+      for (const file of files) {
+        const norm = file.name.trim().toLowerCase()
+        if (seenNames.has(norm)) {
+          currentDuplicates.set(file.name, {
+            isDuplicate: true,
+            matchedBy: 'filename',
+            existingDoc: null,
+            message: `This file appears to already be uploaded (duplicate file "${file.name}" selected within batch).`,
+          })
+        }
+        seenNames.add(norm)
+
+        let hash = batchFileHashes.get(file.name) || null
+        if (!hash) {
+          try {
+            hash = await computeFileSha256(file)
+          } catch {
+            // ignore
+          }
+        }
+        const res = checkDuplicate(file, hash, docIndex, uploadRef.trim())
+        if (res.isDuplicate) {
+          currentDuplicates.set(file.name, res)
+        }
+      }
+      if (currentDuplicates.size > 0) {
+        setBatchDuplicates(currentDuplicates)
+        return
+      }
     }
 
     setError(null)
@@ -252,14 +574,20 @@ export default function IpfsManager() {
     const smallFiles: typeof batchFiles = []
 
     // Split into large (chunked) and small files
-    for (const file of batchFiles) {
+    for (const file of files) {
       if (file.size >= CHUNKED_UPLOAD_THRESHOLD) {
         setBatchUpload({ busy: true, percent: 0 })
+
+        const fileHash = batchFileHashes.get(file.name)
+        const fileMeta: Record<string, string> = {
+          ...metadata,
+          ...(fileHash ? { contentHash: fileHash } : {}),
+        }
 
         const result = await chunked.start({
           url: `${apiBase}/ipfs/upload/chunked`,
           file,
-          metadata,
+          metadata: fileMeta,
           sessionKey: sessionKeyFor(file),
         })
 
@@ -281,7 +609,12 @@ export default function IpfsManager() {
       setBatchUpload({ busy: true, percent: null })
 
       for (const file of smallFiles) {
-        const response = await ipfsService.uploadDocument(file, metadata)
+        const fileHash = batchFileHashes.get(file.name)
+        const fileMeta: Record<string, string> = {
+          ...metadata,
+          ...(fileHash ? { contentHash: fileHash } : {}),
+        }
+        const response = await ipfsService.uploadDocument(file, fileMeta)
         if (!response.success) {
           setBatchUpload(idle)
           activeSectionRef.current = null
@@ -296,7 +629,30 @@ export default function IpfsManager() {
     activeSectionRef.current = null
     setSuccess(`Batch upload completed for ${results.length} file(s).`)
     setBatchFiles([])
+    setBatchFileHashes(new Map())
+    setBatchDuplicates(new Map())
+    setBatchOverride(false)
+    if (batchFileInputRef.current) batchFileInputRef.current.value = ''
     await loadDocuments()
+  }
+
+  const onBatchUpload = async () => {
+    if (!batchFiles.length || !user?.companyId) {
+      setError('Select at least one file for batch upload.')
+      return
+    }
+
+    if (batchDuplicates.size > 0 && !batchOverride) {
+      return
+    }
+
+    await performBatchUpload(batchFiles, batchOverride)
+  }
+
+  const handleBatchUploadOverride = async () => {
+    if (!batchFiles.length) return
+    setBatchOverride(true)
+    await performBatchUpload(batchFiles, true)
   }
 
   // ---------------------------------------------------------------------------
@@ -551,7 +907,30 @@ export default function IpfsManager() {
           {/* Single Upload */}
           <form className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4" onSubmit={onSingleUpload}>
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><Upload size={16} className="mr-2" /> Single Upload</h3>
-            <input type="file" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} />
+            <input
+              ref={singleFileInputRef}
+              data-testid="single-file-input"
+              type="file"
+              onChange={(event) => void handleSingleFileChange(event.target.files?.[0] || null)}
+            />
+            {singleDuplicate?.isDuplicate && !singleOverride && (
+              <div
+                role="alert"
+                className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>{singleDuplicate.message}</span>
+                </div>
+                <button
+                  type="button"
+                  className="corporate-btn-secondary px-3 py-1 text-xs font-semibold shrink-0"
+                  onClick={() => void handleSingleUploadOverride()}
+                >
+                  Upload anyway
+                </button>
+              </div>
+            )}
             {uploadFile && uploadFile.size >= CHUNKED_UPLOAD_THRESHOLD && (
               <p className="text-xs text-blue-600 dark:text-blue-400">Large file — resumable chunked upload will be used.</p>
             )}
@@ -576,10 +955,34 @@ export default function IpfsManager() {
           <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <h3 className="font-semibold text-gray-900 dark:text-white flex items-center"><FileUp size={16} className="mr-2" /> Batch Operations</h3>
             <input
+              ref={batchFileInputRef}
+              data-testid="batch-file-input"
               type="file"
               multiple
-              onChange={(event: ChangeEvent<HTMLInputElement>) => setBatchFiles(Array.from(event.target.files || []))}
+              onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                void handleBatchFilesChange(Array.from(event.target.files || []))
+              }
             />
+            {batchDuplicates.size > 0 && !batchOverride && (
+              <div
+                role="alert"
+                className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>
+                    This file appears to already be uploaded ({Array.from(batchDuplicates.keys()).join(', ')}).
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="corporate-btn-secondary px-3 py-1 text-xs font-semibold shrink-0"
+                  onClick={() => void handleBatchUploadOverride()}
+                >
+                  Upload anyway
+                </button>
+              </div>
+            )}
             <button className="corporate-btn-secondary px-4 py-2 text-sm" type="button" disabled={anyBusy || !batchFiles.length} onClick={() => void onBatchUpload()}>
               Batch Upload {batchFiles.length > 0 ? `(${batchFiles.length})` : ''}
             </button>
