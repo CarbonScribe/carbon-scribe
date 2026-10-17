@@ -18,6 +18,7 @@ export interface IpfsDocumentRecord {
   pinned: boolean;
   pinnedAt: string;
   metadata?: Record<string, unknown>;
+  contentHash?: string | null;
   createdAt: string;
   expiresAt?: string | null;
 }
