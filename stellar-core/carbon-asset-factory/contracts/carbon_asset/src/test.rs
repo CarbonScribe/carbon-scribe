@@ -4,11 +4,12 @@ use super::{CarbonAsset, CarbonAssetClient};
 use crate::errors::ContractError;
 use crate::storage::DataKey;
 use crate::types::{AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, String};
 
 fn setup_env() -> (Env, Address, Address, Address) {
     let env = Env::default();
+    env.ledger().set_timestamp(1_704_067_200);
     env.mock_all_auths();
     let admin = Address::generate(&env);
     let retirement_tracker = Address::generate(&env);
@@ -125,6 +126,118 @@ fn test_event_sequence_persistence_in_storage() {
     // Check sequence incremented to 2 (MintEvent + StatusChangeEvent)
     let sequence = client.get_event_sequence();
     assert_eq!(sequence, 2);
+}
+
+#[test]
+fn test_mint_rejects_empty_project_id_without_state_changes() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let mut metadata = make_meta(&env);
+    metadata.project_id = String::from_str(&env, "");
+
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert!(matches!(
+        client.try_get_metadata(&1),
+        Err(Ok(ContractError::TokenNotFound))
+    ));
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), 0);
+    assert_eq!(client.balance(&owner), 0);
+}
+
+#[test]
+fn test_mint_rejects_overlong_project_id_without_state_changes() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let mut metadata = make_meta(&env);
+    metadata.project_id = String::from_str(
+        &env,
+        "PROJ-123456789012345678901234567890123456789012345678901234567890",
+    );
+
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert!(matches!(
+        client.try_get_metadata(&1),
+        Err(Ok(ContractError::TokenNotFound))
+    ));
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), 0);
+    assert_eq!(client.balance(&owner), 0);
+}
+
+#[test]
+fn test_mint_rejects_invalid_project_id_characters() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let mut metadata = make_meta(&env);
+    metadata.project_id = String::from_str(&env, "PROJ/1");
+
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), 0);
+}
+
+#[test]
+fn test_mint_rejects_invalid_vintage_years() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let mut metadata = make_meta(&env);
+
+    metadata.vintage_year = 0;
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+
+    metadata.vintage_year = 2030;
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), 0);
+}
+
+#[test]
+fn test_mint_rejects_zero_geo_hash() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let mut metadata = make_meta(&env);
+    metadata.geo_hash = BytesN::from_array(&env, &[0u8; 32]);
+
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), 0);
+}
+
+#[test]
+fn test_mint_rejects_asset_cap_above_contract_cap() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    client.set_max_supply(&admin, &5);
+    let sequence_before_mint = client.get_event_sequence();
+    let mut metadata = make_meta(&env);
+    metadata.max_supply = Some(6);
+
+    assert_eq!(
+        client.try_mint(&admin, &owner, &metadata),
+        Err(Ok(ContractError::InvalidMetadata))
+    );
+    assert_eq!(client.get_total_minted(), 0);
+    assert_eq!(client.get_event_sequence(), sequence_before_mint);
+    assert_eq!(client.balance(&owner), 0);
 }
 
 // ====================================================================
