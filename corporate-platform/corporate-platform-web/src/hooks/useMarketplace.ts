@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { marketplaceService } from '@/services/marketplace.service';
 import { useDebounce } from '@/hooks/useDebounce';
 import { isAbortError } from '@/lib/utils/request-dedup';
@@ -24,6 +25,103 @@ export const DEFAULT_FILTERS: LocalFilterState = {
 };
 
 export const PAGE_SIZE = 12;
+
+const FILTER_QUERY_KEYS = [
+  'q',
+  'priceMin',
+  'priceMax',
+  'methodology',
+  'country',
+  'sdg',
+  'vintageFrom',
+  'vintageTo',
+  'sortBy',
+  'sortOrder',
+  'page',
+];
+
+function getNumber(value: string | null, fallback: number): number {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseFilters(params: URLSearchParams): LocalFilterState {
+  const sortBy = params.get('sortBy');
+  const sortOrder = params.get('sortOrder');
+
+  return {
+    query: params.get('q') ?? DEFAULT_FILTERS.query,
+    priceRange: [
+      getNumber(params.get('priceMin'), DEFAULT_FILTERS.priceRange[0]),
+      getNumber(params.get('priceMax'), DEFAULT_FILTERS.priceRange[1]),
+    ],
+    methodologies: params.getAll('methodology'),
+    countries: params.getAll('country'),
+    sdgs: params.getAll('sdg').map(Number).filter(Number.isFinite),
+    vintage: [
+      getNumber(params.get('vintageFrom'), DEFAULT_FILTERS.vintage[0]),
+      getNumber(params.get('vintageTo'), DEFAULT_FILTERS.vintage[1]),
+    ],
+    sortBy: ['price', 'vintage', 'popularity', 'createdAt'].includes(sortBy ?? '')
+      ? (sortBy as LocalFilterState['sortBy'])
+      : DEFAULT_FILTERS.sortBy,
+    sortOrder: sortOrder === 'desc' ? 'desc' : DEFAULT_FILTERS.sortOrder,
+  };
+}
+
+function parsePage(params: URLSearchParams): number {
+  const page = getNumber(params.get('page'), 1);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function filtersMatch(left: LocalFilterState, right: LocalFilterState): boolean {
+  return (
+    left.query === right.query &&
+    left.priceRange[0] === right.priceRange[0] &&
+    left.priceRange[1] === right.priceRange[1] &&
+    left.methodologies.join('\0') === right.methodologies.join('\0') &&
+    left.countries.join('\0') === right.countries.join('\0') &&
+    left.sdgs.join('\0') === right.sdgs.join('\0') &&
+    left.vintage[0] === right.vintage[0] &&
+    left.vintage[1] === right.vintage[1] &&
+    left.sortBy === right.sortBy &&
+    left.sortOrder === right.sortOrder
+  );
+}
+
+function updateSearchParams(
+  currentParams: URLSearchParams,
+  filters: LocalFilterState,
+  page: number,
+): URLSearchParams {
+  const params = new URLSearchParams(currentParams);
+  FILTER_QUERY_KEYS.forEach((key) => params.delete(key));
+
+  if (filters.query) params.set('q', filters.query);
+  if (filters.priceRange[0] !== DEFAULT_FILTERS.priceRange[0]) {
+    params.set('priceMin', String(filters.priceRange[0]));
+  }
+  if (filters.priceRange[1] !== DEFAULT_FILTERS.priceRange[1]) {
+    params.set('priceMax', String(filters.priceRange[1]));
+  }
+  filters.methodologies.forEach((value) => params.append('methodology', value));
+  filters.countries.forEach((value) => params.append('country', value));
+  filters.sdgs.forEach((value) => params.append('sdg', String(value)));
+  if (filters.vintage[0] !== DEFAULT_FILTERS.vintage[0]) {
+    params.set('vintageFrom', String(filters.vintage[0]));
+  }
+  if (filters.vintage[1] !== DEFAULT_FILTERS.vintage[1]) {
+    params.set('vintageTo', String(filters.vintage[1]));
+  }
+  if (filters.sortBy) params.set('sortBy', filters.sortBy);
+  if (filters.sortOrder !== DEFAULT_FILTERS.sortOrder) {
+    params.set('sortOrder', filters.sortOrder);
+  }
+  if (page > 1) params.set('page', String(page));
+
+  return params;
+}
 
 /** How long (ms) to wait after the last filter change before issuing a fetch. */
 const FILTER_DEBOUNCE_MS = 300;
@@ -49,17 +147,46 @@ export interface UseMarketplaceActions {
 }
 
 export function useMarketplace(): UseMarketplaceState & UseMarketplaceActions {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSearch = searchParams.toString();
   const [credits, setCredits] = useState<MarketplaceCredit[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPageState] = useState(1);
+  const [page, setPageState] = useState(() => parsePage(new URLSearchParams(currentSearch)));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFiltersState] = useState<LocalFilterState>(DEFAULT_FILTERS);
+  const [filters, setFiltersState] = useState<LocalFilterState>(() =>
+    parseFilters(new URLSearchParams(currentSearch)),
+  );
   const [stats, setStats] = useState<MarketplaceStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [availableFilters, setAvailableFilters] =
     useState<MarketplaceFiltersData | null>(null);
   const [filtersLoading, setFiltersLoading] = useState(false);
+
+  const syncUrl = useCallback(
+    (nextFilters: LocalFilterState, nextPage: number) => {
+      const params = updateSearchParams(
+        new URLSearchParams(currentSearch),
+        nextFilters,
+        nextPage,
+      );
+      const query = params.toString();
+      router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+    },
+    [currentSearch, pathname, router],
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(currentSearch);
+    const nextFilters = parseFilters(params);
+    const nextPage = parsePage(params);
+    setFiltersState((current) =>
+      filtersMatch(current, nextFilters) ? current : nextFilters,
+    );
+    setPageState((current) => (current === nextPage ? current : nextPage));
+  }, [currentSearch]);
 
   // Debounce the filter state so that rapid successive changes (e.g. quickly
   // toggling multiple checkboxes) only trigger a single API call once the
@@ -196,11 +323,13 @@ export function useMarketplace(): UseMarketplaceState & UseMarketplaceActions {
   const setFilters = useCallback((newFilters: LocalFilterState) => {
     setFiltersState(newFilters);
     setPageState(1);
-  }, []);
+    syncUrl(newFilters, 1);
+  }, [syncUrl]);
 
   const setPage = useCallback((newPage: number) => {
     setPageState(newPage);
-  }, []);
+    syncUrl(filters, newPage);
+  }, [filters, syncUrl]);
 
   const refresh = useCallback(() => {
     fetchCredits(filters, page);
