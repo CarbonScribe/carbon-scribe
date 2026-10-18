@@ -89,4 +89,9 @@ export const env = {
     "AGENT_AUDIT_DATABASE_URL",
     "postgres://postgres:postgres@localhost:5432/agent_service",
   ),
+
+  // Bound on graceful shutdown (#700): if in-flight requests haven't
+  // drained within this window after SIGTERM/SIGINT, the process
+  // force-exits rather than hanging a deploy indefinitely.
+  shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", 15000),
 };
