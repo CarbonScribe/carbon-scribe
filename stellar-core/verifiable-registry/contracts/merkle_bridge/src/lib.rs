@@ -185,7 +185,7 @@ fn validate_registry_credit_id(id: &String) -> Result<(), MerkleBridgeError> {
 mod carbon_asset {
     soroban_sdk::contractimport!(
         file =
-            "../../../carbon-asset-factory/target/wasm32v1-none/release/carbon_asset.wasm"
+            "../../../carbon-asset-factory/target/wasm32-unknown-unknown/release/carbon_asset.wasm"
     );
 }
 
