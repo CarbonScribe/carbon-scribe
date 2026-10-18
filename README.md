@@ -7,7 +7,7 @@
 ![Carbon Real Time Verified](https://img.shields.io/badge/Carbon-Real_Time_Verified-blue)
 
 CarbonScribe is an end-to-end platform where regenerative agriculture and forestry projects issue carbon credits as Stellar Assets, which corporations can purchase and instantly retire with transparent, on-chain proof. We're building the Internet of Carbon—a digital public utility that transforms ecosystem services into programmable financial assets with real-time environmental telemetry.
-
+///WIP
 ## 🌍 The Carbon Market Problem
 Current carbon markets are opaque, inefficient, and lack trust:
 - **Verification delays**: 6-18 months for credit issuance and verification
