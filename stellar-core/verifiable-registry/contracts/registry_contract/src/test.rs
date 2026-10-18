@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+extern crate std;
+
 use soroban_sdk::testutils::Ledger;
 use soroban_sdk::{
     testutils::{Address as _, Events},
@@ -296,6 +298,83 @@ fn test_valid_cid_min_length() {
     assert!(validate_ipfs_cid(&cid).is_ok());
 }
 
+#[test]
+fn test_invalid_cidv0_with_valid_length_and_charset() {
+    let env = Env::default();
+    let malformed = std::format!("Qm{}", "1".repeat(44));
+    let cid = SorobanString::from_str(&env, &malformed);
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_invalid_cidv1_base32_with_valid_length_and_charset() {
+    let env = Env::default();
+    let malformed = std::format!("b{}", "a".repeat(58));
+    let cid = SorobanString::from_str(&env, &malformed);
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_cidv1_rejects_unsupported_codec_and_multihash() {
+    let env = Env::default();
+
+    for (codec, hash_code, hash_len) in [(0x71, 0x12, 32), (0x70, 0x13, 32), (0x70, 0x12, 31)] {
+        let cid = SorobanString::from_str(&env, &format_cidv1(codec, hash_code, hash_len));
+        assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+    }
+}
+
+#[test]
+fn test_unsupported_cidv1_multibase_prefixes_are_rejected() {
+    let env = Env::default();
+
+    for (prefix, fill) in [
+        ('z', '1'),
+        ('f', '0'),
+        ('F', '0'),
+        ('u', 'A'),
+        ('U', 'A'),
+        ('Z', '1'),
+        ('B', 'A'),
+    ] {
+        let malformed = std::format!(
+            "{}{}",
+            prefix,
+            std::iter::repeat(fill)
+                .take(58)
+                .collect::<std::string::String>()
+        );
+        let cid = SorobanString::from_str(&env, &malformed);
+        assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+    }
+}
+
+fn format_cidv1(codec: u8, hash_code: u8, hash_len: u8) -> std::string::String {
+    let mut bytes = std::vec![1, codec, hash_code, hash_len];
+    bytes.extend([0x42; 32]);
+
+    const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let mut encoded = std::string::String::from("b");
+    let mut accumulator = 0u32;
+    let mut bits = 0u8;
+
+    for byte in bytes {
+        accumulator = (accumulator << 8) | byte as u32;
+        bits += 8;
+        while bits >= 5 {
+            bits -= 5;
+            encoded.push(ALPHABET[((accumulator >> bits) & 0x1f) as usize] as char);
+        }
+        accumulator &= (1 << bits) - 1;
+    }
+
+    if bits > 0 {
+        encoded.push(ALPHABET[((accumulator << (5 - bits)) & 0x1f) as usize] as char);
+    }
+
+    encoded
+}
+
 // ========== Monotonic Timestamp Tests ==========
 
 #[test]
@@ -476,7 +555,7 @@ fn test_manual_compaction_removes_duplicates() {
 
     client.initialize(&admin);
     client.register_project(&project_id, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
@@ -520,7 +599,7 @@ fn test_manual_compaction_emits_event() {
 
     client.initialize(&admin);
     client.register_project(&project_id, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&project_id, &ipfs_cid, &doc_type);
 
@@ -636,7 +715,7 @@ fn test_get_projects_by_anchorer_paginated() {
     // Query with page_size = 2, starting at cursor 0
     let page1: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(0), &Some(2));
-    
+
     assert_eq!(page1.projects.len(), 2);
     assert_eq!(page1.total, 5);
     assert_eq!(page1.next_cursor, Some(2));
@@ -646,7 +725,7 @@ fn test_get_projects_by_anchorer_paginated() {
     // Second page
     let page2: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(2), &Some(2));
-    
+
     assert_eq!(page2.projects.len(), 2);
     assert_eq!(page2.total, 5);
     assert_eq!(page2.next_cursor, Some(4));
@@ -656,7 +735,7 @@ fn test_get_projects_by_anchorer_paginated() {
     // Third page (last partial page)
     let page3: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(4), &Some(2));
-    
+
     assert_eq!(page3.projects.len(), 1);
     assert_eq!(page3.total, 5);
     assert_eq!(page3.next_cursor, None);
@@ -680,7 +759,7 @@ fn test_get_projects_by_anchorer_paginated_default_page_size() {
     // Query with no cursor and no page_size — uses defaults
     let result: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &None, &None);
-    
+
     assert_eq!(result.projects.len(), 1);
     assert_eq!(result.total, 1);
     assert_eq!(result.next_cursor, None);
@@ -704,7 +783,7 @@ fn test_get_projects_by_anchorer_paginated_beyond_end() {
     // Query with cursor beyond the total
     let result: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(10), &Some(5));
-    
+
     assert_eq!(result.projects.len(), 0);
     assert_eq!(result.total, 1);
     assert_eq!(result.next_cursor, None);
@@ -729,10 +808,10 @@ fn test_get_anchorer_index_size() {
     // Add some projects
     let p1 = SorobanString::from_str(&env, "PROJ-001");
     let p2 = SorobanString::from_str(&env, "PROJ-002");
-    
+
     client.register_project(&p1, &anchorer);
     client.register_project(&p2, &anchorer);
-    
+
     env.ledger().set_timestamp(1000);
     client.anchor_document(&p1, &ipfs_cid, &doc_type);
     client.anchor_document(&p2, &ipfs_cid, &doc_type);
@@ -773,7 +852,7 @@ fn test_auto_compaction_triggers_when_exceeding_threshold() {
     env.ledger().set_timestamp(1000);
     client.anchor_document(&p1, &ipfs_cid, &doc_type);
     client.anchor_document(&p2, &ipfs_cid, &doc_type);
-    
+
     // The third anchor should trigger auto-compaction (size check happens after add)
     // Since all projects are active, compaction keeps them all
     env.ledger().set_timestamp(1001);
