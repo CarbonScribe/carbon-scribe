@@ -257,7 +257,7 @@ func main() {
 	geospatialService := geospatial.NewService(geospatialRepo, db)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
 	financingRepo := financing.NewRepository(db)
-	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService)
+	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService, authRepo)
 	financingHandler := financing.NewHandler(financingService).WithRateLimiter(rateLimiter).WithRateLimiter(rateLimiter)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{
