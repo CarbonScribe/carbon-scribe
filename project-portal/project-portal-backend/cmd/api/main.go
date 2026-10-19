@@ -40,8 +40,8 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
-	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/gin-gonic/gin"
@@ -318,6 +318,15 @@ func main() {
 	complianceWorker := workers.NewComplianceRequestWorker(complianceRepo, notificationsService, 5*time.Minute, log.Default())
 	go complianceWorker.Run(workerCtx)
 	log.Println("✅ Compliance request worker started")
+
+	webhookService := integration.NewService(integration.NewRepository(db))
+	webhookWorker := workers.NewWebhookWorker(webhookService, time.Minute, log.Default())
+	go func() {
+		if err := webhookWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Webhook delivery worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Webhook delivery worker started")
 
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
