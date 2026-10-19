@@ -40,8 +40,8 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
-	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/gin-gonic/gin"
@@ -649,6 +649,8 @@ func runAllMigrations(db *gorm.DB) error {
 		&collaboration.Comment{},
 		&collaboration.Task{},
 		&collaboration.SharedResource{},
+		&collaboration.TaskDependency{},
+		&collaboration.ResourceBooking{},
 
 		// Health models
 		&health.SystemMetric{},
