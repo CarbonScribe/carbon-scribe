@@ -21,7 +21,13 @@ function parseCorsOrigins(value?: string): string[] {
   return origins.length > 0 ? origins : defaults;
 }
 
-function isLocalDevOrigin(origin: string): boolean {
+function isLocalDevOrigin(origin: string, isProduction: boolean): boolean {
+  // Localhost is never implicitly trusted in production (#646) — a
+  // deployed instance must list it explicitly in CORS_ORIGINS like any
+  // other origin if it genuinely needs to allow it.
+  if (isProduction) {
+    return false;
+  }
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 }
 
@@ -286,6 +292,11 @@ async function bootstrap() {
   // ============================================================================
 
   const configuredOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
+  // Startup validation (StartupValidator) has already failed the boot in
+  // production if CORS_ORIGINS was unset/empty or contained a malformed
+  // entry, so by the time this runs, configuredOrigins is always the real,
+  // intentional allowlist — logged here for operational visibility (#646).
+  logger.log(`🌐 CORS origins: ${configuredOrigins.join(', ')}`);
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -294,7 +305,10 @@ async function bootstrap() {
         return;
       }
 
-      if (configuredOrigins.includes(origin) || isLocalDevOrigin(origin)) {
+      if (
+        configuredOrigins.includes(origin) ||
+        isLocalDevOrigin(origin, isProduction)
+      ) {
         callback(null, true);
         return;
       }
