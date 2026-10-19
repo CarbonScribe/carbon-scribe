@@ -27,6 +27,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/analytics"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+	notiftemplates "carbon-scribe/project-portal/project-portal-backend/internal/notifications/templates"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
@@ -308,6 +309,16 @@ func main() {
 
 	notificationsHandler := notifications.NewHandler(notificationsService)
 
+	// Managed notification templates (issue #689): a separate, versioned
+	// CRUD surface from notificationsService's own simpler Create/List
+	// templates above — see internal/notifications/templates/manager.go's
+	// doc comment for why the two aren't the same system. Shares the same
+	// Mongo connection/database, just a different collection.
+	notifTemplateManager := notiftemplates.NewTemplateManager(
+		notiftemplates.NewMongoRepository(notificationMongoClient.Database(cfg.Notifications.MongoDatabase)),
+	)
+	notifTemplatesHandler := notiftemplates.NewHandler(notifTemplateManager)
+
 	// ============================================================================
 	// Initialize Compliance Request Worker
 	// ============================================================================
@@ -507,6 +518,14 @@ func main() {
 
 		// Register notifications routes under v1
 		notifications.RegisterRoutes(v1, notificationsHandler, tokenManager)
+
+		// Register managed notification-template CRUD under v1, admin-gated
+		// (issue #689) — a distinct path from notifications' own
+		// /notifications/templates, so the two template systems can never
+		// be confused with one another.
+		notifTemplatesGroup := v1.Group("/notification-templates")
+		notifTemplatesGroup.Use(auth.AuthMiddleware(tokenManager))
+		notiftemplates.RegisterRoutes(notifTemplatesGroup, notifTemplatesHandler, auth.RequireRole("admin"))
 
 		// Register financing routes under v1
 		financingHandler.RegisterRoutes(v1)
