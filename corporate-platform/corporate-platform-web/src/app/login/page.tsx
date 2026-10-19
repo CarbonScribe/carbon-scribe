@@ -1,8 +1,23 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+
+function ResetSuccessBanner() {
+  const searchParams = useSearchParams();
+  if (searchParams.get('reset') !== 'success') {
+    return null;
+  }
+  return (
+    <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+      <p className="text-sm text-green-600 dark:text-green-400">
+        Your password has been reset. Please sign in with your new password.
+      </p>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
@@ -61,6 +76,10 @@ export default function LoginPage() {
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
             Sign in to your account
           </h3>
+
+          <Suspense fallback={null}>
+            <ResetSuccessBanner />
+          </Suspense>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
