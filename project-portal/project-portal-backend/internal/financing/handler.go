@@ -56,6 +56,7 @@ func (h *Handler) RegisterRoutes(v1 *gin.RouterGroup) {
 
 		financing.POST("/payouts/distribute", requirePermission("financing:distribute"), h.distributeRevenue)
 		financing.GET("/payouts/:id", requirePermission("financing:read"), h.getPayoutStatus)
+		financing.POST("/payouts/:id/retry", requirePermission("financing:distribute"), h.retryDistributionPayout)
 	}
 
 	// Traceability and Methodology routes (registered on v1 for specific structure)
@@ -346,6 +347,19 @@ func (h *Handler) getPayoutStatus(c *gin.Context) {
 	payout, err := h.service.GetPayoutStatus(c.Request.Context(), payoutID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, payout)
+}
+
+func (h *Handler) retryDistributionPayout(c *gin.Context) {
+	payoutID, ok := parseUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+	payout, err := h.service.RetryDistributionPayout(c.Request.Context(), payoutID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, payout)

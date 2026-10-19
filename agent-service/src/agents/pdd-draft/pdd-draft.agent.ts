@@ -1,7 +1,9 @@
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
+import { env } from "../../config/env.js";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
+import { runWithTokenBudget } from "../../llm/budget.js";
 import {
   auditLog,
   truncateToolOutput,
@@ -10,6 +12,7 @@ import {
   checkApproval,
   PDD_DRAFT_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
+import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -54,11 +57,6 @@ const PddOutputSchema = z.object({
 
 const outputFormat = betaZodOutputFormat(PddOutputSchema);
 
-// Bounds retries against a still-unimplemented match_methodology tool
-// (tracked separately) so a persistently failing tool call can't loop
-// forever.
-const MAX_ITERATIONS = 8;
-
 interface ToolCallRecord {
   name: string;
   input: unknown;
@@ -71,7 +69,7 @@ export async function runPddDraftAgent(
   const runner = anthropic.beta.messages.toolRunner({
     model: DEFAULT_MODEL,
     max_tokens: 16000,
-    max_iterations: MAX_ITERATIONS,
+    max_iterations: env.agentMaxIterations,
     system: SYSTEM_PROMPT,
     tools: pddDraftTools,
     output_config: { format: outputFormat },
@@ -118,23 +116,44 @@ export async function runPddDraftAgent(
     return calls;
   }
 
-  let finalMessage: Awaited<typeof runner>;
-  try {
-    finalMessage = await runner;
-  } catch (err) {
-    const classified = classifyAnthropicError(err, "PDD drafting agent");
-    return failRun(req, extractToolCalls(), classified.message, classified);
+  const budgetResult = await runWithTokenBudget(runner, {
+    maxTokensPerRun: env.agentMaxTokensPerRun,
+  });
+  const { message: finalMessage, cumulativeTokens } = budgetResult;
+
+  if (budgetResult.error) {
+    const classified = classifyAnthropicError(
+      budgetResult.error,
+      "PDD drafting agent",
+    );
+    return failRun(
+      req,
+      extractToolCalls(),
+      classified.message,
+      cumulativeTokens,
+      classified,
+    );
+  }
+
+  if (budgetResult.budgetExceeded) {
+    return failRun(
+      req,
+      extractToolCalls(),
+      `PDD drafting agent aborted after exceeding its token budget (used ${cumulativeTokens} of ${env.agentMaxTokensPerRun} tokens).`,
+      cumulativeTokens,
+    );
   }
 
   const toolCalls = extractToolCalls();
 
   // Refusal-terminated turns may cut a tool_use off mid-input (see
   // BetaToolRunner), so there is no safe partial result to salvage here.
-  if (finalMessage.stop_reason === "refusal") {
+  if (!finalMessage || finalMessage.stop_reason === "refusal") {
     return failRun(
       req,
       toolCalls,
       "Anthropic declined to complete this PDD drafting request.",
+      cumulativeTokens,
     );
   }
 
@@ -151,6 +170,7 @@ export async function runPddDraftAgent(
       req,
       toolCalls,
       "PDD drafting agent finished without producing a text response.",
+      cumulativeTokens,
     );
   }
 
@@ -164,6 +184,7 @@ export async function runPddDraftAgent(
       `PDD drafting agent returned output that could not be parsed: ${
         err instanceof Error ? err.message : String(err)
       }`,
+      cumulativeTokens,
     );
   }
 
@@ -185,6 +206,10 @@ export async function runPddDraftAgent(
     toolCalls,
     status,
   });
+  logger.info(
+    { agent: "pdd-draft", requestId: req.requestId, status, cumulativeTokens },
+    "agent run token usage",
+  );
 
   return {
     agent: "pdd-draft",
@@ -203,6 +228,7 @@ async function failRun(
   req: AgentRunRequest,
   toolCalls: ToolCallRecord[],
   message: string,
+  cumulativeTokens: number,
   errorInfo?: { category: ErrorCategory; retryable: boolean },
 ): Promise<AgentRunResult> {
   await auditLog.record({
@@ -213,6 +239,15 @@ async function failRun(
     toolCalls,
     status: "failed",
   });
+  logger.info(
+    {
+      agent: "pdd-draft",
+      requestId: req.requestId,
+      status: "failed",
+      cumulativeTokens,
+    },
+    "agent run token usage",
+  );
 
   return {
     agent: "pdd-draft",
