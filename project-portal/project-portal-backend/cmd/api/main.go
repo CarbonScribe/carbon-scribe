@@ -41,8 +41,8 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
-	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/gin-gonic/gin"
@@ -347,6 +347,24 @@ func main() {
 		}
 	}()
 	log.Println("✅ Inventory cache purge worker started")
+
+	// Daily data cleanup worker (issue #691): verifies completed deletions,
+	// purges expired export files, releases expired legal holds, removes
+	// orphaned retention schedules, and removes stale API keys. exportS3Client
+	// is nil when S3 init failed above — purgeExpiredExports skips that one
+	// step rather than attempting and failing it, every other responsibility
+	// still runs.
+	var exportS3Client workers.ExportFileDeleter
+	if s3Client != nil {
+		exportS3Client = s3Client
+	}
+	cleanupWorker := workers.NewCleanupWorker(complianceRepo, settingsRepo, exportS3Client, workers.DefaultCleanupInterval, log.Default())
+	go func() {
+		if err := cleanupWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Data cleanup worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Data cleanup worker started")
 
 	// ============================================================================
 	// Initialize Monitoring Service
