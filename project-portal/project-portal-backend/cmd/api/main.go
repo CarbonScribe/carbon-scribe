@@ -701,6 +701,8 @@ func runAllMigrations(db *gorm.DB) error {
 		&collaboration.Comment{},
 		&collaboration.Task{},
 		&collaboration.SharedResource{},
+		&collaboration.TaskDependency{},
+		&collaboration.ResourceBooking{},
 
 		// Health models
 		&health.SystemMetric{},
