@@ -18,6 +18,8 @@ type MonitoringHandler struct {
 	// performance is optional: when nil the benchmark endpoint reports that
 	// the analytics service is not configured rather than panicking.
 	performance *analytics.PerformanceService
+	// trends is optional, same reasoning as performance above.
+	trends *analytics.TrendsService
 }
 
 // NewMonitoringHandler creates a new monitoring handler.
@@ -29,6 +31,13 @@ func NewMonitoringHandler(service *monitoring.Service) *MonitoringHandler {
 // GET /api/v1/monitoring/analytics/performance.
 func (h *MonitoringHandler) WithPerformanceAnalytics(svc *analytics.PerformanceService) *MonitoringHandler {
 	h.performance = svc
+	return h
+}
+
+// WithTrendsAnalytics attaches the trends service, enabling
+// GET /api/v1/monitoring/analytics/trends.
+func (h *MonitoringHandler) WithTrendsAnalytics(svc *analytics.TrendsService) *MonitoringHandler {
+	h.trends = svc
 	return h
 }
 
@@ -78,6 +87,62 @@ func (h *MonitoringHandler) GetPerformanceBenchmark(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, report)
+}
+
+// GetTrends handles GET /api/v1/monitoring/analytics/trends.
+//
+//	@Summary     Compute a historical trend series for a service
+//	@Description Buckets stored monitoring data daily or weekly over a 7d/30d/90d
+//	@Description window and reports the percentage change bucket-over-bucket. Pass
+//	@Description `metric` to trend a named stored metric, or omit it to trend
+//	@Description observed uptime derived from health-check history.
+//	@Tags        monitoring
+//	@Produce     json
+//	@Param       service     query string true  "Service name to trend"
+//	@Param       metric      query string false "Stored metric name to trend; omit to trend uptime instead"
+//	@Param       granularity query string false "Bucket size: daily (default) or weekly"
+//	@Param       period      query string false "Look-back window: 7d (default), 30d, or 90d"
+//	@Success     200 {object} analytics.TrendSeries
+//	@Failure     400 {object} map[string]string
+//	@Failure     500 {object} map[string]string
+//	@Failure     503 {object} map[string]string
+//	@Router      /api/v1/monitoring/analytics/trends [get]
+func (h *MonitoringHandler) GetTrends(c *gin.Context) {
+	if h.trends == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "trends analytics is not configured"})
+		return
+	}
+
+	req := analytics.TrendRequest{
+		Service:     c.Query("service"),
+		MetricName:  c.Query("metric"),
+		Granularity: analytics.Granularity(c.Query("granularity")),
+		Period:      analytics.Period(c.Query("period")),
+	}
+
+	var (
+		series *analytics.TrendSeries
+		err    error
+	)
+	if req.MetricName != "" {
+		series, err = h.trends.MetricTrend(c.Request.Context(), req)
+	} else {
+		series, err = h.trends.UptimeTrend(c.Request.Context(), req)
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, analytics.ErrServiceRequired),
+			errors.Is(err, analytics.ErrMetricNameRequired),
+			errors.Is(err, analytics.ErrUnsupportedGranularity),
+			errors.Is(err, analytics.ErrUnsupportedPeriod):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, series)
 }
 
 // IngestSatellite handles POST /api/v1/monitoring/satellite.
@@ -340,5 +405,6 @@ func RegisterMonitoringRoutes(r *gin.RouterGroup, handler *MonitoringHandler) {
 		monitoring.GET("/ndvi/tile/:z/:x/:y", handler.GetNDVITile)
 		monitoring.GET("/ndvi/timeseries/animation/:z/:x/:y", handler.GetNDVITimeSeriesAnimation)
 		monitoring.GET("/analytics/performance", handler.GetPerformanceBenchmark)
+		monitoring.GET("/analytics/trends", handler.GetTrends)
 	}
 }

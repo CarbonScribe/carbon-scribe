@@ -367,8 +367,14 @@ func main() {
 		},
 	)
 
+	// Trends analytics buckets stored monitoring data daily/weekly over a
+	// 7d/30d/90d window and reports percentage change bucket-over-bucket, at
+	// GET /api/v1/monitoring/analytics/trends.
+	trendsAnalytics := analytics.NewTrendsService(monitoringRepo, monitoringRepo)
+
 	monitoringHandler := api.NewMonitoringHandler(monitoringService).
-		WithPerformanceAnalytics(performanceAnalytics)
+		WithPerformanceAnalytics(performanceAnalytics).
+		WithTrendsAnalytics(trendsAnalytics)
 	log.Println("✅ Monitoring service initialized")
 
 	// ============================================================================
