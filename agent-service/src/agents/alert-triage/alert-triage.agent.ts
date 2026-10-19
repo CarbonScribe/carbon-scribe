@@ -12,12 +12,14 @@ import {
   ALERT_TRIAGE_ACTION_TYPES,
   checkApproval,
 } from "../../shared/guardrails/approval-gate.js";
+import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { alertTriageTools } from "./alert-triage.tools.js";
 
 const SYSTEM_PROMPT = `You are the alert-triage agent for CarbonScribe's project monitoring pipeline.
@@ -33,12 +35,7 @@ adding a second alarm on top of the existing rule-based one.`;
 const AlertTriageOutputSchema = z.object({
   verdict: z.enum(["escalate", "suppress", "needs-more-data"]),
   reasoning: z.string(),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
 });
 
 const outputFormat = betaZodOutputFormat(AlertTriageOutputSchema);
@@ -192,6 +189,26 @@ export async function runAlertTriageAgent(
     payload: { verdict: parsed.verdict, reasoning: parsed.reasoning },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+  const citations: AgentCitation[] = parsed.citations;
+
+  // Only an escalate verdict feeds a real downstream action (project-portal's
+  // notification pipeline) and so is the only one required to cite the
+  // evidence it's grounded in — suppress/needs-more-data are "nothing
+  // happens" dispositions where the reasoning text itself is the record,
+  // the same way an empty shortlist or zero drafted sections is elsewhere
+  // in this service (#705).
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: parsed.verdict !== "escalate",
+    });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -210,8 +227,6 @@ export async function runAlertTriageAgent(
     },
     "agent run token usage",
   );
-
-  const citations: AgentCitation[] = parsed.citations;
 
   return {
     agent: "alert-triage",

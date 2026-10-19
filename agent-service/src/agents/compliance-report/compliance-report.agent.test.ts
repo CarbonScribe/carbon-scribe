@@ -374,4 +374,54 @@ describe("runComplianceReportAgent", () => {
       expect.objectContaining({ agent: "compliance-report", status: "failed" }),
     );
   });
+
+  // #705: a shared guardrail now rejects a needs-approval result with no
+  // citations, except where the agent's own output shows there's nothing
+  // substantive to cite in the first place.
+  describe("citation requirement (#705)", () => {
+    it("returns failed for a non-empty sections array with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            framework: "csrd",
+            sections: [{ name: "Scope 3 Emissions", content: "..." }],
+            gaps: [],
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runComplianceReportAgent({
+        requestId: "req-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+    });
+
+    it("does not reject zero drafted sections (everything flagged as a gap) for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            sections: [],
+            gaps: [{ description: "No retirement records found for period." }],
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runComplianceReportAgent({
+        requestId: "req-no-evidence",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("needs-approval");
+      expect(result.citations).toEqual([]);
+    });
+  });
 });

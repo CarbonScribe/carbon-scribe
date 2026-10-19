@@ -2,6 +2,8 @@
 // Individual agents extend these rather than inventing their own shapes, so
 // the audit log and guardrail middleware can stay agent-agnostic.
 
+import { z } from "zod";
+
 export type AgentName =
   "discovery" | "pdd-draft" | "compliance-report" | "alert-triage";
 
@@ -32,7 +34,12 @@ export interface AgentRunResult {
   retryable?: boolean;
 }
 
-export interface AgentCitation {
-  source: string;
-  reference: string;
-}
+// Single source of truth for a citation's shape (#705) — every agent's own
+// output schema imports this instead of redeclaring an identical
+// `z.object({ source: z.string(), reference: z.string() })` literal.
+export const AgentCitationSchema = z.object({
+  source: z.string(),
+  reference: z.string(),
+});
+
+export type AgentCitation = z.infer<typeof AgentCitationSchema>;

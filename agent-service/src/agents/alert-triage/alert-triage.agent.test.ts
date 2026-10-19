@@ -382,4 +382,55 @@ describe("runAlertTriageAgent", () => {
       expect.objectContaining({ agent: "alert-triage", status: "failed" }),
     );
   });
+
+  // #705: a shared guardrail now rejects an escalate verdict with no
+  // citations — the one disposition here that feeds a real downstream
+  // action (project-portal's notification pipeline) and so is the one
+  // required to be grounded. suppress/needs-more-data are unaffected,
+  // since "nothing happens" either way.
+  describe("citation requirement (#705)", () => {
+    it("returns failed for an escalate verdict with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            verdict: "escalate",
+            reasoning: "Sustained NDVI drop corroborated by IoT sensor.",
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runAlertTriageAgent({
+        requestId: "req-uncited-escalate",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+    });
+
+    it("does not reject a suppress verdict for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            verdict: "suppress",
+            reasoning: "Seasonal NDVI dip, no corroborating sensor drop.",
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runAlertTriageAgent({
+        requestId: "req-suppress-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
+  });
 });
