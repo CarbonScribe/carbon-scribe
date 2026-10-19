@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import * as StellarSdk from '@stellar/stellar-sdk';
 import { ConfigService } from '../config.service';
 import { PlaceholderDetector } from './placeholder-detector';
 import { ServiceValidator } from './service-validator';
@@ -26,6 +27,49 @@ export function isValidCorsOrigin(origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Validates a Soroban contract address (#647): a StrKey-encoded "C..."
+ * address, 56 characters, with a valid internal checksum.
+ * StrKey.isValidContract already enforces all of that — this just names
+ * the check at the call site.
+ */
+export function isValidContractId(contractId: string): boolean {
+  return StellarSdk.StrKey.isValidContract(contractId);
+}
+
+const KNOWN_MAINNET_HOSTS = new Set([
+  'horizon.stellar.org',
+  'soroban-rpc.mainnet.stellar.org',
+]);
+
+/**
+ * Best-effort signal for which Stellar network a Horizon/Soroban RPC URL
+ * points at, read from its hostname (#647). Returns null when the
+ * hostname gives no clear signal (e.g. a third-party RPC provider's own
+ * domain) — an ambiguous URL is never flagged, so a legitimate custom
+ * endpoint can't trip a false-positive startup failure.
+ */
+export function detectNetworkFromUrl(url: string): 'testnet' | 'public' | null {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    hostname = url.toLowerCase();
+  }
+
+  if (hostname.includes('testnet')) {
+    return 'testnet';
+  }
+  if (
+    hostname.includes('mainnet') ||
+    hostname.includes('public') ||
+    KNOWN_MAINNET_HOSTS.has(hostname)
+  ) {
+    return 'public';
+  }
+  return null;
 }
 
 @Injectable()
@@ -223,6 +267,91 @@ export class StartupValidator implements OnModuleInit {
         );
       }
     }
+
+    // STELLAR_NETWORK vs. HORIZON_URL/SOROBAN_RPC_URL consistency (#647):
+    // an operator could set STELLAR_NETWORK=public while a URL still
+    // points at a testnet endpoint (or vice versa) — both prior checks
+    // above pass (each var is independently "present"), but SorobanService
+    // derives networkPassphrase from stellarConfig.network alone, so a
+    // mismatch here means the passphrase and RPC endpoint silently
+    // disagree about which network they're talking to.
+    // Mirrors the production check just above, which only ever treats the
+    // literal value 'testnet' as non-production — anything else (mainnet,
+    // public, ...) is expected to point at production endpoints.
+    const expectedNetwork =
+      stellarConfig.network === 'testnet' ? 'testnet' : 'public';
+    const networkCheckedUrls: Array<[string, string | undefined]> = [
+      ['HORIZON_URL', stellarConfig.horizonUrl],
+      ['SOROBAN_RPC_URL', stellarConfig.sorobanRpcUrl],
+    ];
+    for (const [varName, url] of networkCheckedUrls) {
+      if (!url) {
+        continue;
+      }
+      const detected = detectNetworkFromUrl(url);
+      if (detected && detected !== expectedNetwork) {
+        const message = `${varName} ("${url}") looks like a ${detected} endpoint, but STELLAR_NETWORK is "${stellarConfig.network}" — they must point at the same network`;
+        if (isProduction) {
+          errors.push(message);
+        } else {
+          warnings.push(message);
+        }
+      }
+    }
+
+    // === CONTRACT ADDRESSES ===
+    // carbon-asset/retirement-tracker/methodology-library services each
+    // fall back to a hardcoded contract address when their env var is
+    // unset (see contract.interface.ts and methodology-library.service.ts)
+    // — convenient for local development, but a production deploy that
+    // forgets to set one would silently target the wrong deployed
+    // contract rather than failing to boot.
+    const contractIdEnvVars: Array<[string, string | undefined]> = [
+      ['CARBON_ASSET_CONTRACT_ID', process.env.CARBON_ASSET_CONTRACT_ID],
+      [
+        'RETIREMENT_TRACKER_CONTRACT_ID',
+        process.env.RETIREMENT_TRACKER_CONTRACT_ID,
+      ],
+      [
+        'METHODOLOGY_LIBRARY_CONTRACT_ID',
+        process.env.METHODOLOGY_LIBRARY_CONTRACT_ID,
+      ],
+    ];
+
+    for (const [varName, value] of contractIdEnvVars) {
+      if (!value) {
+        if (isProduction) {
+          errors.push(
+            `${varName} must be explicitly configured in production (refusing to fall back to the hardcoded default contract address)`,
+          );
+        } else {
+          warnings.push(
+            `${varName} not configured (using the hardcoded fallback contract address)`,
+          );
+        }
+        continue;
+      }
+
+      // Checked regardless of environment, like CORS_ORIGINS' format
+      // check above — a typo'd contract address should fail loudly in
+      // development too, not just silently never match any deployed
+      // contract.
+      if (!isValidContractId(value)) {
+        errors.push(
+          `${varName} is not a valid Stellar contract address: "${value}" (expected a StrKey-encoded "C..." address)`,
+        );
+      }
+    }
+
+    // Logged once at boot regardless of outcome, so the effective
+    // configuration is always visible for operational verification
+    // (#647) even when every check above passed silently.
+    this.logger.log(
+      `🪐 Stellar config: network=${stellarConfig.network}, horizonUrl=${stellarConfig.horizonUrl ?? '(unset)'}, sorobanRpcUrl=${stellarConfig.sorobanRpcUrl ?? '(unset)'}, ` +
+        `carbonAssetContractId=${process.env.CARBON_ASSET_CONTRACT_ID ?? '(unset, using fallback)'}, ` +
+        `retirementTrackerContractId=${process.env.RETIREMENT_TRACKER_CONTRACT_ID ?? '(unset, using fallback)'}, ` +
+        `methodologyLibraryContractId=${process.env.METHODOLOGY_LIBRARY_CONTRACT_ID ?? '(unset, using fallback)'}`,
+    );
 
     // === PINATA/IPFS ===
     const pinataApiKey = process.env.PINATA_API_KEY;
