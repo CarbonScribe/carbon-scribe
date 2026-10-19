@@ -98,6 +98,58 @@ export const portfolioService = {
   async getHoldingById(id: string, options?: ApiFetchOptions): Promise<ApiResponse<PortfolioHolding>> {
     return apiClient.get<PortfolioHolding>(`/portfolio/${id}`, options);
   },
+  /**
+   * Export transactions list as a CSV Blob.
+   */
+  async exportTransactionsCsv(transactions: Array<{
+    id?: string;
+    date?: string;
+    type?: string;
+    project?: string;
+    amount?: number;
+    price?: number;
+    status?: string;
+  }>): Promise<Blob> {
+    if (!transactions || transactions.length === 0) {
+      throw new Error('No transactions available to export');
+    }
+
+    const escapeCsvValue = (val: unknown): string => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const headers = ['ID', 'Date', 'Type', 'Project', 'Amount', 'Price', 'Status'];
+    const rows = transactions.map((tx) => [
+      escapeCsvValue(tx.id || ''),
+      escapeCsvValue(tx.date ? (isNaN(new Date(tx.date).getTime()) ? tx.date : new Date(tx.date).toISOString().split('T')[0]) : 'N/A'),
+      escapeCsvValue(tx.type || 'N/A'),
+      escapeCsvValue(tx.project || 'N/A'),
+      escapeCsvValue(tx.amount !== undefined ? tx.amount : 0),
+      escapeCsvValue(tx.price !== undefined ? tx.price : 0),
+      escapeCsvValue(tx.status || 'Completed'),
+    ].join(','));
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    return new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  },
+  async exportCsv(transactions: Array<{
+    id?: string;
+    date?: string;
+    type?: string;
+    project?: string;
+    amount?: number;
+    price?: number;
+    status?: string;
+  }>): Promise<Blob> {
+    return this.exportTransactionsCsv(transactions);
+  },
 };
+
+export const exportPortfolioTransactionsCsv = portfolioService.exportTransactionsCsv.bind(portfolioService);
 
 export default portfolioService;

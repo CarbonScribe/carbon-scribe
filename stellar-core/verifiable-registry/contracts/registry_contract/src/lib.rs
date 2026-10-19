@@ -13,7 +13,7 @@ use events::{
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use storage::extend_instance_ttl;
 use types::{CompactionConfig, DocumentRecord, Error, PaginatedProjects};
-use validation::{validate_address, validate_ipfs_cid};
+use validation::{normalize_project_id, validate_address, validate_ipfs_cid, validate_project_id};
 
 #[contract]
 pub struct ProjectRegistry;
@@ -57,15 +57,18 @@ impl ProjectRegistry {
         let admin = storage::get_admin(&env)?;
         admin.require_auth();
 
-        if storage::has_project_owner(&env, &project_id) {
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+
+        if storage::has_project_owner(&env, &normalized_project_id) {
             return Err(Error::ProjectAlreadyExists);
         }
 
         validate_address(&owner)?;
 
-        storage::set_project_owner(&env, &project_id, &owner);
+        storage::set_project_owner(&env, &normalized_project_id, &owner);
 
-        emit_project_registered_event(&env, project_id, owner);
+        emit_project_registered_event(&env, normalized_project_id, owner);
 
         extend_instance_ttl(&env);
 
@@ -78,7 +81,9 @@ impl ProjectRegistry {
         project_id: String,
         new_owner: Address,
     ) -> Result<(), Error> {
-        let current_owner = storage::get_project_owner(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let current_owner = storage::get_project_owner(&env, &normalized_project_id)?;
         current_owner.require_auth();
 
         validate_address(&new_owner)?;
@@ -87,10 +92,10 @@ impl ProjectRegistry {
             return Err(Error::SameOwner);
         }
 
-        storage::set_project_owner(&env, &project_id, &new_owner);
+        storage::set_project_owner(&env, &normalized_project_id, &new_owner);
         extend_instance_ttl(&env);
 
-        emit_owner_transferred_event(&env, project_id, current_owner, new_owner);
+        emit_owner_transferred_event(&env, normalized_project_id, current_owner, new_owner);
 
         Ok(())
     }
@@ -102,7 +107,9 @@ impl ProjectRegistry {
         project_id: String,
         new_owner: Address,
     ) -> Result<(), Error> {
-        let current_owner = storage::get_project_owner(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let current_owner = storage::get_project_owner(&env, &normalized_project_id)?;
         current_owner.require_auth();
 
         validate_address(&new_owner)?;
@@ -111,11 +118,11 @@ impl ProjectRegistry {
             return Err(Error::SameOwner);
         }
 
-        if storage::has_pending_transfer(&env, &project_id) {
+        if storage::has_pending_transfer(&env, &normalized_project_id) {
             return Err(Error::PendingTransferExists);
         }
 
-        storage::set_pending_transfer(&env, &project_id, &new_owner);
+        storage::set_pending_transfer(&env, &normalized_project_id, &new_owner);
         extend_instance_ttl(&env);
 
         Ok(())
@@ -124,30 +131,34 @@ impl ProjectRegistry {
     /// Accept a proposed ownership transfer.
     /// Only the pending new owner can call this.
     pub fn accept_ownership_transfer(env: Env, project_id: String) -> Result<(), Error> {
-        let pending_owner = storage::get_pending_transfer(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let pending_owner = storage::get_pending_transfer(&env, &normalized_project_id)?;
         pending_owner.require_auth();
 
-        let old_owner = storage::get_project_owner(&env, &project_id)?;
+        let old_owner = storage::get_project_owner(&env, &normalized_project_id)?;
 
-        storage::set_project_owner(&env, &project_id, &pending_owner);
-        storage::remove_pending_transfer(&env, &project_id);
+        storage::set_project_owner(&env, &normalized_project_id, &pending_owner);
+        storage::remove_pending_transfer(&env, &normalized_project_id);
         extend_instance_ttl(&env);
 
-        emit_owner_transferred_event(&env, project_id, old_owner, pending_owner);
+        emit_owner_transferred_event(&env, normalized_project_id, old_owner, pending_owner);
 
         Ok(())
     }
 
     /// Cancel a pending ownership transfer (current owner only).
     pub fn cancel_ownership_transfer(env: Env, project_id: String) -> Result<(), Error> {
-        let current_owner = storage::get_project_owner(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let current_owner = storage::get_project_owner(&env, &normalized_project_id)?;
         current_owner.require_auth();
 
-        if !storage::has_pending_transfer(&env, &project_id) {
+        if !storage::has_pending_transfer(&env, &normalized_project_id) {
             return Err(Error::NoPendingTransfer);
         }
 
-        storage::remove_pending_transfer(&env, &project_id);
+        storage::remove_pending_transfer(&env, &normalized_project_id);
         extend_instance_ttl(&env);
 
         Ok(())
@@ -158,7 +169,9 @@ impl ProjectRegistry {
         env: Env,
         project_id: String,
     ) -> Result<Address, Error> {
-        storage::get_pending_transfer(&env, &project_id)
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        storage::get_pending_transfer(&env, &normalized_project_id)
     }
 
     /// Admin override to recover project ownership.
@@ -172,19 +185,21 @@ impl ProjectRegistry {
         let admin = storage::get_admin(&env)?;
         admin.require_auth();
 
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
         validate_address(&new_owner)?;
 
-        let old_owner = storage::get_project_owner(&env, &project_id)?;
+        let old_owner = storage::get_project_owner(&env, &normalized_project_id)?;
 
         if new_owner == old_owner {
             return Err(Error::SameOwner);
         }
 
-        storage::set_project_owner(&env, &project_id, &new_owner);
-        storage::remove_pending_transfer(&env, &project_id);
+        storage::set_project_owner(&env, &normalized_project_id, &new_owner);
+        storage::remove_pending_transfer(&env, &normalized_project_id);
         extend_instance_ttl(&env);
 
-        emit_owner_transferred_event(&env, project_id, old_owner, new_owner);
+        emit_owner_transferred_event(&env, normalized_project_id, old_owner, new_owner);
 
         Ok(())
     }
@@ -196,7 +211,9 @@ impl ProjectRegistry {
         ipfs_cid: String,
         document_type: String,
     ) -> Result<u32, Error> {
-        let owner = storage::get_project_owner(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let owner = storage::get_project_owner(&env, &normalized_project_id)?;
         owner.require_auth();
 
         // Validate IPFS CID format
@@ -206,7 +223,7 @@ impl ProjectRegistry {
 
         // Enforce strict monotonic timestamps when the flag is enabled
         if storage::get_monotonic_enforcement(&env) {
-            if let Some(last_ts) = storage::get_last_timestamp(&env, &project_id) {
+            if let Some(last_ts) = storage::get_last_timestamp(&env, &normalized_project_id) {
                 if timestamp <= last_ts {
                     return Err(Error::TimestampNotMonotonic);
                 }
@@ -222,27 +239,27 @@ impl ProjectRegistry {
 
         // Get or create document history
         let mut history =
-            storage::get_document_history(&env, &project_id).unwrap_or_else(|_| Vec::new(&env));
+            storage::get_document_history(&env, &normalized_project_id).unwrap_or_else(|_| Vec::new(&env));
 
         let version_index = history.len();
         history.push_back(record);
 
         // Store updated history
-        storage::set_document_history(&env, &project_id, &history);
+        storage::set_document_history(&env, &normalized_project_id, &history);
 
         // Update last recorded timestamp for monotonic enforcement
-        storage::set_last_timestamp(&env, &project_id, timestamp);
+        storage::set_last_timestamp(&env, &normalized_project_id, timestamp);
 
         // Track project's last document timestamp for pruning decisions
-        storage::set_project_last_document_timestamp(&env, &project_id, timestamp);
+        storage::set_project_last_document_timestamp(&env, &normalized_project_id, timestamp);
 
         // Update anchorer index
         let mut anchorer_projects =
             storage::get_anchorer_projects(&env, &owner).unwrap_or_else(|_| Vec::new(&env));
 
         // Add project_id if not already in the list
-        if !anchorer_projects.contains(&project_id) {
-            anchorer_projects.push_back(project_id.clone());
+        if !anchorer_projects.contains(&normalized_project_id) {
+            anchorer_projects.push_back(normalized_project_id.clone());
             storage::set_anchorer_projects(&env, &owner, &anchorer_projects);
         }
 
@@ -250,7 +267,7 @@ impl ProjectRegistry {
         storage::maybe_auto_compact(&env, &owner);
 
         // Emit event for off-chain indexing
-        emit_document_anchored_event(&env, project_id, ipfs_cid, document_type, version_index);
+        emit_document_anchored_event(&env, normalized_project_id, ipfs_cid, document_type, version_index);
 
         extend_instance_ttl(&env);
 
@@ -263,7 +280,9 @@ impl ProjectRegistry {
         project_id: String,
         documents: Vec<(String, String)>, // Vec of (ipfs_cid, document_type)
     ) -> Result<Vec<u32>, Error> {
-        let owner = storage::get_project_owner(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let owner = storage::get_project_owner(&env, &normalized_project_id)?;
         owner.require_auth();
 
         if documents.is_empty() {
@@ -274,7 +293,7 @@ impl ProjectRegistry {
 
         // Enforce strict monotonic timestamps when the flag is enabled
         if storage::get_monotonic_enforcement(&env) {
-            if let Some(last_ts) = storage::get_last_timestamp(&env, &project_id) {
+            if let Some(last_ts) = storage::get_last_timestamp(&env, &normalized_project_id) {
                 if timestamp <= last_ts {
                     return Err(Error::TimestampNotMonotonic);
                 }
@@ -282,7 +301,7 @@ impl ProjectRegistry {
         }
 
         let mut history =
-            storage::get_document_history(&env, &project_id).unwrap_or_else(|_| Vec::new(&env));
+            storage::get_document_history(&env, &normalized_project_id).unwrap_or_else(|_| Vec::new(&env));
 
         let mut version_indices = Vec::new(&env);
 
@@ -306,7 +325,7 @@ impl ProjectRegistry {
             // Emit event for each document
             emit_document_anchored_event(
                 &env,
-                project_id.clone(),
+                normalized_project_id.clone(),
                 ipfs_cid,
                 document_type,
                 version_index,
@@ -314,20 +333,20 @@ impl ProjectRegistry {
         }
 
         // Store updated history
-        storage::set_document_history(&env, &project_id, &history);
+        storage::set_document_history(&env, &normalized_project_id, &history);
 
         // Update last recorded timestamp for monotonic enforcement
-        storage::set_last_timestamp(&env, &project_id, timestamp);
+        storage::set_last_timestamp(&env, &normalized_project_id, timestamp);
 
         // Track project's last document timestamp for pruning decisions
-        storage::set_project_last_document_timestamp(&env, &project_id, timestamp);
+        storage::set_project_last_document_timestamp(&env, &normalized_project_id, timestamp);
 
         // Update anchorer index
         let mut anchorer_projects =
             storage::get_anchorer_projects(&env, &owner).unwrap_or_else(|_| Vec::new(&env));
 
-        if !anchorer_projects.contains(&project_id) {
-            anchorer_projects.push_back(project_id.clone());
+        if !anchorer_projects.contains(&normalized_project_id) {
+            anchorer_projects.push_back(normalized_project_id.clone());
             storage::set_anchorer_projects(&env, &owner, &anchorer_projects);
         }
 
@@ -341,7 +360,9 @@ impl ProjectRegistry {
 
     /// Get the latest anchored CID for a project
     pub fn get_latest_cid(env: Env, project_id: String) -> Result<String, Error> {
-        let history = storage::get_document_history(&env, &project_id)?;
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        let history = storage::get_document_history(&env, &normalized_project_id)?;
 
         if history.is_empty() {
             return Err(Error::NoDocumentsFound);
@@ -356,7 +377,9 @@ impl ProjectRegistry {
         env: Env,
         project_id: String,
     ) -> Result<Vec<DocumentRecord>, Error> {
-        storage::get_document_history(&env, &project_id)
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        storage::get_document_history(&env, &normalized_project_id)
     }
 
     /// Get all projects that an address has anchored documents for
@@ -421,7 +444,9 @@ impl ProjectRegistry {
 
     /// Get the owner of a project
     pub fn get_project_owner(env: Env, project_id: String) -> Result<Address, Error> {
-        storage::get_project_owner(&env, &project_id)
+        validate_project_id(&project_id)?;
+        let normalized_project_id = normalize_project_id(&env, &project_id);
+        storage::get_project_owner(&env, &normalized_project_id)
     }
 
     /// Get the admin address

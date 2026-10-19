@@ -24,6 +24,8 @@ pub enum Error {
     InvalidRegistry = 14,
     MetadataTooLong = 15,
     DuplicateMethodologyIdentity = 16,
+    // ipfs_cid format validation (issue #688)
+    InvalidIpfsCid = 17,
 }
 
 #[contracttype]
@@ -146,6 +148,25 @@ impl MethodologyLibrary {
             return Err(Error::InvalidRegistryLink);
         }
 
+        // Validate ipfs_cid: optional (issue #688). None is fully valid and
+        // unvalidated — the field simply wasn't supplied. When Some, it must
+        // be non-empty, within a reasonable length cap, and shaped like a
+        // real CIDv0 or CIDv1 string, not just any string.
+        if let Some(ipfs_cid) = &meta.ipfs_cid {
+            if ipfs_cid.len() == 0 {
+                return Err(Error::InvalidIpfsCid);
+            }
+            if ipfs_cid.len() > 100 {
+                return Err(Error::MetadataTooLong);
+            }
+            if Self::is_whitespace_only(&ipfs_cid.to_bytes()) {
+                return Err(Error::InvalidIpfsCid);
+            }
+            if !Self::is_valid_cid_shape(&ipfs_cid.to_bytes()) {
+                return Err(Error::InvalidIpfsCid);
+            }
+        }
+
         Ok(())
     }
 
@@ -208,6 +229,49 @@ impl MethodologyLibrary {
             return true;
         }
         false
+    }
+
+    /// Lightweight shape check for a CIDv0 or CIDv1 string (issue #688) —
+    /// not a full multibase/multihash decoder (no external crate is pulled
+    /// in for a #![no_std] contract), but enough to catch an obviously-wrong
+    /// string like "not-a-cid" while accepting a real IPFS CID.
+    fn is_valid_cid_shape(bytes: &Bytes) -> bool {
+        let len = bytes.len();
+
+        // CIDv0: "Qm" followed by exactly 44 base58 characters (46 total) —
+        // this is a fixed-length encoding of a sha2-256 multihash, so the
+        // length is exact, not just a cap.
+        if len == 46 && bytes.get(0).unwrap() == b'Q' && bytes.get(1).unwrap() == b'm' {
+            for i in 2..len {
+                if !Self::is_base58_char(bytes.get(i).unwrap()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // CIDv1: a multibase prefix byte (most commonly 'b' for base32)
+        // followed by multibase-encoded data. CIDv1 strings vary in length
+        // depending on the hash algorithm, so this only bounds a sensible
+        // minimum (long enough to rule out a bare "b" or "b1") rather than
+        // requiring an exact length like CIDv0 above.
+        if len >= 20 && bytes.get(0).unwrap() == b'b' {
+            for i in 1..len {
+                let byte = bytes.get(i).unwrap();
+                if !byte.is_ascii_lowercase() && !byte.is_ascii_digit() {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        false
+    }
+
+    /// Base58 (Bitcoin) alphabet check: alphanumeric, excluding 0, O, I, l,
+    /// which base58 omits to avoid visual ambiguity.
+    fn is_base58_char(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() && byte != b'0' && byte != b'O' && byte != b'I' && byte != b'l'
     }
 
     pub fn mint_methodology(env: Env, caller: Address, owner: Address, meta: MethodologyMeta) -> Result<u32, Error> {
@@ -1160,6 +1224,204 @@ mod test {
         assert_eq!(result, Err(Ok(Error::MetadataTooLong)));
     }
 
+    // ====================================================================
+    // ipfs_cid format validation (issue #688)
+    // ====================================================================
+
+    fn base_meta_for_cid_tests(
+        env: &Env,
+        authority: &Address,
+        ipfs_cid: Option<String>,
+    ) -> MethodologyMeta {
+        MethodologyMeta {
+            name: String::from_str(env, "Improved Forest Management"),
+            version: String::from_str(env, "1.0.0"),
+            registry: String::from_str(env, "VERRA"),
+            registry_link: String::from_str(env, "https://verra.org"),
+            issuing_authority: authority.clone(),
+            ipfs_cid,
+        }
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_none_is_valid() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta = base_meta_for_cid_tests(&env, &authority, None);
+
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(token_id, 1);
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_valid_cidv0_is_accepted() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta = base_meta_for_cid_tests(
+            &env,
+            &authority,
+            Some(String::from_str(
+                &env,
+                "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+            )),
+        );
+
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(token_id, 1);
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_valid_cidv1_is_accepted() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        // A real CIDv1 (base32, multicodec dag-pb, sha2-256) for the same
+        // underlying hash as the CIDv0 example above.
+        let meta = base_meta_for_cid_tests(
+            &env,
+            &authority,
+            Some(String::from_str(
+                &env,
+                "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+            )),
+        );
+
+        let token_id = client.mint_methodology(&authority, &owner, &meta);
+        assert_eq!(token_id, 1);
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_invalid_string_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta =
+            base_meta_for_cid_tests(&env, &authority, Some(String::from_str(&env, "not-a-cid")));
+
+        let result = client.try_mint_methodology(&authority, &owner, &meta);
+        assert_eq!(result, Err(Ok(Error::InvalidIpfsCid)));
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_too_long_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        // 101 'b' characters: longer than the 100-char cap, and would
+        // otherwise pass the CIDv1 shape check on its own.
+        let meta = base_meta_for_cid_tests(
+            &env,
+            &authority,
+            Some(String::from_str(&env, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")),
+        );
+
+        let result = client.try_mint_methodology(&authority, &owner, &meta);
+        assert_eq!(result, Err(Ok(Error::MetadataTooLong)));
+    }
+
+    #[test]
+    fn test_validation_ipfs_cid_whitespace_only_is_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let authority = Address::generate(&env);
+        let owner = Address::generate(&env);
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        client.add_authority(&admin, &authority);
+
+        let meta = base_meta_for_cid_tests(&env, &authority, Some(String::from_str(&env, "   ")));
+
+        let result = client.try_mint_methodology(&authority, &owner, &meta);
+        assert_eq!(result, Err(Ok(Error::InvalidIpfsCid)));
+    }
+
     #[test]
     fn test_validation_registry_too_long() {
         let env = Env::default();
@@ -1266,7 +1528,10 @@ mod test {
             registry: String::from_str(&env, "VERRA"),
             registry_link: String::from_str(&env, "https://verra.org/updated"),
             issuing_authority: authority.clone(),
-            ipfs_cid: Some(String::from_str(&env, "QmUpdated")),
+            ipfs_cid: Some(String::from_str(
+                &env,
+                "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+            )),
         };
 
         client.update_methodology_metadata(&authority, &token_id, &updated_meta);

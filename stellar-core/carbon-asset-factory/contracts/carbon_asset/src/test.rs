@@ -4,6 +4,7 @@ use super::{CarbonAsset, CarbonAssetClient};
 use crate::errors::ContractError;
 use crate::storage::DataKey;
 use crate::types::{AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult};
+use buffer_pool::{BufferPoolContract, BufferPoolContractClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contract, contracterror, contractimpl, Address, BytesN, Env, String};
 
@@ -948,4 +949,171 @@ fn test_mint_total_minted_overflow_returns_error_and_preserves_state() {
         client.try_owner_of(&1),
         Err(Ok(ContractError::TokenNotFound))
     );
+}
+
+// ====================================================================
+// Buffer pool auto-deposit integration (issue #684)
+// ====================================================================
+
+/// Registers and initializes a real buffer_pool contract wired to
+/// `carbon_asset_contract_id` as its `carbon_asset_contract`, with a 5%
+/// replenishment rate (modulo 20 — matches buffer_pool's own
+/// integration_test.rs convention) so threshold-crossing tests below
+/// don't need to mint hundreds of tokens.
+fn setup_buffer_pool<'a>(
+    env: &'a Env,
+    carbon_asset_contract_id: &Address,
+) -> (Address, BufferPoolContractClient<'a>, Address) {
+    let bp_admin = Address::generate(env);
+    let governance = Address::generate(env);
+    let buffer_pool_id = env.register(BufferPoolContract, ());
+    let buffer_pool_client = BufferPoolContractClient::new(env, &buffer_pool_id);
+    buffer_pool_client.initialize(&bp_admin, &governance, carbon_asset_contract_id, &500);
+    (buffer_pool_id, buffer_pool_client, governance)
+}
+
+#[test]
+fn test_mint_without_buffer_pool_configured_is_unchanged() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+
+    // No regression (#684 acceptance criteria): a deployment that never
+    // calls set_buffer_pool sees mint() behave exactly as before.
+    assert_eq!(client.get_buffer_pool(), None);
+
+    let meta = make_meta(&env);
+    let token_id = client.mint(&admin, &owner, &meta);
+    assert_eq!(token_id, 1);
+    assert_eq!(client.owner_of(&token_id), owner);
+}
+
+#[test]
+fn test_set_buffer_pool_unauthorized() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let not_admin = Address::generate(&env);
+    let buffer_pool_addr = Address::generate(&env);
+
+    let result = client.try_set_buffer_pool(&not_admin, &buffer_pool_addr);
+    assert_eq!(result, Err(Ok(ContractError::NotAuthorized)));
+    assert_eq!(client.get_buffer_pool(), None);
+}
+
+#[test]
+fn test_set_buffer_pool_roundtrip() {
+    let (env, admin, retirement_tracker, _owner) = setup_env();
+    let (_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let buffer_pool_addr = Address::generate(&env);
+
+    client.set_buffer_pool(&admin, &buffer_pool_addr);
+    assert_eq!(client.get_buffer_pool(), Some(buffer_pool_addr));
+}
+
+/// Main integration test (#684 acceptance criteria): mint enough tokens to
+/// cross the configured modulo threshold (20, from the 5% rate above) and
+/// confirm buffer_pool actually gained a CustodyRecord and its
+/// get_total_value_locked() increased — all within the same test
+/// transaction, proving the cross-contract call really happened rather
+/// than merely being wired up syntactically.
+#[test]
+fn test_mint_crossing_modulo_threshold_deposits_into_buffer_pool() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let (_buffer_pool_id, buffer_pool_client, _governance) = setup_buffer_pool(&env, &contract_id);
+
+    client.set_buffer_pool(&admin, &buffer_pool_client.address);
+    assert_eq!(
+        client.get_buffer_pool(),
+        Some(buffer_pool_client.address.clone())
+    );
+
+    let meta = make_meta(&env);
+
+    // Tokens 1..=19 are below the modulo-20 threshold — no deposit yet.
+    for _ in 1..20 {
+        client.mint(&admin, &owner, &meta);
+    }
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 0);
+
+    // Token 20 crosses the threshold.
+    let token_id = client.mint(&admin, &owner, &meta);
+    assert_eq!(token_id, 20);
+
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 1);
+    assert!(buffer_pool_client.is_token_in_pool(&20));
+    let record = buffer_pool_client.get_custody_record(&20);
+    assert!(record.is_some());
+    assert_eq!(record.unwrap().project_id, meta.project_id);
+
+    // Minting on past the next threshold increases TVL again.
+    for _ in 21..40 {
+        client.mint(&admin, &owner, &meta);
+    }
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 1);
+    let token_id_40 = client.mint(&admin, &owner, &meta);
+    assert_eq!(token_id_40, 40);
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 2);
+}
+
+/// Dedicated failure-handling test (#684 acceptance criteria): forces
+/// auto_deposit to fail by pausing the buffer pool (a realistic incident-
+/// response scenario — see buffer_pool::pause) before a threshold-crossing
+/// mint, and asserts the chosen fail-open policy: the mint still succeeds
+/// and the token is owned as normal, while the buffer pool's own state is
+/// untouched (no CustodyRecord, TVL unchanged) because the call failed and
+/// was caught rather than retried or escalated.
+#[test]
+fn test_mint_with_paused_buffer_pool_fails_open_mint_still_succeeds() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    let (_buffer_pool_id, buffer_pool_client, governance) = setup_buffer_pool(&env, &contract_id);
+
+    client.set_buffer_pool(&admin, &buffer_pool_client.address);
+    buffer_pool_client.pause(&governance);
+    assert!(buffer_pool_client.is_paused());
+
+    let meta = make_meta(&env);
+    // Mint straight to token_id 20, the first modulo-20 threshold, so this
+    // single mint is guaranteed to attempt (and fail) an auto_deposit.
+    for _ in 1..20 {
+        client.mint(&admin, &owner, &meta);
+    }
+    let token_id = client.mint(&admin, &owner, &meta);
+
+    // The mint itself is unaffected by the buffer pool outage.
+    assert_eq!(token_id, 20);
+    assert_eq!(client.owner_of(&token_id), owner);
+    assert_eq!(client.get_total_minted(), 20);
+
+    // But the buffer pool never actually received the deposit — the
+    // call failed (ContractPaused) and was caught, not silently
+    // retried into a partial/inconsistent state.
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 0);
+    assert!(!buffer_pool_client.is_token_in_pool(&20));
+}
+
+/// A buffer pool address that doesn't match what buffer_pool itself was
+/// initialized with (its own carbon_asset_contract check) also fails open
+/// rather than reverting the mint — covering the "misconfigured address"
+/// failure mode distinct from "pool paused" above.
+#[test]
+fn test_mint_with_mismatched_buffer_pool_address_fails_open() {
+    let (env, admin, retirement_tracker, owner) = setup_env();
+    let (_contract_id, client) = setup_client(&env, &admin, &retirement_tracker);
+    // Initialize buffer_pool expecting a *different* carbon asset contract
+    // than the one actually configured via set_buffer_pool below.
+    let other_contract_id = Address::generate(&env);
+    let (_buffer_pool_id, buffer_pool_client, _governance) =
+        setup_buffer_pool(&env, &other_contract_id);
+
+    client.set_buffer_pool(&admin, &buffer_pool_client.address);
+
+    let meta = make_meta(&env);
+    for _ in 1..20 {
+        client.mint(&admin, &owner, &meta);
+    }
+    let token_id = client.mint(&admin, &owner, &meta);
+
+    assert_eq!(token_id, 20);
+    assert_eq!(buffer_pool_client.get_total_value_locked(), 0);
 }
