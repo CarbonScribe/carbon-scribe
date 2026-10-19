@@ -17,6 +17,7 @@
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.4.3",
     "@stellar/stellar-sdk": "^16.0.1",
+    "@turf/area": "^7.4.0",
     "@types/mapbox-gl": "^3.4.1",
     "@xyflow/react": "^12.10.1",
     "axios": "^1.13.5",
