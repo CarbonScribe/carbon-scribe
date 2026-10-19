@@ -7,6 +7,27 @@ import {
   ServiceConnectivityResult,
 } from './validation.types';
 
+/**
+ * Strict CORS origin format check (#646): an allowlisted origin must be an
+ * http(s) URL with nothing beyond scheme + host[:port] — no path, query
+ * string, fragment, or trailing slash, and no wildcard. `new URL(origin)`
+ * rejects a missing scheme or a bare wildcard outright; comparing against
+ * `.origin` (which never carries a trailing slash or path) catches the
+ * rest, since an origin like `https://example.com/` would parse but its
+ * `.origin` would be the un-slashed `https://example.com`.
+ */
+export function isValidCorsOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.origin === origin
+    );
+  } catch {
+    return false;
+  }
+}
+
 @Injectable()
 export class StartupValidator implements OnModuleInit {
   private readonly logger = new Logger(StartupValidator.name);
@@ -258,19 +279,28 @@ export class StartupValidator implements OnModuleInit {
 
     // === CORS Origins ===
     const corsOrigins = process.env.CORS_ORIGINS;
-    if (isProduction) {
-      if (!corsOrigins) {
-        warnings.push(
-          'CORS_ORIGINS not configured (using default localhost origins)',
+    const corsOriginList = (corsOrigins ?? '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean);
+
+    if (isProduction && corsOriginList.length === 0) {
+      // Production must never silently fall back to parseCorsOrigins'
+      // localhost defaults (main.ts) — that default exists purely for
+      // development convenience.
+      errors.push(
+        'CORS_ORIGINS must be explicitly configured in production (refusing to fall back to the default localhost origins)',
+      );
+    }
+
+    // Format is checked whenever an origin is actually configured,
+    // regardless of environment — a typo'd entry should fail loudly in
+    // development too, not just silently never match any real request.
+    for (const origin of corsOriginList) {
+      if (!isValidCorsOrigin(origin)) {
+        errors.push(
+          `CORS_ORIGINS contains an invalid origin: "${origin}" (must be an http(s) URL with no path, query string, trailing slash, or wildcard)`,
         );
-      } else {
-        const origins = corsOrigins
-          .split(',')
-          .map((o) => o.trim())
-          .filter(Boolean);
-        if (origins.length === 0) {
-          warnings.push('CORS_ORIGINS configured but empty');
-        }
       }
     }
   }
