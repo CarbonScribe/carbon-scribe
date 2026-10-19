@@ -21,6 +21,23 @@ use crate::types::{
     ValidationResult,
 };
 
+/// Typed cross-contract binding for buffer_pool's auto_deposit (issue #684).
+///
+/// Generated from buffer_pool's *built WASM*, not a Cargo dependency on the
+/// buffer_pool crate's source — see Cargo.toml for why: both crates are
+/// `#[contract]`-bearing, and linking buffer_pool's compiled contract code
+/// into this crate's own cdylib would embed both contracts' interface specs
+/// in the same carbon_asset.wasm, which is exactly what broke
+/// verifiable-registry's merkle_bridge (it does the same contractimport!
+/// against this crate's WASM to call *it*). This means buffer_pool's
+/// wasm32 release build is a build-order prerequisite for this crate — see
+/// the CI workflow, which builds it first.
+mod buffer_pool {
+    soroban_sdk::contractimport!(
+        file = "../../target/wasm32-unknown-unknown/release/buffer_pool.wasm"
+    );
+}
+
 // ========================================================================
 // Contract
 // ========================================================================
@@ -257,8 +274,7 @@ impl CarbonAsset {
         let buffer_pool_address: Option<Address> =
             env.storage().instance().get(&DataKey::BufferPool);
         if let Some(buffer_pool_address) = buffer_pool_address {
-            let buffer_pool_client =
-                buffer_pool::BufferPoolContractClient::new(&env, &buffer_pool_address);
+            let buffer_pool_client = buffer_pool::Client::new(&env, &buffer_pool_address);
             let call_result = buffer_pool_client.try_auto_deposit(
                 &env.current_contract_address(),
                 &token_id,
