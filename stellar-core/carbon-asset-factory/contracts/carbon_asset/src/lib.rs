@@ -11,14 +11,32 @@ use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, String, Symbol,
 
 use crate::errors::ContractError;
 use crate::events::{
-    AdminTransferAcceptedEvent, AdminTransferProposedEvent, ApproveEvent, MintCapReachedEvent,
-    MintCapSetEvent, MintEvent, MintingFrozenEvent, QualityScoreUpdatedEvent, Sep41BurnEvent,
-    Sep41TransferEvent, StatusChangeEvent, TransferEvent,
+    AdminTransferAcceptedEvent, AdminTransferProposedEvent, ApproveEvent, AutoDepositEvent,
+    MintCapReachedEvent, MintCapSetEvent, MintEvent, MintingFrozenEvent, QualityScoreUpdatedEvent,
+    Sep41BurnEvent, Sep41TransferEvent, StatusChangeEvent, TransferEvent,
 };
 use crate::storage::DataKey;
 use crate::types::{
-    AllowanceData, AssetStatus, CarbonAssetMetadata, OperationType, ValidationResult,
+    AllowanceData, AssetStatus, AutoDepositOutcome, CarbonAssetMetadata, OperationType,
+    ValidationResult,
 };
+
+/// Typed cross-contract binding for buffer_pool's auto_deposit (issue #684).
+///
+/// Generated from buffer_pool's *built WASM*, not a Cargo dependency on the
+/// buffer_pool crate's source — see Cargo.toml for why: both crates are
+/// `#[contract]`-bearing, and linking buffer_pool's compiled contract code
+/// into this crate's own cdylib would embed both contracts' interface specs
+/// in the same carbon_asset.wasm, which is exactly what broke
+/// verifiable-registry's merkle_bridge (it does the same contractimport!
+/// against this crate's WASM to call *it*). This means buffer_pool's
+/// wasm32 release build is a build-order prerequisite for this crate — see
+/// the CI workflow, which builds it first.
+mod buffer_pool {
+    soroban_sdk::contractimport!(
+        file = "../../target/wasm32-unknown-unknown/release/buffer_pool.wasm"
+    );
+}
 
 // ========================================================================
 // Contract
@@ -226,6 +244,66 @@ impl CarbonAsset {
                 }
                 .publish(&env);
             }
+        }
+
+        // --- Buffer pool auto-deposit integration (issue #684) ---
+        //
+        // Opt-in: a deployment that has never called set_buffer_pool has
+        // DataKey::BufferPool unset, so mint() makes no call and emits no
+        // event here at all — identical to its pre-#684 behavior. This is
+        // required so existing tests/deployments that mint without ever
+        // configuring a buffer pool see no regression.
+        //
+        // Fail-open, not closed, when a buffer pool IS configured: an
+        // auto_deposit failure (the pool paused for incident response, a
+        // carbon_asset_contract address mismatch, or any other trap) must
+        // never roll back a successful mint. Minting is this contract's
+        // primary, consequential operation; the buffer pool is an
+        // auxiliary reserve mechanism layered on top of it. Letting that
+        // auxiliary subsystem's own outage or incident response cascade
+        // into blocking all token issuance would be a strictly worse
+        // failure mode than occasionally missing a reserve deposit — and
+        // a missed deposit is still visible and actionable via the
+        // AutoDepositEvent below, independent of whatever event
+        // buffer_pool itself emitted (or didn't, if the call never
+        // reached it). try_auto_deposit (rather than the trapping
+        // auto_deposit) is what makes this possible: like
+        // before_transfer's use of try_invoke_contract for the
+        // regulatory-check call, a trap/error in the callee surfaces as a
+        // typed result instead of aborting this whole invocation.
+        let buffer_pool_address: Option<Address> =
+            env.storage().instance().get(&DataKey::BufferPool);
+        if let Some(buffer_pool_address) = buffer_pool_address {
+            let buffer_pool_client = buffer_pool::Client::new(&env, &buffer_pool_address);
+            let call_result = buffer_pool_client.try_auto_deposit(
+                &env.current_contract_address(),
+                &token_id,
+                &metadata.project_id,
+                &next_total_minted,
+            );
+
+            let outcome = match call_result {
+                Ok(Ok(true)) => AutoDepositOutcome::Deposited,
+                Ok(Ok(false)) => AutoDepositOutcome::NotSampled,
+                Ok(Err(_)) | Err(_) => AutoDepositOutcome::CallFailed,
+            };
+
+            let sequence: u64 = env
+                .storage()
+                .instance()
+                .get(&DataKey::EventSequence)
+                .unwrap_or(0u64);
+            let next_sequence = sequence + 1;
+            env.storage()
+                .instance()
+                .set(&DataKey::EventSequence, &next_sequence);
+            AutoDepositEvent {
+                sequence: next_sequence,
+                token_id,
+                buffer_pool: buffer_pool_address,
+                outcome,
+            }
+            .publish(&env);
         }
 
         Ok(token_id)
@@ -743,6 +821,32 @@ impl CarbonAsset {
         Ok(())
     }
 
+    /// Configure the buffer pool contract address for automatic reserve
+    /// deposits during mint() (issue #684). Admin-only, like the other
+    /// single-step setters in this section — a wrong address here is
+    /// recoverable by calling this again, so it doesn't warrant the
+    /// two-step propose/accept treatment reserved for DataKey::Admin.
+    ///
+    /// Not calling this at all leaves DataKey::BufferPool unset and
+    /// mint() behaves exactly as it did before #684 (see mint()'s doc
+    /// comment) — the buffer pool integration is strictly opt-in.
+    pub fn set_buffer_pool(
+        env: Env,
+        caller: Address,
+        buffer_pool: Address,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+        let admin = Self::get_admin(env.clone())?;
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::BufferPool, &buffer_pool);
+        Ok(())
+    }
+
     pub fn set_host_jurisdiction(
         env: Env,
         caller: Address,
@@ -900,6 +1004,13 @@ impl CarbonAsset {
 
     pub fn get_regulatory_check(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::RegulatoryCheck)
+    }
+
+    /// Returns the configured buffer pool contract address, or None if
+    /// this deployment hasn't opted into the auto-deposit integration
+    /// (issue #684).
+    pub fn get_buffer_pool(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::BufferPool)
     }
 
     pub fn get_host_jurisdiction(env: Env) -> Option<String> {

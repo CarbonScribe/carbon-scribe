@@ -134,10 +134,22 @@ export function createMockToolRunner(options: MockAnthropicOptions = {}) {
           text: fixtureJson,
         },
       ],
+      usage: { input_tokens: 100, output_tokens: 100 },
     };
 
     return {
       params: { messages },
+      // The real BetaToolRunner is both directly awaitable and
+      // async-iterable; runWithTokenBudget (#701) drives every agent's
+      // runner via `for await`, so this mock must support that too, or
+      // every request fails instantly with "runner is not async iterable"
+      // — exactly what happened here before this fix.
+      async *[Symbol.asyncIterator]() {
+        if (latencyMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, latencyMs));
+        }
+        yield finalMessage;
+      },
       async then(
         onFulfilled?: ((value: unknown) => unknown) | null,
         onRejected?: ((reason: unknown) => unknown) | null,

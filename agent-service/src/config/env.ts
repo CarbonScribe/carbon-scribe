@@ -1,4 +1,8 @@
 import "dotenv/config";
+import {
+  DEFAULT_MAX_ITERATIONS,
+  DEFAULT_MAX_TOKENS_PER_RUN,
+} from "../llm/budget.js";
 
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
@@ -89,4 +93,21 @@ export const env = {
     "AGENT_AUDIT_DATABASE_URL",
     "postgres://postgres:postgres@localhost:5432/agent_service",
   ),
+
+  // Shared, cost-aware budget for every agent run (#701): one iteration cap
+  // and one cumulative-token cap, instead of each of the four agents
+  // hardcoding its own copy. See llm/budget.ts for the defaults' reasoning.
+  agentMaxIterations: positiveInteger(
+    "AGENT_MAX_ITERATIONS",
+    DEFAULT_MAX_ITERATIONS,
+  ),
+  agentMaxTokensPerRun: positiveInteger(
+    "AGENT_MAX_TOKENS_PER_RUN",
+    DEFAULT_MAX_TOKENS_PER_RUN,
+  ),
+
+  // Bound on graceful shutdown (#700): if in-flight requests haven't
+  // drained within this window after SIGTERM/SIGINT, the process
+  // force-exits rather than hanging a deploy indefinitely.
+  shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", 15000),
 };
