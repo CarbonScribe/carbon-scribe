@@ -8,7 +8,7 @@ mod validation;
 
 use events::{
     emit_anchorer_index_compacted_event, emit_document_anchored_event,
-    emit_owner_transferred_event,
+    emit_owner_transferred_event, emit_project_registered_event,
 };
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use storage::extend_instance_ttl;
@@ -50,7 +50,9 @@ impl ProjectRegistry {
         storage::get_monotonic_enforcement(&env)
     }
 
-    /// Register a new project and assign initial owner (admin only)
+    /// Register a new project and assign initial owner (admin only).
+    ///
+    /// Emits a `ProjectRegistered` event with the project id, owner, and timestamp.
     pub fn register_project(env: Env, project_id: String, owner: Address) -> Result<(), Error> {
         let admin = storage::get_admin(&env)?;
         admin.require_auth();
@@ -62,6 +64,9 @@ impl ProjectRegistry {
         validate_address(&owner)?;
 
         storage::set_project_owner(&env, &project_id, &owner);
+
+        emit_project_registered_event(&env, project_id, owner);
+
         extend_instance_ttl(&env);
 
         Ok(())

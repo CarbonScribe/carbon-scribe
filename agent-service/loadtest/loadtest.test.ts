@@ -19,7 +19,7 @@ describe("Load Testing Module", () => {
     it("generates correct fixture responses for all agents", async () => {
       const client = createMockAnthropicClient({ latencyMs: 5 });
 
-      const discoveryRunner = client.beta.messages.toolRunner({
+      const discoveryRunner = client.beta.messages.toolRunner( {
         system: "You are the credit-discovery agent",
       } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
       const discoveryMsg = await discoveryRunner;
@@ -29,7 +29,7 @@ describe("Load Testing Module", () => {
         text: JSON.stringify(DISCOVERY_FIXTURE_OUTPUT),
       });
 
-      const pddRunner = client.beta.messages.toolRunner({
+      const pddRunner = client.beta.messages.toolRunner( {
         system: "You are the PDD drafting agent",
       } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
       const pddMsg = await pddRunner;
@@ -38,7 +38,7 @@ describe("Load Testing Module", () => {
         text: JSON.stringify(PDD_FIXTURE_OUTPUT),
       });
 
-      const complianceRunner = client.beta.messages.toolRunner({
+      const complianceRunner = client.beta.messages.toolRunner( {
         system: "You are the compliance-report agent",
       } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
       const complianceMsg = await complianceRunner;
@@ -47,7 +47,7 @@ describe("Load Testing Module", () => {
         text: JSON.stringify(COMPLIANCE_REPORT_FIXTURE_OUTPUT),
       });
 
-      const alertRunner = client.beta.messages.toolRunner({
+      const alertRunner = client.beta.messages.toolRunner( {
         system: "You are the alert-triage agent",
       } as unknown as Parameters<typeof client.beta.messages.toolRunner>[0]);
       const alertMsg = await alertRunner;
