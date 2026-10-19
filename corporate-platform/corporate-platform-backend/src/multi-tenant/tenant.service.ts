@@ -211,13 +211,24 @@ export class TenantService {
     }
 
     try {
-      const secret = this.configService.getAuthConfig().jwtSecret;
-      const payload = verify(token, secret) as JwtPayload;
+      const authConfig = this.configService.getAuthConfig();
+      const secret = authConfig?.jwtSecret;
+      if (!secret) {
+        throw new UnauthorizedException('JWT secret is not configured');
+      }
+
+      const payload = verify(token, secret, {
+        algorithms: ['HS256'],
+      }) as JwtPayload;
+
       if (!payload?.companyId || !payload?.sub || !payload?.role) {
         throw new UnauthorizedException('Invalid JWT tenant context');
       }
       return payload;
-    } catch {
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid JWT');
     }
   }

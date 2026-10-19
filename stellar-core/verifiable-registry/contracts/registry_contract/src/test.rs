@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use crate::types::{CompactionConfig, Error, PaginatedProjects};
-use crate::validation::{validate_address, validate_ipfs_cid};
+use crate::validation::{validate_address, validate_ipfs_cid, validate_project_id};
 use crate::storage;
 use crate::{ProjectRegistry, ProjectRegistryClient};
 
@@ -69,6 +69,35 @@ fn test_register_duplicate_project() {
     client.initialize(&admin);
     client.register_project(&project_id, &project_owner);
     client.register_project(&project_id, &project_owner); // Should panic
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_register_duplicate_project_case_insensitive() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "Project-1");
+    let normalized_project_id = SorobanString::from_str(&env, "project-1");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+    client.register_project(&normalized_project_id, &project_owner); // Should panic
+}
+
+#[test]
+fn test_validate_project_id_rejects_invalid_values() {
+    let env = Env::default();
+
+    let empty_id = SorobanString::from_str(&env, "");
+    let whitespace_id = SorobanString::from_str(&env, "   \t\n ");
+    let too_long_id = SorobanString::from_str(&env, &"a".repeat(129));
+    let invalid_char_id = SorobanString::from_str(&env, "proj#001");
+
+    assert_eq!(validate_project_id(&empty_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&whitespace_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&too_long_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&invalid_char_id), Err(Error::InvalidProjectId));
 }
 
 #[test]
@@ -213,10 +242,13 @@ fn test_get_projects_by_anchorer() {
     client.anchor_document(&project_id1, &ipfs_cid, &doc_type);
     client.anchor_document(&project_id2, &ipfs_cid, &doc_type);
 
+    let normalized_project_id1 = SorobanString::from_str(&env, "proj-001");
+    let normalized_project_id2 = SorobanString::from_str(&env, "proj-002");
+
     let projects = client.get_projects_by_anchorer(&project_owner);
     assert_eq!(projects.len(), 2);
-    assert!(projects.contains(&project_id1));
-    assert!(projects.contains(&project_id2));
+    assert!(projects.contains(&normalized_project_id1));
+    assert!(projects.contains(&normalized_project_id2));
 }
 
 #[test]
@@ -482,9 +514,10 @@ fn test_manual_compaction_removes_duplicates() {
 
     // Manually inject a duplicate entry into the anchorer projects index
     // to simulate a scenario where duplicates exist
+    let normalized_project_id = SorobanString::from_str(&env, "proj-001");
     let mut projects = Vec::new(&env);
-    projects.push_back(project_id.clone());
-    projects.push_back(project_id.clone()); // duplicate
+    projects.push_back(normalized_project_id.clone());
+    projects.push_back(normalized_project_id.clone()); // duplicate
     env.as_contract(&contract_id, || {
         env.storage().persistent().set(
             &storage::StorageKey::AncorerProjects(anchorer.clone()),
@@ -504,9 +537,10 @@ fn test_manual_compaction_removes_duplicates() {
     assert_eq!(size_after, 1);
 
     // Verify the project is still listed
+    let normalized_project_id = SorobanString::from_str(&env, "proj-001");
     let projects_after = client.get_projects_by_anchorer(&anchorer);
     assert_eq!(projects_after.len(), 1);
-    assert_eq!(projects_after.get(0).unwrap(), project_id);
+    assert_eq!(projects_after.get(0).unwrap(), normalized_project_id);
 }
 
 #[test]
@@ -633,34 +667,45 @@ fn test_get_projects_by_anchorer_paginated() {
         client.anchor_document(&pid, &ipfs_cid, &doc_type);
     }
 
+    let normalized_project_ids = Vec::from_array(
+        &env,
+        [
+            SorobanString::from_str(&env, "proj-001"),
+            SorobanString::from_str(&env, "proj-002"),
+            SorobanString::from_str(&env, "proj-003"),
+            SorobanString::from_str(&env, "proj-004"),
+            SorobanString::from_str(&env, "proj-005"),
+        ],
+    );
+
     // Query with page_size = 2, starting at cursor 0
     let page1: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(0), &Some(2));
-    
+
     assert_eq!(page1.projects.len(), 2);
     assert_eq!(page1.total, 5);
     assert_eq!(page1.next_cursor, Some(2));
-    assert_eq!(page1.projects.get(0).unwrap(), project_ids.get(0).unwrap());
-    assert_eq!(page1.projects.get(1).unwrap(), project_ids.get(1).unwrap());
+    assert_eq!(page1.projects.get(0).unwrap(), normalized_project_ids.get(0).unwrap());
+    assert_eq!(page1.projects.get(1).unwrap(), normalized_project_ids.get(1).unwrap());
 
     // Second page
     let page2: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(2), &Some(2));
-    
+
     assert_eq!(page2.projects.len(), 2);
     assert_eq!(page2.total, 5);
     assert_eq!(page2.next_cursor, Some(4));
-    assert_eq!(page2.projects.get(0).unwrap(), project_ids.get(2).unwrap());
-    assert_eq!(page2.projects.get(1).unwrap(), project_ids.get(3).unwrap());
+    assert_eq!(page2.projects.get(0).unwrap(), normalized_project_ids.get(2).unwrap());
+    assert_eq!(page2.projects.get(1).unwrap(), normalized_project_ids.get(3).unwrap());
 
     // Third page (last partial page)
     let page3: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(4), &Some(2));
-    
+
     assert_eq!(page3.projects.len(), 1);
     assert_eq!(page3.total, 5);
     assert_eq!(page3.next_cursor, None);
-    assert_eq!(page3.projects.get(0).unwrap(), project_ids.get(4).unwrap());
+    assert_eq!(page3.projects.get(0).unwrap(), normalized_project_ids.get(4).unwrap());
 }
 
 #[test]

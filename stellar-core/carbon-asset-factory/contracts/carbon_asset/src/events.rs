@@ -1,6 +1,6 @@
 use soroban_sdk::{contractevent, Address, String};
 
-use crate::types::AssetStatus;
+use crate::types::{AssetStatus, AutoDepositOutcome};
 
 #[contractevent]
 pub struct MintEvent {
@@ -106,4 +106,18 @@ pub struct AdminTransferAcceptedEvent {
     pub sequence: u64,
     pub old_admin: Address,
     pub new_admin: Address,
+}
+
+// Buffer pool integration events (issue #684)
+
+/// Emitted once per mint() call that had a buffer pool address configured
+/// (DataKey::BufferPool set). Not emitted at all when no buffer pool is
+/// configured — see mint()'s doc comment on why that's the chosen
+/// no-regression behavior for deployments that haven't opted in.
+#[contractevent]
+pub struct AutoDepositEvent {
+    pub sequence: u64,
+    pub token_id: u32,
+    pub buffer_pool: Address,
+    pub outcome: AutoDepositOutcome,
 }

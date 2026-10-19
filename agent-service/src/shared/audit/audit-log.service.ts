@@ -1,5 +1,6 @@
 import type { AgentName } from "../types/agent.types.js";
 import { getPool } from "./db.js";
+import { redactSensitiveFields } from "./redaction.js";
 
 /**
  * The slice of pg.Pool's interface this service actually uses — narrow on
@@ -99,6 +100,18 @@ export class AuditLogService {
   }
 
   async record(entry: AgentAuditEntry): Promise<void> {
+    // Redact before this ever reaches JSON.stringify/the database — not on
+    // read — so there is exactly one place sensitive data could leak from
+    // (forgetting to call this), rather than two (also forgetting to
+    // redact on every read path). This applies uniformly regardless of
+    // entry.agent: every one of the four agents' tool calls passes through
+    // here (#702).
+    const redactedToolCalls = entry.toolCalls.map((call) => ({
+      ...call,
+      input: redactSensitiveFields(call.input),
+      output: redactSensitiveFields(call.output),
+    }));
+
     await this.pool.query(
       `INSERT INTO agent_audit_log
          (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
@@ -110,7 +123,7 @@ export class AuditLogService {
         entry.actor ?? null,
         entry.callingService ?? null,
         entry.status,
-        JSON.stringify(entry.toolCalls),
+        JSON.stringify(redactedToolCalls),
         entry.timestamp,
       ],
     );
@@ -121,6 +134,10 @@ export class AuditLogService {
    * first. Returns an empty array if nothing was ever recorded for it —
    * callers distinguish "no such run" from "run recorded, empty tool
    * calls" via array length, not a null/undefined sentinel.
+   *
+   * No redaction happens here: record() already redacted sensitive fields
+   * before the row was written (#702), so what comes back is exactly what
+   * was stored — there is nothing unredacted left to filter on the way out.
    */
   async findByRequestId(requestId: string): Promise<AgentAuditEntry[]> {
     const result = await this.pool.query<{

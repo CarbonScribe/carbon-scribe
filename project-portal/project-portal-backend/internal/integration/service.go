@@ -1,9 +1,16 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -15,19 +22,27 @@ const (
 	// PlaceholderHealthCheckLatencyMs is a temporary placeholder latency value
 	// pending real latency measurement in TestConnection.
 	PlaceholderHealthCheckLatencyMs = 45
+	// MaxRetryAttempts is the maximum number of total delivery attempts,
+	// including the initial attempt.
+	MaxRetryAttempts            = 5
+	webhookRetryBaseDelay       = time.Minute
+	maxWebhookResponseBodyBytes = 1 << 20
+	webhookSignatureHeader      = "X-Webhook-Signature"
 )
 
 type Service struct {
 	repo Repository
 
-	// HTTPClient is used for the OAuth2 token exchange call. Defaults to
-	// http.DefaultClient when nil; overridable in tests to point at an
-	// httptest.Server.
+	// HTTPClient is used for OAuth2 token exchange and webhook delivery.
+	// Overridable in tests to point at an httptest.Server.
 	HTTPClient *http.Client
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo:       repo,
+		HTTPClient: &http.Client{Timeout: 10 * time.Second},
+	}
 }
 
 // RegisterConnection creates a new integration connection
@@ -77,6 +92,9 @@ func (s *Service) ConfigureWebhook(ctx context.Context, webhook *WebhookConfig) 
 
 // SubscribeToEvent subscribes an external service to an internal event
 func (s *Service) SubscribeToEvent(ctx context.Context, sub *EventSubscription) error {
+	if sub.Secret == "" {
+		sub.Secret = uuid.NewString()
+	}
 	sub.CreatedAt = time.Now()
 	sub.UpdatedAt = time.Now()
 	return s.repo.CreateSubscription(ctx, sub)
@@ -87,29 +105,198 @@ func (s *Service) GetIntegrationHealth(ctx context.Context, connectionID string)
 	return s.repo.GetLatestHealth(ctx, connectionID)
 }
 
-// TriggerWebhook (Placeholder for event processing logic)
+// TriggerWebhook persists and immediately attempts delivery to each active
+// subscription. Failed deliveries remain in the database for the retry worker.
 func (s *Service) TriggerWebhook(ctx context.Context, eventType string, payload map[string]any) error {
-	// 1. Find subscriptions
 	subs, err := s.repo.ListSubscriptions(ctx, eventType)
 	if err != nil {
-		return err
+		return fmt.Errorf("list webhook subscriptions: %w", err)
 	}
 
-	// 2. In a real system, we would enqueue these for async delivery
 	for _, sub := range subs {
-		// Simulate delivery
+		if !sub.IsActive {
+			continue
+		}
 		delivery := &WebhookDelivery{
-			WebhookID: sub.ID, // Using Sub ID as placeholder
+			ID:        uuid.NewString(),
+			WebhookID: sub.ID,
 			EventID:   uuid.New().String(),
 			EventType: eventType,
 			Payload:   payload,
 			Status:    "pending",
+			Attempt:   0,
 			CreatedAt: time.Now(),
 		}
-		_ = s.repo.CreateWebhookDelivery(ctx, delivery)
+		if err := s.repo.CreateWebhookDelivery(ctx, delivery); err != nil {
+			return fmt.Errorf("create webhook delivery for subscription %s: %w", sub.ID, err)
+		}
+
+		delivery.Attempt = 1
+		if err := s.deliverWebhook(ctx, delivery, sub); err != nil {
+			log.Printf("webhook delivery %s attempt %d failed: %v", delivery.ID, delivery.Attempt, err)
+		}
+		if err := s.updateWebhookDelivery(ctx, delivery); err != nil {
+			return fmt.Errorf("persist webhook delivery %s outcome: %w", delivery.ID, err)
+		}
+	}
+	return nil
+}
+
+// ListPendingWebhookDeliveries returns failed deliveries whose retry time has
+// arrived.
+func (s *Service) ListPendingWebhookDeliveries(ctx context.Context, before time.Time) ([]WebhookDelivery, error) {
+	return s.repo.ListPendingWebhookDeliveries(ctx, before)
+}
+
+// DeliverWebhookByID retries a persisted delivery and records its outcome.
+func (s *Service) DeliverWebhookByID(ctx context.Context, deliveryID string) error {
+	delivery, err := s.repo.GetWebhookDelivery(ctx, deliveryID)
+	if err != nil {
+		return fmt.Errorf("get webhook delivery %s: %w", deliveryID, err)
+	}
+	if delivery.Status != "failed" && !(delivery.Status == "pending" && delivery.Attempt == 0) {
+		return nil
+	}
+	if delivery.Attempt >= MaxRetryAttempts {
+		delivery.Status = "dead_letter"
+		delivery.NextRetryAt = nil
+		log.Printf("webhook delivery %s dead-lettered after %d attempts", delivery.ID, delivery.Attempt)
+		if err := s.updateWebhookDelivery(ctx, delivery); err != nil {
+			return fmt.Errorf("persist dead-letter status for delivery %s: %w", deliveryID, err)
+		}
+		return nil
+	}
+	if delivery.NextRetryAt != nil && delivery.NextRetryAt.After(time.Now()) {
+		return nil
 	}
 
+	subscriptions, err := s.repo.ListSubscriptions(ctx, delivery.EventType)
+	if err != nil {
+		return fmt.Errorf("list subscriptions for delivery %s: %w", deliveryID, err)
+	}
+	var sub *EventSubscription
+	for i := range subscriptions {
+		if subscriptions[i].ID == delivery.WebhookID && subscriptions[i].IsActive {
+			sub = &subscriptions[i]
+			break
+		}
+	}
+	if sub == nil {
+		return fmt.Errorf("active subscription %s for delivery %s not found", delivery.WebhookID, deliveryID)
+	}
+
+	delivery.Attempt++
+	deliveryErr := s.deliverWebhook(ctx, delivery, *sub)
+	if err := s.updateWebhookDelivery(ctx, delivery); err != nil {
+		if deliveryErr != nil {
+			return errors.Join(deliveryErr, fmt.Errorf("persist webhook delivery outcome: %w", err))
+		}
+		return fmt.Errorf("persist webhook delivery outcome: %w", err)
+	}
+	return deliveryErr
+}
+
+func (s *Service) updateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error {
+	updateCtx := ctx
+	cancel := func() {}
+	if ctx.Err() != nil {
+		updateCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	}
+	defer cancel()
+	return s.repo.UpdateWebhookDelivery(updateCtx, delivery)
+}
+
+func (s *Service) deliverWebhook(ctx context.Context, delivery *WebhookDelivery, sub EventSubscription) error {
+	endpoint, err := url.ParseRequestURI(sub.CallbackURL)
+	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") {
+		deliveryErr := fmt.Errorf("invalid webhook callback URL")
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+	if sub.Secret == "" {
+		deliveryErr := fmt.Errorf("webhook subscription %s has no signing secret", sub.ID)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+
+	body, err := json.Marshal(delivery.Payload)
+	if err != nil {
+		deliveryErr := fmt.Errorf("marshal webhook payload: %w", err)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+	mac := hmac.New(sha256.New, []byte(sub.Secret))
+	_, _ = mac.Write(body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
+	if err != nil {
+		deliveryErr := fmt.Errorf("build webhook request: %w", err)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Webhook-Event", delivery.EventType)
+	req.Header.Set(webhookSignatureHeader, hex.EncodeToString(mac.Sum(nil)))
+
+	client := s.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		deliveryErr := fmt.Errorf("send webhook request: %w", err)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+	defer resp.Body.Close()
+
+	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, maxWebhookResponseBodyBytes))
+	delivery.ResponseStatus = resp.StatusCode
+	delivery.ResponseBody = string(responseBody)
+	if readErr != nil {
+		deliveryErr := fmt.Errorf("read webhook response: %w", readErr)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		deliveryErr := fmt.Errorf("webhook endpoint returned status %d", resp.StatusCode)
+		s.recordWebhookFailure(delivery, deliveryErr)
+		return deliveryErr
+	}
+
+	delivery.Status = "success"
+	delivery.NextRetryAt = nil
 	return nil
+}
+
+func (s *Service) recordWebhookFailure(delivery *WebhookDelivery, deliveryErr error) {
+	if delivery.ResponseBody == "" {
+		delivery.ResponseBody = deliveryErr.Error()
+	}
+	if delivery.Attempt >= MaxRetryAttempts {
+		delivery.Status = "dead_letter"
+		delivery.NextRetryAt = nil
+		log.Printf("webhook delivery %s dead-lettered after %d attempts: %v", delivery.ID, delivery.Attempt, deliveryErr)
+		return
+	}
+
+	delivery.Status = "failed"
+	nextRetry := time.Now().Add(webhookRetryDelay(delivery.Attempt))
+	delivery.NextRetryAt = &nextRetry
+}
+
+func webhookRetryDelay(attempt int) time.Duration {
+	if attempt <= 1 {
+		return webhookRetryBaseDelay
+	}
+	delay := webhookRetryBaseDelay
+	for i := 1; i < attempt && delay < time.Hour; i++ {
+		delay *= 2
+	}
+	if delay > time.Hour {
+		return time.Hour
+	}
+	return delay
 }
 
 // OAuth2 Flow

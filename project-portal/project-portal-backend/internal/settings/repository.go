@@ -20,6 +20,7 @@ type Repository interface {
 	GetAPIKey(ctx context.Context, userID, keyID uuid.UUID) (*APIKey, error)
 	ListAPIKeysByPrefix(ctx context.Context, keyPrefix string) ([]APIKey, error)
 	SaveAPIKey(ctx context.Context, key *APIKey) error
+	DeleteStaleAPIKeys(ctx context.Context, now time.Time, inactiveGracePeriod time.Duration) (int64, error)
 	ListIntegrations(ctx context.Context, userID uuid.UUID) ([]IntegrationConfiguration, error)
 	GetIntegration(ctx context.Context, userID, integrationID uuid.UUID) (*IntegrationConfiguration, error)
 	UpsertIntegration(ctx context.Context, integration *IntegrationConfiguration) error
@@ -150,6 +151,19 @@ func (r *repository) ListAPIKeysByPrefix(ctx context.Context, keyPrefix string) 
 		Order("created_at desc").
 		Find(&keys).Error
 	return keys, err
+}
+
+// DeleteStaleAPIKeys removes keys that are no longer of any use: those past
+// their own ExpiresAt, and those already deactivated (IsActive = false) for
+// longer than inactiveGracePeriod, since a revoked key's hash has no
+// further purpose once that grace period (kept for support/audit lookback)
+// has passed. Used by the cleanup worker (issue #691).
+func (r *repository) DeleteStaleAPIKeys(ctx context.Context, now time.Time, inactiveGracePeriod time.Duration) (int64, error) {
+	cutoff := now.Add(-inactiveGracePeriod)
+	result := r.db.WithContext(ctx).
+		Where("(expires_at IS NOT NULL AND expires_at <= ?) OR (is_active = ? AND created_at <= ?)", now, false, cutoff).
+		Delete(&APIKey{})
+	return result.RowsAffected, result.Error
 }
 
 func (r *repository) ListIntegrations(ctx context.Context, userID uuid.UUID) ([]IntegrationConfiguration, error) {
