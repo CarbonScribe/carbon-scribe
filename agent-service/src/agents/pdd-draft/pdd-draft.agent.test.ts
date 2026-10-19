@@ -174,6 +174,143 @@ describe("runPddDraftAgent", () => {
     );
   });
 
+  it("keeps a section whose numeric claim is cited by a tool-call-tied citation", async () => {
+    const output = {
+      methodology: "agroforestry",
+      sections: [
+        {
+          name: "Baseline Carbon Stock",
+          content: "The baseline estimates 1,200 tCO2e across 150 ha.",
+        },
+      ],
+      incompleteSections: [],
+      citations: [{ source: "methodology-registry", reference: "AGRO-01" }],
+    };
+    const assistantToolUseMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "match_methodology",
+          input: { activityType: "agroforestry", country: "KE" },
+        },
+      ],
+    };
+    const toolResultMessage = {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "call_1",
+          content:
+            '{"matched":true,"methodology":"agroforestry","methodologyId":"AGRO-01"}',
+        },
+      ],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify(output) }],
+        },
+        messages: [assistantToolUseMessage, toolResultMessage],
+      }),
+    );
+
+    const result = await runPddDraftAgent({
+      requestId: "req-numeric-cited",
+      requestedBy: "user-1",
+      input: { activityType: "agroforestry" },
+    });
+
+    expect(result.status).toBe("drafted");
+    expect(result.output).toEqual({
+      methodology: output.methodology,
+      sections: output.sections,
+      incompleteSections: [],
+    });
+  });
+
+  it("reclassifies a section with an uncited numeric claim into incompleteSections", async () => {
+    const output = {
+      methodology: "agroforestry",
+      sections: [
+        {
+          name: "Baseline Carbon Stock",
+          content: "The baseline estimates 1,200 tCO2e across 150 ha.",
+        },
+      ],
+      incompleteSections: [],
+      citations: [],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify(output) }],
+        },
+      }),
+    );
+
+    const result = await runPddDraftAgent({
+      requestId: "req-numeric-uncited",
+      requestedBy: "user-1",
+      input: { activityType: "agroforestry" },
+    });
+
+    expect(result.status).toBe("drafted");
+    expect(result.output).toEqual({
+      methodology: output.methodology,
+      sections: [],
+      incompleteSections: [
+        {
+          name: "Baseline Carbon Stock",
+          reason: expect.stringMatching(/ungrounded numeric claim/i),
+        },
+      ],
+    });
+  });
+
+  it("leaves a section without numeric claims untouched by the grounding guardrail", async () => {
+    const output = {
+      methodology: "agroforestry",
+      sections: [
+        {
+          name: "Project Description",
+          content:
+            "The project description covers community engagement and nursery operations.",
+        },
+      ],
+      incompleteSections: [],
+      citations: [{ source: "methodology-registry", reference: "AGRO-01" }],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify(output) }],
+        },
+      }),
+    );
+
+    const result = await runPddDraftAgent({
+      requestId: "req-numeric-none",
+      requestedBy: "user-1",
+      input: { activityType: "agroforestry" },
+    });
+
+    expect(result.status).toBe("drafted");
+    expect(result.output).toEqual({
+      methodology: output.methodology,
+      sections: output.sections,
+      incompleteSections: [],
+    });
+  });
+
   it("returns a failed result distinguishing an Anthropic API failure, and records a failed audit entry", async () => {
     const apiError = new Anthropic.APIError(
       500,
