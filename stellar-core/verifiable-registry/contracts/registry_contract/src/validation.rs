@@ -1,6 +1,8 @@
 use crate::types::Error;
 use soroban_sdk::{Address, Executable, String};
 
+const MAX_PROJECT_ID_LEN: u32 = 128;
+
 /// Validate IPFS CID format
 /// Basic validation to ensure the CID follows common IPFS patterns
 /// CIDv0: Qm followed by 44 base58 characters
@@ -95,4 +97,48 @@ pub fn validate_address(address: &Address) -> Result<(), Error> {
         }
         _ => Ok(()),
     }
+}
+
+/// Normalizes a project ID to a canonical lowercase key format.
+/// This keeps storage keys stable across case variations like "Project-1" and "project-1".
+pub fn normalize_project_id(env: &soroban_sdk::Env, project_id: &String) -> String {
+    let bytes = project_id.to_bytes();
+    let mut normalized = [0u8; 128];
+
+    for i in 0..project_id.len() {
+        let byte = bytes.get(i).unwrap_or(0);
+        normalized[i as usize] = match byte {
+            b'A'..=b'Z' => byte + 32,
+            _ => byte,
+        };
+    }
+
+    String::from_bytes(env, &normalized[..project_id.len() as usize])
+}
+
+/// Validates a project ID for registry storage and URL-safe identifiers.
+/// Allowed characters are alphanumeric plus - / _ and the value must be non-empty,
+/// not whitespace-only, and within a safe length cap.
+pub fn validate_project_id(project_id: &String) -> Result<(), Error> {
+    let len = project_id.len();
+    if len == 0 || len > MAX_PROJECT_ID_LEN {
+        return Err(Error::InvalidProjectId);
+    }
+
+    let bytes = project_id.to_bytes();
+
+    for i in 0..len {
+        let byte = bytes.get(i).unwrap_or(0);
+
+        if byte.is_ascii_whitespace() {
+            return Err(Error::InvalidProjectId);
+        }
+
+        match byte {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'/' => {}
+            _ => return Err(Error::InvalidProjectId),
+        }
+    }
+
+    Ok(())
 }

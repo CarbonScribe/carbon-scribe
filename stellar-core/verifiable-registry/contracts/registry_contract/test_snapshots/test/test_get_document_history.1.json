@@ -147,7 +147,7 @@
                 "val": {
                   "vec": [
                     {
-                      "string": "PROJ-001"
+                      "string": "proj-001"
                     }
                   ]
                 }
@@ -168,7 +168,7 @@
                   "symbol": "DocumentHistory"
                 },
                 {
-                  "string": "PROJ-001"
+                  "string": "proj-001"
                 }
               ]
             },
@@ -188,7 +188,7 @@
                       "symbol": "DocumentHistory"
                     },
                     {
-                      "string": "PROJ-001"
+                      "string": "proj-001"
                     }
                   ]
                 },
@@ -286,7 +286,7 @@
                   "symbol": "LastTimestamp"
                 },
                 {
-                  "string": "PROJ-001"
+                  "string": "proj-001"
                 }
               ]
             },
@@ -306,7 +306,52 @@
                       "symbol": "LastTimestamp"
                     },
                     {
-                      "string": "PROJ-001"
+                      "string": "proj-001"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "u64": "0"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          518400
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "ProjectLastDocumentTimestamp"
+                },
+                {
+                  "string": "proj-001"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "ProjectLastDocumentTimestamp"
+                    },
+                    {
+                      "string": "proj-001"
                     }
                   ]
                 },
@@ -331,7 +376,7 @@
                   "symbol": "ProjectOwner"
                 },
                 {
-                  "string": "PROJ-001"
+                  "string": "proj-001"
                 }
               ]
             },
@@ -351,7 +396,7 @@
                       "symbol": "ProjectOwner"
                     },
                     {
-                      "string": "PROJ-001"
+                      "string": "proj-001"
                     }
                   ]
                 },
