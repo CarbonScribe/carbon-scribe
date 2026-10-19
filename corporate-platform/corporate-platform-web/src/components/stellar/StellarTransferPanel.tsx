@@ -21,6 +21,7 @@ import {
   buildStatusView,
   normalizeStatus,
 } from '@/lib/stellar/transfer-status'
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer'
 
 interface StellarTransferPanelProps {
   client?: StellarApiClient
@@ -33,10 +34,6 @@ const STATUS_ORDER: Record<string, number> = {
   PENDING: 2,
   CONFIRMED: 3,
 }
-
-const STELLAR_EXPLORER_BASE_URL =
-  process.env.NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL ??
-  'https://stellar.expert/explorer/testnet/tx'
 
 export default function StellarTransferPanel({
   client = stellarApiClient,
@@ -460,7 +457,7 @@ export default function StellarTransferPanel({
                   <td className="py-3 pr-2">
                     {record.transactionHash ? (
                       <a
-                        href={`${STELLAR_EXPLORER_BASE_URL}/${record.transactionHash}`}
+                        href={getStellarExplorerUrl(record.transactionHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-corporate-blue hover:underline"
