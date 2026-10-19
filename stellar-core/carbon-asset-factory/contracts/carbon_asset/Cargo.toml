@@ -9,6 +9,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# Buffer pool cross-contract integration (issue #684): mint() calls
+# buffer_pool's auto_deposit via its generated Client when a buffer pool
+# address is configured.
+buffer_pool = { path = "../buffer_pool" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
