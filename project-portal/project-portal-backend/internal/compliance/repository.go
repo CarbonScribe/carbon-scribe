@@ -23,6 +23,7 @@ type Repository interface {
 	ListPrivacyRequests(ctx context.Context, userID string, status string, limit, offset int) ([]PrivacyRequest, int64, error)
 	UpdatePrivacyRequest(ctx context.Context, req *PrivacyRequest) error
 	GetPendingRequests(ctx context.Context, requestType string, limit int) ([]PrivacyRequest, error)
+	ListCompletedRequests(ctx context.Context, requestType string, limit int) ([]PrivacyRequest, error)
 
 	// Privacy Preferences
 	GetPrivacyPreference(ctx context.Context, userID string) (*PrivacyPreference, error)
@@ -44,6 +45,9 @@ type Repository interface {
 	GetDueSchedules(ctx context.Context, before time.Time) ([]RetentionSchedule, error)
 	UpdateRetentionSchedule(ctx context.Context, schedule *RetentionSchedule) error
 	ListRetentionSchedules(ctx context.Context, policyID string) ([]RetentionSchedule, error)
+
+	// Retention Schedules (continued) — orphan cleanup
+	DeleteOrphanedRetentionSchedules(ctx context.Context) (int64, error)
 
 	// Legal Holds
 	CreateLegalHold(ctx context.Context, hold *LegalHold) error
@@ -158,6 +162,25 @@ func (r *repository) GetPendingRequests(ctx context.Context, requestType string,
 		limit = 50
 	}
 	if err := q.Order("submitted_at ASC").Limit(limit).Find(&requests).Error; err != nil {
+		return nil, err
+	}
+	return requests, nil
+}
+
+// ListCompletedRequests returns completed requests of the given type
+// (export or deletion), oldest-completed first, for the cleanup worker
+// (issue #691) to check for expired export files / verify deletions
+// against. An empty requestType matches any type.
+func (r *repository) ListCompletedRequests(ctx context.Context, requestType string, limit int) ([]PrivacyRequest, error) {
+	var requests []PrivacyRequest
+	q := r.db.WithContext(ctx).Where("status = ?", RequestStatusCompleted)
+	if requestType != "" {
+		q = q.Where("request_type = ?", requestType)
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if err := q.Order("completed_at ASC").Limit(limit).Find(&requests).Error; err != nil {
 		return nil, err
 	}
 	return requests, nil
@@ -321,6 +344,20 @@ func (r *repository) ListRetentionSchedules(ctx context.Context, policyID string
 		return nil, err
 	}
 	return schedules, nil
+}
+
+// DeleteOrphanedRetentionSchedules removes schedule rows whose policy was
+// hard-deleted out from under them (DeleteRetentionPolicy does not cascade),
+// leaving them with no policy to ever action. Used by the cleanup worker
+// (issue #691) to reclaim them.
+func (r *repository) DeleteOrphanedRetentionSchedules(ctx context.Context) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("policy_id NOT IN (?)", r.db.Model(&RetentionPolicy{}).Select("id")).
+		Delete(&RetentionSchedule{})
+	if result.Error != nil {
+		return 0, fmt.Errorf("deleting orphaned retention schedules: %w", result.Error)
+	}
+	return result.RowsAffected, nil
 }
 
 // --- Legal Holds ---
