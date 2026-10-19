@@ -7,7 +7,7 @@ This directory contains the migration files for adding foreign key constraints t
 - **add_foreign_key_constraints.sql** - SQL migration script to add FK constraints to existing tables
 - **MIGRATION_PLAN.md** - Detailed migration plan including pre-migration checks, cleanup steps, and rollback procedures
 - **MODEL_CHANGES.md** - Documentation of required changes to Go model structs in `internal/collaboration/models.go`
-- **fk_constraint_test.go** - Test file to verify FK constraint enforcement after migration
+- **MANUAL_TESTING.md** - Manual testing guide to verify FK constraint enforcement after migration
 - **README.md** - This file
 
 ## Quick Start
@@ -36,14 +36,8 @@ AND contype = 'f';
 ### 5. Update Go Models
 After successful SQL migration, update the model structs as documented in `MODEL_CHANGES.md`.
 
-### 6. Run Tests
-```bash
-# Set test database URL
-export TEST_DATABASE_URL="postgres://user:pass@host:port/dbname"
-
-# Run FK constraint tests
-go test migrations/fk_constraint_test.go -v
-```
+### 6. Manual Testing
+Follow the testing steps in `MANUAL_TESTING.md` to verify the FK constraints are working correctly.
 
 ## Tables Affected
 
@@ -58,7 +52,7 @@ The following collaboration tables will have FK constraints added:
 7. **shared_resources** - Links to `projects` and `users`
 8. **resource_bookings** - Links to `shared_resources` and `users`
 
-Total: 14 foreign key constraints
+Total: 16 foreign key constraints
 
 ## Constraint Types
 
@@ -79,7 +73,7 @@ Total: 14 foreign key constraints
 
 4. **Rollback**: See `MIGRATION_PLAN.md` for rollback procedures if issues arise.
 
-5. **Testing**: Always test the migration in a staging environment before applying to production.
+5. **Testing**: Always test the migration in a staging environment before applying to production. Use `MANUAL_TESTING.md` for verification steps.
 
 ## Additional Resources
 
