@@ -89,14 +89,21 @@ func (f *ForwardSaleAgreement) BeforeCreate(tx *gorm.DB) (err error) {
 }
 
 type RevenueDistribution struct {
-	ID                 uuid.UUID      `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
-	CreditSaleID       uuid.UUID      `json:"credit_sale_id" gorm:"type:uuid;index;not null"`
-	DistributionType   string         `json:"distribution_type" gorm:"size:50;not null"`
-	TotalReceived      float64        `json:"total_received" gorm:"type:numeric(14,4);not null"`
-	Currency           string         `json:"currency" gorm:"size:3;not null"`
-	PlatformFeePercent float64        `json:"platform_fee_percent" gorm:"type:numeric(5,2);not null"`
-	PlatformFeeAmount  float64        `json:"platform_fee_amount" gorm:"type:numeric(12,4);not null"`
-	NetAmount          float64        `json:"net_amount" gorm:"type:numeric(14,4);not null"`
+	ID               uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:gen_random_uuid()"`
+	CreditSaleID     uuid.UUID `json:"credit_sale_id" gorm:"type:uuid;index;not null"`
+	DistributionType string    `json:"distribution_type" gorm:"size:50;not null"`
+	TotalReceived    float64   `json:"total_received" gorm:"type:numeric(14,4);not null"`
+	Currency         string    `json:"currency" gorm:"size:3;not null"`
+	// PaymentProvider determines whether beneficiaries are paid out over
+	// Stellar (see payments.IsStellarProvider); persisted so a later retry
+	// can re-resolve the payout asset without the original request (#569).
+	PaymentProvider    string  `json:"payment_provider" gorm:"size:50"`
+	PlatformFeePercent float64 `json:"platform_fee_percent" gorm:"type:numeric(5,2);not null"`
+	PlatformFeeAmount  float64 `json:"platform_fee_amount" gorm:"type:numeric(12,4);not null"`
+	NetAmount          float64 `json:"net_amount" gorm:"type:numeric(14,4);not null"`
+	// Beneficiaries serializes []payments.BeneficiaryAmount, including each
+	// beneficiary's payout execution Status/TransactionHash/FailureReason —
+	// the authority a retry consults to avoid double-paying (#569).
 	Beneficiaries      datatypes.JSON `json:"beneficiaries" gorm:"type:jsonb;not null"`
 	PaymentBatchID     string         `json:"payment_batch_id" gorm:"size:100"`
 	PaymentStatus      string         `json:"payment_status" gorm:"size:50;default:'pending'"`
@@ -248,6 +255,7 @@ type DistributeRevenueRequest struct {
 	DistributionType   string             `json:"distribution_type" binding:"required"`
 	TotalReceived      float64            `json:"total_received" binding:"required,gt=0"`
 	Currency           string             `json:"currency" binding:"required"`
+	PaymentProvider    string             `json:"payment_provider"`
 	PlatformFeePercent float64            `json:"platform_fee_percent" binding:"gte=0,lte=100"`
 	Beneficiaries      []BeneficiarySplit `json:"beneficiaries" binding:"required,min=1"`
 	PaymentBatchID     string             `json:"payment_batch_id"`

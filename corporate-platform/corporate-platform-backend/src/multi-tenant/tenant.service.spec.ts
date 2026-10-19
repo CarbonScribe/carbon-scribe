@@ -177,4 +177,95 @@ describe('TenantService', () => {
       UnauthorizedException,
     );
   });
+
+  it('fails closed and throws UnauthorizedException when JWT_SECRET is unset, rejecting dev-jwt-secret tokens', () => {
+    const unconfiguredConfigService = {
+      getAuthConfig: jest.fn().mockReturnValue({ jwtSecret: '' }),
+    } as unknown as ConfigService;
+    const unconfiguredService = new TenantService(unconfiguredConfigService);
+
+    const token = sign(
+      {
+        sub: 'user-1',
+        companyId: 'company-1',
+        role: 'admin',
+      },
+      'dev-jwt-secret',
+    );
+
+    const request = buildRequest({
+      headers: { authorization: `Bearer ${token}` },
+    } as Partial<Request>);
+
+    expect(() => unconfiguredService.resolveTenantFromRequest(request)).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('fails closed when jwtSecret is undefined in auth configuration', () => {
+    const unconfiguredConfigService = {
+      getAuthConfig: jest.fn().mockReturnValue({ jwtSecret: undefined }),
+    } as unknown as ConfigService;
+    const unconfiguredService = new TenantService(unconfiguredConfigService);
+
+    const token = sign(
+      {
+        sub: 'user-1',
+        companyId: 'company-1',
+        role: 'admin',
+      },
+      'dev-jwt-secret',
+    );
+
+    const request = buildRequest({
+      headers: { authorization: `Bearer ${token}` },
+    } as Partial<Request>);
+
+    expect(() => unconfiguredService.resolveTenantFromRequest(request)).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects tokens signed with algorithms not present in the allowlist', () => {
+    const token = sign(
+      {
+        sub: 'user-1',
+        companyId: 'company-1',
+        role: 'admin',
+      },
+      process.env.JWT_SECRET as string,
+      { algorithm: 'HS384' },
+    );
+
+    const request = buildRequest({
+      headers: { authorization: `Bearer ${token}` },
+    } as Partial<Request>);
+
+    expect(() => service.resolveTenantFromRequest(request)).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('rejects tokens using none algorithm', () => {
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'none', typ: 'JWT' }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: 'user-1',
+        companyId: 'company-1',
+        role: 'admin',
+      }),
+    ).toString('base64url');
+    const token = `${header}.${payload}.fakesig`;
+
+    const request = buildRequest({
+      headers: { authorization: `Bearer ${token}` },
+    } as Partial<Request>);
+
+    expect(() => service.resolveTenantFromRequest(request)).toThrow(
+      UnauthorizedException,
+    );
+  });
 });
+

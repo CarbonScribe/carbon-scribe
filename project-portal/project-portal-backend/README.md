@@ -27,7 +27,7 @@ project-portal-backend/
 │   ├── config/
 │   ├── database/
 │   │   └── migrations/
-│   ├── document/
+│   ├── documents/
 │   ├── financing/
 │   │   ├── calculation/
 │   │   ├── sales/
@@ -74,9 +74,10 @@ project-portal-backend/
 ├── go.sum
 ├── Makefile
 └── README.md
-│   ├── document/
+│   ├── documents/
 │   │   ├── ipfs_uploader.go
-│   │   └── pdf_generator.go
+│   │   ├── pdf_generator.go
+│   │   └── ...
 │   ├── financing/
 │   │   ├── calculation/
 │   │   │   ├── engine.go

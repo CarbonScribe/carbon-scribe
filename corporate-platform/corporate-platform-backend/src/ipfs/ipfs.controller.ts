@@ -21,6 +21,7 @@ import { UploadService } from './services/upload.service';
 import { RetrievalService } from './services/retrieval.service';
 import { PinningService } from './services/pinning.service';
 import { CertificateIpfsService } from './services/certificate-ipfs.service';
+import { ListDocumentsQueryDto } from './dto/list-documents-query.dto';
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
@@ -151,13 +152,9 @@ export class IpfsController {
   @Get('documents')
   async listDocuments(
     @CurrentUser() user: JwtPayload,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query() query: ListDocumentsQueryDto,
   ) {
-    return this.upload.listDocuments(user.companyId, {
-      page: page ? parseInt(page, 10) : undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    });
+    return this.upload.listDocuments(user.companyId, query);
   }
 
   @Get('documents/:referenceId')

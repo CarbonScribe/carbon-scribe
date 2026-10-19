@@ -1,3 +1,4 @@
+import { webcrypto } from 'node:crypto'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import IpfsManager from '@/components/ipfs/IpfsManager'
@@ -75,6 +76,13 @@ describe('IpfsManager', () => {
     anchorCertificateMock.mockResolvedValue({ success: true, data: { cid: 'QmCert1' } })
     verifyCertificateMock.mockResolvedValue({ success: true, data: { cid: 'QmCert1', verified: true } })
 
+    if (!window.crypto?.subtle) {
+      Object.defineProperty(window, 'crypto', {
+        value: webcrypto,
+        writable: true,
+        configurable: true,
+      })
+    }
     vi.spyOn(chunkedUploadModule, 'useChunkedUpload').mockReturnValue(makeChunkedHook())
   })
 
@@ -248,4 +256,109 @@ describe('IpfsManager', () => {
 
     expect(screen.getByTestId('pagination-info')).toHaveTextContent('Showing 1 to 20 of 100 documents')
   })
+
+  it('detects identical filename before upload starts and allows override', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    const file = new File(['dummy file content'], 'report.pdf', { type: 'application/pdf' })
+    const fileInput = screen.getByTestId('single-file-input')
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    expect(await screen.findByText(/This file appears to already be uploaded/i)).toBeInTheDocument()
+    expect(uploadDocumentMock).not.toHaveBeenCalled()
+
+    const overrideButton = screen.getByRole('button', { name: /upload anyway/i })
+    expect(overrideButton).toBeInTheDocument()
+
+    fireEvent.click(overrideButton)
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalled()
+    })
+    expect(await screen.findByText(/Uploaded file to CID QmUpload1/i)).toBeInTheDocument()
+  })
+
+  it('detects identical content hash before upload starts and allows override', async () => {
+    const hashDoc = {
+      id: 'hash-doc-1',
+      companyId: 'company-1',
+      documentType: 'REPORT',
+      referenceId: 'ref-hash',
+      ipfsCid: 'QmHashDoc1',
+      fileName: 'existing-hash-doc.pdf',
+      fileSize: 5,
+      mimeType: 'text/plain',
+      pinned: true,
+      contentHash: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+    }
+
+    listDocumentsMock.mockResolvedValue({ success: true, data: [hashDoc] })
+
+    render(<IpfsManager />)
+    await screen.findByText('existing-hash-doc.pdf')
+
+    const file = new File(['hello'], 'renamed-file-with-different-name.pdf', { type: 'text/plain' })
+    const fileInput = screen.getByTestId('single-file-input')
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    expect(await screen.findByText(/This file appears to already be uploaded/i)).toBeInTheDocument()
+    expect(screen.getByText(/identical content hash matching "existing-hash-doc.pdf"/i)).toBeInTheDocument()
+    expect(uploadDocumentMock).not.toHaveBeenCalled()
+
+    const overrideButton = screen.getByRole('button', { name: /upload anyway/i })
+    fireEvent.click(overrideButton)
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalled()
+    })
+    expect(await screen.findByText(/Uploaded file to CID QmUpload1/i)).toBeInTheDocument()
+  })
+
+  it('uploads genuinely new file without duplicate warning', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    const file = new File(['completely unique content'], 'brand-new-report.pdf', { type: 'application/pdf' })
+    const fileInput = screen.getByTestId('single-file-input')
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    expect(screen.queryByText(/This file appears to already be uploaded/i)).not.toBeInTheDocument()
+
+    const uploadButton = screen.getByRole('button', { name: /^Upload$/i })
+    fireEvent.click(uploadButton)
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalled()
+    })
+    expect(await screen.findByText(/Uploaded file to CID QmUpload1/i)).toBeInTheDocument()
+  })
+
+  it('detects duplicates in batch upload and allows override', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    const batchInput = screen.getByTestId('batch-file-input')
+    const files = [
+      new File(['foo'], 'report.pdf', { type: 'application/pdf' }),
+      new File(['bar'], 'new-file.pdf', { type: 'application/pdf' }),
+    ]
+
+    fireEvent.change(batchInput, { target: { files } })
+
+    expect(await screen.findByText(/This file appears to already be uploaded/i)).toBeInTheDocument()
+    expect(uploadDocumentMock).not.toHaveBeenCalled()
+
+    const overrideButton = screen.getByRole('button', { name: /upload anyway/i })
+    fireEvent.click(overrideButton)
+
+    await waitFor(() => {
+      expect(uploadDocumentMock).toHaveBeenCalled()
+    })
+    expect(await screen.findByText(/Batch upload completed for 2 file\(s\)\./i)).toBeInTheDocument()
+  })
 })
+

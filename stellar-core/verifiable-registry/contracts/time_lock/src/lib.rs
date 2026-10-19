@@ -707,9 +707,14 @@ impl TimeLock {
     /// Validate that `unlock_timestamp` is consistent with the credit's vintage
     /// year stored in the CarbonAsset metadata contract.
     ///
-    /// The vintage year defines the calendar year in which sequestration
-    /// occurred. We require that:
-    ///   Jan 1 of (vintage_year + 1) ≤ unlock_timestamp ≤ Dec 31 of (vintage_year + 5)
+    /// The vintage year defines the calendar year in which sequestration occurred.
+    /// Under Gregorian civil calendar semantics in UTC with reference to the Unix epoch
+    /// (1970-01-01 00:00:00 UTC), the valid unlock eligibility window is defined as:
+    ///   Jan 1 of (vintage_year + 1) 00:00:00 UTC ≤ unlock_timestamp ≤ Dec 31 of (vintage_year + 6) 23:59:59 UTC
+    ///
+    /// Both bounds are inclusive and calculated using exact leap-year-aware civil calendar
+    /// arithmetic (accounting for 4-year leap years, 100-year non-leap century rules, and
+    /// 400-year leap century rules).
     ///
     /// This is a conservative window that prevents premature sale while
     /// avoiding perpetual lock-ups. Projects can configure tighter windows via
@@ -733,13 +738,7 @@ impl TimeLock {
             soroban_sdk::vec![env, soroban_sdk::Val::from(token_id)],
         );
 
-        // Earliest valid unlock: 1 Jan of (vintage_year + 1) 00:00 UTC
-        // Approximation: each year ≈ 365.25 days → 31_557_600 seconds.
-        // Reference epoch: Unix 0 = 1 Jan 1970.
-        const SECONDS_PER_YEAR: u64 = 31_557_600;
-        let base_year: u64 = 1970;
-        let earliest: u64 = (vintage_year as u64 + 1 - base_year) * SECONDS_PER_YEAR;
-        let latest: u64 = (vintage_year as u64 + 6 - base_year) * SECONDS_PER_YEAR;
+        let (earliest, latest) = compute_vintage_window(vintage_year)?;
 
         if unlock_timestamp < earliest || unlock_timestamp > latest {
             return Err(TimeLockError::VintageValidationFailed);
@@ -749,12 +748,82 @@ impl TimeLock {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Civil calendar date arithmetic helpers
+// ---------------------------------------------------------------------------
+
+/// Calculates the number of leap years in the closed interval [1, y]
+/// according to Gregorian calendar rules.
+const fn count_leap_years(y: u64) -> u64 {
+    (y / 4) - (y / 100) + (y / 400)
+}
+
+/// Returns the Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) for
+/// Jan 1 of the given year at 00:00:00 UTC.
+///
+/// Returns `None` if `year < 1970`.
+pub fn jan_1_utc_timestamp(year: u32) -> Option<u64> {
+    if year < 1970 {
+        return None;
+    }
+    let y = year as u64;
+    // Leap years that have completed strictly prior to year `y`, since 1970-01-01.
+    // 1969 is the year immediately before the Unix epoch (1970).
+    const LEAP_YEARS_BEFORE_EPOCH: u64 = count_leap_years(1969);
+    let leap_years = count_leap_years(y - 1) - LEAP_YEARS_BEFORE_EPOCH;
+    let regular_years = y - 1970;
+    let days = regular_years * 365 + leap_years;
+    Some(days * 86_400)
+}
+
+/// Returns the Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) for
+/// Dec 31 of the given year at 23:59:59 UTC.
+///
+/// Returns `None` if `year < 1970` or if `year + 1` overflows.
+pub fn dec_31_utc_timestamp(year: u32) -> Option<u64> {
+    let next_year = year.checked_add(1)?;
+    let next_jan_1 = jan_1_utc_timestamp(next_year)?;
+    Some(next_jan_1 - 1)
+}
+
+/// Computes the exact civil-calendar UTC unlock timestamp bounds (earliest, latest)
+/// for a given vintage year.
+///
+/// - `earliest`: Jan 1 00:00:00 UTC of `vintage_year + 1` (inclusive)
+/// - `latest`: Dec 31 23:59:59 UTC of `vintage_year + 6` (inclusive)
+///
+/// Uses leap-year-aware civil calendar arithmetic in UTC with reference to the Unix
+/// epoch (1970-01-01 00:00:00 UTC). Gregorian leap years are accounted for: every
+/// year divisible by 4, except end-of-century years not divisible by 400.
+pub fn compute_vintage_window(vintage_year: u32) -> Result<(u64, u64), TimeLockError> {
+    if vintage_year < 1970 {
+        return Err(TimeLockError::VintageValidationFailed);
+    }
+
+    let start_year = vintage_year
+        .checked_add(1)
+        .ok_or(TimeLockError::VintageValidationFailed)?;
+    let end_year = vintage_year
+        .checked_add(6)
+        .ok_or(TimeLockError::VintageValidationFailed)?;
+
+    let earliest = jan_1_utc_timestamp(start_year)
+        .ok_or(TimeLockError::VintageValidationFailed)?;
+    let latest = dec_31_utc_timestamp(end_year)
+        .ok_or(TimeLockError::VintageValidationFailed)?;
+
+    Ok((earliest, latest))
+}
+
 #[cfg(test)]
 mod test {
-    use super::{TimeLock, TimeLockClient, TimeLockError};
+    use super::{
+        compute_vintage_window, dec_31_utc_timestamp, jan_1_utc_timestamp, TimeLock,
+        TimeLockClient, TimeLockError,
+    };
     use soroban_sdk::{
         contract, contractimpl, contracttype, testutils::Address as _, vec, Address, Env, IntoVal,
-        Symbol, Vec,
+        Map, Symbol, Vec,
     };
     use soroban_sdk::testutils::Ledger;
 
@@ -927,14 +996,32 @@ mod test {
             // Mark next transfer to fail
         }
 
-        pub fn vintage(_env: Env, _token_id: u32) -> u32 {
-            2023
+        pub fn vintage(env: Env, token_id: u32) -> u32 {
+            let vintages: Map<u32, u32> = env
+                .storage()
+                .instance()
+                .get(&MockDataKey::Vintages)
+                .unwrap_or_else(|| Map::new(&env));
+            vintages.get(token_id).unwrap_or(2023)
+        }
+
+        pub fn set_vintage(env: Env, token_id: u32, vintage: u32) {
+            let mut vintages: Map<u32, u32> = env
+                .storage()
+                .instance()
+                .get(&MockDataKey::Vintages)
+                .unwrap_or_else(|| Map::new(&env));
+            vintages.set(token_id, vintage);
+            env.storage()
+                .instance()
+                .set(&MockDataKey::Vintages, &vintages);
         }
     }
 
     #[contracttype]
     enum MockDataKey {
         TransferLog,
+        Vintages,
     }
 
     fn setup_with_mock() -> (Env, Address, Address, TimeLockClient<'static>) {
@@ -1087,5 +1174,137 @@ mod test {
 
         assert_eq!(client.get_record_count(), 0);
         assert!(client.get_lock_status(&99).is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Unit & Regression tests for #649 – precise date arithmetic for vintage windows
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_jan_1_utc_timestamp_epoch() {
+        assert_eq!(super::jan_1_utc_timestamp(1970), Some(0));
+        assert_eq!(super::jan_1_utc_timestamp(1969), None);
+    }
+
+    #[test]
+    fn test_civil_calendar_leap_years_exact_timestamps() {
+        // Non-leap year 1971: 365 days after epoch = 31,536,000
+        assert_eq!(super::jan_1_utc_timestamp(1971), Some(31_536_000));
+        assert_eq!(super::dec_31_utc_timestamp(1970), Some(31_535_999));
+
+        // Year 2000 is a 400-year leap year:
+        // Jan 1 2000 00:00:00 UTC = 946,684,800
+        // Dec 31 2000 23:59:59 UTC = 978,307,199 (366 days = 31,622,400 seconds)
+        assert_eq!(super::jan_1_utc_timestamp(2000), Some(946_684_800));
+        assert_eq!(super::dec_31_utc_timestamp(2000), Some(978_307_199));
+        assert_eq!(
+            super::jan_1_utc_timestamp(2001).unwrap() - super::jan_1_utc_timestamp(2000).unwrap(),
+            366 * 86_400
+        );
+
+        // Non-leap year 2023: 365 days = 31,536,000 seconds
+        assert_eq!(super::jan_1_utc_timestamp(2023), Some(1_672_531_200));
+        assert_eq!(super::dec_31_utc_timestamp(2023), Some(1_704_067_199));
+
+        // Leap year 2024:
+        // Jan 1 2024 00:00:00 UTC = 1,704_067_200
+        // Dec 31 2024 23:59:59 UTC = 1,735_689_599 (366 days = 31,622,400 seconds)
+        assert_eq!(super::jan_1_utc_timestamp(2024), Some(1_704_067_200));
+        assert_eq!(super::dec_31_utc_timestamp(2024), Some(1_735_689_599));
+        assert_eq!(
+            super::jan_1_utc_timestamp(2025).unwrap() - super::jan_1_utc_timestamp(2024).unwrap(),
+            366 * 86_400
+        );
+    }
+
+    #[test]
+    fn test_compute_vintage_window_leap_years() {
+        // Vintage 2000 (leap year):
+        // Window is Jan 1 2001 00:00:00 UTC through Dec 31 2006 23:59:59 UTC
+        // Straddles leap years 2000 (prior) and 2004 (inside window)
+        let (earliest_2000, latest_2000) = super::compute_vintage_window(2000).unwrap();
+        assert_eq!(earliest_2000, 978_307_200);      // Jan 1 2001 00:00:00 UTC
+        assert_eq!(latest_2000, 1_167_609_599);     // Dec 31 2006 23:59:59 UTC
+
+        // Vintage 2023 (non-leap year preceding leap year 2024):
+        // Window is Jan 1 2024 00:00:00 UTC through Dec 31 2029 23:59:59 UTC
+        // Straddles leap years 2024 and 2028 inside the window
+        let (earliest_2023, latest_2023) = super::compute_vintage_window(2023).unwrap();
+        assert_eq!(earliest_2023, 1_704_067_200);   // Jan 1 2024 00:00:00 UTC
+        assert_eq!(latest_2023, 1_893_455_999);     // Dec 31 2029 23:59:59 UTC
+
+        // Vintage 2024 (leap year):
+        // Window is Jan 1 2025 00:00:00 UTC through Dec 31 2030 23:59:59 UTC
+        // Straddles leap year 2028 inside window
+        let (earliest_2024, latest_2024) = super::compute_vintage_window(2024).unwrap();
+        assert_eq!(earliest_2024, 1_735_689_600);   // Jan 1 2025 00:00:00 UTC
+        assert_eq!(latest_2024, 1_924_991_999);     // Dec 31 2030 23:59:59 UTC
+    }
+
+    #[test]
+    fn test_regression_old_approximation_divergence() {
+        // Under the old 365.25-day approximation:
+        // SECONDS_PER_YEAR = 31_557_600
+        // For vintage 2023:
+        // old earliest = (2024 - 1970) * 31_557_600 = 54 * 31_557_600 = 1_704_110_400
+        //
+        // However, true Jan 1 2024 00:00:00 UTC is 1_704_067_200.
+        // The old approximation was 43,200 seconds (12 hours) late!
+        // A timestamp at 06:00:00 UTC on Jan 1 2024 (1_704_088_800):
+        // - would have been falsely rejected by the old approximation (1_704_088_800 < 1_704_110_400)
+        // - is correctly accepted under the precise civil calendar calculation
+        let (earliest_2023, latest_2023) = super::compute_vintage_window(2023).unwrap();
+        let valid_unlock_jan1_morning = 1_704_088_800; // 2024-01-01 06:00:00 UTC
+        assert!(valid_unlock_jan1_morning >= earliest_2023 && valid_unlock_jan1_morning <= latest_2023);
+
+        const OLD_SECONDS_PER_YEAR: u64 = 31_557_600;
+        let old_earliest_2023 = (2023 + 1 - 1970) * OLD_SECONDS_PER_YEAR;
+        assert!(valid_unlock_jan1_morning < old_earliest_2023, "Would have failed under old approximation");
+
+        // For vintage 2024:
+        // old earliest = (2025 - 1970) * 31_557_600 = 55 * 31_557_600 = 1_735_668_000
+        // True Jan 1 2025 00:00:00 UTC is 1_735_689_600.
+        // The old approximation was 21,600 seconds (6 hours) too early!
+        // A timestamp on Dec 31 2024 at 18:30:00 UTC (1_735_670_000):
+        // - would have been falsely accepted by the old approximation (1_735_670_000 >= 1_735_668_000)
+        // - is correctly rejected under the precise civil calendar calculation
+        let (earliest_2024, _latest_2024) = super::compute_vintage_window(2024).unwrap();
+        let premature_unlock_dec31_evening = 1_735_670_000; // 2024-12-31 18:36:40 UTC
+        assert!(premature_unlock_dec31_evening < earliest_2024);
+
+        let old_earliest_2024 = (2024 + 1 - 1970) * OLD_SECONDS_PER_YEAR;
+        assert!(premature_unlock_dec31_evening >= old_earliest_2024, "Would have falsely passed old approximation");
+    }
+
+    #[test]
+    fn test_lock_credit_with_vintage_validation_boundary_enforcement() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+        let mock_ca_client = MockCarbonAssetClient::new(&env, &mock_ca_id);
+
+        // Initialize with vintage validation enabled
+        client.initialize(&admin, &mock_ca_id, &true, &None, &86400);
+
+        // Set vintage 2024 for token 100
+        mock_ca_client.set_vintage(&100, &2024);
+
+        let caller = Address::generate(&env);
+        let (earliest, latest) = super::compute_vintage_window(2024).unwrap();
+
+        // 1 second before earliest (Dec 31 2024 23:59:59 UTC) -> fails
+        let res_before = client.try_lock_credit(&caller, &100, &(earliest - 1));
+        assert_eq!(res_before, Err(Ok(TimeLockError::VintageValidationFailed)));
+
+        // 1 second after latest (Jan 1 2031 00:00:00 UTC) -> fails
+        let res_after = client.try_lock_credit(&caller, &100, &(latest + 1));
+        assert_eq!(res_after, Err(Ok(TimeLockError::VintageValidationFailed)));
+
+        // Exactly earliest (Jan 1 2025 00:00:00 UTC) -> succeeds
+        let res_earliest = client.try_lock_credit(&caller, &100, &earliest);
+        assert_eq!(res_earliest, Ok(Ok(())));
+
+        // Set vintage 2024 for token 101, lock at latest (Dec 31 2030 23:59:59 UTC) -> succeeds
+        mock_ca_client.set_vintage(&101, &2024);
+        let res_latest = client.try_lock_credit(&caller, &101, &latest);
+        assert_eq!(res_latest, Ok(Ok(())));
     }
 }
