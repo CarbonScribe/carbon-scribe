@@ -330,6 +330,15 @@ func main() {
 	go complianceWorker.Run(workerCtx)
 	log.Println("✅ Compliance request worker started")
 
+	webhookService := integration.NewService(integration.NewRepository(db))
+	webhookWorker := workers.NewWebhookWorker(webhookService, time.Minute, log.Default())
+	go func() {
+		if err := webhookWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Webhook delivery worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Webhook delivery worker started")
+
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
 	inventoryRepo := inventory.NewRepository(db)
