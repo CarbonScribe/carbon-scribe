@@ -12,12 +12,14 @@ import {
   checkApproval,
   COMPLIANCE_REPORT_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
+import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { complianceReportTools } from "./compliance-report.tools.js";
 
 const SYSTEM_PROMPT = `You are the compliance-report drafting agent for CarbonScribe's corporate platform.
@@ -50,12 +52,7 @@ const ComplianceReportOutputSchema = z.object({
     .describe(
       "Data gaps or inconsistencies that need human review before this report can be submitted.",
     ),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
 });
 
 const outputFormat = betaZodOutputFormat(ComplianceReportOutputSchema);
@@ -209,6 +206,23 @@ export async function runComplianceReportAgent(
     },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
+  // Drafting zero sections (everything flagged as a gap instead) is a
+  // legitimate "couldn't draft anything grounded" outcome — only an
+  // actual drafted section is required to cite the evidence it's
+  // grounded in (#705).
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: parsed.sections.length === 0,
+    });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),
