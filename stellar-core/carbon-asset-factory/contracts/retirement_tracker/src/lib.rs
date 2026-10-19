@@ -211,6 +211,9 @@ impl RetirementTracker {
     /// The RetirementRecord created for this retirement
     ///
     /// # Errors
+    /// * `ContractError::InvalidTokenId` - `token_id` is 0, which is never a
+    ///   valid minted CarbonAsset token ID (minting there starts at 1).
+    ///   Rejected before any storage read or cross-contract call.
     /// * `ContractError::TokenNotOwned` - Caller does not own the token
     /// * `ContractError::TokenAlreadyRetired` - Token has already been retired
     /// * `ContractError::BurnFailed` - Failed to burn the token
@@ -226,6 +229,10 @@ impl RetirementTracker {
 
     /// Retire a single carbon credit token with the actual transaction hash
     /// supplied by the caller or integration layer.
+    ///
+    /// # Errors
+    /// Same error conditions as [`Self::retire`], including
+    /// `ContractError::InvalidTokenId` for `token_id == 0`.
     pub fn retire_with_tx_hash(
         env: Env,
         token_id: u32,
@@ -244,6 +251,18 @@ impl RetirementTracker {
         reason: Option<String>,
         tx_hash: Option<BytesN<32>>,
     ) -> Result<RetirementRecord, ContractError> {
+        // Reject token_id 0 before any storage read (issue #685): carbon_asset's
+        // own NextTokenId starts at 1, so 0 can never be a real minted token —
+        // but without this check it would sail straight past the
+        // already-retired lookup below (RetirementLedger(0) is simply never
+        // present) and on into a cross-contract burn_token(0, ...) call that
+        // only fails once it reaches carbon_asset, wasting that invocation and
+        // surfacing a confusing downstream error instead of an immediate,
+        // explicit one.
+        if token_id == 0 {
+            return Err(ContractError::InvalidTokenId);
+        }
+
         // Check if token is already retired
         let ledger_key = DataKey::RetirementLedger(token_id);
         if env.storage().persistent().has(&ledger_key) {
@@ -321,7 +340,10 @@ impl RetirementTracker {
     /// `succeeded` and, for every token that failed, a `(token_id, reason)`
     /// pair in `failed` describing exactly which token failed and why. Each
     /// failure also emits a `RetirementFailedEvent`. Processing continues past
-    /// individual failures, so one invalid token does not abort the batch.
+    /// individual failures, so one invalid token does not abort the batch —
+    /// including a `token_id` of 0, which reports
+    /// `RetirementFailureReason::InvalidTokenId` in `failed` rather than
+    /// aborting the whole call.
     ///
     /// # Errors
     /// * `ContractError::BatchTooLarge` - `token_ids.len()` exceeds
@@ -373,7 +395,10 @@ impl RetirementTracker {
     /// `succeeded` and, for every token that failed, a `(token_id, reason)`
     /// pair in `failed` describing exactly which token failed and why. Each
     /// failure also emits a `RetirementFailedEvent`. Processing continues past
-    /// individual failures, so one invalid token does not abort the batch.
+    /// individual failures, so one invalid token does not abort the batch —
+    /// including a `token_id` of 0, which reports
+    /// `RetirementFailureReason::InvalidTokenId` in `failed` rather than
+    /// aborting the whole call.
     ///
     /// # Errors
     /// * `ContractError::BatchTooLarge` - `token_ids.len()` or
@@ -696,6 +721,67 @@ mod test {
         let duplicate = client.try_retire(&1, &retiring_entity, &None);
         assert!(duplicate.is_err());
         assert_eq!(client.get_event_nonce(), 1);
+    }
+
+    // ====================================================================
+    // token_id == 0 validation (issue #685)
+    // ====================================================================
+
+    #[test]
+    fn retire_with_token_id_zero_returns_invalid_token_id_and_writes_no_ledger_entry() {
+        let (_env, client, retiring_entity) = setup();
+
+        let result = client.try_retire(&0, &retiring_entity, &None);
+        assert!(matches!(result, Err(Ok(ContractError::InvalidTokenId))));
+
+        // No ledger entry was written and no nonce was consumed — the
+        // rejection happened before any storage read or write.
+        assert!(!client.is_retired(&0));
+        assert!(client.get_retirement_record(&0).is_none());
+        assert_eq!(client.get_event_nonce(), 0);
+    }
+
+    #[test]
+    fn retire_with_tx_hash_with_token_id_zero_returns_invalid_token_id() {
+        let (env, client, retiring_entity) = setup();
+        let tx_hash = BytesN::from_array(&env, &[9u8; 32]);
+
+        let result = client.try_retire_with_tx_hash(&0, &retiring_entity, &None, &tx_hash);
+        assert!(matches!(result, Err(Ok(ContractError::InvalidTokenId))));
+
+        assert!(!client.is_retired(&0));
+        assert_eq!(client.get_event_nonce(), 0);
+    }
+
+    #[test]
+    fn batch_retire_with_zero_token_id_reports_invalid_token_id_without_aborting_batch() {
+        let (env, client, retiring_entity) = setup();
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(0);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+
+        // The valid entries still succeed — one invalid token_id doesn't
+        // abort the whole batch.
+        assert_eq!(result.succeeded.len(), 2);
+        assert_eq!(result.succeeded.get(0).unwrap().token_id, 1);
+        assert_eq!(result.succeeded.get(1).unwrap().token_id, 2);
+
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (0, RetirementFailureReason::InvalidTokenId)
+        );
+
+        let events = failed_batch_events(&env);
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events.get(0).unwrap(),
+            (0, RetirementFailureReason::InvalidTokenId)
+        );
     }
 
     #[test]

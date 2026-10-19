@@ -9,9 +9,36 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+# Buffer pool cross-contract integration (issue #684): mint() calls
+# buffer_pool's auto_deposit via a Client generated from its built WASM
+# (soroban_sdk::contractimport! in src/lib.rs), the same pattern
+# verifiable-registry's merkle_bridge already uses to call this crate.
+#
+# Deliberately NOT a Cargo path dependency on the buffer_pool crate itself:
+# both crates are `#[contract]`-bearing, and each one's #[contractimpl]
+# macro emits #[no_mangle] WASM exports. A real Cargo dependency statically
+# links buffer_pool's compiled contract code into carbon_asset's own
+# cdylib, so the resulting carbon_asset.wasm embeds BOTH contracts'
+# interface specs — which is exactly what broke downstream: merkle_bridge's
+# own contractimport! of carbon_asset.wasm started seeing
+# "the name `initialize` is defined multiple times". contractimport!
+# instead reads only the built WASM's embedded spec to generate a thin
+# Client that calls env.invoke_contract at runtime — no static linking, no
+# collision. This does mean buffer_pool's wasm32 release build is a
+# build-order prerequisite for this crate — see the CI workflow.
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Dev-only, unlike the production cross-contract path above: this lets
+# test.rs register the real BufferPoolContract as a native struct
+# (env.register(BufferPoolContract, ())), which runs in-process and never
+# touches the WASM parser — the same fast, reliable pattern every other
+# test in this crate (and buffer_pool's own tests) already uses. A
+# dev-dependency is excluded from the `cdylib` production build entirely
+# (cargo build without --tests never compiles it), so unlike a regular
+# dependency it cannot reintroduce the duplicate-contract-spec bug
+# described above.
+buffer_pool = { path = "../buffer_pool" }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
