@@ -1,5 +1,6 @@
 import express from "express";
 import helmet from "helmet";
+import { env } from "./config/env.js";
 import { router } from "./routes/index.js";
 import { errorHandler } from "./shared/middleware/error-handler.js";
 import { helmetOptions } from "./shared/middleware/security-headers.js";
@@ -12,7 +13,9 @@ export function createApp(): express.Express {
   // error handler's 500s — carries it.
   app.use(helmet(helmetOptions));
 
-  app.use(express.json());
+  // Explicit, documented limit rather than Express's implicit 100kb default
+  // (#704) — see shared/middleware/body-limit.ts.
+  app.use(express.json({ limit: env.maxRequestBodyBytes }));
   app.use(router);
   app.use(errorHandler);
 

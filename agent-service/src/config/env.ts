@@ -1,4 +1,9 @@
 import "dotenv/config";
+import {
+  DEFAULT_MAX_ITERATIONS,
+  DEFAULT_MAX_TOKENS_PER_RUN,
+} from "../llm/budget.js";
+import { DEFAULT_MAX_REQUEST_BODY_BYTES } from "../shared/middleware/body-limit.js";
 
 function required(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
@@ -88,5 +93,30 @@ export const env = {
   agentAuditDatabaseUrl: required(
     "AGENT_AUDIT_DATABASE_URL",
     "postgres://postgres:postgres@localhost:5432/agent_service",
+  ),
+
+  // Shared, cost-aware budget for every agent run (#701): one iteration cap
+  // and one cumulative-token cap, instead of each of the four agents
+  // hardcoding its own copy. See llm/budget.ts for the defaults' reasoning.
+  agentMaxIterations: positiveInteger(
+    "AGENT_MAX_ITERATIONS",
+    DEFAULT_MAX_ITERATIONS,
+  ),
+  agentMaxTokensPerRun: positiveInteger(
+    "AGENT_MAX_TOKENS_PER_RUN",
+    DEFAULT_MAX_TOKENS_PER_RUN,
+  ),
+
+  // Bound on graceful shutdown (#700): if in-flight requests haven't
+  // drained within this window after SIGTERM/SIGINT, the process
+  // force-exits rather than hanging a deploy indefinitely.
+  shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", 15000),
+
+  // Explicit express.json() body size cap, shared by every agent route
+  // (#704) — see shared/middleware/body-limit.ts for why 1 MiB and why one
+  // value for all four agents.
+  maxRequestBodyBytes: positiveInteger(
+    "MAX_REQUEST_BODY_BYTES",
+    DEFAULT_MAX_REQUEST_BODY_BYTES,
   ),
 };

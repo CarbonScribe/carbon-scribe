@@ -1,5 +1,6 @@
 import type { AgentName } from "../types/agent.types.js";
 import { getPool } from "./db.js";
+import { redactSensitiveFields } from "./redaction.js";
 
 /**
  * The slice of pg.Pool's interface this service actually uses — narrow on
@@ -12,6 +13,20 @@ export interface Queryable {
     text: string,
     params?: unknown[],
   ): Promise<{ rows: T[] }>;
+}
+
+/**
+ * A human's approve/reject decision on a requestId's needs-approval result,
+ * as recorded in agent_audit_log by ApprovalService.decide() (issue #630).
+ * decidedBy is the reviewer identity ApprovalService.decide() wrote into
+ * the entry's actor column; decidedAt is when that decision was recorded,
+ * not when the original needs-approval result was produced.
+ */
+export interface ApprovalDecisionRecord {
+  requestId: string;
+  decision: "approved" | "rejected";
+  decidedBy: string;
+  decidedAt: string;
 }
 
 export interface AgentAuditEntry {
@@ -99,6 +114,18 @@ export class AuditLogService {
   }
 
   async record(entry: AgentAuditEntry): Promise<void> {
+    // Redact before this ever reaches JSON.stringify/the database — not on
+    // read — so there is exactly one place sensitive data could leak from
+    // (forgetting to call this), rather than two (also forgetting to
+    // redact on every read path). This applies uniformly regardless of
+    // entry.agent: every one of the four agents' tool calls passes through
+    // here (#702).
+    const redactedToolCalls = entry.toolCalls.map((call) => ({
+      ...call,
+      input: redactSensitiveFields(call.input),
+      output: redactSensitiveFields(call.output),
+    }));
+
     await this.pool.query(
       `INSERT INTO agent_audit_log
          (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
@@ -110,7 +137,7 @@ export class AuditLogService {
         entry.actor ?? null,
         entry.callingService ?? null,
         entry.status,
-        JSON.stringify(entry.toolCalls),
+        JSON.stringify(redactedToolCalls),
         entry.timestamp,
       ],
     );
@@ -121,6 +148,10 @@ export class AuditLogService {
    * first. Returns an empty array if nothing was ever recorded for it —
    * callers distinguish "no such run" from "run recorded, empty tool
    * calls" via array length, not a null/undefined sentinel.
+   *
+   * No redaction happens here: record() already redacted sensitive fields
+   * before the row was written (#702), so what comes back is exactly what
+   * was stored — there is nothing unredacted left to filter on the way out.
    */
   async findByRequestId(requestId: string): Promise<AgentAuditEntry[]> {
     const result = await this.pool.query<{
@@ -150,6 +181,50 @@ export class AuditLogService {
       toolCalls: row.tool_calls,
       status: row.status,
     }));
+  }
+
+  /**
+   * Surface the approve/reject decision recorded for a requestId, if any —
+   * for the eventual approval-history query endpoint (issue #703, tracked
+   * separately) to read without that endpoint needing to know about
+   * ApprovalService's own agent_approval_requests table.
+   *
+   * Looks up the single agent_audit_log row ApprovalService.decide()
+   * writes at decision time (status 'approved' or 'rejected', actor set to
+   * the reviewer) rather than agent_approval_requests directly, so this
+   * stays a read against the audit trail itself — the durable record of
+   * what happened — rather than the mutable queue row. Returns null for a
+   * requestId that was never decided (still pending, or never
+   * needs-approval in the first place).
+   */
+  async findApprovalDecision(
+    requestId: string,
+  ): Promise<ApprovalDecisionRecord | null> {
+    const result = await this.pool.query<{
+      request_id: string;
+      status: "approved" | "rejected";
+      actor: string | null;
+      occurred_at: Date;
+    }>(
+      `SELECT request_id, status, actor, occurred_at
+       FROM agent_audit_log
+       WHERE request_id = $1 AND status IN ('approved', 'rejected')
+       ORDER BY occurred_at DESC, id DESC
+       LIMIT 1`,
+      [requestId],
+    );
+
+    const row = result.rows[0];
+    if (!row || !row.actor) {
+      return null;
+    }
+
+    return {
+      requestId: row.request_id,
+      decision: row.status,
+      decidedBy: row.actor,
+      decidedAt: row.occurred_at.toISOString(),
+    };
   }
 }
 

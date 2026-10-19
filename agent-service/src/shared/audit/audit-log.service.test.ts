@@ -8,6 +8,7 @@ import {
   type AgentAuditEntry,
   type Queryable,
 } from "./audit-log.service.js";
+import { REDACTED } from "./redaction.js";
 
 // Real SQL against pg-mem's in-memory Postgres-compatible engine, not a
 // mocked query() — this exercises the actual migration file and the
@@ -144,6 +145,126 @@ describe("AuditLogService", () => {
     expect(results).toEqual([]);
   });
 
+  // #703: ApprovalService.decide() writes the decision itself as a plain
+  // agent_audit_log row (status 'approved'/'rejected', actor = reviewer) —
+  // these tests write that row directly rather than going through
+  // ApprovalService, since findApprovalDecision only needs to prove it can
+  // read back what that write shape produces.
+  describe("findApprovalDecision (#703)", () => {
+    it("returns null for a requestId that was never decided", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-still-pending",
+        requestedBy: "project-portal",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+
+      expect(
+        await service.findApprovalDecision("req-still-pending"),
+      ).toBeNull();
+    });
+
+    it("returns null for a requestId that was never recorded at all", async () => {
+      expect(await service.findApprovalDecision("never-recorded")).toBeNull();
+    });
+
+    it("returns the decision once approved", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-decided-approved",
+        requestedBy: "project-portal",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:05:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-decided-approved",
+        requestedBy: "project-portal",
+        actor: "reviewer-17",
+        callingService: "project-portal",
+        toolCalls: [],
+        status: "approved",
+      });
+
+      const decision = await service.findApprovalDecision(
+        "req-decided-approved",
+      );
+
+      expect(decision).toEqual({
+        requestId: "req-decided-approved",
+        decision: "approved",
+        decidedBy: "reviewer-17",
+        decidedAt: "2026-08-26T12:05:00.000Z",
+      });
+    });
+
+    it("returns the decision once rejected", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "compliance-report",
+        requestId: "req-decided-rejected",
+        requestedBy: "corporate-platform",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:10:00.000Z",
+        agent: "compliance-report",
+        requestId: "req-decided-rejected",
+        requestedBy: "corporate-platform",
+        actor: "reviewer-23",
+        callingService: "corporate-platform",
+        toolCalls: [],
+        status: "rejected",
+      });
+
+      const decision = await service.findApprovalDecision(
+        "req-decided-rejected",
+      );
+
+      expect(decision).toMatchObject({
+        decision: "rejected",
+        decidedBy: "reviewer-23",
+      });
+    });
+
+    it("returns the latest decision when more than one row is present for a requestId", async () => {
+      // Not a real production sequence (decide() enforces one decision per
+      // requestId via its status='pending' WHERE clause) — this only
+      // proves the ORDER BY ... DESC LIMIT 1 picks the most recent row
+      // rather than relying on insertion order happening to already match.
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "discovery",
+        requestId: "req-multi-decision",
+        requestedBy: "project-portal",
+        actor: "reviewer-1",
+        toolCalls: [],
+        status: "rejected",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:05:00.000Z",
+        agent: "discovery",
+        requestId: "req-multi-decision",
+        requestedBy: "project-portal",
+        actor: "reviewer-2",
+        toolCalls: [],
+        status: "approved",
+      });
+
+      const decision = await service.findApprovalDecision("req-multi-decision");
+
+      expect(decision).toMatchObject({
+        decision: "approved",
+        decidedBy: "reviewer-2",
+      });
+    });
+  });
+
   it("does not swallow a write failure — record() rejects instead of resolving silently", async () => {
     const brokenPool: Queryable = {
       query: () => Promise.reject(new Error("connection refused")),
@@ -160,6 +281,190 @@ describe("AuditLogService", () => {
         status: "drafted",
       }),
     ).rejects.toThrow("connection refused");
+  });
+
+  // #702: a tool-call input/output containing a known-sensitive field must
+  // never reach the agent_audit_log table unredacted. record() is where
+  // redaction actually happens (see redaction.test.ts for the redaction
+  // logic itself), so these round-trip through the real pg-mem INSERT the
+  // same way the tests above do — proving what pool.query actually
+  // persisted was already redacted, not just what the service object
+  // holds in memory. One tool per agent, per #702's acceptance criteria.
+  describe("redaction of sensitive fields (#702)", () => {
+    it("discovery: redacts a buyer's portfolio valuation fields from get_buyer_portfolio's output, keeping identifiers visible", async () => {
+      const requestId = "req-redact-discovery";
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "discovery",
+        requestId,
+        requestedBy: "user-1",
+        toolCalls: [
+          {
+            name: "get_buyer_portfolio",
+            input: { companyId: "corp-9" },
+            output: {
+              companyId: "corp-9",
+              totalRetired: 500,
+              currentBalance: 1200.5,
+              totalValue: 98000,
+              avgPricePerTon: 15.2,
+              riskRating: "high",
+              holdings: [
+                {
+                  creditId: "c-1",
+                  projectId: "p-1",
+                  projectName: "Amazon REDD+",
+                  currentValue: 4200,
+                  quantity: 300,
+                },
+              ],
+            },
+          },
+        ],
+        status: "drafted",
+      });
+
+      const [found] = await service.findByRequestId(requestId);
+      const output = found!.toolCalls[0]!.output as Record<string, unknown>;
+
+      expect(found!.toolCalls[0]!.input).toEqual({ companyId: "corp-9" });
+      expect(output.companyId).toBe("corp-9");
+      expect(output.totalRetired).toBe(REDACTED);
+      expect(output.currentBalance).toBe(REDACTED);
+      expect(output.totalValue).toBe(REDACTED);
+      expect(output.avgPricePerTon).toBe(REDACTED);
+      expect(output.riskRating).toBe(REDACTED);
+      expect(output.holdings).toEqual([
+        {
+          creditId: "c-1",
+          projectId: "p-1",
+          projectName: "Amazon REDD+",
+          currentValue: REDACTED,
+          quantity: REDACTED,
+        },
+      ]);
+    });
+
+    it("compliance-report: redacts the nested portfolio inside get_company_retirement_evidence's output", async () => {
+      const requestId = "req-redact-compliance";
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "compliance-report",
+        requestId,
+        requestedBy: "user-1",
+        toolCalls: [
+          {
+            name: "get_company_retirement_evidence",
+            input: {
+              companyId: "corp-9",
+              framework: "csrd",
+              periodStart: "2026-01-01",
+              periodEnd: "2026-06-30",
+            },
+            output: {
+              companyId: "corp-9",
+              framework: "csrd",
+              portfolio: { totalValue: 98000, riskRating: "high" },
+              notes: "Retirement history not yet available.",
+            },
+          },
+        ],
+        status: "needs-approval",
+      });
+
+      const [found] = await service.findByRequestId(requestId);
+      const output = found!.toolCalls[0]!.output as {
+        companyId: string;
+        portfolio: Record<string, unknown>;
+        notes: string;
+      };
+
+      expect(output.companyId).toBe("corp-9");
+      expect(output.notes).toBe("Retirement history not yet available.");
+      expect(output.portfolio.totalValue).toBe(REDACTED);
+      expect(output.portfolio.riskRating).toBe(REDACTED);
+    });
+
+    it("pdd-draft: redaction still applies to this agent's tool even though match_methodology's current schema carries no sensitive field itself", async () => {
+      const requestId = "req-redact-pdd";
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "pdd-draft",
+        requestId,
+        requestedBy: "user-1",
+        toolCalls: [
+          {
+            name: "match_methodology",
+            // activityType/country/hectares are match_methodology's real
+            // input fields today (none sensitive); contactEmail is
+            // illustrative of a PII detail a future version of this tool
+            // (e.g. one that also looks up the landowner's contact record)
+            // could plausibly add, proving redaction isn't keyed to which
+            // tool or agent produced the entry.
+            input: {
+              activityType: "agroforestry",
+              country: "Kenya",
+              hectares: 120,
+              contactEmail: "landowner@example.com",
+            },
+            output: {
+              matched: true,
+              methodology: "Agroforestry",
+              methodologyId: "m-1",
+              requiredDocuments: ["land-title"],
+            },
+          },
+        ],
+        status: "drafted",
+      });
+
+      const [found] = await service.findByRequestId(requestId);
+      const input = found!.toolCalls[0]!.input as Record<string, unknown>;
+
+      expect(input.activityType).toBe("agroforestry");
+      expect(input.country).toBe("Kenya");
+      expect(input.hectares).toBe(120);
+      expect(input.contactEmail).toBe(REDACTED);
+      expect(found!.toolCalls[0]!.output).toEqual({
+        matched: true,
+        methodology: "Agroforestry",
+        methodologyId: "m-1",
+        requiredDocuments: ["land-title"],
+      });
+    });
+
+    it("alert-triage: redaction still applies to this agent's tool even though get_monitoring_signals' current schema carries no sensitive field itself", async () => {
+      const requestId = "req-redact-alert";
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "alert-triage",
+        requestId,
+        requestedBy: "user-1",
+        toolCalls: [
+          {
+            // projectId/sinceIso are get_monitoring_signals' real input
+            // fields today (neither sensitive); ownerEmail is illustrative
+            // of a PII field a future sensor-ownership lookup could add.
+            name: "get_monitoring_signals",
+            input: {
+              projectId: "p-1",
+              sinceIso: "2026-08-20T00:00:00.000Z",
+              ownerEmail: "owner@example.com",
+            },
+            output: { ndvi: 0.72 },
+          },
+        ],
+        status: "failed",
+      });
+
+      const [found] = await service.findByRequestId(requestId);
+      const input = found!.toolCalls[0]!.input as Record<string, unknown>;
+
+      expect(input.projectId).toBe("p-1");
+      expect(input.sinceIso).toBe("2026-08-20T00:00:00.000Z");
+      expect(input.ownerEmail).toBe(REDACTED);
+      expect(found!.toolCalls[0]!.output).toEqual({ ndvi: 0.72 });
+    });
   });
 });
 

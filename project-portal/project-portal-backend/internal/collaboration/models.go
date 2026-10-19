@@ -3,6 +3,8 @@ package collaboration
 import (
 	"time"
 
+	"carbon-scribe/project-portal/project-portal-backend/internal/auth"
+	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"gorm.io/gorm"
 )
 
@@ -17,29 +19,36 @@ const (
 // ProjectMember represents a user's membership in a project
 type ProjectMember struct {
 	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID   string         `gorm:"index;not null" json:"project_id"`
-	UserID      string         `gorm:"index;not null" json:"user_id"`
+	ProjectID   string         `gorm:"type:uuid;index;not null" json:"project_id"`
+	UserID      string         `gorm:"type:uuid;index;not null" json:"user_id"`
 	Role        string         `gorm:"not null" json:"role"`
 	Permissions []string       `gorm:"type:text[]" json:"permissions"`
 	JoinedAt    time.Time      `json:"joined_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Associations (FK constraints)
+	Project *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	User    *auth.User       `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }
 
 // ProjectInvitation represents a pending invitation
 type ProjectInvitation struct {
-	ID         string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID  string         `gorm:"index;not null" json:"project_id"`
-	Email      string         `gorm:"index;not null" json:"email"`
-	Role       string         `gorm:"not null" json:"role"`
-	Token      string         `gorm:"uniqueIndex;not null" json:"-"`
-	Status     string         `gorm:"default:'pending';index" json:"status"` // pending, accepted, declined, cancelled, expired
-	ExpiresAt  time.Time      `json:"expires_at"`
-	ResentAt   *time.Time     `json:"resent_at,omitempty"`
-	ResentCount int           `gorm:"default:0" json:"resent_count"`
-	CreatedAt  time.Time      `json:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	ProjectID   string         `gorm:"type:uuid;index;not null" json:"project_id"`
+	Email       string         `gorm:"index;not null" json:"email"`
+	Role        string         `gorm:"not null" json:"role"`
+	Token       string         `gorm:"uniqueIndex;not null" json:"-"`
+	Status      string         `gorm:"default:'pending';index" json:"status"` // pending, accepted, declined, cancelled, expired
+	ExpiresAt   time.Time      `json:"expires_at"`
+	ResentAt    *time.Time     `json:"resent_at,omitempty"`
+	ResentCount int            `gorm:"default:0" json:"resent_count"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Associations (FK constraints)
+	Project *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }
 
 type CreateCommentRequest struct {
@@ -73,19 +82,23 @@ type CreateResourceRequest struct {
 // ActivityLog represents an event in the project
 type ActivityLog struct {
 	ID        string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID string         `gorm:"index;not null" json:"project_id"`
-	UserID    string         `gorm:"index" json:"user_id,omitempty"` // Nullable for system events
-	Type      string         `gorm:"index;not null" json:"type"`     // system, user, automated, alert
-	Action    string         `gorm:"not null" json:"action"`         // e.g., "upload_document", "status_change"
+	ProjectID string         `gorm:"type:uuid;index;not null" json:"project_id"`
+	UserID    string         `gorm:"type:uuid;index;default:null" json:"user_id,omitempty"` // Nullable for system events
+	Type      string         `gorm:"index;not null" json:"type"`                            // system, user, automated, alert
+	Action    string         `gorm:"not null" json:"action"`                                // e.g., "upload_document", "status_change"
 	Metadata  map[string]any `gorm:"serializer:json" json:"metadata"`
 	CreatedAt time.Time      `gorm:"index" json:"created_at"`
+
+	// Associations (FK constraints)
+	Project *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	User    *auth.User       `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL" json:"-"`
 }
 
 // Comment represents a comment on a project or resource
 type Comment struct {
 	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID   string         `gorm:"index;not null" json:"project_id"`
-	UserID      string         `gorm:"index;not null" json:"user_id"`
+	ProjectID   string         `gorm:"type:uuid;index;not null" json:"project_id"`
+	UserID      string         `gorm:"type:uuid;index;not null" json:"user_id"`
 	ResourceID  *string        `gorm:"index" json:"resource_id,omitempty"` // Optional link to specific resource
 	ParentID    *string        `gorm:"index" json:"parent_id,omitempty"`   // For threading
 	Content     string         `gorm:"type:text;not null" json:"content"`
@@ -98,14 +111,18 @@ type Comment struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Associations (FK constraints)
+	Project *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	User    *auth.User       `gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }
 
 // Task represents a unit of work
 type Task struct {
 	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID   string         `gorm:"index;not null" json:"project_id"`
-	AssignedTo  *string        `gorm:"index" json:"assigned_to,omitempty"`
-	CreatedBy   string         `gorm:"not null" json:"created_by"`
+	ProjectID   string         `gorm:"type:uuid;index;not null" json:"project_id"`
+	AssignedTo  *string        `gorm:"type:uuid;index" json:"assigned_to,omitempty"`
+	CreatedBy   string         `gorm:"type:uuid;not null" json:"created_by"`
 	Title       string         `gorm:"not null" json:"title"`
 	Description string         `gorm:"type:text" json:"description"`
 	Status      string         `gorm:"index;default:'todo'" json:"status"` // todo, in_progress, review, done
@@ -115,28 +132,41 @@ type Task struct {
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Associations (FK constraints)
+	Project  *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	Assignee *auth.User       `gorm:"foreignKey:AssignedTo;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL" json:"-"`
+	Creator  *auth.User       `gorm:"foreignKey:CreatedBy;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }
 
 // TaskDependency represents a relationship between tasks
 type TaskDependency struct {
 	ID              string `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	TaskID          string `gorm:"index;not null" json:"task_id"`
-	DependsOnTaskID string `gorm:"index;not null" json:"depends_on_task_id"`
+	TaskID          string `gorm:"type:uuid;index;not null" json:"task_id"`
+	DependsOnTaskID string `gorm:"type:uuid;index;not null" json:"depends_on_task_id"`
 	Type            string `gorm:"default:'blocking'" json:"type"`
+
+	// Associations (FK constraints)
+	Task          *Task `gorm:"foreignKey:TaskID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	DependsOnTask *Task `gorm:"foreignKey:DependsOnTaskID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }
 
 // SharedResource represents a file, link, or equipment
 type SharedResource struct {
 	ID         string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ProjectID  string         `gorm:"index;not null" json:"project_id"`
+	ProjectID  string         `gorm:"type:uuid;index;not null" json:"project_id"`
 	Type       string         `gorm:"not null" json:"type"` // document, equipment, contact, template, link
 	Name       string         `gorm:"not null" json:"name"`
 	URL        string         `json:"url,omitempty"`
 	Metadata   map[string]any `gorm:"serializer:json" json:"metadata"`
-	UploadedBy string         `json:"uploaded_by"`
+	UploadedBy string         `gorm:"type:uuid;default:null" json:"uploaded_by"`
 	CreatedAt  time.Time      `json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+
+	// Associations (FK constraints)
+	Project  *project.Project `gorm:"foreignKey:ProjectID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	Uploader *auth.User       `gorm:"foreignKey:UploadedBy;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL" json:"-"`
 }
 
 // PaginationMeta holds pagination metadata for list endpoints
@@ -151,10 +181,14 @@ type PaginationMeta struct {
 // ResourceBooking represents a reservation for a shared resource (e.g. equipment)
 type ResourceBooking struct {
 	ID         string    `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	ResourceID string    `gorm:"index;not null" json:"resource_id"`
-	BookedBy   string    `gorm:"index;not null" json:"booked_by"`
+	ResourceID string    `gorm:"type:uuid;index;not null" json:"resource_id"`
+	BookedBy   string    `gorm:"type:uuid;index;not null" json:"booked_by"`
 	StartTime  time.Time `gorm:"index;not null" json:"start_time"`
 	EndTime    time.Time `gorm:"index;not null" json:"end_time"`
 	Status     string    `gorm:"default:'confirmed'" json:"status"`
 	CreatedAt  time.Time `json:"created_at"`
+
+	// Associations (FK constraints)
+	Resource *SharedResource `gorm:"foreignKey:ResourceID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	Booker   *auth.User      `gorm:"foreignKey:BookedBy;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
 }

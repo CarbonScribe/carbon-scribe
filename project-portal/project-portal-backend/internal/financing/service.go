@@ -27,6 +27,7 @@ type Service interface {
 	InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (*PaymentTransaction, error)
 	DistributeRevenue(ctx context.Context, req DistributeRevenueRequest) (*RevenueDistribution, error)
 	GetPayoutStatus(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error)
+	RetryDistributionPayout(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error)
 	GetCreditTraceability(ctx context.Context, tokenID string) (*TraceabilityResponse, error)
 	ListCreditsByMethodology(ctx context.Context, projectID uuid.UUID, methodologyID int) ([]CarbonCredit, error)
 	HandleStellarWebhook(ctx context.Context, req StellarWebhookRequest) error
@@ -35,30 +36,37 @@ type Service interface {
 }
 
 type service struct {
-	repo          Repository
-	validator     *calculation.Validator
-	calcEngine    *calculation.Engine
-	pricingEngine *sales.PricingEngine
-	workflow      *tokenization.Workflow
-	processor     payments.Processor
-	distributor   *payments.Distributor
-	methService   methodology.Service
-	capService    methodology.CapEnforcementService
+	repo           Repository
+	validator      *calculation.Validator
+	calcEngine     *calculation.Engine
+	pricingEngine  *sales.PricingEngine
+	workflow       *tokenization.Workflow
+	processor      payments.Processor
+	distributor    *payments.Distributor
+	payoutExecutor payments.PayoutExecutor
+	methService    methodology.Service
+	capService     methodology.CapEnforcementService
 }
 
-func NewService(repo Repository, methService methodology.Service, capService methodology.CapEnforcementService) Service {
+func NewService(
+	repo Repository,
+	methService methodology.Service,
+	capService methodology.CapEnforcementService,
+	walletResolver payments.WalletResolver,
+) Service {
 	stellarClient := tokenization.NewClientFromEnv()
 	monitor := tokenization.NewMonitor()
 	return &service{
-		repo:          repo,
-		validator:     calculation.NewValidator(),
-		calcEngine:    calculation.NewEngine(),
-		pricingEngine: sales.NewPricingEngine(),
-		workflow:      tokenization.NewWorkflow(stellarClient, monitor, methService),
-		processor:     payments.NewMockProcessor(),
-		distributor:   payments.NewDistributor(),
-		methService:   methService,
-		capService:    capService,
+		repo:           repo,
+		validator:      calculation.NewValidator(),
+		calcEngine:     calculation.NewEngine(),
+		pricingEngine:  sales.NewPricingEngine(),
+		workflow:       tokenization.NewWorkflow(stellarClient, monitor, methService),
+		processor:      payments.NewMockProcessor(),
+		distributor:    payments.NewDistributor(),
+		payoutExecutor: payments.NewPayoutExecutorFromEnv(walletResolver),
+		methService:    methService,
+		capService:     capService,
 	}
 }
 
@@ -354,26 +362,106 @@ func (s *service) DistributeRevenue(ctx context.Context, req DistributeRevenueRe
 	if err != nil {
 		return nil, err
 	}
+
+	// Execute real Stellar payouts when this distribution is routed over
+	// Stellar; otherwise leave it Pending for manual/external processing
+	// rather than falsely claiming completion (#569 — previously this
+	// hardcoded "completed" with no payment ever submitted).
+	if assetCode, ok := payments.ResolveTrustlineAssetCode(req.PaymentProvider, req.Currency); ok {
+		if err := s.payoutExecutor.Execute(ctx, req.CreditSaleID.String(), assetCode, computed); err != nil {
+			return nil, fmt.Errorf("execute stellar payout: %w", err)
+		}
+	}
+
+	payout, err := buildRevenueDistribution(req, computed)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateRevenueDistribution(ctx, payout); err != nil {
+		return nil, err
+	}
+	return payout, nil
+}
+
+// RetryDistributionPayout re-attempts Stellar payout execution for an
+// existing distribution. Beneficiaries already marked
+// payments.BeneficiaryPayoutSucceeded in the persisted record are skipped,
+// so retrying can never double-pay (#569) — only beneficiaries left pending
+// or previously failed (e.g. a missing trustline that has since been
+// established) are attempted again.
+func (s *service) RetryDistributionPayout(ctx context.Context, payoutID uuid.UUID) (*RevenueDistribution, error) {
+	payout, err := s.repo.GetRevenueDistribution(ctx, payoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	assetCode, ok := payments.ResolveTrustlineAssetCode(payout.PaymentProvider, payout.Currency)
+	if !ok {
+		return nil, fmt.Errorf("distribution %s is not routed over Stellar", payoutID)
+	}
+
+	var beneficiaries []payments.BeneficiaryAmount
+	if err := json.Unmarshal(payout.Beneficiaries, &beneficiaries); err != nil {
+		return nil, fmt.Errorf("decode stored beneficiaries: %w", err)
+	}
+
+	output := &payments.DistributionOutput{
+		PlatformFeeAmount: payout.PlatformFeeAmount,
+		NetAmount:         payout.NetAmount,
+		Beneficiaries:     beneficiaries,
+	}
+
+	if err := s.payoutExecutor.Execute(ctx, payoutID.String(), assetCode, output); err != nil {
+		return nil, fmt.Errorf("execute stellar payout: %w", err)
+	}
+
+	serialized, err := json.Marshal(output.Beneficiaries)
+	if err != nil {
+		return nil, err
+	}
+	payout.Beneficiaries = datatypes.JSON(serialized)
+	payout.PaymentStatus = string(output.Status)
+	if output.Status == payments.DistributionStatusCompleted || output.Status == payments.DistributionStatusPartial {
+		now := time.Now().UTC()
+		payout.PaymentProcessedAt = &now
+	}
+
+	if err := s.repo.UpdateRevenueDistribution(ctx, payout); err != nil {
+		return nil, err
+	}
+	return payout, nil
+}
+
+// buildRevenueDistribution serializes a freshly computed distribution into
+// the persistence model, after payout execution (if any) has updated
+// computed.Status and each beneficiary's execution fields in place.
+func buildRevenueDistribution(req DistributeRevenueRequest, computed *payments.DistributionOutput) (*RevenueDistribution, error) {
 	serializedBeneficiaries, err := json.Marshal(computed.Beneficiaries)
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().UTC()
+
+	status := computed.Status
+	if status == "" {
+		status = payments.DistributionStatusPending
+	}
+
 	payout := &RevenueDistribution{
 		CreditSaleID:       req.CreditSaleID,
 		DistributionType:   req.DistributionType,
 		TotalReceived:      req.TotalReceived,
 		Currency:           req.Currency,
+		PaymentProvider:    req.PaymentProvider,
 		PlatformFeePercent: req.PlatformFeePercent,
 		PlatformFeeAmount:  computed.PlatformFeeAmount,
 		NetAmount:          computed.NetAmount,
 		Beneficiaries:      datatypes.JSON(serializedBeneficiaries),
 		PaymentBatchID:     req.PaymentBatchID,
-		PaymentStatus:      "completed",
-		PaymentProcessedAt: &now,
+		PaymentStatus:      string(status),
 	}
-	if err := s.repo.CreateRevenueDistribution(ctx, payout); err != nil {
-		return nil, err
+	if status == payments.DistributionStatusCompleted || status == payments.DistributionStatusPartial {
+		now := time.Now().UTC()
+		payout.PaymentProcessedAt = &now
 	}
 	return payout, nil
 }
