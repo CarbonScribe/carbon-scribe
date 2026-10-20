@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # agent-service — the service covered by #714
+  - package-ecosystem: "npm"
+    directory: "/agent-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "agent-service"
+    # Group minor+patch into a single PR to reduce noise;
+    # major updates still come in individually for review.
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
