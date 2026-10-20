@@ -22,7 +22,7 @@ use crate::types::{
 };
 
 const MAX_PROJECT_ID_LEN: u32 = 64;
-const MAX_FUTURE_VINTAGE_YEARS: u64 = 5;
+const MAX_VINTAGE_YEAR: u64 = 2100;
 const SECONDS_PER_YEAR: u64 = 365 * 24 * 60 * 60;
 
 fn validate_metadata(env: &Env, metadata: &CarbonAssetMetadata) -> Result<(), ContractError> {
@@ -47,8 +47,7 @@ fn validate_metadata(env: &Env, metadata: &CarbonAssetMetadata) -> Result<(), Co
     } else {
         metadata.vintage_year
     };
-    let current_year = 1970 + env.ledger().timestamp() / SECONDS_PER_YEAR;
-    if vintage_year > current_year.saturating_add(MAX_FUTURE_VINTAGE_YEARS) {
+    if vintage_year > MAX_VINTAGE_YEAR {
         return Err(ContractError::InvalidMetadata);
     }
 

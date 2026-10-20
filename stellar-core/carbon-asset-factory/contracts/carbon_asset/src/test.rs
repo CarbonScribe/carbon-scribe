@@ -200,7 +200,7 @@ fn test_mint_rejects_invalid_vintage_years() {
         Err(Ok(ContractError::InvalidMetadata))
     );
 
-    metadata.vintage_year = 2030;
+    metadata.vintage_year = 2101;
     assert_eq!(
         client.try_mint(&admin, &owner, &metadata),
         Err(Ok(ContractError::InvalidMetadata))
