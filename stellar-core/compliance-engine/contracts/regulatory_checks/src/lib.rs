@@ -65,7 +65,7 @@ impl RegulatoryCheck {
     pub fn add_rule(
         env: Env,
         caller: Address,
-        rule: JurisdictionRule,
+        mut rule: JurisdictionRule,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -79,6 +79,7 @@ impl RegulatoryCheck {
             return Err(ContractError::NotAuthorized);
         }
 
+        Self::validate_rule_schema(&env, &mut rule)?;
         let rule_key = DataKey::Rule(rule.rule_id.clone());
 
         // Check if rule_id already exists
@@ -99,7 +100,7 @@ impl RegulatoryCheck {
                 .persistent()
                 .get::<DataKey, JurisdictionRule>(&existing_key)
             {
-                if Self::rules_conflict(&rule, &existing_rule) {
+                if Self::rules_conflict(&env, &rule, &existing_rule) {
                     soroban_sdk::log!(
                         &env,
                         "Rule conflict: attempted to add rule {:?} which conflicts with existing rule {:?}",
@@ -114,7 +115,6 @@ impl RegulatoryCheck {
         // Version numbering is contract-controlled: a brand-new rule always
         // starts at version 1, regardless of whatever value the caller put
         // in `rule.version`.
-        let mut rule = rule;
         rule.version = 1;
         env.storage()
             .persistent()
@@ -151,10 +151,13 @@ impl RegulatoryCheck {
     }
 
     /// Returns true if two rules are logically equivalent or would cause enforcement ambiguity.
-    fn rules_conflict(a: &JurisdictionRule, b: &JurisdictionRule) -> bool {
-        a.source_jur == b.source_jur
-            && a.dest_jur == b.dest_jur
-            && a.host_jur == b.host_jur
+    fn rules_conflict(env: &Env, a: &JurisdictionRule, b: &JurisdictionRule) -> bool {
+        Self::normalize_jurisdiction(env, &a.source_jur)
+            == Self::normalize_jurisdiction(env, &b.source_jur)
+            && Self::normalize_jurisdiction(env, &a.dest_jur)
+                == Self::normalize_jurisdiction(env, &b.dest_jur)
+            && Self::normalize_jurisdiction(env, &a.host_jur)
+                == Self::normalize_jurisdiction(env, &b.host_jur)
             && a.operation == b.operation
             && a.is_allowed == b.is_allowed
             && a.required_authority == b.required_authority
@@ -165,7 +168,7 @@ impl RegulatoryCheck {
     pub fn update_rule(
         env: Env,
         caller: Address,
-        rule: JurisdictionRule,
+        mut rule: JurisdictionRule,
     ) -> Result<(), ContractError> {
         caller.require_auth();
 
@@ -179,6 +182,7 @@ impl RegulatoryCheck {
             return Err(ContractError::NotAuthorized);
         }
 
+        Self::validate_rule_schema(&env, &mut rule)?;
         let rule_key = DataKey::Rule(rule.rule_id.clone());
 
         // Retrieve the old rule before updating
@@ -207,7 +211,7 @@ impl RegulatoryCheck {
                 .persistent()
                 .get::<DataKey, JurisdictionRule>(&existing_key)
             {
-                if Self::rules_conflict(&rule, &existing_rule) {
+                if Self::rules_conflict(&env, &rule, &existing_rule) {
                     soroban_sdk::log!(
                         &env,
                         "Rule conflict: attempted to update rule {:?} into a state that conflicts with existing rule {:?}",
@@ -235,7 +239,6 @@ impl RegulatoryCheck {
         // version + 1, regardless of whatever value the caller put in
         // `rule.version`.
         let new_version = old_rule.version + 1;
-        let mut rule = rule;
         rule.version = new_version;
         env.storage()
             .persistent()
@@ -345,6 +348,7 @@ impl RegulatoryCheck {
             return Err(ContractError::NotAuthorized);
         }
 
+        let jurisdiction = Self::normalize_jurisdiction(&env, &jurisdiction);
         let key = DataKey::AddressJurisdiction(account);
         env.storage().persistent().set(&key, &jurisdiction);
 
@@ -383,8 +387,9 @@ impl RegulatoryCheck {
             };
         }
 
-        let source_jur = source_jur.unwrap();
-        let dest_jur = dest_jur.unwrap();
+        let source_jur = Self::normalize_jurisdiction(&env, &source_jur.unwrap());
+        let dest_jur = Self::normalize_jurisdiction(&env, &dest_jur.unwrap());
+        let host_jurisdiction = Self::normalize_jurisdiction(&env, &host_jurisdiction);
 
         // Evaluate rules in explicit priority order rather than the order they
         // happened to be inserted into ActiveRuleIds, so the governing rule for
@@ -523,6 +528,60 @@ impl RegulatoryCheck {
     // Helper Functions
     // ========================================================================
 
+    fn validate_rule_schema(
+        env: &Env,
+        rule: &mut JurisdictionRule,
+    ) -> Result<(), ContractError> {
+        if rule.rule_id.len() == 0
+            || rule.rule_id.len() > 100
+            || rule.description.len() > 100
+            || rule.source_jur.len() > 10
+            || rule.dest_jur.len() > 10
+            || rule.host_jur.len() > 10
+        {
+            return Err(ContractError::InvalidRuleSchema);
+        }
+
+        rule.source_jur = Self::normalize_jurisdiction(env, &rule.source_jur);
+        rule.dest_jur = Self::normalize_jurisdiction(env, &rule.dest_jur);
+        rule.host_jur = Self::normalize_jurisdiction(env, &rule.host_jur);
+
+        if rule.source_jur.len() == 0 || rule.dest_jur.len() == 0 || rule.host_jur.len() == 0 {
+            return Err(ContractError::InvalidRuleSchema);
+        }
+
+        Ok(())
+    }
+
+    fn normalize_jurisdiction(env: &Env, jurisdiction: &String) -> String {
+        if jurisdiction.len() > 10 {
+            return jurisdiction.clone();
+        }
+
+        let bytes = jurisdiction.to_bytes();
+        let mut start = 0;
+        let mut end = jurisdiction.len();
+
+        while start < end && bytes.get(start).unwrap_or(0).is_ascii_whitespace() {
+            start += 1;
+        }
+        while end > start && bytes.get(end - 1).unwrap_or(0).is_ascii_whitespace() {
+            end -= 1;
+        }
+
+        let mut normalized = [0u8; 10];
+        let mut normalized_len = 0;
+        for index in start..end {
+            let byte = bytes.get(index).unwrap_or(0);
+            normalized[normalized_len] = match byte {
+                b'a'..=b'z' => byte - 32,
+                _ => byte,
+            };
+            normalized_len += 1;
+        }
+        String::from_bytes(env, &normalized[..normalized_len])
+    }
+
     fn rule_matches(
         env: &Env,
         rule: &JurisdictionRule,
@@ -537,15 +596,19 @@ impl RegulatoryCheck {
             return false;
         }
 
-        if rule.source_jur != any && rule.source_jur != *source_jur {
+        let rule_source = Self::normalize_jurisdiction(env, &rule.source_jur);
+        let rule_dest = Self::normalize_jurisdiction(env, &rule.dest_jur);
+        let rule_host = Self::normalize_jurisdiction(env, &rule.host_jur);
+
+        if rule_source != any && rule_source != *source_jur {
             return false;
         }
 
-        if rule.dest_jur != any && rule.dest_jur != *dest_jur {
+        if rule_dest != any && rule_dest != *dest_jur {
             return false;
         }
 
-        if rule.host_jur != any && rule.host_jur != *host_jur {
+        if rule_host != any && rule_host != *host_jur {
             return false;
         }
 
