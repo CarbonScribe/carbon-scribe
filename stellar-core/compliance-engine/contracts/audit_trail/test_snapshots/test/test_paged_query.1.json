@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "PAGE_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "paged-entity"
@@ -71,7 +71,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "PAGE_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "paged-entity"
@@ -103,7 +103,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "PAGE_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "paged-entity"
@@ -135,7 +135,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "PAGE_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "paged-entity"
@@ -167,7 +167,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "PAGE_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "paged-entity"
@@ -238,19 +238,19 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                      "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
                     },
                     {
-                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
+                      "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                     },
                     {
-                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
+                      "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
                     },
                     {
-                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
+                      "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
                     },
                     {
-                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                      "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
                     }
                   ]
                 }
@@ -299,19 +299,19 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                      "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
                     },
                     {
-                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
+                      "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                     },
                     {
-                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
+                      "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
                     },
                     {
-                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
+                      "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
                     },
                     {
-                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                      "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
                     }
                   ]
                 }
@@ -360,19 +360,19 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                      "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
                     },
                     {
-                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
+                      "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                     },
                     {
-                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
+                      "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
                     },
                     {
-                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
+                      "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
                     },
                     {
-                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                      "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
                     }
                   ]
                 }
@@ -393,7 +393,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                  "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                 }
               ]
             },
@@ -413,7 +413,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                      "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                     }
                   ]
                 },
@@ -441,7 +441,15 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                        "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "1"
                       }
                     },
                     {
@@ -449,7 +457,503 @@
                         "symbol": "event_type"
                       },
                       "val": {
-                        "string": "PAGE_TEST"
+                        "string": "USER_ACTION"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "paged-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "USER_ACTION"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "paged-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "5"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "USER_ACTION"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "paged-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0202020202020202020202020202020202020202020202020202020202020202"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "3"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "USER_ACTION"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "prev_event_hash"
+                      },
+                      "val": {
+                        "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "primary_entity_id"
+                      },
+                      "val": {
+                        "string": "paged-entity"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "secondary_entity_id"
+                      },
+                      "val": "void"
+                    },
+                    {
+                      "key": {
+                        "symbol": "timestamp"
+                      },
+                      "val": {
+                        "u64": "4"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "tx_hash"
+                      },
+                      "val": {
+                        "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Events"
+                },
+                {
+                  "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Events"
+                    },
+                    {
+                      "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "map": [
+                    {
+                      "key": {
+                        "symbol": "emitting_contract"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_data"
+                      },
+                      "val": {
+                        "string": "{}"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_id"
+                      },
+                      "val": {
+                        "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "0"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_type"
+                      },
+                      "val": {
+                        "string": "USER_ACTION"
                       }
                     },
                     {
@@ -504,476 +1008,12 @@
             "key": {
               "vec": [
                 {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "PAGE_TEST"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "prev_event_hash"
-                      },
-                      "val": {
-                        "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "primary_entity_id"
-                      },
-                      "val": {
-                        "string": "paged-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "3"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0202020202020202020202020202020202020202020202020202020202020202"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "PAGE_TEST"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "prev_event_hash"
-                      },
-                      "val": {
-                        "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "primary_entity_id"
-                      },
-                      "val": {
-                        "string": "paged-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "5"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0404040404040404040404040404040404040404040404040404040404040404"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "PAGE_TEST"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "prev_event_hash"
-                      },
-                      "val": {
-                        "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "primary_entity_id"
-                      },
-                      "val": {
-                        "string": "paged-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "4"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0303030303030303030303030303030303030303030303030303030303030303"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
-                  "symbol": "Events"
-                },
-                {
-                  "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
-                }
-              ]
-            },
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": {
-                  "vec": [
-                    {
-                      "symbol": "Events"
-                    },
-                    {
-                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
-                    }
-                  ]
-                },
-                "durability": "persistent",
-                "val": {
-                  "map": [
-                    {
-                      "key": {
-                        "symbol": "emitting_contract"
-                      },
-                      "val": {
-                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_data"
-                      },
-                      "val": {
-                        "string": "{}"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_id"
-                      },
-                      "val": {
-                        "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "event_type"
-                      },
-                      "val": {
-                        "string": "PAGE_TEST"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "prev_event_hash"
-                      },
-                      "val": {
-                        "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "primary_entity_id"
-                      },
-                      "val": {
-                        "string": "paged-entity"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "secondary_entity_id"
-                      },
-                      "val": "void"
-                    },
-                    {
-                      "key": {
-                        "symbol": "timestamp"
-                      },
-                      "val": {
-                        "u64": "2"
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "tx_hash"
-                      },
-                      "val": {
-                        "bytes": "0101010101010101010101010101010101010101010101010101010101010101"
-                      }
-                    }
-                  ]
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          1555200
-        ]
-      ],
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": {
-              "vec": [
-                {
                   "symbol": "TypeTimeIndex"
                 },
                 {
                   "vec": [
                     {
-                      "string": "PAGE_TEST"
+                      "string": "USER_ACTION"
                     },
                     {
                       "u64": "0"
@@ -1000,7 +1040,7 @@
                     {
                       "vec": [
                         {
-                          "string": "PAGE_TEST"
+                          "string": "USER_ACTION"
                         },
                         {
                           "u64": "0"
@@ -1013,19 +1053,19 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "08e00266fff0aacc64974f22a53622a7dc458ac1b5fd446ae7c99a4a99a564e6"
+                      "bytes": "e8d9d27920689aa242fcd3cb9b2ea5add8f029d0b19c831a809eabc06255354e"
                     },
                     {
-                      "bytes": "7f114a23a9578efd429b6d7dc8e9860ad6616f0a12756a685223d4789928cbb3"
+                      "bytes": "1f4345a6383dd98dbbf98d14a54884c2b07c82173d147a9e1e98eae2c91be4e0"
                     },
                     {
-                      "bytes": "1a4c26e8c6a3bcb04c20f1db7a8cace707fe630c269bf811a50ad2f7a00f2ae9"
+                      "bytes": "d99205e32dd341daa4f701c6e47a6a824a362de790180a5c2b0d034504b9e306"
                     },
                     {
-                      "bytes": "78f57b4489f4fd4057d7a6e8d6fe47bc8499a508c2f4557fc0d43f46e28da4c8"
+                      "bytes": "e4fbfd38a042f1d8fd2418e3fdc4cb0d3caf0196e9a2711e2a86e09e7948b0c0"
                     },
                     {
-                      "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                      "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
                     }
                   ]
                 }
@@ -1117,7 +1157,19 @@
                           ]
                         },
                         "val": {
-                          "bytes": "30ff40e2de77c1574bd9777875010ebb89435f06c0659f46b500a8d17298035a"
+                          "bytes": "4528e977165ef9c7227a4b79fcf65f5ab2552acd475349bfb7484dfa01bfe40d"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "5"
                         }
                       },
                       {
@@ -1141,7 +1193,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "763"
+                          "u64": "813"
                         }
                       },
                       {

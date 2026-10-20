@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 import { StartupValidator } from './config/validation/startup-validator';
@@ -32,7 +33,13 @@ function isLocalDevOrigin(origin: string, isProduction: boolean): boolean {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+  // JSON APIs are capped at 1 MB. Multipart IPFS uploads use multer's explicit
+  // 50 MB per-file and 200 MB per-batch limits in ipfs.controller.ts.
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableShutdownHooks();
 
