@@ -19,8 +19,10 @@ function ResetSuccessBanner() {
   );
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const { login, isLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get('redirect');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -35,7 +37,7 @@ export default function LoginPage() {
     }
 
     try {
-      await login({ email, password });
+      await login({ email, password }, redirectTarget);
     } catch (err: any) {
       setError(
         err?.message || 'Login failed. Please check your credentials and try again.'
@@ -213,5 +215,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

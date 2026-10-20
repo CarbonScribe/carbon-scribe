@@ -8,7 +8,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { TransferService } from './transfer.service';
-import { InitiateTransferDto, BatchTransferDto } from './dto/transfer.dto';
+import {
+  InitiateTransferDto,
+  BatchTransferDto,
+  TransferHistoryQueryDto,
+} from './dto/transfer.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
@@ -42,6 +46,14 @@ export class StellarController {
   @Post('stellar/transfers')
   async initiateTransfer(@Body() dto: InitiateTransferDto) {
     return this.transferService.initiateTransfer(dto);
+  }
+
+  @Get('stellar/transfers')
+  async getTransferHistory(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: TransferHistoryQueryDto,
+  ) {
+    return this.transferService.getTransferHistory(user.companyId, query);
   }
 
   @Post('stellar/transfers/batch')
