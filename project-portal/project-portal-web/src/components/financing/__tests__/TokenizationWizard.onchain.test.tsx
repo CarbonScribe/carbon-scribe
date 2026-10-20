@@ -1,11 +1,12 @@
+import { describe, it, expect, beforeEach, vi, type MockedFunction } from 'vitest';
 import { confirmMintOnChain } from '@/lib/stellar/carbonTokens';
 
-jest.mock('@/lib/stellar/carbonTokens', () => ({
-  confirmMintOnChain: jest.fn(),
+vi.mock('@/lib/stellar/carbonTokens', () => ({
+  confirmMintOnChain: vi.fn(),
 }));
 
 describe('TokenizationWizard on-chain confirmation (#715)', () => {
-  const mockConfirm = confirmMintOnChain as jest.MockedFunction<
+  const mockConfirm = confirmMintOnChain as MockedFunction<
     typeof confirmMintOnChain
   >;
 

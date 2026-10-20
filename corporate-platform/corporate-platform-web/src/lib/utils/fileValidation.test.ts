@@ -2,7 +2,10 @@ import { validateFile, validateCertificateFile, MAX_UPLOAD_BYTES } from './fileV
 
 function fakeFile(name: string, size: number, type: string): File {
   const blob = new Blob([new Uint8Array(Math.min(size, 8))], { type });
-  return new File([blob], name, { type });
+  const file = new File([blob], name, { type });
+  // Report the requested size without allocating it.
+  Object.defineProperty(file, 'size', { value: size });
+  return file;
 }
 
 describe('validateFile (#718)', () => {
