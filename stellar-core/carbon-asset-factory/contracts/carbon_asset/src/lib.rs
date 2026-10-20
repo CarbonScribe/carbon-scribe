@@ -66,6 +66,8 @@ fn validate_metadata(env: &Env, metadata: &CarbonAssetMetadata) -> Result<(), Co
     }
 
     Ok(())
+}
+
 /// Typed cross-contract binding for buffer_pool's auto_deposit (issue #684).
 ///
 /// Generated from buffer_pool's *built WASM*, not a Cargo dependency on the
