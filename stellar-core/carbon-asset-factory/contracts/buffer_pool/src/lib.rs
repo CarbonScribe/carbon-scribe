@@ -25,6 +25,8 @@ impl BufferPoolContract {
         carbon_asset_contract: Address,
         initial_percentage: i64,
     ) -> Result<(), Error> {
+        admin.require_auth();
+
         if env.storage().instance().has(&storage::ADMIN) {
             return Err(Error::AlreadyExists);
         }

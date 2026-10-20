@@ -180,6 +180,7 @@ model Credit {
   // Blockchain
   assetCode  String?
   issuer     String?
+  verificationDocumentUrl String?
   contractId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
