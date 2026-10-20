@@ -16,6 +16,12 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAuth } from '@/contexts/AuthContext'
 import { ipfsService, CHUNKED_UPLOAD_THRESHOLD } from '@/services/ipfs.service'
+import {
+  DOCUMENT_ACCEPT,
+  CERTIFICATE_ACCEPT,
+  validateFile,
+  validateCertificateFile,
+} from '@/lib/utils/fileValidation'
 import { useChunkedUpload } from '@/hooks/useChunkedUpload'
 import { Pagination } from '@/components/common/Pagination'
 import type { IpfsDocumentRecord, IpfsDocumentType } from '@/types/ipfs'
@@ -163,6 +169,9 @@ export default function IpfsManager() {
   const tableContainerRef = useRef<HTMLDivElement>(null)
 
   const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [batchValidationErrors, setBatchValidationErrors] = useState<Record<string, string>>({})
+  const [certificateValidationError, setCertificateValidationError] = useState<string | null>(null)
   const [uploadType, setUploadType] = useState<IpfsDocumentType>('REPORT')
   const [uploadRef, setUploadRef] = useState('')
 
@@ -319,16 +328,28 @@ export default function IpfsManager() {
   // ---------------------------------------------------------------------------
 
   const handleSingleFileChange = async (file: File | null) => {
-    setUploadFile(file)
+    setValidationError(null)
     setSingleOverride(false)
     setError(null)
     setSuccess(null)
 
     if (!file) {
+      setUploadFile(null)
       setSingleFileHash(null)
       setSingleDuplicate(null)
       return
     }
+
+    const pre = validateFile(file)
+    if (!pre.ok) {
+      setUploadFile(null)
+      setSingleFileHash(null)
+      setSingleDuplicate(null)
+      setValidationError(pre.error ?? 'Invalid file')
+      return
+    }
+
+    setUploadFile(file)
 
     const immediate = checkDuplicate(file, null, docIndex, uploadRef.trim())
     if (immediate.isDuplicate) {
@@ -461,6 +482,27 @@ export default function IpfsManager() {
   // ---------------------------------------------------------------------------
 
   const handleBatchFilesChange = async (files: File[]) => {
+    const errors: Record<string, string> = {}
+    const accepted: File[] = []
+    for (const file of files) {
+      const pre = validateFile(file)
+      if (!pre.ok) {
+        errors[file.name] = pre.error ?? 'Invalid file'
+      } else {
+        accepted.push(file)
+      }
+    }
+    setBatchValidationErrors(errors)
+    files = accepted
+    if (files.length === 0) {
+      setError(
+        Object.keys(errors).length
+          ? `All selected files were rejected: ${Object.values(errors).join('; ')}`
+          : 'No files selected.',
+      )
+      return
+    }
+
     setBatchFiles(files)
     setBatchOverride(false)
     setError(null)
@@ -911,6 +953,7 @@ export default function IpfsManager() {
               ref={singleFileInputRef}
               data-testid="single-file-input"
               type="file"
+              accept={DOCUMENT_ACCEPT}
               onChange={(event) => void handleSingleFileChange(event.target.files?.[0] || null)}
             />
             {singleDuplicate?.isDuplicate && !singleOverride && (
@@ -947,6 +990,9 @@ export default function IpfsManager() {
                 className="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
               />
             </div>
+            {validationError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">{validationError}</p>
+            )}
             <button className="corporate-btn-primary px-4 py-2 text-sm" type="submit" disabled={anyBusy || !uploadFile}>Upload</button>
             <ProgressBar state={singleUpload} />
           </form>
@@ -959,10 +1005,18 @@ export default function IpfsManager() {
               data-testid="batch-file-input"
               type="file"
               multiple
+              accept={DOCUMENT_ACCEPT}
               onChange={(event: ChangeEvent<HTMLInputElement>) =>
                 void handleBatchFilesChange(Array.from(event.target.files || []))
               }
             />
+            {Object.keys(batchValidationErrors).length > 0 && (
+              <ul role="alert" className="text-sm text-red-600 dark:text-red-400 list-disc pl-5">
+                {Object.entries(batchValidationErrors).map(([name, msg]) => (
+                  <li key={name}><strong>{name}</strong>: {msg}</li>
+                ))}
+              </ul>
+            )}
             {batchDuplicates.size > 0 && !batchOverride && (
               <div
                 role="alert"
@@ -1031,7 +1085,28 @@ export default function IpfsManager() {
               placeholder="Retirement ID"
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm bg-white dark:bg-gray-900"
             />
-            <input type="file" accept="application/pdf" onChange={(event) => setCertificateFile(event.target.files?.[0] || null)} />
+            <input
+              type="file"
+              accept={CERTIFICATE_ACCEPT}
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null
+                setCertificateValidationError(null)
+                if (!file) {
+                  setCertificateFile(null)
+                  return
+                }
+                const pre = validateCertificateFile(file)
+                if (!pre.ok) {
+                  setCertificateFile(null)
+                  setCertificateValidationError(pre.error ?? 'Invalid certificate')
+                  return
+                }
+                setCertificateFile(file)
+              }}
+            />
+            {certificateValidationError && (
+              <p role="alert" className="text-sm text-red-600 dark:text-red-400">{certificateValidationError}</p>
+            )}
             {certificateFile && certificateFile.size >= CHUNKED_UPLOAD_THRESHOLD && (
               <p className="text-xs text-blue-600 dark:text-blue-400">Large file — resumable chunked upload will be used.</p>
             )}

@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  /**
+   * #722 — Explicit strict mode so double-invocation of effects is intentional
+   * and cannot silently regress to `false`. Do not disable to "fix" double
+   * mounts; fix effect cleanup (subscriptions, map instances, polling) instead.
+   */
+  reactStrictMode: true,
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
