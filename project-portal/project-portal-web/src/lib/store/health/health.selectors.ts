@@ -1,5 +1,6 @@
 import { StoreState } from '../store';
 import { HealthStatus, AlertSeverity, UptimeStat } from './health.types';
+import { HEALTH_CONSTANTS } from '@/lib/constants/health.constants';
 
 // Memoized selectors can be used directly or within components.
 // Here we provide helper functions that take the state and return transformed data.
@@ -34,14 +35,17 @@ export const selectServiceStatusCounts = (state: StoreState) => {
  * Select uptime stats from state
  */
 export const selectUptimeStats = (state: StoreState): UptimeStat[] | null => {
-    return state.uptimeStats;
+    if (state.detailedStatus?.uptimeStats && state.detailedStatus.uptimeStats.length > 0) {
+        return state.detailedStatus.uptimeStats;
+    }
+    return state.uptimeStats ?? state.detailedStatus?.uptimeStats ?? null;
 };
 
 /**
  * Select uptime for a specific period
  */
 export const selectUptimeByPeriod = (state: StoreState, period: string): number | null => {
-    const stats = state.uptimeStats;
+    const stats = selectUptimeStats(state);
     if (!stats) return null;
     const stat = stats.find((s: UptimeStat) => s.period === period);
     return stat?.value ?? null;
@@ -55,9 +59,9 @@ export const selectOverallUptime = (state: StoreState): number | null => {
 };
 
 /**
- * Select whether uptime is meeting SLA (99.9%)
+ * Select whether uptime is meeting SLA (defaults to configured SLA target)
  */
-export const selectSlaStatus = (state: StoreState, slaTarget: number = 99.9): 'meeting' | 'violating' | 'unknown' => {
+export const selectSlaStatus = (state: StoreState, slaTarget: number = HEALTH_CONSTANTS.DEFAULT_SLA_TARGET): 'meeting' | 'violating' | 'unknown' => {
     const uptime = selectOverallUptime(state);
     if (uptime === null) return 'unknown';
     return uptime >= slaTarget ? 'meeting' : 'violating';
