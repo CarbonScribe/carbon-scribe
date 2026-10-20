@@ -40,22 +40,21 @@ export const getCompanyRetirementEvidenceSchema = z
       path: ["periodEnd"],
     },
   )
-  .refine(
-    (input) => {
-      const start = new Date(input.periodStart);
-      const end = new Date(input.periodEnd);
-      const periodDays = Math.floor(
-        (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      const minDays = FRAMEWORK_MIN_PERIOD_DAYS[input.framework];
-      return periodDays >= minDays;
-    },
-    {
-      message: (input) =>
-        `Period length does not meet the minimum requirement for ${input.framework} framework`,
-      path: ["periodEnd"],
-    },
-  );
+  .superRefine((input, ctx) => {
+    const start = new Date(input.periodStart);
+    const end = new Date(input.periodEnd);
+    const periodDays = Math.floor(
+      (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    const minDays = FRAMEWORK_MIN_PERIOD_DAYS[input.framework];
+    if (periodDays < minDays) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Period length does not meet the minimum requirement for ${input.framework} framework`,
+        path: ["periodEnd"],
+      });
+    }
+  });
 
 export const getCompanyRetirementEvidence = betaZodTool({
   name: "get_company_retirement_evidence",
