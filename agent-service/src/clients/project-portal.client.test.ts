@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfirmAlertPayload } from "./project-portal.client.js";
 
 const getMock = vi.fn();
@@ -18,6 +18,7 @@ vi.mock("axios", async () => {
 const { projectPortalClient, classifyConfirmAlertError } =
   await import("./project-portal.client.js");
 const { env } = await import("../config/env.js");
+const { logger } = await import("../shared/logging/logger.js");
 const {
   mockMethodologiesResponseBody,
   mockMethodologies,
@@ -101,6 +102,161 @@ describe("projectPortalClient.getMethodologies", () => {
     } finally {
       env.mockProjectPortal = false;
     }
+  });
+
+  describe("request/response logging (#707)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("logs a request-start and a request-complete line, with method/path/status/duration — never the body", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: mockMethodologiesResponseBody,
+      });
+
+      await projectPortalClient.getMethodologies();
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getMethodologies",
+          method: "GET",
+          path: "/methodologies",
+          event: "request_start",
+        }),
+        expect.any(String),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getMethodologies",
+          event: "request_complete",
+          outcome: "success",
+          status: 200,
+          attempts: 1,
+          retried: false,
+          durationMs: expect.any(Number),
+        }),
+        expect.any(String),
+      );
+      for (const call of infoSpy.mock.calls) {
+        expect(JSON.stringify(call[0])).not.toContain("agroforestry");
+      }
+    });
+
+    it("correlates log lines with the calling agent's requestId when supplied", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: mockMethodologiesResponseBody,
+      });
+
+      await projectPortalClient.getMethodologies({
+        requestId: "req-correlate-methodologies-1",
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "req-correlate-methodologies-1" }),
+        expect.any(String),
+      );
+    });
+
+    it("does not include a requestId field when the caller doesn't supply one", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: mockMethodologiesResponseBody,
+      });
+
+      await projectPortalClient.getMethodologies();
+
+      const startCall = infoSpy.mock.calls.find(
+        (call) => (call[0] as { event?: string }).event === "request_start",
+      );
+      expect(
+        (startCall?.[0] as { requestId?: string }).requestId,
+      ).toBeUndefined();
+    });
+
+    it("logs a distinct, attempt-numbered line for a retry, distinguishing it from a first-try success", async () => {
+      const warnSpy = vi.spyOn(logger, "warn");
+      const infoSpy = vi.spyOn(logger, "info");
+      getMock
+        .mockRejectedValueOnce(axiosError({ status: 503 }))
+        .mockResolvedValueOnce({
+          status: 200,
+          data: mockMethodologiesResponseBody,
+        });
+
+      await projectPortalClient.getMethodologies();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getMethodologies",
+          event: "retry",
+          attempt: 1,
+          maxRetries: 2,
+          error: expect.any(String),
+        }),
+        expect.any(String),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "request_complete",
+          outcome: "success",
+          attempts: 2,
+          retried: true,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("logs a request-failed line with the error and no retry line for a non-retryable 4xx", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+      const warnSpy = vi.spyOn(logger, "warn");
+      getMock.mockRejectedValue(axiosError({ status: 404 }));
+
+      await expect(projectPortalClient.getMethodologies()).rejects.toThrow();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getMethodologies",
+          event: "request_complete",
+          outcome: "error",
+          status: 404,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("logs the response status and a top-level-keys shape summary on a schema-validation failure", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: { methodologies: [{ id: "agroforestry" }] },
+      });
+
+      await expect(projectPortalClient.getMethodologies()).rejects.toThrow();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getMethodologies",
+          event: "schema_validation_failed",
+          status: 200,
+          responseShape: {
+            type: "object",
+            keys: ["methodologies"],
+          },
+        }),
+        expect.any(String),
+      );
+    });
   });
 });
 
@@ -205,6 +361,208 @@ describe("projectPortalClient.confirmAlert", () => {
     } finally {
       env.mockProjectPortal = false;
     }
+  });
+
+  describe("request/response logging (#707)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("logs a request-start and a request-complete line, with method/path/status/duration — never the body", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      postMock.mockResolvedValue({
+        status: 200,
+        data: mockConfirmAlertResponseBody,
+      });
+
+      await projectPortalClient.confirmAlert(
+        "proj-fixture-1",
+        mockConfirmAlertPayload,
+      );
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "confirmAlert",
+          method: "POST",
+          path: "/internal/notifications/confirmed-alerts",
+          event: "request_start",
+        }),
+        expect.any(String),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "confirmAlert",
+          event: "request_complete",
+          outcome: "success",
+          status: 200,
+          attempts: 1,
+          retried: false,
+          durationMs: expect.any(Number),
+        }),
+        expect.any(String),
+      );
+      for (const call of infoSpy.mock.calls) {
+        expect(JSON.stringify(call[0])).not.toContain(
+          mockConfirmAlertPayload.content,
+        );
+      }
+    });
+
+    it("correlates log lines with options.requestId when supplied", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      postMock.mockResolvedValue({
+        status: 200,
+        data: mockConfirmAlertResponseBody,
+      });
+
+      await projectPortalClient.confirmAlert(
+        "proj-fixture-1",
+        mockConfirmAlertPayload,
+        { requestId: "req-override-confirm-alert" },
+      );
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: "req-override-confirm-alert" }),
+        expect.any(String),
+      );
+    });
+
+    it("falls back to alertPayload.idempotencyKey as requestId when options.requestId is omitted", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      postMock.mockResolvedValue({
+        status: 200,
+        data: mockConfirmAlertResponseBody,
+      });
+
+      await projectPortalClient.confirmAlert(
+        "proj-fixture-1",
+        mockConfirmAlertPayload,
+      );
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: mockConfirmAlertPayload.idempotencyKey,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("does not include a requestId field when neither options nor alertPayload provide one", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      postMock.mockResolvedValue({
+        status: 200,
+        data: mockConfirmAlertResponseBody,
+      });
+      const payloadWithoutKey: ConfirmAlertPayload = {
+        ...mockConfirmAlertPayload,
+        idempotencyKey: undefined,
+      };
+
+      await projectPortalClient.confirmAlert(
+        "proj-fixture-1",
+        payloadWithoutKey,
+      );
+
+      const startCall = infoSpy.mock.calls.find(
+        (call) => (call[0] as { event?: string }).event === "request_start",
+      );
+      expect(
+        (startCall?.[0] as { requestId?: string }).requestId,
+      ).toBeUndefined();
+    });
+
+    it("logs a distinct retry warning line on transient downstream failure", async () => {
+      const warnSpy = vi.spyOn(logger, "warn");
+      const infoSpy = vi.spyOn(logger, "info");
+      postMock
+        .mockRejectedValueOnce(axiosError({ status: 503 }))
+        .mockResolvedValueOnce({
+          status: 200,
+          data: mockConfirmAlertResponseBody,
+        });
+
+      await projectPortalClient.confirmAlert(
+        "proj-fixture-1",
+        mockConfirmAlertPayload,
+      );
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "confirmAlert",
+          event: "retry",
+          attempt: 1,
+          maxRetries: 2,
+          error: expect.any(String),
+        }),
+        expect.any(String),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: "request_complete",
+          outcome: "success",
+          attempts: 2,
+          retried: true,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("logs a request-failed line with the error and no retry line for a non-retryable 4xx", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+      const warnSpy = vi.spyOn(logger, "warn");
+      postMock.mockRejectedValue(axiosError({ status: 422 }));
+
+      await expect(
+        projectPortalClient.confirmAlert(
+          "proj-fixture-1",
+          mockConfirmAlertPayload,
+        ),
+      ).rejects.toThrow();
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "confirmAlert",
+          event: "request_complete",
+          outcome: "error",
+          status: 422,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("logs the response status and a top-level-keys shape summary on a schema-validation failure", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+      postMock.mockResolvedValue({
+        status: 200,
+        data: { missingStatus: true },
+      });
+
+      await expect(
+        projectPortalClient.confirmAlert(
+          "proj-fixture-1",
+          mockConfirmAlertPayload,
+        ),
+      ).rejects.toThrow();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "confirmAlert",
+          event: "schema_validation_failed",
+          status: 200,
+          responseShape: {
+            type: "object",
+            keys: ["missingStatus"],
+          },
+        }),
+        expect.any(String),
+      );
+    });
   });
 });
 
