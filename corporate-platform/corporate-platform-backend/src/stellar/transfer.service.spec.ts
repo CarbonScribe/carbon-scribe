@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TransferService } from './transfer.service';
 import { PrismaService } from '../shared/database/prisma.service';
-import { InitiateTransferDto } from './dto/transfer.dto';
+import {
+  InitiateTransferDto,
+  TransferHistoryQueryDto,
+} from './dto/transfer.dto';
 import {
   SIGNING_PROVIDER_TRANSFER,
   SigningProvider,
@@ -34,6 +37,8 @@ describe('TransferService', () => {
               create: jest.fn(),
               update: jest.fn(),
               findUnique: jest.fn(),
+              findMany: jest.fn(),
+              count: jest.fn(),
             },
           },
         },
@@ -100,8 +105,57 @@ describe('TransferService', () => {
       data: expect.objectContaining({
         purchaseId: 'order-2',
         status: 'SUBMITTED',
+        fromAddress: 'GB_FROM',
+        toAddress: 'GB_TO',
         submittedAt: expect.any(Date),
       }),
+    });
+  });
+
+  it('filters company transfer history and returns a bounded page', async () => {
+    (prisma.creditTransfer.findMany as jest.Mock).mockResolvedValue([{ id: 'tr_1' }]);
+    (prisma.creditTransfer.count as jest.Mock).mockResolvedValue(21);
+
+    const query: TransferHistoryQueryDto = {
+      page: 2,
+      limit: 10,
+      status: 'FAILED',
+      walletAddress: 'GA_TO',
+      search: 'order-1',
+      fromDate: '2026-09-01',
+      toDate: '2026-09-30',
+    };
+    const result = await service.getTransferHistory('company-1', query);
+
+    expect(result).toMatchObject({ page: 2, limit: 10, total: 21, totalPages: 3 });
+    expect(prisma.creditTransfer.findMany).toHaveBeenCalledWith({
+      where: {
+        companyId: 'company-1',
+        status: 'FAILED',
+        AND: [
+          {
+            OR: [
+              { fromAddress: { contains: 'GA_TO', mode: 'insensitive' } },
+              { toAddress: { contains: 'GA_TO', mode: 'insensitive' } },
+            ],
+          },
+          {
+            OR: [
+              { purchaseId: { contains: 'order-1', mode: 'insensitive' } },
+              { transactionHash: { contains: 'order-1', mode: 'insensitive' } },
+              { fromAddress: { contains: 'order-1', mode: 'insensitive' } },
+              { toAddress: { contains: 'order-1', mode: 'insensitive' } },
+            ],
+          },
+        ],
+        initiatedAt: {
+          gte: new Date('2026-09-01'),
+          lte: new Date('2026-09-30T23:59:59.999Z'),
+        },
+      },
+      orderBy: { initiatedAt: 'desc' },
+      skip: 10,
+      take: 10,
     });
   });
 

@@ -35,6 +35,8 @@ const STATUS_ORDER: Record<string, number> = {
   CONFIRMED: 3,
 }
 
+const HISTORY_PAGE_SIZE = 10
+
 export default function StellarTransferPanel({
   client = stellarApiClient,
   defaultCompanyId,
@@ -50,6 +52,17 @@ export default function StellarTransferPanel({
   })
   const [batchText, setBatchText] = useState('')
   const [statusPurchaseId, setStatusPurchaseId] = useState('')
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyStatus, setHistoryStatus] = useState('')
+  const [historyWalletAddress, setHistoryWalletAddress] = useState('')
+  const [historyFromDate, setHistoryFromDate] = useState('')
+  const [historyToDate, setHistoryToDate] = useState('')
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyRecords, setHistoryRecords] = useState<TransferRecord[]>([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyTotalPages, setHistoryTotalPages] = useState(0)
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [records, setRecords] = useState<TransferRecord[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isSubmittingSingle, setIsSubmittingSingle] = useState(false)
@@ -76,6 +89,51 @@ export default function StellarTransferPanel({
     () => records.filter((record) => !isTerminalTransferState(record.status)),
     [records],
   )
+
+  useEffect(() => {
+    let active = true
+    const timeout = setTimeout(async () => {
+      setIsLoadingHistory(true)
+      setHistoryError(null)
+      try {
+        const result = await client.getTransferHistory({
+          page: historyPage,
+          limit: HISTORY_PAGE_SIZE,
+          search: historySearch.trim() || undefined,
+          status: (historyStatus || undefined) as TransferRecord['status'] | undefined,
+          walletAddress: historyWalletAddress.trim() || undefined,
+          fromDate: historyFromDate || undefined,
+          toDate: historyToDate || undefined,
+        })
+        if (!active) return
+        setHistoryRecords(result.data)
+        setHistoryTotal(result.total)
+        setHistoryTotalPages(result.totalPages)
+      } catch (reason) {
+        if (active) {
+          setHistoryError(toErrorMessage(reason))
+          setHistoryRecords([])
+          setHistoryTotal(0)
+          setHistoryTotalPages(0)
+        }
+      } finally {
+        if (active) setIsLoadingHistory(false)
+      }
+    }, 250)
+
+    return () => {
+      active = false
+      clearTimeout(timeout)
+    }
+  }, [
+    client,
+    historyFromDate,
+    historyPage,
+    historySearch,
+    historyStatus,
+    historyToDate,
+    historyWalletAddress,
+  ])
 
   const inFlightPurchaseIds = useMemo(
     () => inFlightRecords.map((record) => record.purchaseId),
@@ -299,6 +357,116 @@ export default function StellarTransferPanel({
           <span>{error}</span>
         </div>
       )}
+
+      <section className="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-gray-800" aria-labelledby="transfer-history-title">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 id="transfer-history-title" className="font-semibold text-gray-900 dark:text-white">Transfer History</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Browse transfers for your company.</p>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{historyTotal} total</span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="mb-1 block">Search</span>
+            <input
+              value={historySearch}
+              onChange={(event) => { setHistorySearch(event.target.value); setHistoryPage(1) }}
+              placeholder="Purchase ID, transaction hash, wallet"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="mb-1 block">Status</span>
+            <select
+              value={historyStatus}
+              onChange={(event) => { setHistoryStatus(event.target.value); setHistoryPage(1) }}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900"
+            >
+              <option value="">All statuses</option>
+              {['FAILED', 'SUBMITTED', 'PENDING', 'CONFIRMED'].map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="mb-1 block">Wallet address</span>
+            <input
+              value={historyWalletAddress}
+              onChange={(event) => { setHistoryWalletAddress(event.target.value); setHistoryPage(1) }}
+              placeholder="From or to address"
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="mb-1 block">From date</span>
+            <input
+              type="date"
+              value={historyFromDate}
+              onChange={(event) => { setHistoryFromDate(event.target.value); setHistoryPage(1) }}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
+          <label className="text-sm text-gray-700 dark:text-gray-300">
+            <span className="mb-1 block">To date</span>
+            <input
+              type="date"
+              value={historyToDate}
+              onChange={(event) => { setHistoryToDate(event.target.value); setHistoryPage(1) }}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
+        </div>
+
+        {historyError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{historyError}</p>}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                <th className="py-2 pr-3">Purchase ID</th>
+                <th className="py-2 pr-3">Date</th>
+                <th className="py-2 pr-3">Amount</th>
+                <th className="py-2 pr-3">From / To</th>
+                <th className="py-2 pr-3">Status</th>
+                <th className="py-2">Transaction</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoadingHistory ? (
+                <tr><td colSpan={6} className="py-5 text-center text-gray-500">Loading transfer history…</td></tr>
+              ) : historyRecords.length === 0 ? (
+                <tr><td colSpan={6} className="py-5 text-center text-gray-500">No matching transfers.</td></tr>
+              ) : historyRecords.map((record) => (
+                <tr key={record.id} className="border-b border-gray-100 dark:border-gray-800">
+                  <td className="py-3 pr-3 font-medium text-gray-900 dark:text-white">{record.purchaseId}</td>
+                  <td className="py-3 pr-3">{record.initiatedAt ? new Date(record.initiatedAt).toLocaleDateString() : '—'}</td>
+                  <td className="py-3 pr-3">{record.amount.toLocaleString()} tCO₂</td>
+                  <td className="max-w-56 py-3 pr-3 text-xs">
+                    <div className="truncate" title={record.fromAddress || undefined}>From: {record.fromAddress || '—'}</div>
+                    <div className="truncate" title={record.toAddress || undefined}>To: {record.toAddress || '—'}</div>
+                  </td>
+                  <td className="py-3 pr-3"><StatusPill record={record} now={now} /></td>
+                  <td className="py-3">
+                    {record.transactionHash ? (
+                      <a href={getStellarExplorerUrl(record.transactionHash)} target="_blank" rel="noopener noreferrer" className="text-corporate-blue hover:underline">
+                        {record.transactionHash.slice(0, 12)}…
+                      </a>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-gray-500 dark:text-gray-400">Page {historyPage} of {Math.max(historyTotalPages, 1)}</span>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={historyPage <= 1 || isLoadingHistory} className="corporate-btn-secondary px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
+            <button type="button" onClick={() => setHistoryPage((page) => Math.min(historyTotalPages, page + 1))} disabled={historyPage >= historyTotalPages || isLoadingHistory} className="corporate-btn-secondary px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
+          </div>
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <form onSubmit={submitSingle} className="space-y-3 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
