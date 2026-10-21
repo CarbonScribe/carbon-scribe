@@ -471,7 +471,8 @@ describe("runAlertTriageAgent", () => {
         fakeRunner({
           finalMessage: finalTextMessage({
             verdict: "sensor-fault",
-            reasoning: "IoT sensor returning implausible values — data is unreliable.",
+            reasoning:
+              "IoT sensor returning implausible values — data is unreliable.",
             citations: [],
           }),
         }),

@@ -30,10 +30,7 @@ import type { AgentRunResult } from "../../shared/types/agent.types.js";
 // no escalation can reach project-portal without going through it.
 
 export type AlertTriageVerdict =
-  | "escalate"
-  | "suppress"
-  | "needs-more-data"
-  | "sensor-fault";
+  "escalate" | "suppress" | "needs-more-data" | "sensor-fault";
 
 /** A triage run a reviewer must sign off on before anything goes downstream. */
 export interface PendingAlertTriageEscalation {
