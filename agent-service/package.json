@@ -19,7 +19,7 @@
     "@anthropic-ai/sdk": "^0.120.0",
     "axios": "^1.13.5",
     "dotenv": "^17.3.1",
-    "express": "^4.21.2",
+    "express": "^5.3.0",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
