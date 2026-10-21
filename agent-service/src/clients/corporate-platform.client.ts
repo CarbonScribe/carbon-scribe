@@ -1,8 +1,13 @@
-import axios, { type AxiosResponse } from "axios";
+import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { signServiceToken } from "../shared/auth/service-token.js";
-import { logger } from "../shared/logging/logger.js";
+import {
+  type ClientCallOptions,
+  type CallContext,
+  requestWithLogging,
+  logSchemaValidationError,
+} from "./http-client.helper.js";
 
 // Thin HTTP client for corporate-platform-backend (NestJS). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
@@ -85,167 +90,7 @@ const PortfolioResponseSchema = z.object({
 
 export type PortfolioHolding = z.infer<typeof PortfolioHoldingSchema>;
 export type Portfolio = z.infer<typeof PortfolioSchema>;
-
-const MAX_RETRIES = 2;
-const RETRY_BASE_DELAY_MS = 250;
-
-function isRetryableError(err: unknown): boolean {
-  if (!axios.isAxiosError(err)) {
-    return false;
-  }
-  // No response at all means the request never completed (network error,
-  // timeout, connection reset) — worth retrying. A response with a 4xx
-  // status is a permanent rejection (bad companyId, auth failure, etc.)
-  // and retrying it would just repeat the same failure.
-  if (!err.response) {
-    return true;
-  }
-  return err.response.status >= 500;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-// ---------------------------------------------------------------------------
-// Request/response logging (#706)
-// ---------------------------------------------------------------------------
-//
-// Every exported client function routes its HTTP call through
-// requestWithLogging (which itself drives withRetry) rather than calling
-// `http.<method>` directly, so logging stays consistent as more endpoints
-// are added here (see the file-level TODO) instead of each new function
-// reimplementing it. Bodies are never logged — only method/path/status/
-// duration/shape — to avoid duplicating the redaction problem audit-log
-// entries already have to solve (see shared/audit/redaction.ts, #702).
-
-/** Options every exported client function accepts for logging/correlation. */
-export interface ClientCallOptions {
-  /**
-   * The calling agent's requestId, threaded through so this call's log
-   * lines can be correlated with the agent run / audit-log entry that
-   * triggered it. Optional: not every caller has one available to pass
-   * yet — a betaZodTool's `run(input)` closure (see e.g.
-   * discovery.tools.ts) has no access to the agent's AgentRunRequest
-   * today, so tool-driven calls currently log without it.
-   */
-  requestId?: string;
-}
-
-interface CallContext {
-  /** Distinguishes which exported function a log line came from, since
-   *  they all share this same logging path. */
-  operation: string;
-  method: string;
-  path: string;
-  requestId?: string;
-}
-
-/**
- * Retries `fn` on a transient network/5xx failure with exponential
- * backoff, logging a distinct line on each retry attempt (attempt number,
- * the error that triggered it) so a retried call is distinguishable in
- * logs from one that succeeded on the first try. Returns how many
- * attempts it actually took alongside the result — 1 means no retry
- * occurred.
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  context: CallContext,
-): Promise<{ value: T; attempts: number }> {
-  let attempt = 0;
-  for (;;) {
-    try {
-      const value = await fn();
-      return { value, attempts: attempt + 1 };
-    } catch (err) {
-      if (attempt >= MAX_RETRIES || !isRetryableError(err)) {
-        throw err;
-      }
-      logger.warn(
-        {
-          ...context,
-          event: "retry",
-          attempt: attempt + 1,
-          maxRetries: MAX_RETRIES,
-          error: errorMessage(err),
-        },
-        "corporate-platform client request retry",
-      );
-      await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
-      attempt += 1;
-    }
-  }
-}
-
-/**
- * Logs request-start and response-complete (or failure) around `fn`, with
- * method/path/duration/outcome — never the request or response body, by
- * design (see the section comment above). `fn` is expected to return the
- * raw axios response; callers do their own schema parsing (and, on a
- * validation failure, their own shape-summary logging) afterward.
- */
-async function requestWithLogging(
-  context: CallContext,
-  fn: () => Promise<AxiosResponse>,
-): Promise<AxiosResponse> {
-  const start = Date.now();
-  logger.info(
-    { ...context, event: "request_start" },
-    "corporate-platform client request start",
-  );
-
-  try {
-    const { value: response, attempts } = await withRetry(fn, context);
-    logger.info(
-      {
-        ...context,
-        event: "request_complete",
-        outcome: "success",
-        status: response.status,
-        attempts,
-        retried: attempts > 1,
-        durationMs: Date.now() - start,
-      },
-      "corporate-platform client request complete",
-    );
-    return response;
-  } catch (err) {
-    logger.error(
-      {
-        ...context,
-        event: "request_complete",
-        outcome: "error",
-        status: axios.isAxiosError(err) ? err.response?.status : undefined,
-        durationMs: Date.now() - start,
-        error: errorMessage(err),
-      },
-      "corporate-platform client request failed",
-    );
-    throw err;
-  }
-}
-
-/**
- * A truncated, non-sensitive view of a response body that failed schema
- * validation: top-level keys only (or type/length for an array or
- * primitive), never full values — enough to diagnose a backend contract
- * change (a renamed/missing/retyped field) without risking a dump of
- * potentially sensitive portfolio data into logs.
- */
-function summarizeResponseShape(data: unknown): unknown {
-  if (Array.isArray(data)) {
-    return { type: "array", length: data.length };
-  }
-  if (data !== null && typeof data === "object") {
-    return { type: "object", keys: Object.keys(data) };
-  }
-  return { type: typeof data };
-}
+export type { ClientCallOptions };
 
 /**
  * Fetch a company's current carbon credit portfolio.
@@ -275,6 +120,7 @@ async function getPortfolio(
   options: ClientCallOptions = {},
 ): Promise<Portfolio> {
   const context: CallContext = {
+    clientName: "corporate-platform",
     operation: "getPortfolio",
     method: "GET",
     path: `/api/v1/portfolio/${encodeURIComponent(companyId)}`,
@@ -287,15 +133,11 @@ async function getPortfolio(
 
   const result = PortfolioResponseSchema.safeParse(response.data);
   if (!result.success) {
-    logger.error(
-      {
-        ...context,
-        event: "schema_validation_failed",
-        status: response.status,
-        responseShape: summarizeResponseShape(response.data),
-        error: result.error.message,
-      },
-      "corporate-platform client response failed schema validation",
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
     );
     throw result.error;
   }
