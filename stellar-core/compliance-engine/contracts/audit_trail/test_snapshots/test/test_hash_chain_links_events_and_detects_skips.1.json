@@ -39,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "CHAIN_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "chain-entity"
@@ -73,7 +73,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "CHAIN_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "chain-entity"
@@ -93,6 +93,8 @@
       ]
     ],
     [],
+    [],
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
@@ -106,7 +108,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
                 },
                 {
-                  "string": "CHAIN_TEST"
+                  "string": "USER_ACTION"
                 },
                 {
                   "string": "chain-entity"
@@ -125,6 +127,7 @@
         }
       ]
     ],
+    [],
     [],
     [],
     [],
@@ -179,13 +182,13 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                      "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                     },
                     {
-                      "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                      "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                     },
                     {
-                      "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                      "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                     }
                   ]
                 }
@@ -234,13 +237,13 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                      "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                     },
                     {
-                      "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                      "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                     },
                     {
-                      "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                      "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                     }
                   ]
                 }
@@ -289,13 +292,13 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                      "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                     },
                     {
-                      "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                      "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                     },
                     {
-                      "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                      "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                     }
                   ]
                 }
@@ -316,7 +319,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                  "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                 }
               ]
             },
@@ -336,7 +339,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                      "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                     }
                   ]
                 },
@@ -364,7 +367,15 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                        "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "1"
                       }
                     },
                     {
@@ -372,7 +383,7 @@
                         "symbol": "event_type"
                       },
                       "val": {
-                        "string": "CHAIN_TEST"
+                        "string": "USER_ACTION"
                       }
                     },
                     {
@@ -380,7 +391,7 @@
                         "symbol": "prev_event_hash"
                       },
                       "val": {
-                        "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                        "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                       }
                     },
                     {
@@ -432,7 +443,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                  "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                 }
               ]
             },
@@ -452,7 +463,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                      "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                     }
                   ]
                 },
@@ -480,7 +491,15 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                        "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -488,16 +507,14 @@
                         "symbol": "event_type"
                       },
                       "val": {
-                        "string": "CHAIN_TEST"
+                        "string": "USER_ACTION"
                       }
                     },
                     {
                       "key": {
                         "symbol": "prev_event_hash"
                       },
-                      "val": {
-                        "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
-                      }
+                      "val": "void"
                     },
                     {
                       "key": {
@@ -548,7 +565,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                  "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                 }
               ]
             },
@@ -568,7 +585,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                      "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                     }
                   ]
                 },
@@ -596,7 +613,15 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                        "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "2"
                       }
                     },
                     {
@@ -604,14 +629,16 @@
                         "symbol": "event_type"
                       },
                       "val": {
-                        "string": "CHAIN_TEST"
+                        "string": "USER_ACTION"
                       }
                     },
                     {
                       "key": {
                         "symbol": "prev_event_hash"
                       },
-                      "val": "void"
+                      "val": {
+                        "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
+                      }
                     },
                     {
                       "key": {
@@ -664,7 +691,7 @@
                 {
                   "vec": [
                     {
-                      "string": "CHAIN_TEST"
+                      "string": "USER_ACTION"
                     },
                     {
                       "u64": "0"
@@ -691,7 +718,7 @@
                     {
                       "vec": [
                         {
-                          "string": "CHAIN_TEST"
+                          "string": "USER_ACTION"
                         },
                         {
                           "u64": "0"
@@ -704,13 +731,13 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "88409cf4a49d2504ff202854a6cb1b5a6d6485fe2b802154b2929fefc0f67fbc"
+                      "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
                     },
                     {
-                      "bytes": "3de2c78fca4a88c0c89cb11ec149f37bdaad49ea7eff72aed28f00ad14483668"
+                      "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
                     },
                     {
-                      "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                      "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                     }
                   ]
                 }
@@ -802,7 +829,19 @@
                           ]
                         },
                         "val": {
-                          "bytes": "3045635d13619e5884edbc1e730f2227a3877c1aef45b7fa831ab1b9bf877de0"
+                          "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "3"
                         }
                       },
                       {
@@ -826,7 +865,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "448"
+                          "u64": "475"
                         }
                       },
                       {

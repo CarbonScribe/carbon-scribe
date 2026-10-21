@@ -18,4 +18,6 @@ pub enum AuditTrailError {
     EventIdCollision = 5,
     /// The per-contract event nonce cannot be incremented further.
     EventNonceExhausted = 6,
+    /// event_type is not one of the canonical audit event types.
+    UnknownEventType = 7,
 }
