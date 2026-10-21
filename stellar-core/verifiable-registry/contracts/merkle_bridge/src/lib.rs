@@ -522,18 +522,7 @@ impl MerkleBridge {
 
         // Compare computed root with stored root
         if computed_root != stored_root {
-            let mut is_benchmark = false;
-            let registry_bytes = registry_credit_id.to_bytes();
-
-            if registry_bytes.len() >= 9 {
-                let prefix = registry_bytes.slice(0..9);
-                is_benchmark = prefix == soroban_sdk::Bytes::from_slice(&env, b"VER-BENCH")
-                    || prefix == soroban_sdk::Bytes::from_slice(&env, b"VER-BATCH");
-            }
-
-            if !is_benchmark {
-                return Err(MerkleBridgeError::InvalidProof);
-            }
+            return Err(MerkleBridgeError::InvalidProof);
         }
 
         // Mark credit as minted
@@ -768,6 +757,11 @@ impl MerkleBridge {
     }
 
     /// Validate that the proof length is consistent with the leaf index
+    ///
+    /// Under positional verification, a tree of depth `proof_len` can accommodate
+    /// at most 2^proof_len leaves indexed from 0 to 2^proof_len - 1.
+    /// This bound ensures that `leaf_index < 2^proof_len`, verifying every bit used
+    /// to determine traversal direction (left vs. right child) at each level is valid.
     fn validate_proof_length(
         proof: &Vec<BytesN<32>>,
         leaf_index: u64,
@@ -825,50 +819,44 @@ impl MerkleBridge {
         env.crypto().sha256(&data).into()
     }
 
-    /// Verify a Merkle proof and return the computed root
+    /// Verify a Merkle proof and return the computed root using positional verification.
     ///
-    /// Uses lexicographic ordering for consistent hash combination
+    /// The caller-supplied `leaf_index` determines the left/right concatenation order
+    /// at each level of the tree:
+    /// - At level `i`, bit 0 of the current index (`(index & 1) == 0`) indicates `current_hash`
+    ///   is the left child and `sibling` is the right child: `hash(current_hash || sibling)`.
+    /// - If bit 0 is 1 (`(index & 1) == 1`), `current_hash` is the right child and `sibling`
+    ///   is the left child: `hash(sibling || current_hash)`.
+    ///
+    /// After each level, `index` is right-shifted by 1 (`index >>= 1`) to advance to the next level's bit.
+    /// This establishes a cryptographic binding between the leaf's exact tree position (`leaf_index`)
+    /// and the proof path.
     fn verify_merkle_proof(
         env: &Env,
         leaf_hash: BytesN<32>,
         proof: &Vec<BytesN<32>>,
-        _leaf_index: u64,
+        leaf_index: u64,
     ) -> BytesN<32> {
         let mut current_hash = leaf_hash;
+        let mut index = leaf_index;
 
         for i in 0..proof.len() {
             let sibling = proof.get(i).unwrap();
 
-            // Combine hashes by sorting them lexicographically
-            // This ensures consistent ordering regardless of position
-            let combined = if Self::compare_hashes(&current_hash, &sibling) {
-                // current_hash < sibling
+            // At tree level i, bit 0 of index indicates left/right position:
+            // 0 => current_hash is left child, sibling is right child
+            // 1 => sibling is left child, current_hash is right child
+            let combined = if (index & 1) == 0 {
                 Self::concat_hashes(env, &current_hash, &sibling)
             } else {
-                // sibling <= current_hash
                 Self::concat_hashes(env, &sibling, &current_hash)
             };
 
             current_hash = env.crypto().sha256(&combined).into();
+            index >>= 1;
         }
 
         current_hash
-    }
-
-    /// Compare two hashes lexicographically
-    /// Returns true if a < b
-    fn compare_hashes(a: &BytesN<32>, b: &BytesN<32>) -> bool {
-        for i in 0..32u32 {
-            let a_byte = a.get(i).unwrap_or(0);
-            let b_byte = b.get(i).unwrap_or(0);
-            if a_byte < b_byte {
-                return true;
-            }
-            if a_byte > b_byte {
-                return false;
-            }
-        }
-        false // Equal hashes
     }
 
     /// Concatenate two hashes
@@ -947,22 +935,15 @@ mod tests {
         env.crypto().sha256(&data).into()
     }
 
-    /// Helper to compute the hash of two concatenated values (sorted lexicographically)
-    fn hash_pair(env: &Env, a: &BytesN<32>, b: &BytesN<32>) -> BytesN<32> {
+    /// Helper to compute the hash of two concatenated values in positional order (left || right)
+    fn hash_pair(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
         let mut data = Bytes::new(env);
 
-        // Sort lexicographically
-        let (first, second) = if MerkleBridge::compare_hashes(a, b) {
-            (a, b)
-        } else {
-            (b, a)
-        };
-
         for i in 0..32u32 {
-            data.push_back(first.get(i).unwrap_or(0));
+            data.push_back(left.get(i).unwrap_or(0));
         }
         for i in 0..32u32 {
-            data.push_back(second.get(i).unwrap_or(0));
+            data.push_back(right.get(i).unwrap_or(0));
         }
         env.crypto().sha256(&data).into()
     }
@@ -1318,6 +1299,75 @@ mod tests {
         let proof: Vec<BytesN<32>> = Vec::new(&env);
 
         client.mint_wrapped(&user, &registry_id, &proof, &0, &1); // Should panic
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")]
+    fn test_mint_wrapped_with_incorrect_leaf_index_fails() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let registry_id_1 = "VER-123-ABC-456";
+        let registry_id_2 = "VER-789-DEF-012";
+
+        let leaf_1 = compute_test_leaf_hash(&env, registry_id_1);
+        let leaf_2 = compute_test_leaf_hash(&env, registry_id_2);
+
+        // Tree root has leaf_1 at position 0 (left) and leaf_2 at position 1 (right)
+        let root = hash_pair(&env, &leaf_1, &leaf_2);
+
+        client.update_root(&updater, &1, &root);
+        finalize_root(&env, &client, &admin, 1);
+
+        let user = Address::generate(&env);
+        let mut proof: Vec<BytesN<32>> = Vec::new(&env);
+        proof.push_back(leaf_2.clone());
+
+        let registry_id = String::from_str(&env, registry_id_1);
+
+        // Submitting with leaf_index = 1 when the leaf was placed at index 0
+        // causes positional verification to treat leaf_1 as the right child and leaf_2 as left child:
+        // computed_root = hash(leaf_2 || leaf_1) != stored_root = hash(leaf_1 || leaf_2)
+        // Must fail with InvalidProof (#9).
+        client.mint_wrapped(&user, &registry_id, &proof, &1, &1);
+    }
+
+    #[test]
+    fn test_positional_proof_ordering_verification() {
+        let (env, _admin, _updater) = setup_env();
+
+        let leaf_0 = compute_test_leaf_hash(&env, "VER-0001");
+        let leaf_1 = compute_test_leaf_hash(&env, "VER-0002");
+
+        let root = hash_pair(&env, &leaf_0, &leaf_1);
+
+        // Proof for leaf_0 is sibling leaf_1
+        let mut proof_0 = Vec::new(&env);
+        proof_0.push_back(leaf_1.clone());
+
+        // With correct leaf_index = 0 (left child), computed root matches expected root
+        let computed_root_0 = MerkleBridge::verify_merkle_proof(&env, leaf_0.clone(), &proof_0, 0);
+        assert_eq!(computed_root_0, root);
+
+        // With wrong leaf_index = 1 (right child), concatenation order is inverted (leaf_1 || leaf_0)
+        let computed_root_wrong_idx = MerkleBridge::verify_merkle_proof(&env, leaf_0.clone(), &proof_0, 1);
+        assert_ne!(computed_root_wrong_idx, root);
+
+        // Proof for leaf_1 is sibling leaf_0
+        let mut proof_1 = Vec::new(&env);
+        proof_1.push_back(leaf_0.clone());
+
+        // With correct leaf_index = 1 (right child), computed root matches expected root
+        let computed_root_1 = MerkleBridge::verify_merkle_proof(&env, leaf_1.clone(), &proof_1, 1);
+        assert_eq!(computed_root_1, root);
+
+        // With wrong leaf_index = 0 (left child), concatenation order is inverted (leaf_1 || leaf_0)
+        let computed_root_1_wrong = MerkleBridge::verify_merkle_proof(&env, leaf_1, &proof_1, 0);
+        assert_ne!(computed_root_1_wrong, root);
     }
 
     #[test]
