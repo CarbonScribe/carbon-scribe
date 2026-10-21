@@ -388,7 +388,7 @@ export const openApiSpec = {
         tags: ["Agents"],
         summary: "Run alert-triage agent",
         description:
-          "Correlates satellite NDVI data, IoT sensors, and weather context for candidate deforestation/anomaly alerts to produce a triage verdict (escalate, suppress, needs-more-data). An 'escalate' verdict produces a 'needs-approval' status so a human reviewer validates the incident before downstream notifications fire.",
+          "Correlates satellite NDVI data, IoT sensors, and weather context for candidate deforestation/anomaly alerts to produce a triage verdict (escalate, suppress, needs-more-data, sensor-fault). An 'escalate' verdict produces a 'needs-approval' status so a human reviewer validates the incident before downstream notifications fire.",
         operationId: "runAlertTriageAgent",
         security: [
           {
@@ -1299,7 +1299,7 @@ export const openApiSpec = {
         properties: {
           verdict: {
             type: "string",
-            enum: ["escalate", "suppress", "needs-more-data"],
+            enum: ["escalate", "suppress", "needs-more-data", "sensor-fault"],
             description: "Triage recommendation for this candidate alert",
           },
           reasoning: {

@@ -13,6 +13,7 @@ describe("checkApproval", () => {
     ["pdd-draft.draft-sections", PDD_DRAFT_ACTION_TYPES.DRAFT_SECTIONS],
     ["alert-triage.suppress", ALERT_TRIAGE_ACTION_TYPES.SUPPRESS],
     ["alert-triage.needs-more-data", ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA],
+    ["alert-triage.sensor-fault", ALERT_TRIAGE_ACTION_TYPES.SENSOR_FAULT],
   ])("auto-approves the read-only action type %s", (_label, actionType) => {
     expect(checkApproval({ actionType, payload: {} })).toBe("auto-approved");
   });
