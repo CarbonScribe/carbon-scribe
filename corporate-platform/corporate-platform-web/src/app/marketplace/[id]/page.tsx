@@ -15,11 +15,21 @@ import {
   Tag,
   AlertCircle,
   Loader2,
+  ExternalLink,
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
 import { marketplaceService } from '@/services/marketplace.service'
 import { MarketplaceCredit } from '@/types/marketplace'
 import CreditCard from '@/components/marketplace/CreditCard'
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol
+    return protocol === 'https:' || protocol === 'http:'
+  } catch {
+    return false
+  }
+}
 
 export default function CreditDetailPage() {
   const params = useParams()
@@ -63,6 +73,7 @@ export default function CreditDetailPage() {
   }, [creditId])
 
   const isInCart = cart.some((item: any) => item.id === creditId)
+  const verificationDocumentUrl = credit?.verificationDocumentUrl?.trim()
 
   const handleAddToCart = () => {
     if (credit) {
@@ -239,11 +250,35 @@ export default function CreditDetailPage() {
                 {credit.availableAmount.toLocaleString()} tCO₂
               </dd>
             </div>
+            {credit.issuer && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500 dark:text-gray-400">Issuer</dt>
+                <dd className="text-right font-medium text-gray-900 dark:text-white">
+                  {credit.issuer}
+                </dd>
+              </div>
+            )}
             {credit.lastVerification && (
               <div className="flex justify-between">
                 <dt className="text-gray-500 dark:text-gray-400">Last Verified</dt>
                 <dd className="font-medium text-gray-900 dark:text-white">
                   {new Date(credit.lastVerification).toLocaleDateString()}
+                </dd>
+              </div>
+            )}
+            {verificationDocumentUrl && isHttpUrl(verificationDocumentUrl) && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500 dark:text-gray-400">Verification evidence</dt>
+                <dd>
+                  <a
+                    href={verificationDocumentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-corporate-blue hover:underline dark:text-blue-300"
+                  >
+                    View document
+                    <ExternalLink size={14} aria-hidden="true" />
+                  </a>
                 </dd>
               </div>
             )}

@@ -73,7 +73,7 @@ export class AuditTrailService {
   async queryEvents(
     companyId: string,
     query: QueryAuditLogsDto,
-  ): Promise<AuditQueryResult<AuditEvent>> {
+  ): Promise<AuditQueryResult<AuditEventWithIntegrity>> {
     const page = query.page && query.page > 0 ? query.page : 1;
     const limit =
       query.limit && query.limit > 0 ? Math.min(query.limit, 1000) : 20;
@@ -105,14 +105,14 @@ export class AuditTrailService {
     ]);
 
     return {
-      events,
+      events: events.map((event) => this.addIntegrityStatus(event)),
       total,
       page,
       limit,
     };
   }
 
-  async getEventById(companyId: string, id: string) {
+  async getEventById(companyId: string, id: string): Promise<AuditEventWithIntegrity> {
     const event = await this.prisma.auditEvent.findFirst({
       where: {
         id,
@@ -124,15 +124,15 @@ export class AuditTrailService {
       throw new NotFoundException('Audit event not found');
     }
 
-    return event;
+    return this.addIntegrityStatus(event);
   }
 
   async getEntityTrail(
     companyId: string,
     entityType: string,
     entityId: string,
-  ) {
-    return this.prisma.auditEvent.findMany({
+  ): Promise<AuditEventWithIntegrity[]> {
+    const events = await this.prisma.auditEvent.findMany({
       where: {
         companyId,
         entityType,
@@ -140,6 +140,17 @@ export class AuditTrailService {
       },
       orderBy: [{ timestamp: 'asc' }, { createdAt: 'asc' }],
     });
+    return events.map((event) => this.addIntegrityStatus(event));
+  }
+
+  private addIntegrityStatus(event: AuditEvent): AuditEventWithIntegrity {
+    const anchorTxHash = event.transactionHash || undefined;
+    return {
+      ...event,
+      anchored: Boolean(anchorTxHash),
+      anchorTxHash,
+      hashMatch: this.eventLogger.recalculateHash(event) === event.hash,
+    };
   }
 
   async verifyEventIntegrity(companyId: string, id: string) {
@@ -168,4 +179,10 @@ export class AuditTrailService {
 
     return this.queryEvents(companyId, exportQuery);
   }
+}
+
+export interface AuditEventWithIntegrity extends AuditEvent {
+  anchored: boolean;
+  anchorTxHash?: string;
+  hashMatch: boolean;
 }

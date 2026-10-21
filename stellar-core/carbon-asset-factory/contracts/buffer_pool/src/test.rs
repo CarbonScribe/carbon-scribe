@@ -51,6 +51,19 @@ fn test_initialize() {
 }
 
 #[test]
+fn test_initialize_requires_admin_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let governance = Address::generate(&env);
+    let carbon_contract = env.register(MockAssetContract, ());
+    let client = BufferPoolContractClient::new(&env, &env.register(BufferPoolContract, ()));
+
+    let result = client.try_initialize(&admin, &governance, &carbon_contract, &500);
+
+    assert!(result.is_err());
+}
+
+#[test]
 fn test_initialize_twice_fails() {
     let (_, admin, governance, carbon_contract, client) = setup_test_env();
 
