@@ -6,6 +6,7 @@ import { type CarbonCredit, type CalculateCreditsRequest, type CreditStatusRespo
 import { useStore } from '@/lib/store/store';
 import type { FinancingCredit } from '@/lib/store/financing/financing.types';
 import { getStellarExpertTxUrl } from '@/lib/stellar/retirement';
+import { confirmMintOnChain } from '@/lib/stellar/carbonTokens';
 
 interface TokenizationWizardProps {
   projectId: string;
@@ -17,6 +18,8 @@ type WizardStep = 'calculate' | 'review' | 'mint' | 'complete';
 
 const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCreditCreated, onCreditMinted }) => {
   const [currentStep, setCurrentStep] = useState<WizardStep>('calculate');
+  const [confirmingOnChain, setConfirmingOnChain] = useState(false);
+  const [onChainError, setOnChainError] = useState<string | null>(null);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
 
   const stellarNetwork = (process.env.NEXT_PUBLIC_STELLAR_NETWORK as 'testnet' | 'public') || 'public';
@@ -136,9 +139,26 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
       if (!status) return;
       setCreditStatus(status);
       if (status.status === 'minted') {
+        // #715 — verify on-chain before complete UI
+        const hash =
+          status.mint_transaction_hash ||
+          mintedCredit.mint_transaction_hash ||
+          '';
+        setConfirmingOnChain(true);
+        setOnChainError(null);
+        const result = await confirmMintOnChain(hash);
+        setConfirmingOnChain(false);
+        if (!result.confirmed) {
+          setOnChainError(
+            result.error ||
+              'Could not confirm the mint transaction on Stellar. The complete step is blocked until confirmation succeeds.',
+          );
+          return;
+        }
         setCurrentStep('complete');
       }
     } catch {
+      setConfirmingOnChain(false);
     }
   };
 
@@ -431,6 +451,12 @@ const TokenizationWizard: React.FC<TokenizationWizardProps> = ({ projectId, onCr
                 <Clock className="w-4 h-4 mr-2 animate-spin text-blue-600" />
                 <span className="font-medium text-blue-900">
                   {creditStatus?.status || mintedCredit.status}
+                {confirmingOnChain && (
+                  <span className="ml-2 text-sm text-blue-600">Confirming on-chain…</span>
+                )}
+                {onChainError && (
+                  <p role="alert" className="mt-2 text-sm text-red-600">{onChainError}</p>
+                )}
                 </span>
               </div>
             </div>
