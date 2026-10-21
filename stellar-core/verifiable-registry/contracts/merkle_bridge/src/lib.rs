@@ -711,7 +711,7 @@ impl MerkleBridge {
         let geo_hash: BytesN<32> = env.crypto().sha256(&registry_credit_id.to_bytes()).into();
         let metadata = carbon_asset::CarbonAssetMetadata {
             project_id: registry_credit_id.clone(),
-            vintage_year: 0,
+            vintage_year: 1970 + env.ledger().timestamp() / (365 * 24 * 60 * 60),
             methodology_id: 0,
             geo_hash,
             max_supply: None,

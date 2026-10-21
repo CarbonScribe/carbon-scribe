@@ -21,6 +21,52 @@ use crate::types::{
     ValidationResult,
 };
 
+const MAX_PROJECT_ID_LEN: u32 = 64;
+const MAX_VINTAGE_YEAR: u64 = 2100;
+const SECONDS_PER_YEAR: u64 = 365 * 24 * 60 * 60;
+
+fn validate_metadata(env: &Env, metadata: &CarbonAssetMetadata) -> Result<(), ContractError> {
+    let project_id = metadata.project_id.to_bytes();
+    if project_id.is_empty()
+        || project_id.len() > MAX_PROJECT_ID_LEN
+        || !project_id.iter().all(|byte| {
+            matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.')
+        })
+    {
+        return Err(ContractError::InvalidMetadata);
+    }
+
+    if metadata.vintage_year == 0 {
+        return Err(ContractError::InvalidMetadata);
+    }
+
+    // Accept existing timestamp-shaped vintages while interpreting normal
+    // values as calendar years.
+    let vintage_year = if metadata.vintage_year > 9999 {
+        1970 + metadata.vintage_year / SECONDS_PER_YEAR
+    } else {
+        metadata.vintage_year
+    };
+    if vintage_year > MAX_VINTAGE_YEAR {
+        return Err(ContractError::InvalidMetadata);
+    }
+
+    if metadata.geo_hash.to_array().iter().all(|byte| *byte == 0) {
+        return Err(ContractError::InvalidMetadata);
+    }
+
+    let contract_max_supply: Option<u32> = env.storage().instance().get(&DataKey::MaxSupply);
+    if let (Some(asset_max_supply), Some(contract_max_supply)) =
+        (metadata.max_supply, contract_max_supply)
+    {
+        if asset_max_supply > contract_max_supply {
+            return Err(ContractError::InvalidMetadata);
+        }
+    }
+
+    Ok(())
+}
+
 /// Typed cross-contract binding for buffer_pool's auto_deposit (issue #684).
 ///
 /// Generated from buffer_pool's *built WASM*, not a Cargo dependency on the
@@ -101,6 +147,8 @@ impl CarbonAsset {
         if caller != admin {
             return Err(ContractError::NotAuthorized);
         }
+
+        validate_metadata(&env, &metadata)?;
 
         // --- Mint cap enforcement (issue #472) ---
 
