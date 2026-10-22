@@ -14,6 +14,7 @@ import {
 } from "../../shared/guardrails/approval-gate.js";
 import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
+import { enforceNumericGrounding } from "../../shared/guardrails/numeric-grounding.js";
 import type {
   AgentCitation,
   AgentRunRequest,
@@ -186,11 +187,28 @@ export async function runPddDraftAgent(
   }
 
   const citations: AgentCitation[] = parsed.citations;
+  const grounding = enforceNumericGrounding({
+    sections: parsed.sections,
+    incompleteSections: parsed.incompleteSections,
+    citations,
+    toolCalls,
+  });
+  if (grounding.reclassified.length > 0) {
+    logger.warn(
+      {
+        agent: "pdd-draft",
+        requestId: req.requestId,
+        sections: grounding.reclassified,
+      },
+      "reclassified sections carrying ungrounded numeric claims",
+    );
+  }
+
   const decision = checkApproval({
     actionType: PDD_DRAFT_ACTION_TYPES.DRAFT_SECTIONS,
     payload: {
-      sections: parsed.sections,
-      incompleteSections: parsed.incompleteSections,
+      sections: grounding.sections,
+      incompleteSections: grounding.incompleteSections,
     },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
@@ -198,10 +216,11 @@ export async function runPddDraftAgent(
   // Drafting zero sections (everything flagged incomplete instead) is a
   // legitimate "couldn't draft anything grounded" outcome — only an
   // actual drafted section is required to cite the data it's grounded in
-  // (#705).
+  // (#705). Sections reclassified by the numeric-grounding guardrail above
+  // count as incomplete, not drafted, so they don't require citations.
   try {
     assertCitationsForStatus(status, citations, {
-      allowEmpty: parsed.sections.length === 0,
+      allowEmpty: grounding.sections.length === 0,
     });
   } catch (err) {
     return failRun(
@@ -231,8 +250,8 @@ export async function runPddDraftAgent(
     status,
     output: {
       methodology: parsed.methodology,
-      sections: parsed.sections,
-      incompleteSections: parsed.incompleteSections,
+      sections: grounding.sections,
+      incompleteSections: grounding.incompleteSections,
     },
     citations,
   };
