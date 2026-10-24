@@ -81,6 +81,17 @@ jobs:
         run: npm ci
 
       # ----------------------------------
+      # Audit dependencies (fail on high+)
+      # ----------------------------------
+      - name: Audit dependencies (npm)
+        if: steps.detect.outputs.manager == 'npm'
+        run: npm audit --audit-level=high
+
+      - name: Audit dependencies (pnpm)
+        if: steps.detect.outputs.manager == 'pnpm'
+        run: pnpm audit --audit-level=high
+
+      # ----------------------------------
       # TypeScript Strict Type Check
       # ----------------------------------
       - name: Type check

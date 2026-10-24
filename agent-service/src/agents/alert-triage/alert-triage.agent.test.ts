@@ -86,7 +86,7 @@ describe("runAlertTriageAgent", () => {
 
   it("wires the tool runner with alertTriageTools, DEFAULT_MODEL, and SYSTEM_PROMPT", async () => {
     toolRunnerMock.mockReturnValue(
-      fakeRunner( {
+      fakeRunner({
         finalMessage: finalTextMessage({
           verdict: "suppress",
           reasoning: "Seasonal NDVI dip, no corroborating sensor drop.",
@@ -102,7 +102,7 @@ describe("runAlertTriageAgent", () => {
     });
 
     expect(toolRunnerMock).toHaveBeenCalledTimes(1);
-    const params = toolRunnerMock.mockCalls[0]![0];
+    const params = toolRunnerMock.mock.calls[0]![0];
     expect(params.model).toBe("claude-opus-5");
     expect(params.system).toContain("alert-triage agent");
     expect(params.tools.map((t: { name: string }) => t.name)).toContain(
@@ -131,7 +131,7 @@ describe("runAlertTriageAgent", () => {
     };
 
     toolRunnerMock.mockReturnValue(
-      fakeRunner( {
+      fakeRunner({
         finalMessage: finalTextMessage(output),
         messages: [{ role: "user", content: "..." }, assistantToolUseMessage],
       }),
@@ -174,7 +174,7 @@ describe("runAlertTriageAgent", () => {
     };
 
     toolRunnerMock.mockReturnValue(
-      fakeRunner( { finalMessage: finalTextMessage(output) }),
+      fakeRunner({ finalMessage: finalTextMessage(output) }),
     );
 
     const result = await runAlertTriageAgent({
@@ -237,7 +237,7 @@ describe("runAlertTriageAgent", () => {
     expect(result.errorCategory).toBe("connection_error");
     expect(result.retryable).toBe(true);
     expect(auditRecord).toHaveBeenCalledWith(
-      expect.objectContaining( {
+      expect.objectContaining({
         agent: "alert-triage",
         requestId: "req-3",
         status: "failed",
