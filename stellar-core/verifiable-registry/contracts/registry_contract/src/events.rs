@@ -44,6 +44,25 @@ pub fn emit_document_anchored_event(
     .publish(env);
 }
 
+/// Structured event emitted when a project is registered
+/// This enables off-chain indexing of the registry's own project list
+#[contractevent]
+pub struct ProjectRegistered {
+    pub project_id: String,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+
+/// Emit a structured event when a project is registered
+pub fn emit_project_registered_event(env: &Env, project_id: String, owner: Address) {
+    ProjectRegistered {
+        project_id,
+        owner,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
 /// Structured event emitted when project ownership is transferred
 #[contractevent]
 pub struct OwnerTransferred {

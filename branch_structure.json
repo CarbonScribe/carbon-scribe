@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-699-emit-event-on-register-project-in-registry",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-699-emit-event-on-register-project-in-registry": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-699-emit-event-on-register-project-in-registry",
+    "origin"
+  ]
+}
