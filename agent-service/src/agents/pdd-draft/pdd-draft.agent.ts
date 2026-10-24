@@ -12,12 +12,14 @@ import {
   checkApproval,
   PDD_DRAFT_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
+import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { pddDraftTools } from "./pdd-draft.tools.js";
 
 const SYSTEM_PROMPT = `You are the PDD (Project Design Document) drafting agent for CarbonScribe.
@@ -47,12 +49,7 @@ const PddOutputSchema = z.object({
       reason: z.string(),
     }),
   ),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
 });
 
 const outputFormat = betaZodOutputFormat(PddOutputSchema);
@@ -197,6 +194,23 @@ export async function runPddDraftAgent(
     },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
+  // Drafting zero sections (everything flagged incomplete instead) is a
+  // legitimate "couldn't draft anything grounded" outcome — only an
+  // actual drafted section is required to cite the data it's grounded in
+  // (#705).
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: parsed.sections.length === 0,
+    });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),

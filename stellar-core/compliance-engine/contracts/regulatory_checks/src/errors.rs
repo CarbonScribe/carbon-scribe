@@ -15,4 +15,5 @@ pub enum ContractError {
     AlreadyInitialized = 9,
     /// A state-mutating entrypoint was called before initialize() (issue #519).
     NotInitialized = 10,
+    InvalidRuleSchema = 11,
 }

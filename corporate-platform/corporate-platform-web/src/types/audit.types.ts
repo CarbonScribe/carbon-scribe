@@ -38,6 +38,9 @@ export interface AuditEvent {
   hash: string;
   previousHash: string;
   transactionHash?: string;
+  anchored?: boolean;
+  anchorTxHash?: string;
+  hashMatch?: boolean;
   blockNumber?: number;
   timestamp: string;
   createdAt: string;

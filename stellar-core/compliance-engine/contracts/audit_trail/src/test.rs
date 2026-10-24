@@ -88,6 +88,23 @@ fn test_record_and_query_event() {
 }
 
 #[test]
+fn test_unknown_event_type_is_rejected_without_recording() {
+    let (env, client, _admin, emitter) = setup();
+    let event_type = String::from_str(&env, "TOKEN_MINTED ");
+    let result = client.try_record_event(
+        &emitter,
+        &event_type,
+        &String::from_str(&env, "project-123"),
+        &None,
+        &String::from_str(&env, "{}"),
+        &BytesN::from_array(&env, &[9; 32]),
+    );
+
+    assert_eq!(result, Err(Ok(AuditTrailError::UnknownEventType)));
+    assert_eq!(client.get_event_count(), 0);
+}
+
+#[test]
 fn test_legacy_stored_event_remains_readable() {
     let env = Env::default();
     let contract_id = env.register(AuditTrailContract, ());
@@ -129,7 +146,7 @@ fn test_legacy_stored_event_remains_readable() {
 fn test_oversized_event_payload() {
     let (env, client, _admin, emitter) = setup();
 
-    let event_type = String::from_str(&env, "BIG_EVENT");
+    let event_type = String::from_str(&env, "COMPLIANCE_REPORT");
     let primary_id = String::from_str(&env, "big-entity");
     let oversized = "A".repeat(crate::MAX_EVENT_PAYLOAD_SIZE as usize + 1);
     let event_data = String::from_str(&env, &oversized);
@@ -181,7 +198,7 @@ fn test_event_id_collision_returns_typed_error_without_overwriting() {
 
     let result = client.try_record_event(
         &emitter,
-        &String::from_str(&env, "NEW_EVENT"),
+        &String::from_str(&env, "TARGET_UPDATE"),
         &String::from_str(&env, "new-entity"),
         &None,
         &String::from_str(&env, "new"),
@@ -257,7 +274,7 @@ fn test_pruning_and_compaction() {
 
     client.set_retention_period(&86400);
 
-    let event_type = String::from_str(&env, "TEST_EVENT");
+    let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "entity-1");
     let event_data = String::from_str(&env, "data");
     let tx_hash = BytesN::from_array(&env, &[0; 32]);
@@ -327,7 +344,7 @@ fn test_emitting_contract_reflects_actual_caller() {
     let authorized_b = Address::generate(&env);
     client.authorize_emitter(&authorized_b);
 
-    let event_type = String::from_str(&env, "TRANSFER");
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
     let primary_id = String::from_str(&env, "entity-a");
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[2; 32]);
@@ -365,7 +382,7 @@ fn test_spoofing_unauthorized_address_is_rejected() {
     // `attacker` was never authorized — call must fail immediately.
     let attacker = Address::generate(&env);
 
-    let event_type = String::from_str(&env, "FAKE_EVENT");
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
     let primary_id = String::from_str(&env, "victim-contract");
     let event_data = String::from_str(&env, "{\"spoofed\": true}");
     let tx_hash = BytesN::from_array(&env, &[3; 32]);
@@ -389,7 +406,7 @@ fn test_revoked_emitter_cannot_record_events() {
     // Revoke the previously-authorized emitter.
     client.revoke_emitter(&emitter);
 
-    let event_type = String::from_str(&env, "SHOULD_FAIL");
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
     let primary_id = String::from_str(&env, "entity-x");
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[4; 32]);
@@ -414,7 +431,7 @@ fn test_two_authorized_callers_produce_independent_records() {
     let emitter_b = Address::generate(&env);
     client.authorize_emitter(&emitter_b);
 
-    let event_type = String::from_str(&env, "MINT");
+    let event_type = String::from_str(&env, "TOKEN_MINTED");
     let primary_id = String::from_str(&env, "shared-entity");
     let event_data = String::from_str(&env, "{}");
 
@@ -459,7 +476,7 @@ fn test_two_authorized_callers_produce_independent_records() {
 #[test]
 fn test_hash_chain_links_events_and_detects_skips() {
     let (env, client, _admin, emitter) = setup();
-    let event_type = String::from_str(&env, "CHAIN_TEST");
+    let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "chain-entity");
     let event_data = String::from_str(&env, "{}");
     // Reuse the same transaction hash and explicitly hold the ledger timestamp
@@ -548,7 +565,7 @@ fn test_chain_tip_advances_across_authorized_emitters() {
 
     assert_eq!(client.get_chain_tip(), None);
 
-    let event_type = String::from_str(&env, "MULTI_EMITTER_CHAIN");
+    let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "shared-chain-entity");
     let event_data = String::from_str(&env, "{}");
     let first_id = client.record_event(
@@ -600,7 +617,7 @@ fn test_cannot_record_events_using_another_contracts_identity() {
     // a provenance failure event, and returns EmitterNotAuthorized.
     let unauthorized = Address::generate(&env);
 
-    let event_type = String::from_str(&env, "IMPERSONATE");
+    let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "target");
     let event_data = String::from_str(&env, "{}");
     let tx_hash = BytesN::from_array(&env, &[7; 32]);
@@ -621,7 +638,7 @@ fn test_cannot_record_events_using_another_contracts_identity() {
 fn test_paged_query() {
     let (env, client, _admin, emitter) = setup();
 
-    let event_type = String::from_str(&env, "PAGE_TEST");
+    let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "paged-entity");
     let event_data = String::from_str(&env, "{}");
 

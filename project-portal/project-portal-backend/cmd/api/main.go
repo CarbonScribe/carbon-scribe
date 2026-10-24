@@ -27,6 +27,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/monitoring/analytics"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
+	notiftemplates "carbon-scribe/project-portal/project-portal-backend/internal/notifications/templates"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
@@ -40,8 +41,8 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
-	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
+	"carbon-scribe/project-portal/project-portal-backend/cmd/workers"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/gin-gonic/gin"
@@ -308,6 +309,16 @@ func main() {
 
 	notificationsHandler := notifications.NewHandler(notificationsService)
 
+	// Managed notification templates (issue #689): a separate, versioned
+	// CRUD surface from notificationsService's own simpler Create/List
+	// templates above — see internal/notifications/templates/manager.go's
+	// doc comment for why the two aren't the same system. Shares the same
+	// Mongo connection/database, just a different collection.
+	notifTemplateManager := notiftemplates.NewTemplateManager(
+		notiftemplates.NewMongoRepository(notificationMongoClient.Database(cfg.Notifications.MongoDatabase)),
+	)
+	notifTemplatesHandler := notiftemplates.NewHandler(notifTemplateManager)
+
 	// ============================================================================
 	// Initialize Compliance Request Worker
 	// ============================================================================
@@ -318,6 +329,15 @@ func main() {
 	complianceWorker := workers.NewComplianceRequestWorker(complianceRepo, notificationsService, 5*time.Minute, log.Default())
 	go complianceWorker.Run(workerCtx)
 	log.Println("✅ Compliance request worker started")
+
+	webhookService := integration.NewService(integration.NewRepository(db))
+	webhookWorker := workers.NewWebhookWorker(webhookService, time.Minute, log.Default())
+	go func() {
+		if err := webhookWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Webhook delivery worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Webhook delivery worker started")
 
 	// Initialize inventory service for on-chain credit querying
 	inventoryCacheTTL := parseDuration(cfg.Soroban.InventoryCacheTTL, 5*time.Minute)
@@ -336,6 +356,24 @@ func main() {
 		}
 	}()
 	log.Println("✅ Inventory cache purge worker started")
+
+	// Daily data cleanup worker (issue #691): verifies completed deletions,
+	// purges expired export files, releases expired legal holds, removes
+	// orphaned retention schedules, and removes stale API keys. exportS3Client
+	// is nil when S3 init failed above — purgeExpiredExports skips that one
+	// step rather than attempting and failing it, every other responsibility
+	// still runs.
+	var exportS3Client workers.ExportFileDeleter
+	if s3Client != nil {
+		exportS3Client = s3Client
+	}
+	cleanupWorker := workers.NewCleanupWorker(complianceRepo, settingsRepo, exportS3Client, workers.DefaultCleanupInterval, log.Default())
+	go func() {
+		if err := cleanupWorker.Run(workerCtx); err != nil && err != context.Canceled {
+			log.Printf("⚠️  Data cleanup worker stopped: %v", err)
+		}
+	}()
+	log.Println("✅ Data cleanup worker started")
 
 	// ============================================================================
 	// Initialize Monitoring Service
@@ -367,8 +405,14 @@ func main() {
 		},
 	)
 
+	// Trends analytics buckets stored monitoring data daily/weekly over a
+	// 7d/30d/90d window and reports percentage change bucket-over-bucket, at
+	// GET /api/v1/monitoring/analytics/trends.
+	trendsAnalytics := analytics.NewTrendsService(monitoringRepo, monitoringRepo)
+
 	monitoringHandler := api.NewMonitoringHandler(monitoringService).
-		WithPerformanceAnalytics(performanceAnalytics)
+		WithPerformanceAnalytics(performanceAnalytics).
+		WithTrendsAnalytics(trendsAnalytics)
 	log.Println("✅ Monitoring service initialized")
 
 	// ============================================================================
@@ -501,6 +545,14 @@ func main() {
 
 		// Register notifications routes under v1
 		notifications.RegisterRoutes(v1, notificationsHandler, tokenManager)
+
+		// Register managed notification-template CRUD under v1, admin-gated
+		// (issue #689) — a distinct path from notifications' own
+		// /notifications/templates, so the two template systems can never
+		// be confused with one another.
+		notifTemplatesGroup := v1.Group("/notification-templates")
+		notifTemplatesGroup.Use(auth.AuthMiddleware(tokenManager))
+		notiftemplates.RegisterRoutes(notifTemplatesGroup, notifTemplatesHandler, auth.RequireRole("admin"))
 
 		// Register financing routes under v1
 		financingHandler.RegisterRoutes(v1)
@@ -649,6 +701,8 @@ func runAllMigrations(db *gorm.DB) error {
 		&collaboration.Comment{},
 		&collaboration.Task{},
 		&collaboration.SharedResource{},
+		&collaboration.TaskDependency{},
+		&collaboration.ResourceBooking{},
 
 		// Health models
 		&health.SystemMetric{},

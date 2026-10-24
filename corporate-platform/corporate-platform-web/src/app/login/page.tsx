@@ -1,11 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function ResetSuccessBanner() {
+  const searchParams = useSearchParams();
+  if (searchParams.get('reset') !== 'success') {
+    return null;
+  }
+  return (
+    <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+      <p className="text-sm text-green-600 dark:text-green-400">
+        Your password has been reset. Please sign in with your new password.
+      </p>
+    </div>
+  );
+}
+
+function LoginForm() {
   const { login, isLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get('redirect');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,7 +37,7 @@ export default function LoginPage() {
     }
 
     try {
-      await login({ email, password });
+      await login({ email, password }, redirectTarget);
     } catch (err: any) {
       setError(
         err?.message || 'Login failed. Please check your credentials and try again.'
@@ -61,6 +78,10 @@ export default function LoginPage() {
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
             Sign in to your account
           </h3>
+
+          <Suspense fallback={null}>
+            <ResetSuccessBanner />
+          </Suspense>
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
@@ -194,5 +215,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

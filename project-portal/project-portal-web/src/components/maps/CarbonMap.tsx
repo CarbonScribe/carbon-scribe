@@ -9,13 +9,34 @@ import { geospatialApi } from "@/lib/geospatial/api";
 import { getCarbonScribeSource } from "@/lib/geospatial/mapbox";
 import { useStore } from "@/lib/store/store";
 import type { ProjectGeometry, SatelliteImage } from "@/lib/store/geospatial/geospatial.types";
-import { showErrorToast } from "@/lib/utils/toast";
+import { showErrorToast, showSuccessToast, showWarningToast, showInfoToast } from "@/lib/utils/toast";
+import {
+  calculateGeoJSONAreaHectares,
+  validateProjectAreaDivergence,
+  validatePolygon,
+  extractPolygonFromGeoJSON,
+  DEFAULT_AREA_TOLERANCE,
+  type AreaDivergenceResult,
+} from "@/lib/geospatial/areaValidation";
+import { AlertTriangle, Upload } from "lucide-react";
+
+export { validatePolygon } from "@/lib/geospatial/areaValidation";
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface CarbonMapProps {
+export interface BoundarySaveMeta {
+  calculatedArea: number;
+  expectedArea?: number;
+  diffHectares: number;
+  divergencePercent: number;
+  isDivergent: boolean;
+  tolerance: number;
+  warning?: string;
+}
+
+export interface CarbonMapProps {
   /** Project ID to display on the map */
   projectId: string;
   /** Whether the map is editable (allows boundary updates) */
@@ -32,12 +53,18 @@ interface CarbonMapProps {
   initialZoom?: number;
   /** Initial center coordinates [lng, lat] */
   initialCenter?: [number, number];
+  /** Expected project area in hectares to validate against (defaults to store value) */
+  expectedArea?: number;
+  /** Area divergence tolerance threshold (e.g. 0.10 for 10%) */
+  areaTolerance?: number;
   /** Callback when map is ready */
   onMapReady?: (map: mapboxgl.Map) => void;
   /** Callback when a project is clicked */
   onProjectClick?: (projectId: string, coordinates: [number, number]) => void;
   /** Callback when a boundary is saved */
-  onBoundarySaved?: (geometry: GeoJSON.GeoJSON) => void;
+  onBoundarySaved?: (geometry: GeoJSON.GeoJSON, meta?: BoundarySaveMeta) => void;
+  /** Callback when project area is updated/reconciled */
+  onAreaReconciled?: (newArea: number) => void;
 }
 
 // ============================================================================
@@ -61,117 +88,6 @@ const MAP_STYLES = {
 type MapStyle = keyof typeof MAP_STYLES;
 
 // ============================================================================
-// Polygon Validation Utilities
-// ============================================================================
-
-/**
- * Calculate the area of a polygon in square meters using the shoelace formula
- */
-const calculatePolygonArea = (coordinates: number[][]): number => {
-  if (coordinates.length < 3) return 0;
-  
-  let area = 0;
-  const n = coordinates.length;
-  
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += coordinates[i][0] * coordinates[j][1];
-    area -= coordinates[j][0] * coordinates[i][1];
-  }
-  
-  return Math.abs(area / 2);
-};
-
-/**
- * Check if a polygon self-intersects using a simple segment intersection check
- */
-const hasSelfIntersection = (coordinates: number[][]): boolean => {
-  const n = coordinates.length;
-  if (n < 4) return false;
-  
-  // Helper to check if two line segments intersect
- const segmentsIntersect = (p1: number[], p2: number[], p3: number[], p4: number[]): boolean => {
-    const d1 = direction(p3, p4, p1);
-    const d2 = direction(p3, p4, p2);
-    const d3 = direction(p1, p2, p3);
-    const d4 = direction(p1, p2, p4);
-    
-    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-        ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
-      return true;
-    }
-    
-    return false;
-  };
-  
-  const direction = (p1: number[], p2: number[], p3: number[]): number => {
-    return (p3[0] - p1[0]) * (p2[1] - p1[1]) - (p2[0] - p1[0]) * (p3[1] - p1[1]);
-  };
-  
-  // Check each pair of non-adjacent segments
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 2; j < n; j++) {
-      // Skip adjacent segments and the first/last segment pair
-      if (i === 0 && j === n - 1) continue;
-      
-      if (segmentsIntersect(
-        coordinates[i],
-        coordinates[(i + 1) % n],
-        coordinates[j],
-        coordinates[(j + 1) % n]
-      )) {
-        return true;
-      }
-    }
-  }
-  
-  return false;
-};
-
-/**
- * Validate a polygon geometry
- * @returns { valid: boolean, error?: string }
- */
-const validatePolygon = (geometry: GeoJSON.GeoJSON): { valid: boolean; error?: string } => {
-  if (geometry.type !== "Polygon") {
-    return { valid: false, error: "Only polygon geometries are allowed" };
-  }
-  
-  const polygon = geometry as GeoJSON.Polygon;
-  const coordinates = polygon.coordinates[0];
-  
-  if (coordinates.length < 4) {
-    return { valid: false, error: "Polygon must have at least 4 points (3 + closing point)" };
-  }
-  
-  // Check if first and last points match (closed polygon)
-  const first = coordinates[0];
-  const last = coordinates[coordinates.length - 1];
-  if (first[0] !== last[0] || first[1] !== last[1]) {
-    return { valid: false, error: "Polygon must be closed (first and last points must match)" };
-  }
-  
-  // Check for self-intersection
-  if (hasSelfIntersection(coordinates)) {
-    return { valid: false, error: "Polygon cannot self-intersect" };
-  }
-  
-  // Calculate area (in approximate square degrees, convert to hectares for validation)
-  const areaSqDegrees = calculatePolygonArea(coordinates);
-  const areaHectares = areaSqDegrees * 12300; // Rough conversion for validation
-  
-  if (areaHectares < 0.01) {
-    return { valid: false, error: "Polygon area is too small (minimum 0.01 hectares)" };
-  }
-  
-  if (areaHectares > 100000) {
-    return { valid: false, error: "Polygon area is too large (maximum 100,000 hectares)" };
-  }
-  
-  return { valid: true };
-};
-
-// ============================================================================
 // Component
 // ============================================================================
 
@@ -184,9 +100,12 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   showCarbonOverlay = true,
   initialZoom = DEFAULT_ZOOM,
   initialCenter = DEFAULT_CENTER,
+  expectedArea,
+  areaTolerance,
   onMapReady,
   onProjectClick,
   onBoundarySaved,
+  onAreaReconciled,
 }) => {
   // Refs
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -195,6 +114,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   const popups = useRef<mapboxgl.Popup[]>([]);
   const layers = useRef<string[]>([]);
   const drawControl = useRef<MapboxDraw | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
   const [loading, setLoading] = useState(true);
@@ -210,6 +130,11 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [areaDivergenceWarning, setAreaDivergenceWarning] = useState<AreaDivergenceResult | null>(null);
+  const [liveAreaInfo, setLiveAreaInfo] = useState<{
+    calculatedArea: number;
+    divergence: AreaDivergenceResult;
+  } | null>(null);
 
   // Store - using the main store with selector
   const {
@@ -218,13 +143,27 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
     satelliteImages,
     ndviData,
     fetchSatelliteTimeSeries,
+    selectedProject,
+    projects,
+    updateProject,
   } = useStore((state) => ({
     projectGeometries: state.projectGeometries || [],
     geofences: state.geofences || [],
     satelliteImages: state.satelliteImages || [],
     ndviData: state.ndviData || [],
     fetchSatelliteTimeSeries: state.fetchSatelliteTimeSeries,
+    selectedProject: state.selectedProject,
+    projects: state.projects || [],
+    updateProject: state.updateProject,
   }));
+
+  const currentProject = selectedProject?.id === projectId
+    ? selectedProject
+    : (Array.isArray(projects) ? projects.find((p) => p.id === projectId) : undefined);
+
+  const effectiveExpectedArea = expectedArea !== undefined
+    ? expectedArea
+    : currentProject?.area;
 
   // ============================================================================
   // Mapbox Access Token
@@ -292,6 +231,41 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
   // Draw Event Handlers
   // ============================================================================
 
+  // Reconcile project area to match computed boundary area
+  const handleReconcileArea = useCallback(async (newArea: number) => {
+    if (!updateProject || !projectId) return;
+    try {
+      await updateProject(projectId, { area: newArea });
+      setAreaDivergenceWarning(null);
+      if (onAreaReconciled) {
+        onAreaReconciled(newArea);
+      }
+      showSuccessToast("Project area updated", {
+        description: `Project area successfully reconciled to ${newArea.toLocaleString()} ha.`,
+      });
+    } catch (err: any) {
+      showErrorToast(err.message || "Failed to update project area");
+    }
+  }, [projectId, updateProject, onAreaReconciled]);
+
+  // Update draft geometry and compute live area and divergence
+  const updateDraftGeometry = useCallback((geom: GeoJSON.GeoJSON) => {
+    setDraftGeometry(geom);
+    setIsDrawing(true);
+    setValidationError(null);
+
+    const calcArea = calculateGeoJSONAreaHectares(geom);
+    const divResult = validateProjectAreaDivergence(
+      geom,
+      effectiveExpectedArea,
+      areaTolerance ?? DEFAULT_AREA_TOLERANCE
+    );
+    setLiveAreaInfo({
+      calculatedArea: calcArea,
+      divergence: divResult,
+    });
+  }, [effectiveExpectedArea, areaTolerance]);
+
   const handleDrawCreate = useCallback((e: any) => {
     if (!e.features || e.features.length === 0) return;
     
@@ -314,10 +288,8 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
       return;
     }
 
-    setDraftGeometry(feature.geometry);
-    setIsDrawing(true);
-    setValidationError(null);
-  }, []);
+    updateDraftGeometry(feature.geometry);
+  }, [updateDraftGeometry]);
 
   const handleDrawUpdate = useCallback((e: any) => {
     if (!e.features || e.features.length === 0) return;
@@ -329,16 +301,64 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
     if (!validation.valid) {
       setValidationError(validation.error || "Invalid polygon");
     } else {
-      setDraftGeometry(feature.geometry);
-      setValidationError(null);
+      updateDraftGeometry(feature.geometry);
     }
-  }, []);
+  }, [updateDraftGeometry]);
 
   const handleDrawDelete = useCallback(() => {
     setDraftGeometry(null);
     setIsDrawing(false);
     setValidationError(null);
+    setLiveAreaInfo(null);
   }, []);
+
+  // Handle uploaded GeoJSON boundary file
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        const polygon = extractPolygonFromGeoJSON(parsed);
+
+        if (!polygon) {
+          setValidationError("File does not contain a valid GeoJSON polygon geometry");
+          return;
+        }
+
+        const validation = validatePolygon(polygon);
+        if (!validation.valid) {
+          setValidationError(validation.error || "Invalid polygon");
+          return;
+        }
+
+        if (drawControl.current) {
+          drawControl.current.deleteAll();
+          drawControl.current.add(polygon);
+        }
+
+        updateDraftGeometry(polygon);
+
+        if (map.current && polygon.coordinates[0]?.length > 0) {
+          const bounds = new mapboxgl.LngLatBounds();
+          polygon.coordinates[0].forEach((coord: number[]) => {
+            bounds.extend(coord as [number, number]);
+          });
+          map.current.fitBounds(bounds, { padding: 40, maxZoom: 15 });
+        }
+      } catch (err: any) {
+        setValidationError("Failed to parse GeoJSON file: " + (err.message || "Invalid JSON"));
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      }
+    };
+    reader.readAsText(file);
+  }, [updateDraftGeometry]);
 
   const handleSaveBoundary = useCallback(async () => {
     if (!draftGeometry || !projectId) return;
@@ -347,13 +367,20 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
     setValidationError(null);
 
     try {
-      // Validate before saving
+      // Validate structural bounds before saving
       const validation = validatePolygon(draftGeometry);
       if (!validation.valid) {
         setValidationError(validation.error || "Invalid polygon");
         setIsSaving(false);
         return;
       }
+
+      // Compute real-world area via @turf/area and check divergence against stored area
+      const divergence = validateProjectAreaDivergence(
+        draftGeometry,
+        effectiveExpectedArea,
+        areaTolerance ?? DEFAULT_AREA_TOLERANCE
+      );
 
       // Upload geometry to API
       await geospatialApi.uploadGeometry(projectId, draftGeometry);
@@ -362,6 +389,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
       setGeometry({
         projectId,
         geometry: draftGeometry,
+        areaHectares: divergence.calculatedArea,
       } as ProjectGeometry);
 
       // Clear draft
@@ -370,22 +398,63 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
       }
       setDraftGeometry(null);
       setIsDrawing(false);
+      setLiveAreaInfo(null);
 
-      // Call callback
+      // Surface warning or confirmation based on divergence
+      if (divergence.isDivergent) {
+        setAreaDivergenceWarning(divergence);
+        showWarningToast("Area mismatch warning", {
+          description: divergence.warning,
+          duration: "long",
+          action: {
+            label: `Update area to ${divergence.calculatedArea} ha`,
+            onClick: () => handleReconcileArea(divergence.calculatedArea),
+          },
+        });
+      } else {
+        setAreaDivergenceWarning(null);
+        showSuccessToast("Boundary saved successfully", {
+          description: `Boundary area: ${divergence.calculatedArea.toLocaleString()} ha`,
+        });
+
+        if (effectiveExpectedArea == null || effectiveExpectedArea <= 0) {
+          showInfoToast(`Project area not set. Save as ${divergence.calculatedArea} ha?`, {
+            action: {
+              label: "Set Project Area",
+              onClick: () => handleReconcileArea(divergence.calculatedArea),
+            },
+          });
+        }
+      }
+
+      // Call callback with geometry and computed divergence metadata
       if (onBoundarySaved) {
-        onBoundarySaved(draftGeometry);
+        onBoundarySaved(draftGeometry, divergence);
       }
 
       // Refresh geometry from API
-      const updatedGeometry = await geospatialApi.getProjectGeometry(projectId);
-      setGeometry(updatedGeometry as ProjectGeometry);
+      try {
+        const updatedGeometry = await geospatialApi.getProjectGeometry(projectId);
+        if (updatedGeometry) {
+          setGeometry(updatedGeometry as ProjectGeometry);
+        }
+      } catch {
+        // Local state already updated
+      }
     } catch (err: any) {
       setValidationError(err.message || "Failed to save boundary");
       showErrorToast("Failed to save boundary");
     } finally {
       setIsSaving(false);
     }
-  }, [draftGeometry, projectId, onBoundarySaved]);
+  }, [
+    draftGeometry,
+    projectId,
+    effectiveExpectedArea,
+    areaTolerance,
+    onBoundarySaved,
+    handleReconcileArea,
+  ]);
 
   const handleCancelDrawing = useCallback(() => {
     if (drawControl.current) {
@@ -394,6 +463,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
     setDraftGeometry(null);
     setIsDrawing(false);
     setValidationError(null);
+    setLiveAreaInfo(null);
   }, []);
 
   const handleClearDrawing = useCallback(() => {
@@ -403,6 +473,7 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
     setDraftGeometry(null);
     setIsDrawing(false);
     setValidationError(null);
+    setLiveAreaInfo(null);
   }, []);
 
   // ============================================================================
@@ -1042,6 +1113,48 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
         style={{ position: "relative" }}
       />
 
+      {/* Area Mismatch Warning Alert Banner */}
+      {areaDivergenceWarning && (
+        <div
+          data-testid="area-mismatch-warning"
+          role="alert"
+          className="absolute top-4 left-4 right-4 z-30 bg-amber-50 border-2 border-amber-400 rounded-xl p-3 sm:p-4 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-950 animate-fadeIn"
+        >
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-100 rounded-lg text-amber-700 flex-shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-amber-900">
+                Project Area Mismatch Detected
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Saved boundary area is <strong>{areaDivergenceWarning.calculatedArea.toLocaleString()} ha</strong>, 
+                which diverges by <strong>{areaDivergenceWarning.divergencePercent}%</strong> from declared project area of <strong>{areaDivergenceWarning.expectedArea?.toLocaleString()} ha</strong> (tolerance ±{Math.round(areaDivergenceWarning.tolerance * 100)}%).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center flex-shrink-0">
+            <button
+              type="button"
+              data-testid="reconcile-area-button"
+              onClick={() => handleReconcileArea(areaDivergenceWarning.calculatedArea)}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              Update Project Area to {areaDivergenceWarning.calculatedArea.toLocaleString()} ha
+            </button>
+            <button
+              type="button"
+              data-testid="dismiss-warning-button"
+              onClick={() => setAreaDivergenceWarning(null)}
+              className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Map Controls - Top Left */}
       <div className="absolute top-4 left-4 z-10 flex flex-col space-y-2">
         {/* Project Info */}
@@ -1049,8 +1162,19 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
           <div className="bg-white/90 backdrop-blur-sm p-3 rounded-lg shadow-md text-sm">
             <p className="font-semibold text-gray-800">Project Area</p>
             <p className="text-xs text-gray-500">ID: {projectId}</p>
-            {geometry.areaHectares && (
-              <p className="text-xs text-gray-500">Area: {geometry.areaHectares.toFixed(2)} ha</p>
+            {geometry.areaHectares ? (
+              <p className="text-xs text-gray-700 font-medium">
+                Boundary: {geometry.areaHectares.toFixed(2)} ha
+              </p>
+            ) : geometry.geometry ? (
+              <p className="text-xs text-gray-700 font-medium">
+                Boundary: {calculateGeoJSONAreaHectares(geometry.geometry).toFixed(2)} ha
+              </p>
+            ) : null}
+            {effectiveExpectedArea !== undefined && effectiveExpectedArea > 0 && (
+              <p className="text-xs text-gray-500">
+                Declared: {effectiveExpectedArea.toLocaleString()} ha
+              </p>
             )}
             <button
               onClick={fitToProject}
@@ -1151,11 +1275,31 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
 
           {/* Drawing Action Buttons */}
           {isDrawing && (
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-2 flex flex-col space-y-1">
+            <div className="bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 flex flex-col space-y-2 border border-gray-200 min-w-[220px]">
+              {liveAreaInfo && (
+                <div className="text-xs pb-1 border-b border-gray-100">
+                  <div className="flex justify-between items-center font-medium text-gray-700">
+                    <span>Boundary Area:</span>
+                    <span className="font-bold text-emerald-700">{liveAreaInfo.calculatedArea.toLocaleString()} ha</span>
+                  </div>
+                  {effectiveExpectedArea !== undefined && effectiveExpectedArea > 0 && (
+                    <div className="flex justify-between items-center text-[11px] text-gray-500 mt-0.5">
+                      <span>Project Area:</span>
+                      <span>{effectiveExpectedArea.toLocaleString()} ha</span>
+                    </div>
+                  )}
+                  {liveAreaInfo.divergence.isDivergent && (
+                    <div className="mt-1.5 bg-amber-50 border border-amber-300 text-amber-800 text-[11px] p-1.5 rounded flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-amber-600" />
+                      <span>Differs by {liveAreaInfo.divergence.divergencePercent}% (tolerance: 10%)</span>
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 onClick={handleSaveBoundary}
                 disabled={isSaving || !!validationError}
-                className={`px-3 py-2 text-xs rounded transition text-white ${
+                className={`px-3 py-2 text-xs rounded transition text-white font-medium ${
                   isSaving || validationError
                     ? "bg-gray-400 cursor-not-allowed"
                     : "bg-green-600 hover:bg-green-700"
@@ -1163,26 +1307,49 @@ export const CarbonMap: React.FC<CarbonMapProps> = ({
               >
                 {isSaving ? "Saving..." : "💾 Save Boundary"}
               </button>
-              <button
-                onClick={handleCancelDrawing}
-                className="px-3 py-2 text-xs rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition"
-              >
-                ❌ Cancel
-              </button>
-              <button
-                onClick={handleClearDrawing}
-                className="px-3 py-2 text-xs rounded bg-red-100 text-red-600 hover:bg-red-200 transition"
-              >
-                🗑️ Clear
-              </button>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleCancelDrawing}
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded bg-gray-200 text-gray-600 hover:bg-gray-300 transition text-center"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClearDrawing}
+                  className="flex-1 px-2.5 py-1.5 text-xs rounded bg-red-100 text-red-600 hover:bg-red-200 transition text-center"
+                >
+                  Clear
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Drawing Instructions */}
+          {/* Drawing Instructions & Upload Option */}
           {!isDrawing && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-600 max-w-xs">
-              <p className="font-medium">📐 Draw Mode Active</p>
-              <p className="mt-1">Use the polygon tool in the top-left to draw your project boundary.</p>
+            <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-md p-3 text-xs max-w-xs space-y-2">
+              <div className="text-gray-700">
+                <p className="font-semibold text-emerald-800 flex items-center gap-1">
+                  <span>📐</span> Draw Boundary Mode
+                </p>
+                <p className="mt-1 text-gray-600">
+                  Use the polygon tool in the top-left to draw your boundary, or upload a GeoJSON file.
+                </p>
+              </div>
+              <label 
+                data-testid="upload-geojson-btn"
+                className="w-full px-3 py-2 text-xs rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-sm cursor-pointer flex items-center justify-center gap-1.5 font-medium transition"
+              >
+                <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Upload GeoJSON File</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".geojson,.json,application/geo+json,application/json"
+                  className="hidden"
+                  data-testid="upload-geojson-input"
+                  onChange={handleFileUpload}
+                />
+              </label>
             </div>
           )}
         </div>

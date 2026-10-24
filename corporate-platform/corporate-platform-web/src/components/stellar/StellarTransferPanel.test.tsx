@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import StellarTransferPanel from '@/components/stellar/StellarTransferPanel'
 import type { StellarApiClient } from '@/lib/api/stellar'
+import type { TransferHistoryQuery } from '@/types/stellar'
 
 function buildClient(overrides?: Partial<StellarApiClient>): StellarApiClient {
   return {
@@ -40,6 +41,13 @@ function buildClient(overrides?: Partial<StellarApiClient>): StellarApiClient {
       transactionHash: 'hash_2',
       errorMessage: null,
       confirmedAt: new Date().toISOString(),
+    }),
+    getTransferHistory: async () => ({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 10,
+      totalPages: 0,
     }),
     ...overrides,
   } as StellarApiClient
@@ -114,6 +122,68 @@ describe('StellarTransferPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Confirmed')).toBeInTheDocument()
       expect(screen.getByText('hash_2...')).toBeInTheDocument()
+    })
+  })
+
+  it('browses, filters, searches, and paginates transfer history', async () => {
+    const historyRecord = {
+      id: 'history-1',
+      purchaseId: 'purchase-history-1',
+      companyId: 'corp_1',
+      projectId: 'proj_1',
+      amount: 8,
+      status: 'FAILED' as const,
+      transactionHash: 'history-hash',
+      fromAddress: 'GA_FROM_HISTORY',
+      toAddress: 'GA_TO_HISTORY',
+      initiatedAt: '2026-09-10T12:00:00.000Z',
+    }
+    const getTransferHistory = vi.fn(async (query: TransferHistoryQuery) => ({
+      data: [historyRecord],
+      total: 11,
+      page: query.page ?? 1,
+      limit: 10,
+      totalPages: 2,
+    }))
+    const client = buildClient({ getTransferHistory })
+    render(<StellarTransferPanel client={client} defaultCompanyId="corp_1" />)
+
+    expect(await screen.findByText('purchase-history-1')).toBeInTheDocument()
+    expect(getTransferHistory).toHaveBeenCalledWith({ page: 1, limit: 10 })
+
+    fireEvent.change(screen.getByLabelText('Search'), {
+      target: { value: 'history-hash' },
+    })
+    fireEvent.change(screen.getByLabelText('Status'), {
+      target: { value: 'FAILED' },
+    })
+    fireEvent.change(screen.getByLabelText('Wallet address'), {
+      target: { value: 'GA_TO_HISTORY' },
+    })
+    fireEvent.change(screen.getByLabelText('From date'), {
+      target: { value: '2026-09-01' },
+    })
+    fireEvent.change(screen.getByLabelText('To date'), {
+      target: { value: '2026-09-30' },
+    })
+
+    await waitFor(() => {
+      expect(getTransferHistory).toHaveBeenLastCalledWith({
+        page: 1,
+        limit: 10,
+        search: 'history-hash',
+        status: 'FAILED',
+        walletAddress: 'GA_TO_HISTORY',
+        fromDate: '2026-09-01',
+        toDate: '2026-09-30',
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(getTransferHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      )
     })
   })
 

@@ -180,6 +180,7 @@ model Credit {
   // Blockchain
   assetCode  String?
   issuer     String?
+  verificationDocumentUrl String?
   contractId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -1392,6 +1393,8 @@ model CreditTransfer {
   companyId       String
   projectId       String
   amount          Int
+  fromAddress     String?
+  toAddress       String?
   transactionHash String?
   // SUBMITTED — accepted by the API, broadcast not yet acknowledged on-chain.
   // PENDING    — broadcast to the network, awaiting confirmation.

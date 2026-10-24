@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { retirementService } from '@/services/retirement.service';
 import type { RetirementRecord } from '@/types/retirement';
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer';
 
 interface RetirementCertificateProps {
   /** ID of the retirement to display. Pass null/undefined to show placeholder. */
@@ -221,7 +222,7 @@ export default function RetirementCertificate({
         </button>
         {record.transactionHash && (
           <a
-            href={`https://stellar.expert/explorer/public/tx/${record.transactionHash}`}
+            href={getStellarExplorerUrl(record.transactionHash)}
             target="_blank"
             rel="noopener noreferrer"
             className="corporate-btn-primary text-sm px-3 py-2 flex items-center justify-center gap-1.5"

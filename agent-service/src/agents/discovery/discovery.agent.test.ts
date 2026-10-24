@@ -449,4 +449,79 @@ describe("runDiscoveryAgent", () => {
       "agent run token usage",
     );
   });
+
+  // #705: a shared guardrail now rejects a drafted/needs-approval result
+  // with no citations, except where the agent's own output shows there's
+  // nothing substantive to cite in the first place.
+  describe("citation requirement (#705)", () => {
+    it("returns failed, not drafted, for a non-empty shortlist with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [
+                    {
+                      creditId: "credit-1",
+                      justification: "Matches sector and budget.",
+                    },
+                  ],
+                  citations: [],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+      expect(auditRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-uncited",
+          status: "failed",
+        }),
+      );
+    });
+
+    it("does not reject a legitimate empty shortlist (notes-only, no recommendations) for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [],
+                  citations: [],
+                  notes: "No credits matched the buyer's budget and sector.",
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-no-match",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
+  });
 });

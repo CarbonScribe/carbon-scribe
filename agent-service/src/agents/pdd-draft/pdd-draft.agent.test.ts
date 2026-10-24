@@ -339,4 +339,74 @@ describe("runPddDraftAgent", () => {
       expect.objectContaining({ agent: "pdd-draft", status: "failed" }),
     );
   });
+
+  // #705: a shared guardrail now rejects a drafted/needs-approval result
+  // with no citations, except where the agent's own output shows there's
+  // nothing substantive to cite in the first place.
+  describe("citation requirement (#705)", () => {
+    it("returns failed, not drafted, for a non-empty sections array with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  sections: [{ name: "Project Description", content: "..." }],
+                  incompleteSections: [],
+                  citations: [],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runPddDraftAgent({
+        requestId: "req-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+    });
+
+    it("does not reject zero drafted sections (everything flagged incomplete) for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  sections: [],
+                  incompleteSections: [
+                    {
+                      name: "Project Description",
+                      reason: "No land survey provided.",
+                    },
+                  ],
+                  citations: [],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runPddDraftAgent({
+        requestId: "req-all-incomplete",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
+  });
 });

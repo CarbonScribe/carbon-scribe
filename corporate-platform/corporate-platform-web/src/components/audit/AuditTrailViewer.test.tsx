@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import AuditTrailViewer from '@/components/audit/AuditTrailViewer';
 import { queryAuditEvents } from '@/lib/api/audit.api';
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer';
 
 vi.mock('@/lib/api/audit.api', () => ({
   queryAuditEvents: vi.fn(),
@@ -52,6 +53,22 @@ describe('AuditTrailViewer Pagination & Virtualization', () => {
 
     expect(await screen.findByText('Audit Trail')).toBeInTheDocument();
     expect(screen.getByTestId('pagination-info')).toHaveTextContent('Showing 1 to 20 of 50 events');
+  });
+
+  it('distinguishes anchored, hash-chained, and tampered events', async () => {
+    const events = [
+      { ...mockEvents[0], anchored: true, anchorTxHash: 'anchor-tx', hashMatch: true },
+      { ...mockEvents[1], anchored: false, hashMatch: true },
+      { ...mockEvents[2], anchored: true, anchorTxHash: 'tampered-tx', hashMatch: false },
+    ];
+    mockQueryAuditEvents.mockResolvedValue({ events, total: 3, page: 1, limit: 20 });
+
+    render(<AuditTrailViewer isOpen={true} />);
+
+    const anchoredLink = await screen.findByRole('link', { name: /chain-anchored/i });
+    expect(anchoredLink).toHaveAttribute('href', getStellarExplorerUrl('anchor-tx'));
+    expect(screen.getByText('Hash-chained')).toBeInTheDocument();
+    expect(screen.getByText('Tamper detected')).toBeInTheDocument();
   });
 
   it('navigates to next page on pagination click', async () => {

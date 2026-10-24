@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useRetirement } from '@/hooks/useRetirement';
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer';
 import { useAccessibility } from '@/hooks/useAccessibility';
 import { useAnnouncement } from '@/hooks/useAnnouncement';
 import { IconButton } from '@/components/common/IconButton';
@@ -466,7 +467,7 @@ export default function InstantRetirementForm({
             <div className="flex justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">Transaction</span>
               <a
-                href={`https://stellar.expert/explorer/public/tx/${lastRetirement.transactionHash}`}
+                href={getStellarExplorerUrl(lastRetirement.transactionHash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono text-xs text-corporate-blue hover:text-corporate-blue/80 flex items-center gap-1"

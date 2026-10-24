@@ -217,6 +217,39 @@ describe("runAlertTriageAgent", () => {
     );
   });
 
+  it("returns status drafted for a sensor-fault verdict and records a drafted audit entry", async () => {
+    const output = {
+      verdict: "sensor-fault",
+      reasoning:
+        "IoT sensor returning implausible values (negative temperature readings) — data is unreliable.",
+      citations: [{ source: "iot-sensor-12", reference: "reading-8821" }],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({ finalMessage: finalTextMessage(output) }),
+    );
+
+    const result = await runAlertTriageAgent({
+      requestId: "req-sensor-fault",
+      requestedBy: "user-1",
+      input: {},
+    });
+
+    expect(result.status).toBe("drafted");
+    expect(result.citations).toEqual(output.citations);
+    expect(result.output).toEqual({
+      verdict: "sensor-fault",
+      reasoning: output.reasoning,
+    });
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "alert-triage",
+        requestId: "req-sensor-fault",
+        status: "drafted",
+      }),
+    );
+  });
+
   it("returns a failed result distinguishing an Anthropic API failure, and records a failed audit entry", async () => {
     const apiError = new Anthropic.APIError(
       500,
@@ -381,5 +414,78 @@ describe("runAlertTriageAgent", () => {
     expect(auditRecord).toHaveBeenCalledWith(
       expect.objectContaining({ agent: "alert-triage", status: "failed" }),
     );
+  });
+
+  // #705: a shared guardrail now rejects an escalate verdict with no
+  // citations — the one disposition here that feeds a real downstream
+  // action (project-portal's notification pipeline) and so is the one
+  // required to be grounded. suppress/needs-more-data are unaffected,
+  // since "nothing happens" either way.
+  describe("citation requirement (#705)", () => {
+    it("returns failed for an escalate verdict with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            verdict: "escalate",
+            reasoning: "Sustained NDVI drop corroborated by IoT sensor.",
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runAlertTriageAgent({
+        requestId: "req-uncited-escalate",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+    });
+
+    it("does not reject a suppress verdict for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            verdict: "suppress",
+            reasoning: "Seasonal NDVI dip, no corroborating sensor drop.",
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runAlertTriageAgent({
+        requestId: "req-suppress-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
+
+    it("does not reject a sensor-fault verdict for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: finalTextMessage({
+            verdict: "sensor-fault",
+            reasoning:
+              "IoT sensor returning implausible values — data is unreliable.",
+            citations: [],
+          }),
+        }),
+      );
+
+      const result = await runAlertTriageAgent({
+        requestId: "req-sensor-fault-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
   });
 });

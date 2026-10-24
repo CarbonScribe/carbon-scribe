@@ -145,6 +145,126 @@ describe("AuditLogService", () => {
     expect(results).toEqual([]);
   });
 
+  // #703: ApprovalService.decide() writes the decision itself as a plain
+  // agent_audit_log row (status 'approved'/'rejected', actor = reviewer) —
+  // these tests write that row directly rather than going through
+  // ApprovalService, since findApprovalDecision only needs to prove it can
+  // read back what that write shape produces.
+  describe("findApprovalDecision (#703)", () => {
+    it("returns null for a requestId that was never decided", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-still-pending",
+        requestedBy: "project-portal",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+
+      expect(
+        await service.findApprovalDecision("req-still-pending"),
+      ).toBeNull();
+    });
+
+    it("returns null for a requestId that was never recorded at all", async () => {
+      expect(await service.findApprovalDecision("never-recorded")).toBeNull();
+    });
+
+    it("returns the decision once approved", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-decided-approved",
+        requestedBy: "project-portal",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:05:00.000Z",
+        agent: "alert-triage",
+        requestId: "req-decided-approved",
+        requestedBy: "project-portal",
+        actor: "reviewer-17",
+        callingService: "project-portal",
+        toolCalls: [],
+        status: "approved",
+      });
+
+      const decision = await service.findApprovalDecision(
+        "req-decided-approved",
+      );
+
+      expect(decision).toEqual({
+        requestId: "req-decided-approved",
+        decision: "approved",
+        decidedBy: "reviewer-17",
+        decidedAt: "2026-08-26T12:05:00.000Z",
+      });
+    });
+
+    it("returns the decision once rejected", async () => {
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "compliance-report",
+        requestId: "req-decided-rejected",
+        requestedBy: "corporate-platform",
+        toolCalls: [],
+        status: "needs-approval",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:10:00.000Z",
+        agent: "compliance-report",
+        requestId: "req-decided-rejected",
+        requestedBy: "corporate-platform",
+        actor: "reviewer-23",
+        callingService: "corporate-platform",
+        toolCalls: [],
+        status: "rejected",
+      });
+
+      const decision = await service.findApprovalDecision(
+        "req-decided-rejected",
+      );
+
+      expect(decision).toMatchObject({
+        decision: "rejected",
+        decidedBy: "reviewer-23",
+      });
+    });
+
+    it("returns the latest decision when more than one row is present for a requestId", async () => {
+      // Not a real production sequence (decide() enforces one decision per
+      // requestId via its status='pending' WHERE clause) — this only
+      // proves the ORDER BY ... DESC LIMIT 1 picks the most recent row
+      // rather than relying on insertion order happening to already match.
+      await service.record({
+        timestamp: "2026-08-26T12:00:00.000Z",
+        agent: "discovery",
+        requestId: "req-multi-decision",
+        requestedBy: "project-portal",
+        actor: "reviewer-1",
+        toolCalls: [],
+        status: "rejected",
+      });
+      await service.record({
+        timestamp: "2026-08-26T12:05:00.000Z",
+        agent: "discovery",
+        requestId: "req-multi-decision",
+        requestedBy: "project-portal",
+        actor: "reviewer-2",
+        toolCalls: [],
+        status: "approved",
+      });
+
+      const decision = await service.findApprovalDecision("req-multi-decision");
+
+      expect(decision).toMatchObject({
+        decision: "approved",
+        decidedBy: "reviewer-2",
+      });
+    });
+  });
+
   it("does not swallow a write failure — record() rejects instead of resolving silently", async () => {
     const brokenPool: Queryable = {
       query: () => Promise.reject(new Error("connection refused")),

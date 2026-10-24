@@ -45,6 +45,11 @@ fn make_attribute_def(env: &Env, tag_id: &str, valid_from: u64, valid_until: u64
     }
 }
 
+fn init_as_admin(env: &Env, client: &TaxAttributeContractClient, admin: &Address) {
+    env.mock_all_auths();
+    client.init(admin);
+}
+
 #[test]
 fn test_init_and_reinitialization_guard() {
     let env = Env::default();
@@ -54,11 +59,27 @@ fn test_init_and_reinitialization_guard() {
 
     assert_eq!(client.is_initialized(), false);
 
-    client.init(&admin);
-    assert_eq!(client.is_initialized(), true);
+    assert!(client.try_init(&admin).is_err());
+    assert_eq!(client.is_initialized(), false);
 
-    let attacker = Address::generate(&env);
-    let res = client.try_init(&attacker);
+    env.mock_all_auths();
+    client.init(&admin);
+
+    // Capture events immediately: env.events().all() only reflects the most
+    // recent contract invocation, so the later view calls would clear it.
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+    let (_, topics, _) = events.get(0).unwrap();
+    assert_eq!(
+        Symbol::try_from_val(&env, &topics.get(0).unwrap()),
+        Ok(Symbol::new(&env, "initialized"))
+    );
+
+    assert_eq!(client.is_initialized(), true);
+    // The AllIssuers bootstrap Vec is empty after init.
+    assert_eq!(client.get_issuing_authorities().len(), 0);
+
+    let res = client.try_init(&admin);
     assert!(matches!(res, Err(Ok(ContractError::AlreadyInitialized))));
 }
 
@@ -70,7 +91,7 @@ fn test_unauthorized_issuer_attachment() {
     let admin = Address::generate(&env);
     let unauthorized_issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
 
     let def = make_attribute_def(&env, "TAG-001", 0, 1000);
@@ -86,7 +107,7 @@ fn test_expired_attribute_attachment() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -106,7 +127,7 @@ fn test_inverted_validity_window_rejection() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -131,7 +152,7 @@ fn test_duplicate_tag_id_attachment() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -152,7 +173,7 @@ fn test_revoke_attribute_not_found() {
     let client = TaxAttributeContractClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
 
     let tag_id = String::from_str(&env, "NON-EXISTENT");
@@ -170,7 +191,7 @@ fn test_revoke_attribute_unauthorized() {
     let issuer = Address::generate(&env);
     let rando = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -193,7 +214,7 @@ fn test_revoke_attribute_not_attached() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -216,7 +237,7 @@ fn test_happy_path_lifecycle() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -242,7 +263,7 @@ fn test_revoke_attribute_emits_event_for_admin_caller() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -273,7 +294,7 @@ fn test_revoke_attribute_emits_event_for_issuer_caller() {
     let admin = Address::generate(&env);
     let issuer = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
@@ -305,7 +326,7 @@ fn test_revoke_attribute_failure_paths_emit_no_event() {
     let issuer = Address::generate(&env);
     let rando = Address::generate(&env);
 
-    client.init(&admin);
+    init_as_admin(&env, &client, &admin);
     env.mock_all_auths();
     client.add_issuer(&issuer);
 
