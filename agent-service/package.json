@@ -16,7 +16,7 @@
     "test:load": "tsx loadtest/run.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.120.0",
+    "@anthropic-ai/sdk": "^1.1.0",
     "axios": "^1.13.5",
     "dotenv": "^17.3.1",
     "express": "^4.21.2",
