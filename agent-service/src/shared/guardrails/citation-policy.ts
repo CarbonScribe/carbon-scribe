@@ -55,3 +55,60 @@ export function assertCitationsForStatus(
   }
   throw new MissingCitationsError(status);
 }
+
+// Shared citation-coverage guardrail (#708). A discovery result that
+// recommends credits must cite each of them — an uncited recommendation is an
+// ungrounded claim that slipped past the schema (the schema treats
+// `recommendations` and `citations` as independent arrays). This is a
+// distinct concern from assertCitationsForStatus, which only checks that the
+// citations array is non-empty; here we check that every recommended creditId
+// is actually referenced by at least one citation.
+//
+// Reusable by any agent whose output pairs recommendations with citations.
+// Runs before checkApproval so a run that fails coverage is turned into a
+// "failed" AgentRunResult by the calling agent's failRun helper, never
+// returned as an unflagged drafted/needs-approval success.
+
+export class MissingCitationCoverageError extends Error {
+  readonly uncited: string[];
+  constructor(uncited: string[]) {
+    super(
+      `Agent returned recommendations without corresponding citations for: ${uncited.join(", ")}.`,
+    );
+    this.uncited = uncited;
+    this.name = "MissingCitationCoverageError";
+  }
+}
+
+export interface CitationCoverageInput {
+  creditId: string;
+}
+
+export interface CitationReference {
+  reference: string;
+  creditId?: string;
+}
+
+export function assertCitationCoverage(
+  recommendations: CitationCoverageInput[],
+  citations: CitationReference[],
+): void {
+  // An empty shortlist is a legitimate "nothing matched" outcome; there is
+  // nothing to cite.
+  if (recommendations.length === 0) {
+    return;
+  }
+  const refs = new Set<string>();
+  for (const c of citations) {
+    refs.add(c.reference);
+    if (c.creditId) {
+      refs.add(c.creditId);
+    }
+  }
+  const uncited = recommendations
+    .map((r) => r.creditId)
+    .filter((id) => !refs.has(id));
+  if (uncited.length > 0) {
+    throw new MissingCitationCoverageError(uncited);
+  }
+}
