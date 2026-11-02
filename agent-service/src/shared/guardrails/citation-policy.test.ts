@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertCitationCoverage,
   assertCitationsForStatus,
+  MissingCitationCoverageError,
   MissingCitationsError,
 } from "./citation-policy.js";
 
@@ -39,5 +41,57 @@ describe("assertCitationsForStatus (#705)", () => {
     expect(() =>
       assertCitationsForStatus("drafted", [], { allowEmpty: false }),
     ).toThrow(MissingCitationsError);
+  });
+});
+
+describe("assertCitationCoverage (#708)", () => {
+  it("passes when every recommended credit is cited", () => {
+    expect(() =>
+      assertCitationCoverage(
+        [{ creditId: "credit-1" }, { creditId: "credit-2" }],
+        [{ reference: "credit-1" }, { reference: "credit-2" }],
+      ),
+    ).not.toThrow();
+  });
+
+  it("throws MissingCitationCoverageError when a recommendation lacks a citation", () => {
+    expect(() =>
+      assertCitationCoverage(
+        [{ creditId: "credit-1" }, { creditId: "credit-2" }],
+        [{ reference: "credit-1" }],
+      ),
+    ).toThrow(MissingCitationCoverageError);
+  });
+
+  it("names the uncited credit ids in the error", () => {
+    try {
+      assertCitationCoverage(
+        [{ creditId: "credit-2" }],
+        [{ reference: "credit-1" }],
+      );
+    } catch (err) {
+      expect((err as MissingCitationCoverageError).uncited).toEqual([
+        "credit-2",
+      ]);
+    }
+  });
+
+  it("passes for the legitimate zero-recommendation, zero-citation case", () => {
+    expect(() => assertCitationCoverage([], [])).not.toThrow();
+  });
+
+  it("passes for zero recommendations even with citations present", () => {
+    expect(() =>
+      assertCitationCoverage([], [{ reference: "credit-1" }]),
+    ).not.toThrow();
+  });
+
+  it("accepts a citation matched via a creditId field", () => {
+    expect(() =>
+      assertCitationCoverage(
+        [{ creditId: "credit-1" }],
+        [{ reference: "other", creditId: "credit-1" }],
+      ),
+    ).not.toThrow();
   });
 });

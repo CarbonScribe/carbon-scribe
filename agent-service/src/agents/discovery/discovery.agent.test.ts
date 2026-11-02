@@ -178,6 +178,113 @@ describe("runDiscoveryAgent", () => {
     );
   });
 
+  it("fails the run when a recommended credit has no corresponding citation (#708)", async () => {
+    const output = {
+      recommendations: [
+        { creditId: "credit-1", justification: "Matches sector and budget." },
+        { creditId: "credit-2", justification: "Also matches." },
+      ],
+      citations: [{ source: "marketplace", reference: "credit-1" }],
+    };
+    const assistantToolUseMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "search_marketplace_credits",
+          input: { methodology: "REDD+" },
+        },
+      ],
+    };
+    const toolResultMessage = {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "call_1",
+          content: [{ id: "credit-1", methodology: "REDD+", price: 15 }],
+        },
+      ],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify(output) }],
+        },
+        messages: [
+          { role: "user", content: "..." },
+          assistantToolUseMessage,
+          toolResultMessage,
+        ],
+      }),
+    );
+
+    const result = await runDiscoveryAgent({
+      requestId: "req-uncited",
+      requestedBy: "user-1",
+      input: { budget: 1000 },
+    });
+
+    expect(result.status).toBe("failed");
+    expect((result.output as { error: string }).error).toMatch(/citation/i);
+  });
+
+  it("passes the zero-recommendation, zero-citation case (#708)", async () => {
+    const output = {
+      recommendations: [],
+      citations: [],
+      notes: "No credits matched the buyer's criteria.",
+    };
+    const assistantToolUseMessage = {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "call_1",
+          name: "search_marketplace_credits",
+          input: { methodology: "REDD+" },
+        },
+      ],
+    };
+    const toolResultMessage = {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: "call_1",
+          content: [],
+        },
+      ],
+    };
+
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: JSON.stringify(output) }],
+        },
+        messages: [
+          { role: "user", content: "..." },
+          assistantToolUseMessage,
+          toolResultMessage,
+        ],
+      }),
+    );
+
+    const result = await runDiscoveryAgent({
+      requestId: "req-empty",
+      requestedBy: "user-1",
+      input: { budget: 1000 },
+    });
+
+    // Empty shortlist is legitimate; allowEmpty makes the empty-citations check pass,
+    // and coverage check passes (no recommendations).
+    expect(result.status).toBe("drafted");
+  });
+
   it("records output: null for a tool call whose result was not captured (e.g. runner aborted before tool_result)", async () => {
     const output = {
       recommendations: [],

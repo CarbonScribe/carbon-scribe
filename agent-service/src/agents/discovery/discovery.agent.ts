@@ -12,7 +12,11 @@ import {
   checkApproval,
   DISCOVERY_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
-import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
+import {
+  assertCitationCoverage,
+  assertCitationsForStatus,
+  MissingCitationCoverageError,
+} from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
@@ -196,6 +200,20 @@ export async function runDiscoveryAgent(
     assertCitationsForStatus(status, citations, {
       allowEmpty: parsed.recommendations.length === 0,
     });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
+
+  // Citation coverage (#708): every recommended credit must have a
+  // corresponding citation. Runs after the empty-citations check so the
+  // more fundamental "no citations at all" failure keeps its own message.
+  try {
+    assertCitationCoverage(parsed.recommendations, citations);
   } catch (err) {
     return failRun(
       req,
