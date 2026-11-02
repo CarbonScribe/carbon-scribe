@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fakeRunner, finalTextMessage, FakeTurn } from "../../test-utils/anthropic-client.double.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
@@ -31,52 +32,6 @@ vi.mock("../../config/env.js", () => ({
 
 const { runAlertTriageAgent } = await import("./alert-triage.agent.js");
 
-interface FakeTurn {
-  stop_reason: string;
-  content: unknown[];
-  usage?: { input_tokens: number; output_tokens: number };
-}
-
-interface FakeRunnerOptions {
-  /** A single-turn run (the common case in these tests). */
-  finalMessage?: FakeTurn;
-  /** A multi-turn run, for exercising cumulative-usage tracking across
-   *  turns. Ignored if finalMessage is set. */
-  turns?: FakeTurn[];
-  error?: unknown;
-  messages?: unknown[];
-}
-
-// The real BetaToolRunner is both directly awaitable and async-iterable
-// (runWithTokenBudget drives it via `for await`, matching how the real
-// runner is consumed in alert-triage.agent.ts) — this fake only needs to
-// support the latter, since that's the only way the agent now consumes it.
-function fakeRunner({
-  finalMessage,
-  turns,
-  error,
-  messages = [],
-}: FakeRunnerOptions) {
-  const yieldedTurns = turns ?? (finalMessage ? [finalMessage] : []);
-  return {
-    params: { messages },
-    async *[Symbol.asyncIterator]() {
-      for (const turn of yieldedTurns) {
-        yield turn;
-      }
-      if (error !== undefined) {
-        throw error;
-      }
-    },
-  };
-}
-
-function finalTextMessage(output: unknown) {
-  return {
-    stop_reason: "end_turn",
-    content: [{ type: "text", text: JSON.stringify(output) }],
-  };
-}
 
 describe("runAlertTriageAgent", () => {
   beforeEach(() => {
