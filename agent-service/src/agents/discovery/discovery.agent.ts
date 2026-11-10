@@ -15,7 +15,6 @@ import {
 import {
   assertCitationCoverage,
   assertCitationsForStatus,
-  MissingCitationCoverageError,
 } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
