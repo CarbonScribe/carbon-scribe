@@ -60,12 +60,17 @@ export function finalTextMessage(output: unknown): FakeTurn {
 
 // Builder for a successful structured-output run: the runner yields one turn
 // whose text content is the JSON-serialized payload.
-export function successfulRunner(payload: unknown, messages: unknown[] = []): ReturnType<typeof fakeRunner> {
+export function successfulRunner(
+  payload: unknown,
+  messages: unknown[] = [],
+): ReturnType<typeof fakeRunner> {
   return fakeRunner({ finalMessage: finalTextMessage(payload), messages });
 }
 
 // Builder for a run that ends with a `refusal` stop reason and no content.
-export function refusalRunner(messages: unknown[] = []): ReturnType<typeof fakeRunner> {
+export function refusalRunner(
+  messages: unknown[] = [],
+): ReturnType<typeof fakeRunner> {
   return fakeRunner({
     finalMessage: { stop_reason: "refusal", content: [] },
     messages,
@@ -73,16 +78,25 @@ export function refusalRunner(messages: unknown[] = []): ReturnType<typeof fakeR
 }
 
 // Builder for a run whose text output is not valid JSON (unparseable).
-export function malformedRunner(text: string, messages: unknown[] = []): ReturnType<typeof fakeRunner> {
+export function malformedRunner(
+  text: string,
+  messages: unknown[] = [],
+): ReturnType<typeof fakeRunner> {
   return fakeRunner({
-    finalMessage: { stop_reason: "end_turn", content: [{ type: "text", text }] },
+    finalMessage: {
+      stop_reason: "end_turn",
+      content: [{ type: "text", text }],
+    },
     messages,
   });
 }
 
 // Builder for a run that throws an Anthropic.APIError (or any error) while
 // iterating.
-export function errorRunner(error: unknown, messages: unknown[] = []): ReturnType<typeof fakeRunner> {
+export function errorRunner(
+  error: unknown,
+  messages: unknown[] = [],
+): ReturnType<typeof fakeRunner> {
   return fakeRunner({ error, messages });
 }
 

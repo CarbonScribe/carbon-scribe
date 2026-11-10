@@ -1,6 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeRunner, FakeTurn } from "../../test-utils/anthropic-client.double.js";
+import {
+  fakeRunner,
+  FakeTurn,
+} from "../../test-utils/anthropic-client.double.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
@@ -31,7 +34,6 @@ vi.mock("../../config/env.js", () => ({
 }));
 
 const { runPddDraftAgent } = await import("./pdd-draft.agent.js");
-
 
 describe("runPddDraftAgent", () => {
   beforeEach(() => {

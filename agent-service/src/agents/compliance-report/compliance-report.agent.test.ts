@@ -1,6 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeRunner, finalTextMessage, FakeTurn } from "../../test-utils/anthropic-client.double.js";
+import {
+  fakeRunner,
+  finalTextMessage,
+  FakeTurn,
+} from "../../test-utils/anthropic-client.double.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
