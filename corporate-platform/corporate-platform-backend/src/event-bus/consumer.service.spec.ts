@@ -47,6 +47,8 @@ describe('ConsumerService', () => {
           useValue: {
             get: jest.fn(),
             set: jest.fn(),
+            setIfNotExists: jest.fn(),
+            del: jest.fn(),
           },
         },
       ],
@@ -76,8 +78,11 @@ describe('ConsumerService', () => {
       expect(mockConsumer.run).toHaveBeenCalled();
     });
 
-    it('should handle incoming messages successfully and use idempotency', async () => {
-      const handler = jest.fn().mockResolvedValue(undefined);
+    it('should atomically claim idempotency key BEFORE invoking messageHandler', async () => {
+      const callOrder: string[] = [];
+      const handler = jest.fn().mockImplementation(async () => {
+        callOrder.push('messageHandler');
+      });
 
       let eachMessageHandler: any;
       mockConsumer.run.mockImplementation(async (config) => {
@@ -96,7 +101,10 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(false); // not processed
+      cacheService.setIfNotExists.mockImplementation(async () => {
+        callOrder.push('setIfNotExists');
+        return true;
+      });
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -108,21 +116,91 @@ describe('ConsumerService', () => {
         heartbeat: jest.fn(),
       });
 
-      expect(cacheService.get).toHaveBeenCalledWith(
-        'event_bus:processed:event-1',
-      );
-      expect(handler).toHaveBeenCalledWith(event);
-      expect(cacheService.set).toHaveBeenCalledWith(
+      expect(callOrder).toEqual(['setIfNotExists', 'messageHandler']);
+      expect(cacheService.setIfNotExists).toHaveBeenCalledWith(
         'event_bus:processed:event-1',
         true,
         86400,
       );
+      expect(handler).toHaveBeenCalledWith(event);
+      expect(cacheService.set).not.toHaveBeenCalled();
       expect(mockConsumer.commitOffsets).toHaveBeenCalledWith([
-        { topic: 'topic1', partition: 0, offset: '11' }, // offset + 1
+        { topic: 'topic1', partition: 0, offset: '11' },
       ]);
     });
 
-    it('should skip already processed messages', async () => {
+    it('should execute messageHandler at most once on concurrent deliveries of the same event.id', async () => {
+      const claimedKeys = new Set<string>();
+      cacheService.setIfNotExists.mockImplementation(async (key: string) => {
+        if (claimedKeys.has(key)) {
+          return false;
+        }
+        claimedKeys.add(key);
+        return true;
+      });
+
+      let resolveHandler!: () => void;
+      const handlerBarrier = new Promise<void>((resolve) => {
+        resolveHandler = resolve;
+      });
+      const handler = jest.fn().mockImplementation(async () => {
+        await handlerBarrier;
+      });
+
+      let eachMessageHandler: any;
+      mockConsumer.run.mockImplementation(async (config) => {
+        eachMessageHandler = config.eachMessage;
+      });
+
+      await service.consume('group1', 'topic1', handler);
+
+      const event = {
+        id: 'event-concurrent-1',
+        type: 'test.type',
+        source: 'test.source',
+        version: '1',
+        timestamp: new Date().toISOString(),
+        correlationId: 'test-correlation',
+        data: {},
+      };
+
+      const delivery1 = eachMessageHandler({
+        topic: 'topic1',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(event)),
+          offset: '100',
+        },
+        heartbeat: jest.fn(),
+      });
+
+      const delivery2 = eachMessageHandler({
+        topic: 'topic1',
+        partition: 1,
+        message: {
+          value: Buffer.from(JSON.stringify(event)),
+          offset: '200',
+        },
+        heartbeat: jest.fn(),
+      });
+
+      // Allow the in-flight first delivery to complete after the second
+      // concurrent delivery has already hit the atomic claim gate.
+      await Promise.resolve();
+      resolveHandler();
+      await Promise.all([delivery1, delivery2]);
+
+      expect(cacheService.setIfNotExists).toHaveBeenCalledTimes(2);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(mockConsumer.commitOffsets).toHaveBeenCalledWith([
+        { topic: 'topic1', partition: 0, offset: '101' },
+      ]);
+      expect(mockConsumer.commitOffsets).toHaveBeenCalledWith([
+        { topic: 'topic1', partition: 1, offset: '201' },
+      ]);
+    });
+
+    it('should skip already claimed/processed messages and commit offset', async () => {
       const handler = jest.fn();
 
       let eachMessageHandler: any;
@@ -142,7 +220,7 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(true); // Already processed
+      cacheService.setIfNotExists.mockResolvedValue(false);
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -160,7 +238,7 @@ describe('ConsumerService', () => {
       ]);
     });
 
-    it('should route to DLQ after max retries', async () => {
+    it('should release idempotency claim and route to DLQ after max retries are exhausted', async () => {
       const handler = jest
         .fn()
         .mockRejectedValue(new Error('Processing Failed'));
@@ -170,7 +248,7 @@ describe('ConsumerService', () => {
         eachMessageHandler = config.eachMessage;
       });
 
-      await service.consume('group1', 'topic1', handler, 1); // max 1 retries
+      await service.consume('group1', 'topic1', handler, 1);
 
       const event = {
         id: 'event-3',
@@ -182,7 +260,7 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(false);
+      cacheService.setIfNotExists.mockResolvedValue(true);
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -194,8 +272,10 @@ describe('ConsumerService', () => {
         heartbeat: jest.fn(),
       });
 
-      // Called 2 times (1 initial + 1 retries)
       expect(handler).toHaveBeenCalledTimes(2);
+      expect(cacheService.del).toHaveBeenCalledWith(
+        'event_bus:processed:event-3',
+      );
       expect(dlqService.routeToDlq).toHaveBeenCalledWith(
         'topic1',
         event,

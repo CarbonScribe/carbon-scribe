@@ -5,6 +5,8 @@ import { DeadLetterService } from './dead-letter/dead-letter.service';
 import { CacheService } from '../cache/cache.service';
 import { Event } from './interfaces/event.interface';
 
+const IDEMPOTENCY_TTL_SECONDS = 86400;
+
 @Injectable()
 export class ConsumerService implements OnModuleDestroy {
   private readonly logger = new Logger(ConsumerService.name);
@@ -58,13 +60,25 @@ export class ConsumerService implements OnModuleDestroy {
 
         const idempotencyKey = `event_bus:processed:${event.id}`;
 
-        // Deduplicate using CacheService (Redis)
-        const alreadyProcessed =
-          await this.cacheService.get<boolean>(idempotencyKey);
-        if (alreadyProcessed) {
-          this.logger.debug(`Event ${event.id} already processed. Skipping.`);
+        // Atomically claim the event via Redis SET ... EX 86400 NX BEFORE
+        // invoking messageHandler so concurrent deliveries cannot both enter
+        // the handler during execution or retry backoff (#738).
+        const claimed = await this.cacheService.setIfNotExists(
+          idempotencyKey,
+          true,
+          IDEMPOTENCY_TTL_SECONDS,
+        );
+        if (claimed === false) {
+          this.logger.debug(
+            `Event ${event.id} already claimed or processed. Skipping.`,
+          );
           await this.commitOffset(consumer, topic, partition, message.offset);
           return;
+        }
+        if (claimed === undefined) {
+          this.logger.warn(
+            `Redis unavailable for idempotency claim on event ${event.id}; proceeding without deduplication guard.`,
+          );
         }
 
         let retries = 0;
@@ -73,10 +87,6 @@ export class ConsumerService implements OnModuleDestroy {
         while (retries <= maxRetries && !success) {
           try {
             await messageHandler(event);
-
-            // Mark as processed (store for 24 hours to prevent duplicate replays)
-            await this.cacheService.set(idempotencyKey, true, 86400);
-
             await this.commitOffset(consumer, topic, partition, message.offset);
             success = true;
           } catch (error) {
@@ -89,6 +99,15 @@ export class ConsumerService implements OnModuleDestroy {
               this.logger.error(
                 `Exceeded max retries for event ${event.id}. Routing to DLQ.`,
               );
+              // Claim policy on terminal failure (#738): keep the claim held
+              // across all in-process retries above so concurrent duplicate
+              // deliveries cannot race while retrying, then release it right
+              // before routing to DLQ so a legitimate DLQ replay (or broker
+              // redelivery if offset commit fails) can reprocess the event
+              // rather than skipping it for the remaining 24-hour TTL.
+              if (claimed === true) {
+                await this.cacheService.del(idempotencyKey);
+              }
               await this.dlqService.routeToDlq(topic, event, error);
               // Commit the offset so we don't block the partition indefinitely
               await this.commitOffset(
