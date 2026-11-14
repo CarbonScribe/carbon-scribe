@@ -25,6 +25,20 @@ export class CacheService {
     }
   }
 
+  private encodeEnvelope<T>(value: T): string {
+    const payloadString = JSON.stringify(value);
+    let compressed = false;
+    let data: string;
+    const buffer = Buffer.from(payloadString, 'utf8');
+    if (buffer.length > 1024) {
+      compressed = true;
+      data = gzipSync(buffer).toString('base64');
+    } else {
+      data = buffer.toString('utf8');
+    }
+    return JSON.stringify({ compressed, data });
+  }
+
   async get<T>(key: string): Promise<T | undefined> {
     const raw = await this.withClient<string>((c) => c.get(key));
     if (!raw) {
@@ -53,17 +67,7 @@ export class CacheService {
     ttlSeconds?: number,
     tags?: string[],
   ): Promise<void> {
-    const payloadString = JSON.stringify(value);
-    let compressed = false;
-    let data: string;
-    const buffer = Buffer.from(payloadString, 'utf8');
-    if (buffer.length > 1024) {
-      compressed = true;
-      data = gzipSync(buffer).toString('base64');
-    } else {
-      data = buffer.toString('utf8');
-    }
-    const envelope = JSON.stringify({ compressed, data });
+    const envelope = this.encodeEnvelope(value);
     await this.withClient(async (c) => {
       if (ttlSeconds && ttlSeconds > 0) {
         await c.setex(key, ttlSeconds, envelope);
@@ -75,6 +79,26 @@ export class CacheService {
           await c.sadd(this.tagKey(tag), key);
         }
       }
+    });
+  }
+
+  /**
+   * Atomically sets `key` only if it does not already exist (`SET ... NX`).
+   * Returns `true` when the key was newly claimed, `false` when it already
+   * existed in Redis, or `undefined` if Redis is unavailable.
+   */
+  async setIfNotExists<T>(
+    key: string,
+    value: T,
+    ttlSeconds?: number,
+  ): Promise<boolean | undefined> {
+    const envelope = this.encodeEnvelope(value);
+    return this.withClient<boolean>(async (c) => {
+      const result =
+        ttlSeconds && ttlSeconds > 0
+          ? await c.set(key, envelope, 'EX', ttlSeconds, 'NX')
+          : await c.set(key, envelope, 'NX');
+      return result === 'OK';
     });
   }
 
