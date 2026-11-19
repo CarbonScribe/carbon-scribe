@@ -1,5 +1,10 @@
 import apiClient from '@/lib/api/apiClient';
-import type { Project, ProjectCreateRequest, ProjectUpdateRequest } from './projects.types';
+import type {
+  Project,
+  ProjectCreateRequest,
+  ProjectFilters,
+  ProjectUpdateRequest,
+} from './projects.types';
 
 interface ListProjectsResponse {
   projects: Project[];
@@ -7,10 +12,18 @@ interface ListProjectsResponse {
 
 export async function fetchProjectsApi(
   limit: number = 10,
-  offset: number = 0
+  offset: number = 0,
+  filters: ProjectFilters = { search: '', type: 'All', status: 'All' },
+  signal?: AbortSignal
 ): Promise<{ projects: Project[] }> {
+  const params: Record<string, string | number> = { limit, offset };
+  if (filters.search.trim()) params.search = filters.search.trim();
+  if (filters.type !== 'All') params.type = filters.type;
+  if (filters.status !== 'All') params.status = filters.status;
+
   const response = await apiClient.get<ListProjectsResponse>('/projects', {
-    params: { limit, offset },
+    params,
+    signal,
   });
   return { projects: response.data.projects || [] };
 }
