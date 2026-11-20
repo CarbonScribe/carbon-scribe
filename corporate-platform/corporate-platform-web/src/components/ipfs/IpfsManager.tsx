@@ -3,10 +3,12 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   FileCheck,
   FileUp,
   Link2,
+  Loader2,
   RefreshCcw,
   ShieldCheck,
   Trash2,
@@ -15,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useAuth } from '@/contexts/AuthContext'
+import { hasPermission } from '@/lib/auth/rbac'
 import { ipfsService, CHUNKED_UPLOAD_THRESHOLD } from '@/services/ipfs.service'
 import {
   DOCUMENT_ACCEPT,
@@ -156,8 +159,135 @@ interface UploadState {
 
 const idle: UploadState = { busy: false, percent: null }
 
+/** Documents whose type requires a typed confirmation before deletion. */
+const HIGH_RISK_TYPES: IpfsDocumentType[] = ['CERTIFICATE', 'AUDIT_LOG']
+
+interface DeleteCandidate {
+  doc: IpfsDocumentRecord
+}
+
+interface DeleteConfirmDialogProps {
+  candidate: DeleteCandidate
+  onConfirm: () => void
+  onCancel: () => void
+  deleting: boolean
+}
+
+function DeleteConfirmDialog({ candidate, onConfirm, onCancel, deleting }: DeleteConfirmDialogProps) {
+  const { doc } = candidate
+  const isHighRisk = HIGH_RISK_TYPES.includes(doc.documentType as IpfsDocumentType)
+  const confirmToken = isHighRisk
+    ? doc.ipfsCid.slice(-6)
+    : null
+  const [typedValue, setTypedValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    // Autofocus the typed-confirmation input or the cancel button
+    inputRef.current?.focus()
+  }, [])
+
+  const canConfirm = !isHighRisk || typedValue === confirmToken
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-dialog-title"
+      aria-describedby="delete-dialog-desc"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    >
+      <div className="w-full max-w-md rounded-xl bg-white dark:bg-gray-900 shadow-xl p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="text-red-500 mt-0.5 shrink-0" size={22} />
+          <div>
+            <h2 id="delete-dialog-title" className="text-base font-semibold text-gray-900 dark:text-white">
+              Confirm deletion
+            </h2>
+            <p id="delete-dialog-desc" className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              This will unpin and permanently delete the document from IPFS. This action cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <dl className="text-sm space-y-1 rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-800">
+          <div className="flex gap-2">
+            <dt className="text-gray-500 dark:text-gray-400 shrink-0 w-20">File</dt>
+            <dd className="font-medium text-gray-900 dark:text-white truncate">{doc.fileName || '—'}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="text-gray-500 dark:text-gray-400 shrink-0 w-20">CID</dt>
+            <dd className="font-mono text-xs text-gray-700 dark:text-gray-300 break-all">{doc.ipfsCid}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="text-gray-500 dark:text-gray-400 shrink-0 w-20">Type</dt>
+            <dd className="text-gray-900 dark:text-white">{doc.documentType}</dd>
+          </div>
+          {doc.referenceId && (
+            <div className="flex gap-2">
+              <dt className="text-gray-500 dark:text-gray-400 shrink-0 w-20">Linked to</dt>
+              <dd className="text-gray-900 dark:text-white">{doc.referenceId}</dd>
+            </div>
+          )}
+        </dl>
+
+        {isHighRisk && (
+          <div className="space-y-2">
+            <p className="text-sm text-red-700 dark:text-red-400 font-medium">
+              This document is linked to a {doc.documentType.toLowerCase().replace('_', ' ')}. Type the last 6 characters of the CID to confirm:
+            </p>
+            <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white tracking-widest">
+              {confirmToken}
+            </p>
+            <input
+              ref={inputRef}
+              type="text"
+              value={typedValue}
+              onChange={(e) => setTypedValue(e.target.value)}
+              placeholder={`Type "${confirmToken}" to confirm`}
+              aria-label="Type confirmation token"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm bg-white dark:bg-gray-900 font-mono"
+            />
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            className="corporate-btn-secondary px-4 py-2 text-sm"
+            onClick={onCancel}
+            disabled={deleting}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 text-sm font-medium text-white transition-colors"
+            onClick={onConfirm}
+            disabled={!canConfirm || deleting}
+            aria-disabled={!canConfirm || deleting}
+          >
+            {deleting ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Deleting…
+              </>
+            ) : (
+              <>
+                <Trash2 size={14} /> Delete permanently
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function IpfsManager() {
   const { user } = useAuth()
+
+  // RBAC: only admin and manager may delete documents
+  const canDelete = hasPermission(user?.role, 'credit:retire')
 
   const [documents, setDocuments] = useState<IpfsDocumentRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,6 +323,9 @@ export default function IpfsManager() {
   const [certUpload, setCertUpload] = useState<UploadState>(idle)
   const [pinBusy, setPinBusy] = useState(false)
   const [lookupBusy, setLookupBusy] = useState(false)
+
+  const [deleteCandidate, setDeleteCandidate] = useState<DeleteCandidate | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const docIndex = useMemo(() => buildDocumentIndex(documents), [documents])
   const singleFileInputRef = useRef<HTMLInputElement>(null)
@@ -763,17 +896,38 @@ export default function IpfsManager() {
   // Delete
   // ---------------------------------------------------------------------------
 
-  const onDeleteCid = async (cid: string) => {
+  const requestDeleteCid = (doc: IpfsDocumentRecord) => {
+    setDeleteCandidate({ doc })
+  }
+
+  const cancelDelete = () => {
+    setDeleteCandidate(null)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteCandidate) return
+    const { doc } = deleteCandidate
+
+    setDeleting(true)
     setError(null)
     setSuccess(null)
 
-    const response = await ipfsService.deleteByCid(cid)
+    const response = await ipfsService.deleteByCid(doc.ipfsCid)
+
+    setDeleting(false)
+    setDeleteCandidate(null)
+
     if (!response.success) {
       setError(response.error || 'Delete failed')
       return
     }
 
-    setSuccess(`Deleted/unpinned CID ${cid}.`)
+    const isContentAddressed = doc.ipfsCid.startsWith('Qm') || doc.ipfsCid.startsWith('bafy')
+    const recoveryNote = isContentAddressed
+      ? 'The CID is content-addressed — if you have the original file you can re-pin it at any time.'
+      : 'This content cannot be recovered once unpinned.'
+
+    setSuccess(`Deleted/unpinned CID ${doc.ipfsCid}. ${recoveryNote}`)
     await loadDocuments()
   }
 
@@ -919,6 +1073,7 @@ export default function IpfsManager() {
   }, [chunked.progress])
 
   return (
+    <>
     <div className="space-y-6">
       <div className="corporate-card p-6">
         <div className="flex items-center justify-between mb-4">
@@ -1183,13 +1338,17 @@ export default function IpfsManager() {
                         <td className="py-3 max-w-40 truncate" title={doc.ipfsCid}>{doc.ipfsCid}</td>
                         <td className="py-3">{doc.pinned ? 'Yes' : 'No'}</td>
                         <td className="py-3">
-                          <button
-                            className="text-red-600 hover:text-red-500 inline-flex items-center"
-                            type="button"
-                            onClick={() => void onDeleteCid(doc.ipfsCid)}
-                          >
-                            <Trash2 size={14} className="mr-1" /> Delete
-                          </button>
+                          {canDelete ? (
+                            <button
+                              className="text-red-600 hover:text-red-500 inline-flex items-center disabled:opacity-40 disabled:cursor-not-allowed"
+                              type="button"
+                              disabled={deleting}
+                              onClick={() => requestDeleteCid(doc)}
+                              aria-label={`Delete ${doc.fileName || doc.ipfsCid}`}
+                            >
+                              <Trash2 size={14} className="mr-1" /> Delete
+                            </button>
+                          ) : null}
                         </td>
                       </tr>
                     )
@@ -1220,5 +1379,15 @@ export default function IpfsManager() {
         )}
       </div>
     </div>
+
+    {deleteCandidate && (
+      <DeleteConfirmDialog
+        candidate={deleteCandidate}
+        onConfirm={() => void confirmDelete()}
+        onCancel={cancelDelete}
+        deleting={deleting}
+      />
+    )}
+    </>
   )
 }

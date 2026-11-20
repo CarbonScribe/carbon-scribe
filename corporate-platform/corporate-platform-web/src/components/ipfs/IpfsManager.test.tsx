@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import IpfsManager from '@/components/ipfs/IpfsManager'
 import * as chunkedUploadModule from '@/hooks/useChunkedUpload'
@@ -15,7 +15,7 @@ const anchorCertificateMock = vi.fn()
 const verifyCertificateMock = vi.fn()
 
 vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', companyId: 'company-1' } }),
+  useAuth: () => ({ user: { id: 'u1', companyId: 'company-1', role: 'admin' } }),
 }))
 
 vi.mock('@/services/ipfs.service', () => ({
@@ -131,9 +131,22 @@ describe('IpfsManager', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /delete/i }))
 
+    // Confirmation dialog must appear
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    // File name and CID appear inside the dialog
+    expect(within(dialog).getByText('report.pdf')).toBeInTheDocument()
+    expect(within(dialog).getByText('QmDoc1')).toBeInTheDocument()
+
+    // Confirm deletion
+    fireEvent.click(screen.getByRole('button', { name: /delete permanently/i }))
+
     await waitFor(() => {
       expect(deleteByCidMock).toHaveBeenCalledWith('QmDoc1')
     })
+
+    // Dialog should close after confirmation
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('shows fetch error for documents', async () => {
@@ -359,6 +372,158 @@ describe('IpfsManager', () => {
       expect(uploadDocumentMock).toHaveBeenCalled()
     })
     expect(await screen.findByText(/Batch upload completed for 2 file\(s\)\./i)).toBeInTheDocument()
+  })
+
+  // ---------------------------------------------------------------------------
+  // Deletion safeguards (#806)
+  // ---------------------------------------------------------------------------
+
+  it('shows confirmation dialog before deleting — cancel does nothing', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+
+    // Dialog appears with document details
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByText('QmDoc1')).toBeInTheDocument()
+
+    // Cancel — service must NOT be called
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(deleteByCidMock).not.toHaveBeenCalled()
+  })
+
+  it('shows file name, CID, type and linked reference in the dialog', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('report.pdf')).toBeInTheDocument()
+    expect(within(dialog).getByText('QmDoc1')).toBeInTheDocument()
+    expect(within(dialog).getByText('REPORT')).toBeInTheDocument()
+    expect(within(dialog).getByText('ref-1')).toBeInTheDocument()
+  })
+
+  it('requires typed confirmation for CERTIFICATE documents', async () => {
+    const certDoc = {
+      id: 'cert-1',
+      companyId: 'company-1',
+      documentType: 'CERTIFICATE',
+      referenceId: 'retirement-42',
+      ipfsCid: 'QmCertABCDEF',
+      ipfsGateway: 'https://gateway.pinata.cloud/ipfs/',
+      fileName: 'cert.pdf',
+      fileSize: 500,
+      mimeType: 'application/pdf',
+      pinned: true,
+      pinnedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }
+    listDocumentsMock.mockResolvedValue({ success: true, data: [certDoc] })
+
+    render(<IpfsManager />)
+    await screen.findByText('cert.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: /delete cert\.pdf/i }))
+
+    await screen.findByRole('dialog')
+
+    // Confirm button disabled before typing
+    const confirmBtn = screen.getByRole('button', { name: /delete permanently/i })
+    expect(confirmBtn).toBeDisabled()
+
+    // Type wrong token — still disabled
+    const input = screen.getByRole('textbox', { name: /type confirmation token/i })
+    fireEvent.change(input, { target: { value: 'WRONG1' } })
+    expect(confirmBtn).toBeDisabled()
+
+    // Type correct last-6 token — button enabled
+    fireEvent.change(input, { target: { value: 'BCDEF' } })
+    // last 6 of 'QmCertABCDEF' is 'BCDEF' — wait, let's use actual value
+    const token = 'QmCertABCDEF'.slice(-6) // 'BCDEF' — length is 6 ✓ ('ABCDEF' — recheck)
+    fireEvent.change(input, { target: { value: token } })
+    expect(confirmBtn).not.toBeDisabled()
+
+    fireEvent.click(confirmBtn)
+
+    await waitFor(() => {
+      expect(deleteByCidMock).toHaveBeenCalledWith('QmCertABCDEF')
+    })
+  })
+
+  it('disables the delete button while deletion is in flight (no double-submit)', async () => {
+    let resolveDelete!: (val: unknown) => void
+    deleteByCidMock.mockReturnValue(new Promise((res) => { resolveDelete = res }))
+
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: /delete permanently/i }))
+
+    // While in-flight the confirm button shows a spinner and is disabled
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /deleting/i })).toBeDisabled()
+    })
+
+    // Resolve the request
+    resolveDelete({ success: true, data: { deleted: true } })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows recovery guidance in the success message', async () => {
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }))
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: /delete permanently/i }))
+
+    expect(await screen.findByText(/Deleted\/unpinned CID QmDoc1/i)).toBeInTheDocument()
+    // Recovery guidance text — CIDs starting with Qm are content-addressed
+    expect(screen.getByText(/re-pin it at any time/i)).toBeInTheDocument()
+  })
+
+  it('hides the delete button for viewer role', async () => {
+    // Re-mock useAuth for this test to return a viewer role
+    const authMod = await import('@/contexts/AuthContext')
+    const original = authMod.useAuth
+    vi.spyOn(authMod, 'useAuth').mockReturnValue({
+      user: { id: 'v1', companyId: 'company-1', role: 'viewer', email: '', firstName: '', lastName: '' },
+      role: null,
+      permissions: [],
+      isLoading: false,
+      isAuthenticated: true,
+      sessionExpiryState: 'active',
+      secondsUntilExpiry: 3600,
+      hasRole: () => false,
+      hasAnyRole: () => false,
+      hasPermission: () => false,
+      canAccessRoute: () => ({ allowed: true }),
+      login: async () => {},
+      register: async () => {},
+      logout: async () => {},
+      refreshToken: async () => false,
+      renewSession: async () => false,
+    })
+
+    render(<IpfsManager />)
+    await screen.findByText('report.pdf')
+
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
+
+    vi.spyOn(authMod, 'useAuth').mockRestore()
+    // suppress unused var warning
+    void original
   })
 })
 
