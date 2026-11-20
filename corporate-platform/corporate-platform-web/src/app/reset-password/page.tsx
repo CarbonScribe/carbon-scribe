@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { resetPasswordApi } from '@/lib/api/auth.api';
 import { ApiError } from '@/lib/api/http';
+import { isRateLimitError } from '@/lib/utils/rateLimit';
+import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 import {
   REGISTER_PASSWORD_ERROR,
   validateRegisterPassword,
@@ -20,16 +22,29 @@ function ResetPasswordForm() {
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const rateLimit = useRateLimitCountdown(error);
   // Distinguishes a failure that means "this token is no good, go request a
   // new one" from a plain client-side validation error the user can just
   // fix and resubmit — only the former shows the forgot-password link.
   const [isTokenError, setIsTokenError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const errorMessage = error
+    ? rateLimit.isRateLimited && rateLimit.message
+      ? rateLimit.message
+      : typeof error === 'string'
+        ? error
+        : error instanceof ApiError
+          ? error.message || INVALID_TOKEN_MESSAGE
+          : error instanceof Error
+            ? error.message
+            : INVALID_TOKEN_MESSAGE
+    : '';
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
     setIsTokenError(false);
 
     if (!password || !confirmPassword) {
@@ -50,15 +65,16 @@ function ResetPasswordForm() {
 
     // token is guaranteed non-null here — the caller only renders this form
     // when a token is present (see ResetPasswordPage below).
+    if (rateLimit.isBlocked) return;
+
     setIsLoading(true);
     try {
       await resetPasswordApi(token as string, password);
       router.push('/login?reset=success');
     } catch (err: any) {
-      setError(
-        err instanceof ApiError ? err.message || INVALID_TOKEN_MESSAGE : INVALID_TOKEN_MESSAGE,
-      );
-      setIsTokenError(true);
+      setError(err ?? INVALID_TOKEN_MESSAGE);
+      // A throttle is temporary — don't send the user to request a new link.
+      setIsTokenError(!isRateLimitError(err));
     } finally {
       setIsLoading(false);
     }
@@ -126,9 +142,18 @@ function ResetPasswordForm() {
           disabled={isLoading}
         />
       </div>
-      {error && (
+      {errorMessage && (
         <div className="mb-4">
-          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p
+            role={rateLimit.isRateLimited ? 'status' : undefined}
+            className={`text-sm ${
+              rateLimit.isRateLimited
+                ? 'text-amber-700 dark:text-amber-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            {errorMessage}
+          </p>
           {isTokenError && (
             <Link
               href="/forgot-password"
@@ -142,7 +167,7 @@ function ResetPasswordForm() {
       <button
         type="submit"
         className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
-        disabled={isLoading}
+        disabled={isLoading || rateLimit.isBlocked}
       >
         {isLoading ? 'Resetting...' : 'Reset Password'}
       </button>
