@@ -54,6 +54,7 @@ export class StellarWebhookService {
     hash: string,
     status: TransactionStatus,
     ledger?: number,
+    pagingToken?: string,
   ) {
     const confirmation = await this.prisma.transactionConfirmation.findUnique({
       where: { transactionHash: hash },
@@ -73,6 +74,7 @@ export class StellarWebhookService {
         confirmations: { increment: 1 },
         ledgerSequence: ledger,
         finalizedAt: status === TransactionStatus.CONFIRMED ? new Date() : null,
+        ...(pagingToken !== undefined && { pagingToken }),
       },
     });
   }
