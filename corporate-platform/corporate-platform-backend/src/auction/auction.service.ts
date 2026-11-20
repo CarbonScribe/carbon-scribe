@@ -1,10 +1,19 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
 import { DutchAuctionService } from './services/dutch-auction.service';
 import { BidProcessorService } from './services/bid-processor.service';
 import { SettlementService } from './services/settlement.service';
+
+/**
+ * Server-side anti-fat-finger guard thresholds.
+ * A bid whose price exceeds the current auction price by more than this
+ * ratio, or whose total cost exceeds the max total, must be explicitly
+ * acknowledged by the client (`acknowledgeHighBid: true`).
+ */
+export const HIGH_BID_PREMIUM_RATIO = 0.25;
+export const HIGH_BID_TOTAL_THRESHOLD = 1_000_000;
 
 @Injectable()
 export class AuctionService {
@@ -72,6 +81,10 @@ export class AuctionService {
   /**
    * Place a bid on an auction
    * Rate limiting is applied at the controller level via @RateLimit decorator
+   *
+   * Anti-fat-finger guard: bids that are far above the current auction price
+   * or have a very large total cost are rejected unless the client explicitly
+   * acknowledges them via `acknowledgeHighBid`.
    */
   async placeBid(
     auctionId: string,
@@ -79,6 +92,42 @@ export class AuctionService {
     companyId: string,
     dto: PlaceBidDto,
   ) {
+    const auction = await this.prisma.auction.findUnique({
+      where: { id: auctionId },
+    });
+
+    if (!auction) {
+      throw new NotFoundException(`Auction ${auctionId} not found`);
+    }
+
+    const currentPrice = Number(
+      this.dutchAuctionService.calculateCurrentPrice(auction),
+    );
+    const bidPrice = Number((dto as any).bidPrice);
+    const quantity = Number((dto as any).quantity);
+    const totalCost = bidPrice * quantity;
+
+    const premiumRatio =
+      currentPrice > 0 ? (bidPrice - currentPrice) / currentPrice : 0;
+    const isHighPremium = premiumRatio > HIGH_BID_PREMIUM_RATIO;
+    const isHighTotal = totalCost > HIGH_BID_TOTAL_THRESHOLD;
+
+    if ((isHighPremium || isHighTotal) && !(dto as any).acknowledgeHighBid) {
+      this.logger.warn(
+        `Bid on auction ${auctionId} by user ${userId} rejected: requires acknowledgement ` +
+          `(premium=${(premiumRatio * 100).toFixed(2)}%, total=${totalCost})`,
+      );
+      throw new BadRequestException({
+        message:
+          'Bid requires explicit acknowledgement: price is significantly above the current auction price or total cost exceeds the allowed threshold',
+        code: 'HIGH_BID_REQUIRES_ACKNOWLEDGEMENT',
+        currentPrice,
+        bidPrice,
+        totalCost,
+        premiumRatio,
+      });
+    }
+
     return this.bidProcessorService.processBid(
       auctionId,
       userId,
