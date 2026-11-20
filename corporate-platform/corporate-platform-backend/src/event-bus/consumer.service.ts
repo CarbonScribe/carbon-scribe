@@ -58,13 +58,29 @@ export class ConsumerService implements OnModuleDestroy {
 
         const idempotencyKey = `event_bus:processed:${event.id}`;
 
-        // Deduplicate using CacheService (Redis)
-        const alreadyProcessed =
-          await this.cacheService.get<boolean>(idempotencyKey);
-        if (alreadyProcessed) {
-          this.logger.debug(`Event ${event.id} already processed. Skipping.`);
+        // Atomically claim this event for processing using SET NX EX.
+        // Returns true if we won the claim, false if another consumer
+        // already owns it, undefined if Redis is unavailable.
+        const claimed = await this.cacheService.setNX(
+          idempotencyKey,
+          true,
+          86400, // 24-hour TTL to prevent duplicate replays
+        );
+
+        if (claimed === false) {
+          // Another consumer already claimed this event — skip.
+          this.logger.debug(`Event ${event.id} already claimed. Skipping.`);
           await this.commitOffset(consumer, topic, partition, message.offset);
           return;
+        }
+
+        // If Redis is unavailable (claimed === undefined), we proceed
+        // without dedup protection to avoid blocking the consumer.
+        // This matches the previous fail-open behaviour of CacheService.
+        if (claimed === undefined) {
+          this.logger.warn(
+            `Redis unavailable for idempotency check on event ${event.id}. Processing without dedup guard.`,
+          );
         }
 
         let retries = 0;
@@ -73,9 +89,6 @@ export class ConsumerService implements OnModuleDestroy {
         while (retries <= maxRetries && !success) {
           try {
             await messageHandler(event);
-
-            // Mark as processed (store for 24 hours to prevent duplicate replays)
-            await this.cacheService.set(idempotencyKey, true, 86400);
 
             await this.commitOffset(consumer, topic, partition, message.offset);
             success = true;
@@ -90,6 +103,11 @@ export class ConsumerService implements OnModuleDestroy {
                 `Exceeded max retries for event ${event.id}. Routing to DLQ.`,
               );
               await this.dlqService.routeToDlq(topic, event, error);
+
+              // Release the idempotency claim so the event can be
+              // retried when it is later replayed from the DLQ.
+              await this.cacheService.del(idempotencyKey);
+
               // Commit the offset so we don't block the partition indefinitely
               await this.commitOffset(
                 consumer,
