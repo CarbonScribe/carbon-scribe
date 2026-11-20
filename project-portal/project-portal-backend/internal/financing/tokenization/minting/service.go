@@ -19,8 +19,21 @@ import (
 	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/txnbuild"
 	"github.com/stellar/go/xdr"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/observability"
 )
+
+// tracer names every span this package creates. Using the same
+// instrumentation name as main.go's otelgin.Middleware (rather than this
+// package's own import path) keeps every span in a request's trace grouped
+// under one service identity in the trace backend.
+var tracer = otel.Tracer(observability.DefaultServiceName)
 
 const (
 	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
@@ -137,7 +150,7 @@ func (s *service) MintProjectCredits(ctx context.Context, projectID uuid.UUID, v
 	if err := s.db.WithContext(ctx).Table("projects").Where("id = ?", projectID).First(&project).Error; err != nil {
 		job.Status = "failed"
 		job.Error = "project not found"
-		s.db.Save(job)
+		s.db.WithContext(ctx).Save(job)
 		return nil, fmt.Errorf("fetch project for minting: %w", err)
 	}
 
@@ -149,8 +162,20 @@ func (s *service) MintProjectCredits(ctx context.Context, projectID uuid.UUID, v
 }
 
 func (s *service) processMintingJob(ctx context.Context, job *MintingJob, methodologyID int, vintageYear int, projectCredits int) {
+	// Root span for the whole async minting job (issue #695). This runs in
+	// its own goroutine detached from the originating HTTP request's
+	// context (see MintProjectCredits — the job must outlive the request
+	// that triggered it), so this is a new trace rather than a child of
+	// that request's span; the Soroban RPC and DB child spans below are
+	// what distinguish where this job's time actually goes.
+	ctx, jobSpan := tracer.Start(ctx, "minting.process_job", oteltrace.WithAttributes(
+		attribute.String("minting.job_id", job.ID.String()),
+		attribute.String("minting.project_id", job.ProjectID.String()),
+	))
+	defer jobSpan.End()
+
 	job.Status = "processing"
-	s.db.Save(job)
+	s.db.WithContext(ctx).Save(job)
 
 	// In a real scenario, we would determine the owner physical address from the project wallet
 	// Using a placeholder address for demonstration
@@ -158,7 +183,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 	if ownerErr != nil {
 		job.Status = "failed"
 		job.Error = ownerErr.Error()
-		s.db.Save(job)
+		s.db.WithContext(ctx).Save(job)
+		jobSpan.RecordError(ownerErr)
+		jobSpan.SetStatus(codes.Error, ownerErr.Error())
 		return
 	}
 
@@ -200,10 +227,24 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		var mintedTokenID int
 		var mintedTxHash string
 		mintFn := func(mintCtx context.Context) error {
+			// Child span isolating Soroban RPC time (load account, simulate,
+			// submit, poll for confirmation) from the DB time spent on
+			// either side of it (issue #695).
+			mintCtx, mintSpan := tracer.Start(mintCtx, "minting.soroban_rpc_call", oteltrace.WithAttributes(
+				attribute.Int("minting.attempt", attempt),
+			))
+			defer mintSpan.End()
+
 			tokenID, txHash, err := s.contractClient.Mint(mintCtx, ownerAddress, metadata)
 			if err != nil {
+				mintSpan.RecordError(err)
+				mintSpan.SetStatus(codes.Error, err.Error())
 				return err
 			}
+			mintSpan.SetAttributes(
+				attribute.Int("minting.token_id", tokenID),
+				attribute.String("minting.tx_hash", txHash),
+			)
 			mintedTokenID = tokenID
 			mintedTxHash = txHash
 			return nil
@@ -216,9 +257,14 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 			RequestedAmount:    requestedAmount,
 		}, mintFn)
 		if err == nil {
+			// Child span isolating the DB writes that persist a successful
+			// mint, distinct from the Soroban RPC time already captured
+			// above (issue #695).
+			dbCtx, dbSpan := tracer.Start(ctx, "minting.persist_result")
+
 			job.Status = "completed"
 			job.TxHash = mintedTxHash
-			s.db.Save(job)
+			s.db.WithContext(dbCtx).Save(job)
 
 			mintedToken := &MintedToken{
 				JobID:         job.ID,
@@ -229,7 +275,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 				VintageYear:   int(metadata.VintageYear),
 				MethodologyID: int(metadata.MethodologyID),
 			}
-			s.db.Create(mintedToken)
+			s.db.WithContext(dbCtx).Create(mintedToken)
+			dbSpan.End()
+			jobSpan.SetStatus(codes.Ok, "")
 			return
 		}
 		lastErr = err
@@ -253,7 +301,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		case <-ctx.Done():
 			job.Status = "failed"
 			job.Error = ctx.Err().Error()
-			s.db.Save(job)
+			s.db.WithContext(ctx).Save(job)
+			jobSpan.RecordError(ctx.Err())
+			jobSpan.SetStatus(codes.Error, ctx.Err().Error())
 			return
 		case <-time.After(delay):
 		}
@@ -261,7 +311,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 
 	job.Status = "failed"
 	job.Error = lastErr.Error()
-	s.db.Save(job)
+	s.db.WithContext(ctx).Save(job)
+	jobSpan.RecordError(lastErr)
+	jobSpan.SetStatus(codes.Error, lastErr.Error())
 }
 
 func (s *service) GetMintingStatus(ctx context.Context, projectID uuid.UUID) ([]MintingJob, []MintedToken, error) {
@@ -348,8 +400,18 @@ func NewContractClientFromEnv(isProduction bool) (CarbonAssetContractClient, err
 		rpcURL:            rpcURL,
 		networkPassphrase: networkPass,
 		authority:         authority,
-		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
+		rpc:               rpcclient.NewClient(rpcURL, newTracedHTTPClient()),
 	}, nil
+}
+
+// newTracedHTTPClient wraps the default transport with otelhttp so every
+// outbound Soroban RPC call carries the active trace context in its headers
+// and gets its own client-side span (issue #695) — this is the only
+// outbound HTTP client this service builds from scratch rather than through
+// a higher-level SDK. Extracted so a test can assert the transport is
+// actually instrumented.
+func newTracedHTTPClient() *http.Client {
+	return &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 }
 
 // resolveDefaultOwnerAddress determines the placeholder mint recipient from
