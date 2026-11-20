@@ -117,8 +117,16 @@ type StorageConfig struct {
 
 type SettingsConfig struct {
 	EncryptionKeyHex string
-	APIKeyPrefix     string
-	ProfileCDNBase   string
+	// EncryptionKeyVersion is the version recorded against ciphertext
+	// produced with EncryptionKeyHex. Bump it (and move the old value into
+	// PreviousEncryptionKeysHex) when rotating the key (#795).
+	EncryptionKeyVersion int
+	// PreviousEncryptionKeysHex maps version -> hex key for versions no
+	// longer current but still needed to decrypt/rotate rows written before
+	// the last rotation.
+	PreviousEncryptionKeysHex map[int]string
+	APIKeyPrefix              string
+	ProfileCDNBase            string
 }
 
 // SESConfig holds configuration for the SES transactional email client.
@@ -285,9 +293,11 @@ func Load() (*Config, error) {
 			TileCacheTTL:      getEnvOrDefault("MAPS_TILE_CACHE_TTL", "24h"),
 		},
 		Settings: SettingsConfig{
-			EncryptionKeyHex: os.Getenv("SETTINGS_ENCRYPTION_KEY_HEX"),
-			APIKeyPrefix:     getEnvOrDefault("SETTINGS_API_KEY_PREFIX", "ppk_live"),
-			ProfileCDNBase:   getEnvOrDefault("SETTINGS_PROFILE_CDN_BASE", "https://cdn.carbonscribe.local"),
+			EncryptionKeyHex:          os.Getenv("SETTINGS_ENCRYPTION_KEY_HEX"),
+			EncryptionKeyVersion:      getIntOrDefault("SETTINGS_ENCRYPTION_KEY_VERSION", 1),
+			PreviousEncryptionKeysHex: parseVersionedKeys(os.Getenv("SETTINGS_ENCRYPTION_PREVIOUS_KEYS")),
+			APIKeyPrefix:              getEnvOrDefault("SETTINGS_API_KEY_PREFIX", "ppk_live"),
+			ProfileCDNBase:            getEnvOrDefault("SETTINGS_PROFILE_CDN_BASE", "https://cdn.carbonscribe.local"),
 		},
 		Auth: AuthConfig{
 			JWTSecret:                getEnvOrDefault("JWT_SECRET", DefaultJWTSecret),
@@ -476,6 +486,30 @@ func findInsecureDatabaseMarker(databaseURL string) string {
 		}
 	}
 	return ""
+}
+
+// parseVersionedKeys parses "version:hexkey,version:hexkey" into a map, for
+// previous encryption key versions still needed to decrypt or rotate rows
+// written before the last key rotation (#795). Malformed entries are
+// skipped rather than failing startup — a typo in an optional, rarely-used
+// rotation variable shouldn't block the whole service from booting.
+func parseVersionedKeys(raw string) map[int]string {
+	result := map[int]string{}
+	if strings.TrimSpace(raw) == "" {
+		return result
+	}
+	for part := range strings.SplitSeq(raw, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		version, err := strconv.Atoi(strings.TrimSpace(kv[0]))
+		if err != nil {
+			continue
+		}
+		result[version] = strings.TrimSpace(kv[1])
+	}
+	return result
 }
 
 func getEnvOrDefault(key, defaultVal string) string {
