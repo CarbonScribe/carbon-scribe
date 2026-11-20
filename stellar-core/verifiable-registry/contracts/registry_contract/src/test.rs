@@ -1028,6 +1028,93 @@ fn test_owner_transferred_event_emitted() {
     assert_eq!(last.1.len(), 1, "OwnerTransferred should have 1 topic");
 }
 
+// #699
+#[test]
+fn test_project_registered_event_emitted() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    client.initialize(&admin);
+
+    let events_before = env.events().all().len();
+    client.register_project(&project_id, &owner);
+    let events_after = env.events().all().len();
+
+    assert_eq!(
+        events_after,
+        events_before + 1,
+        "register_project should emit exactly one event"
+    );
+
+    let events = env.events().all();
+    let last = events.get(events.len() - 1).unwrap();
+
+    assert_eq!(last.0, contract_id);
+    assert_eq!(last.1.len(), 1, "ProjectRegistered should have 1 topic");
+}
+
+// #699: a register_project call that fails (here, the project already
+// exists) must not emit a ProjectRegistered event — the function returns
+// its error before ever reaching storage::set_project_owner / the emit call.
+#[test]
+fn test_register_project_duplicate_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let other_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &owner);
+
+    let result = client.try_register_project(&project_id, &other_owner);
+    assert!(result.is_err());
+
+    assert!(
+        env.events().all().is_empty(),
+        "a failed register_project call must not emit an event"
+    );
+}
+
+// #699: the other documented failure mode — an invalid (contract) owner
+// address — must likewise emit no event.
+#[test]
+fn test_register_project_invalid_owner_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    // A separate contract address is not a valid project owner.
+    let invalid_owner = env.register(ProjectRegistry, ());
+
+    client.initialize(&admin);
+
+    let result = client.try_register_project(&project_id, &invalid_owner);
+    assert!(result.is_err());
+
+    assert!(
+        env.events().all().is_empty(),
+        "a failed register_project call must not emit an event"
+    );
+}
+
 // ========== Two-Step Ownership Transfer Tests ==========
 
 #[test]
