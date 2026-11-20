@@ -40,6 +40,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/security"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
@@ -506,6 +507,14 @@ func main() {
 
 	router := gin.Default()
 
+	// Enforce a maximum request body size on every route (#797), registered
+	// right after the router is created so no other middleware ever gets a
+	// chance to buffer an oversized body first. MaxMultipartMemory is set to
+	// match the upload limit below so multipart form parsing can't exceed it
+	// either.
+	router.Use(security.BodyLimit(cfg.MaxRequestBodyBytes))
+	router.MaxMultipartMemory = cfg.Storage.MaxUploadSizeMB << 20
+
 	// Create a root span for every HTTP request (issue #695). Registered
 	// before CORS/auth/everything else so its span wraps the full request,
 	// including time spent in later middleware.
@@ -554,7 +563,7 @@ func main() {
 		// Register integration connection/webhook routes (#797, #795) —
 		// previously constructed (webhookService/integrationHandler above)
 		// but never actually wired into the router.
-		integration.RegisterRoutes(router, integrationHandler)
+		integration.RegisterRoutes(router, integrationHandler, cfg.MaxWebhookBodyBytes)
 
 		// Register methodology validation endpoints
 		validation.RegisterValidationRoutes(v1, methodologyValidator)
@@ -573,7 +582,7 @@ func main() {
 
 		// Register document management routes (only if S3 is available)
 		if docsHandler != nil {
-			documents.RegisterRoutes(v1, docsHandler)
+			documents.RegisterRoutes(v1, docsHandler, cfg.Storage.MaxUploadSizeMB<<20)
 		}
 		// Register compliance routes under v1
 		complianceHandler.RegisterRoutes(v1)
