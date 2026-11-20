@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+ BadRequestException,
+ Injectable,
+ Logger,
+ NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
 import { CreateAuctionDto } from './dto/create-auction.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
@@ -6,18 +11,12 @@ import { DutchAuctionService } from './services/dutch-auction.service';
 import { BidProcessorService } from './services/bid-processor.service';
 import { SettlementService } from './services/settlement.service';
 
-/**
- * Server-side anti-fat-finger guard thresholds.
- * A bid whose price exceeds the current auction price by more than this
- * ratio, or whose total cost exceeds the max total, must be explicitly
- * acknowledged by the client (`acknowledgeHighBid: true`).
- */
-export const HIGH_BID_PREMIUM_RATIO = 0.25;
-export const HIGH_BID_TOTAL_THRESHOLD = 1_000_000;
-
 @Injectable()
 export class AuctionService {
   private readonly logger = new Logger(AuctionService.name);
+
+  /** Upper sanity bound: bids above this multiple of the current price are rejected. */
+  static readonly MAX_BID_MULTIPLIER = 10;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -79,62 +78,48 @@ export class AuctionService {
   }
 
   /**
-   * Place a bid on an auction
-   * Rate limiting is applied at the controller level via @RateLimit decorator
-   *
-   * Anti-fat-finger guard: bids that are far above the current auction price
-   * or have a very large total cost are rejected unless the client explicitly
-   * acknowledges them via `acknowledgeHighBid`.
-   */
-  async placeBid(
-    auctionId: string,
-    userId: string,
-    companyId: string,
-    dto: PlaceBidDto,
-  ) {
-    const auction = await this.prisma.auction.findUnique({
-      where: { id: auctionId },
-    });
+    * Place a bid on an auction
+ * Rate limiting is applied at the controller level via @RateLimit decorator
+ * Bids are binding: the caller must have completed the client-side review
+ * step (price, quantity, total cost, and current auction price) before this
+ * endpoint is invoked. The server re-validates the bid against the current
+ * auction price and rejects bids that are non-positive or exceed the
+ * configured sanity bounds.
+ */
+ async placeBid(
+ auctionId: string,
+ userId: string,
+ companyId: string,
+ dto: PlaceBidDto,
+ ) {
+ const auction = await this.prisma.auction.findUnique({
+ where: { id: auctionId },
+ });
 
-    if (!auction) {
-      throw new NotFoundException(`Auction ${auctionId} not found`);
-    }
+ if (!auction) {
+ throw new NotFoundException(`Auction ${auctionId} not found`);
+ }
 
-    const currentPrice = Number(
-      this.dutchAuctionService.calculateCurrentPrice(auction),
-    );
-    const bidPrice = Number((dto as any).bidPrice);
-    const quantity = Number((dto as any).quantity);
-    const totalCost = bidPrice * quantity;
+ const currentPrice =
+ this.dutchAuctionService.calculateCurrentPrice(auction);
 
-    const premiumRatio =
-      currentPrice > 0 ? (bidPrice - currentPrice) / currentPrice : 0;
-    const isHighPremium = premiumRatio > HIGH_BID_PREMIUM_RATIO;
-    const isHighTotal = totalCost > HIGH_BID_TOTAL_THRESHOLD;
+ if (dto.bidPrice <= 0 || dto.quantity <= 0) {
+ throw new BadRequestException('Bid price and quantity must be positive');
+ }
 
-    if ((isHighPremium || isHighTotal) && !(dto as any).acknowledgeHighBid) {
-      this.logger.warn(
-        `Bid on auction ${auctionId} by user ${userId} rejected: requires acknowledgement ` +
-          `(premium=${(premiumRatio * 100).toFixed(2)}%, total=${totalCost})`,
-      );
-      throw new BadRequestException({
-        message:
-          'Bid requires explicit acknowledgement: price is significantly above the current auction price or total cost exceeds the allowed threshold',
-        code: 'HIGH_BID_REQUIRES_ACKNOWLEDGEMENT',
-        currentPrice,
-        bidPrice,
-        totalCost,
-        premiumRatio,
-      });
-    }
+ if (dto.bidPrice > currentPrice * AuctionService.MAX_BID_MULTIPLIER) {
+ throw new BadRequestException(
+ `Bid price exceeds the sanity bound of ${AuctionService.MAX_BID_MULTIPLIER}x the current auction price`,
+ );
+ }
 
-    return this.bidProcessorService.processBid(
-      auctionId,
-      userId,
-      companyId,
-      dto,
-    );
-  }
+ return this.bidProcessorService.processBid(
+ auctionId,
+ userId,
+ companyId,
+ dto,
+ );
+ }
 
   async getAuctionBids(auctionId: string) {
     return this.prisma.bid.findMany({

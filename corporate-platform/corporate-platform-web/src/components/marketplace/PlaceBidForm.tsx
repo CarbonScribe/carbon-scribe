@@ -4,9 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { PlaceBidPayload } from '@/types/auction';
 
-/** Bids more than this fraction above the current price require extra acknowledgement. */
-export const HIGH_BID_PREMIUM_THRESHOLD = 0.25;
-/** Totals above this amount (USD) require extra acknowledgement. */
+export const HIGH_BID_THRESHOLD_PERCENT = 25;
 export const HIGH_TOTAL_COST_THRESHOLD = 100000;
 
 interface PlaceBidFormProps {
@@ -20,7 +18,7 @@ interface PlaceBidFormProps {
   bidSuccess: string | null;
   onPlaceBid: (payload: PlaceBidPayload) => Promise<void>;
   onClearFeedback: () => void;
-  highPremiumThreshold?: number;
+  highBidThresholdPercent?: number;
   highTotalCostThreshold?: number;
 }
 
@@ -31,7 +29,9 @@ const currencyFormatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2,
 });
 
-const numberFormatter = new Intl.NumberFormat(undefined);
+const numberFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 0,
+});
 
 function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
@@ -39,6 +39,175 @@ function formatCurrency(value: number): string {
 
 function formatNumber(value: number): string {
   return numberFormatter.format(value);
+}
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [href], select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+}
+
+interface BidReviewDialogProps {
+  bidPrice: number;
+  quantity: number;
+  totalCost: number;
+  currentPrice: number;
+  requiresAcknowledgement: boolean;
+  premiumPercent: number;
+  placingBid: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function BidReviewDialog({
+  bidPrice,
+  quantity,
+  totalCost,
+  currentPrice,
+  requiresAcknowledgement,
+  premiumPercent,
+  placingBid,
+  onConfirm,
+  onCancel,
+}: BidReviewDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const confirmedRef = useRef(false);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const container = dialogRef.current;
+    if (container) {
+      const focusable = getFocusable(container);
+      focusable[0]?.focus();
+    }
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (!placingBid) onCancel();
+      return;
+    }
+    if (e.key === 'Tab' && dialogRef.current) {
+      const focusable = getFocusable(dialogRef.current);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
+
+  const confirmDisabled =
+    placingBid || (requiresAcknowledgement && !acknowledged);
+
+  const handleConfirm = () => {
+    if (confirmDisabled || confirmedRef.current) return;
+    confirmedRef.current = true;
+    onConfirm();
+  };
+
+  useEffect(() => {
+    if (!placingBid) confirmedRef.current = false;
+  }, [placingBid]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bid-review-title"
+        onKeyDown={handleKeyDown}
+        className="corporate-card w-full max-w-md p-5 space-y-4"
+      >
+        <h4 id="bid-review-title" className="font-bold text-gray-900 dark:text-white text-base">
+          Review your bid
+        </h4>
+
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-gray-600 dark:text-gray-400">Price per tCO₂</dt>
+            <dd className="font-medium text-gray-900 dark:text-white">{formatCurrency(bidPrice)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-gray-600 dark:text-gray-400">Quantity</dt>
+            <dd className="font-medium text-gray-900 dark:text-white">{formatNumber(quantity)} tCO₂</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-gray-600 dark:text-gray-400">Total cost</dt>
+            <dd className="font-bold text-corporate-blue">{formatCurrency(totalCost)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-gray-600 dark:text-gray-400">Current auction price</dt>
+            <dd className="font-medium text-gray-900 dark:text-white">{formatCurrency(currentPrice)}</dd>
+          </div>
+        </dl>
+
+        {requiresAcknowledgement && (
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 space-y-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={15} className="mt-0.5 shrink-0" />
+              <p>
+                This bid is {premiumPercent.toFixed(1)}% above the current price or its total
+                cost exceeds {formatCurrency(HIGH_TOTAL_COST_THRESHOLD)}. Please confirm it is intended.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span>I understand this bid is above the usual range and is binding.</span>
+            </label>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Bids are binding once placed.
+        </p>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={placingBid}
+            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={confirmDisabled}
+            className="flex-1 corporate-btn-primary py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {placingBid ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                Placing Bid…
+              </>
+            ) : (
+              'Confirm Bid'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PlaceBidForm({
@@ -51,19 +220,13 @@ export default function PlaceBidForm({
   bidSuccess,
   onPlaceBid,
   onClearFeedback,
-  highPremiumThreshold = HIGH_BID_PREMIUM_THRESHOLD,
+  highBidThresholdPercent = HIGH_BID_THRESHOLD_PERCENT,
   highTotalCostThreshold = HIGH_TOTAL_COST_THRESHOLD,
 }: PlaceBidFormProps) {
   const [bidPrice, setBidPrice] = useState<string>(currentPrice.toFixed(2));
   const [quantity, setQuantity] = useState<string>('1');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [acknowledged, setAcknowledged] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const triggerRef = useRef<HTMLElement | null>(null);
   const submittingRef = useRef(false);
 
   // Keep bid price in sync with live current price
@@ -78,13 +241,18 @@ export default function PlaceBidForm({
       ? numericBidPrice * numericQuantity
       : 0;
 
-  const premiumRatio =
+  const premiumPercent =
     currentPrice > 0 && !isNaN(numericBidPrice)
-      ? (numericBidPrice - currentPrice) / currentPrice
+      ? ((numericBidPrice - currentPrice) / currentPrice) * 100
       : 0;
-  const isHighPremium = premiumRatio > highPremiumThreshold;
-  const isHighTotal = totalCost > highTotalCostThreshold;
-  const requiresAcknowledgement = isHighPremium || isHighTotal;
+
+  const requiresAcknowledgement =
+    premiumPercent > highBidThresholdPercent || totalCost > highTotalCostThreshold;
+
+  // Unlock submission state once the pending request finishes.
+  useEffect(() => {
+    if (!placingBid) submittingRef.current = false;
+  }, [placingBid]);
 
   const validate = (): boolean => {
     if (isNaN(numericBidPrice) || numericBidPrice <= 0) {
@@ -111,72 +279,27 @@ export default function PlaceBidForm({
     return true;
   };
 
-  const closeReview = useCallback(() => {
-    setReviewOpen(false);
-    setAcknowledged(false);
-    // Return focus to the element that opened the dialog
-    triggerRef.current?.focus();
-  }, []);
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onClearFeedback();
+    if (placingBid || submittingRef.current) return;
     if (!validate()) return;
-    triggerRef.current = document.activeElement as HTMLElement | null;
-    setAcknowledged(false);
     setReviewOpen(true);
   };
 
+  const handleCancel = useCallback(() => {
+    setReviewOpen(false);
+  }, []);
+
   const handleConfirm = async () => {
-    if (submittingRef.current || placingBid) return;
-    if (requiresAcknowledgement && !acknowledged) return;
+    if (placingBid || submittingRef.current) return;
     submittingRef.current = true;
-    setSubmitting(true);
     try {
       await onPlaceBid({ bidPrice: numericBidPrice, quantity: numericQuantity });
     } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-      closeReview();
+      setReviewOpen(false);
     }
   };
-
-  const busy = placingBid || submitting;
-
-  // Focus management + keyboard handling for the review dialog
-  useEffect(() => {
-    if (!reviewOpen) return;
-    cancelButtonRef.current?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        if (!busy) closeReview();
-        return;
-      }
-      if (event.key === 'Tab' && dialogRef.current) {
-        const focusable = Array.from(
-          dialogRef.current.querySelectorAll<HTMLElement>(
-            'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-          ),
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        const active = document.activeElement;
-        if (event.shiftKey && active === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && active === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [reviewOpen, busy, closeReview]);
 
   if (!isActive) {
     return (
@@ -195,14 +318,10 @@ export default function PlaceBidForm({
 
         {/* Bid Price */}
         <div>
-          <label
-            htmlFor="bid-price"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-          >
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Bid Price ($/tCO₂)
           </label>
           <input
-            id="bid-price"
             type="number"
             min={floorPrice}
             step="0.01"
@@ -213,7 +332,6 @@ export default function PlaceBidForm({
             }}
             className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
             required
-            disabled={busy}
           />
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Current price: {formatCurrency(currentPrice)} · Floor:{' '}
@@ -223,14 +341,10 @@ export default function PlaceBidForm({
 
         {/* Quantity */}
         <div>
-          <label
-            htmlFor="bid-quantity"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-          >
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             Quantity (tCO₂)
           </label>
           <input
-            id="bid-quantity"
             type="number"
             min={1}
             max={maxQuantity}
@@ -241,7 +355,6 @@ export default function PlaceBidForm({
             }}
             className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-corporate-blue"
             required
-            disabled={busy}
           />
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
             Max: {formatNumber(maxQuantity)} tCO₂
@@ -286,121 +399,32 @@ export default function PlaceBidForm({
 
         <button
           type="submit"
-          disabled={busy}
+          disabled={placingBid}
           className="w-full corporate-btn-primary py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Review Bid
+          {placingBid ? (
+            <>
+              <Loader2 size={15} className="animate-spin" />
+              Placing Bid…
+            </>
+          ) : (
+            'Review Bid'
+          )}
         </button>
       </form>
 
       {reviewOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="bid-review-title"
-            className="corporate-card w-full max-w-md p-6 space-y-4"
-          >
-            <h3
-              id="bid-review-title"
-              className="font-bold text-gray-900 dark:text-white text-base"
-            >
-              Review your bid
-            </h3>
-
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-gray-600 dark:text-gray-400">Price per tonne</dt>
-                <dd className="font-medium text-gray-900 dark:text-white">
-                  {formatCurrency(numericBidPrice)}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-600 dark:text-gray-400">Quantity</dt>
-                <dd className="font-medium text-gray-900 dark:text-white">
-                  {formatNumber(numericQuantity)} tCO₂
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-600 dark:text-gray-400">Current auction price</dt>
-                <dd className="font-medium text-gray-900 dark:text-white">
-                  {formatCurrency(currentPrice)}
-                </dd>
-              </div>
-              <div className="flex justify-between border-t border-gray-200 dark:border-gray-700 pt-2">
-                <dt className="font-semibold text-gray-700 dark:text-gray-300">
-                  Total cost
-                </dt>
-                <dd className="font-bold text-corporate-blue">
-                  {formatCurrency(totalCost)}
-                </dd>
-              </div>
-            </dl>
-
-            {requiresAcknowledgement && (
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 space-y-2">
-                <div className="flex items-start gap-2">
-                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                  <div>
-                    {isHighPremium && (
-                      <p>
-                        This bid is {(premiumRatio * 100).toFixed(1)}% above the
-                        current price (threshold{' '}
-                        {(highPremiumThreshold * 100).toFixed(0)}%).
-                      </p>
-                    )}
-                    {isHighTotal && (
-                      <p>
-                        The total cost exceeds{' '}
-                        {formatCurrency(highTotalCostThreshold)}.
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={acknowledged}
-                    onChange={(e) => setAcknowledged(e.target.checked)}
-                    disabled={busy}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    I understand this bid is binding and confirm the amount above.
-                  </span>
-                </label>
-              </div>
-            )}
-
-            <div className="flex gap-3 pt-2">
-              <button
-                ref={cancelButtonRef}
-                type="button"
-                onClick={closeReview}
-                disabled={busy}
-                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-semibold text-gray-700 dark:text-gray-300 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                disabled={busy || (requiresAcknowledgement && !acknowledged)}
-                className="flex-1 corporate-btn-primary py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 size={15} className="animate-spin" />
-                    Placing Bid…
-                  </>
-                ) : (
-                  'Confirm Bid'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+        <BidReviewDialog
+          bidPrice={numericBidPrice}
+          quantity={numericQuantity}
+          totalCost={totalCost}
+          currentPrice={currentPrice}
+          requiresAcknowledgement={requiresAcknowledgement}
+          premiumPercent={premiumPercent}
+          placingBid={placingBid}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
       )}
     </>
   );
