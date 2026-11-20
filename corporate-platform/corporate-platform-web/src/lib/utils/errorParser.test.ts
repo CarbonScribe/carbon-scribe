@@ -188,4 +188,19 @@ describe('errorParser', () => {
       expect(hasFieldErrors(errorWithoutFields)).toBe(false);
     });
   });
+
+  describe('rate limiting', () => {
+    it('maps 429 to RATE_LIMITED rather than SERVER_ERROR', () => {
+      expect(parseApiError({}, 429).code).toBe(ErrorCode.RATE_LIMITED);
+      expect(parseApiError({ message: 'Slow down' }, 429).code).toBe(
+        ErrorCode.RATE_LIMITED,
+      );
+    });
+
+    it('provides a dedicated user-facing message', () => {
+      expect(getErrorMessageForCode(ErrorCode.RATE_LIMITED)).toMatch(
+        /too many attempts/i,
+      );
+    });
+  });
 });

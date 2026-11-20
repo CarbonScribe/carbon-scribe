@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { auctionService } from '@/services/auction.service';
 import { Auction, Bid, PlaceBidPayload } from '@/types/auction';
+import { isRateLimitError } from '@/lib/utils/rateLimit';
 
 /** How often (ms) to poll for live auction status while an auction is active */
 const POLL_INTERVAL_MS = 15_000;
@@ -70,6 +71,8 @@ export interface UseAuctionDetailState {
   bidsLoading: boolean;
   error: string | null;
   bidError: string | null;
+  /** Rate-limit error object powering the bid form's retry countdown. */
+  bidRateLimitError: unknown | null;
   bidSuccess: string | null;
   placingBid: boolean;
   /** Estimated `serverTime - Date.now()` offset (ms) from the last successful poll */
@@ -99,6 +102,7 @@ export function useAuctionDetail(
   const [bidsLoading, setBidsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bidError, setBidError] = useState<string | null>(null);
+  const [bidRateLimitError, setBidRateLimitError] = useState<unknown | null>(null);
   const [bidSuccess, setBidSuccess] = useState<string | null>(null);
   const [placingBid, setPlacingBid] = useState(false);
   const [clockSkewMs, setClockSkewMs] = useState(0);
@@ -277,6 +281,7 @@ export function useAuctionDetail(
     async (payload: PlaceBidPayload) => {
       setPlacingBid(true);
       setBidError(null);
+      setBidRateLimitError(null);
       setBidSuccess(null);
       try {
         const response = await auctionService.placeBid(auctionId, payload);
@@ -285,11 +290,17 @@ export function useAuctionDetail(
           await Promise.all([fetchAuction(), fetchBids()]);
         } else {
           setBidError(response.parsedError?.message || response.error || 'Failed to place bid');
+          if (isRateLimitError(response.parsedError) || response.statusCode === 429) {
+            setBidRateLimitError(response.parsedError ?? response);
+          }
         }
       } catch (err) {
         setBidError(
           err instanceof Error ? err.message : 'Failed to place bid',
         );
+        if (isRateLimitError(err)) {
+          setBidRateLimitError(err);
+        }
       } finally {
         setPlacingBid(false);
       }
@@ -299,6 +310,7 @@ export function useAuctionDetail(
 
   const clearBidFeedback = useCallback(() => {
     setBidError(null);
+    setBidRateLimitError(null);
     setBidSuccess(null);
   }, []);
 
@@ -309,6 +321,7 @@ export function useAuctionDetail(
     bidsLoading,
     error,
     bidError,
+    bidRateLimitError,
     bidSuccess,
     placingBid,
     clockSkewMs,
