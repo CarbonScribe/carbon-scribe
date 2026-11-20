@@ -6,11 +6,27 @@ import { KafkaService } from './kafka.service';
 
 export type OutboxStatus = 'pending' | 'published' | 'failed';
 
+export interface OutboxCorrelation {
+  requestId?: string;
+  traceId?: string;
+}
+
 export interface OutboxCreateInput {
   topic: string;
   payload: unknown;
   key: string;
+  /**
+   * The originating request's correlation IDs (#736), captured at publish
+   * time since relayPending() may send this event long after the request
+   * that created it has ended. Stored inside the payload JSON itself (under
+   * a reserved key) rather than as new columns, and stripped back out
+   * before the event is actually sent — the wire value a consumer receives
+   * is unchanged; the IDs travel as Kafka message headers instead.
+   */
+  correlation?: OutboxCorrelation;
 }
+
+const CORRELATION_PAYLOAD_KEY = '__correlation';
 
 @Injectable()
 export class OutboxService {
@@ -41,9 +57,17 @@ export class OutboxService {
 
   async create(input: OutboxCreateInput, tx?: any): Promise<any> {
     const client = tx || this.prisma;
+    const payload =
+      input.correlation &&
+      (input.correlation.requestId || input.correlation.traceId)
+        ? {
+            ...(input.payload as object),
+            [CORRELATION_PAYLOAD_KEY]: input.correlation,
+          }
+        : input.payload;
     try {
       const row = await client.outboxEvent.create({
-        data: { topic: input.topic, payload: input.payload, key: input.key },
+        data: { topic: input.topic, payload, key: input.key },
       });
       this.metrics.created += 1;
       return row;
@@ -165,12 +189,13 @@ export class OutboxService {
   }
 
   private async sendWithRetry(row: any, signal?: AbortSignal): Promise<void> {
+    const { value, headers } = this.toKafkaMessageParts(row.payload);
     let lastError: unknown;
     for (let attempt = 1; attempt <= this.kafkaRetries; attempt += 1) {
       try {
         const send = this.kafkaService.getProducer().send({
           topic: row.topic,
-          messages: [{ key: row.key, value: JSON.stringify(row.payload) }],
+          messages: [{ key: row.key, value, headers }],
         });
         await this.withTimeout(send, this.sendTimeout, signal);
         return;
@@ -184,6 +209,36 @@ export class OutboxService {
       }
     }
     throw lastError;
+  }
+
+  /**
+   * Splits a stored outbox payload back into the exact JSON a consumer
+   * would have received before #736 (the business event, untouched) and
+   * the correlation IDs captured at publish time (#736), carried instead as
+   * Kafka message headers — a consumer's logs can be joined back to the
+   * originating request without the published event schema changing.
+   */
+  private toKafkaMessageParts(payload: any): {
+    value: string;
+    headers?: Record<string, string>;
+  } {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !(CORRELATION_PAYLOAD_KEY in payload)
+    ) {
+      return { value: JSON.stringify(payload) };
+    }
+
+    const { [CORRELATION_PAYLOAD_KEY]: correlation, ...event } = payload;
+    const headers: Record<string, string> = {};
+    if (correlation?.requestId) headers['x-request-id'] = correlation.requestId;
+    if (correlation?.traceId) headers['x-trace-id'] = correlation.traceId;
+
+    return {
+      value: JSON.stringify(event),
+      headers: Object.keys(headers).length ? headers : undefined,
+    };
   }
 
   private async withTimeout<T>(
