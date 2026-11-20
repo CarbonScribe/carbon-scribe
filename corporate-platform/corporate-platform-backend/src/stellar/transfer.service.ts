@@ -4,7 +4,10 @@ import {
   SigningProvider,
 } from './signing/signing-provider.interface';
 import { PrismaService } from '../shared/database/prisma.service';
-import { InitiateTransferDto } from './dto/transfer.dto';
+import {
+  InitiateTransferDto,
+  TransferHistoryQueryDto,
+} from './dto/transfer.dto';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { nativeToScVal } from '@stellar/stellar-sdk';
 
@@ -58,6 +61,60 @@ export class TransferService {
     return transfer;
   }
 
+  async getTransferHistory(companyId: string, query: TransferHistoryQueryDto) {
+    const page = Math.max(1, query.page || 1);
+    const limit = Math.min(Math.max(1, query.limit || 20), 100);
+    const where: any = { companyId };
+    if (query.status) where.status = query.status;
+
+    const conditions: any[] = [];
+    if (query.walletAddress?.trim()) {
+      const wallet = query.walletAddress.trim();
+      conditions.push({
+        OR: [
+          { fromAddress: { contains: wallet, mode: 'insensitive' } },
+          { toAddress: { contains: wallet, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (query.search?.trim()) {
+      const search = query.search.trim();
+      conditions.push({
+        OR: [
+          { purchaseId: { contains: search, mode: 'insensitive' } },
+          { transactionHash: { contains: search, mode: 'insensitive' } },
+          { fromAddress: { contains: search, mode: 'insensitive' } },
+          { toAddress: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (conditions.length) where.AND = conditions;
+
+    if (query.fromDate || query.toDate) {
+      where.initiatedAt = {};
+      if (query.fromDate) where.initiatedAt.gte = new Date(query.fromDate);
+      if (query.toDate) {
+        const endOfDay = query.toDate.length === 10
+          ? `${query.toDate}T23:59:59.999Z`
+          : query.toDate;
+        where.initiatedAt.lte = new Date(endOfDay);
+      }
+    }
+
+    const prisma = this.prisma as any;
+    const [data, total] = await Promise.all([
+      prisma.creditTransfer.findMany({
+        where,
+        orderBy: { initiatedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.creditTransfer.count({ where }),
+    ]);
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
   async initiateTransfer(dto: InitiateTransferDto) {
     // Determine the real address to transfer to/from
     // In a real app we'd fetch the company's wallet address from the DB
@@ -75,6 +132,8 @@ export class TransferService {
         companyId: dto.companyId,
         projectId: dto.projectId,
         amount: dto.amount,
+        fromAddress,
+        toAddress,
         // The transaction has been accepted but not yet broadcast — this is
         // materially different from "broadcast, awaiting confirmation", and the
         // UI renders the two distinctly.

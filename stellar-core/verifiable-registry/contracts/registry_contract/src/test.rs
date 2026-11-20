@@ -7,7 +7,7 @@ use soroban_sdk::{
 };
 
 use crate::types::{CompactionConfig, Error, PaginatedProjects};
-use crate::validation::{validate_address, validate_ipfs_cid};
+use crate::validation::{validate_address, validate_ipfs_cid, validate_project_id};
 use crate::storage;
 use crate::{ProjectRegistry, ProjectRegistryClient};
 
@@ -69,6 +69,35 @@ fn test_register_duplicate_project() {
     client.initialize(&admin);
     client.register_project(&project_id, &project_owner);
     client.register_project(&project_id, &project_owner); // Should panic
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #4)")]
+fn test_register_duplicate_project_case_insensitive() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "Project-1");
+    let normalized_project_id = SorobanString::from_str(&env, "project-1");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+    client.register_project(&normalized_project_id, &project_owner); // Should panic
+}
+
+#[test]
+fn test_validate_project_id_rejects_invalid_values() {
+    let env = Env::default();
+
+    let empty_id = SorobanString::from_str(&env, "");
+    let whitespace_id = SorobanString::from_str(&env, "   \t\n ");
+    let too_long_id = SorobanString::from_str(&env, &"a".repeat(129));
+    let invalid_char_id = SorobanString::from_str(&env, "proj#001");
+
+    assert_eq!(validate_project_id(&empty_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&whitespace_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&too_long_id), Err(Error::InvalidProjectId));
+    assert_eq!(validate_project_id(&invalid_char_id), Err(Error::InvalidProjectId));
 }
 
 #[test]
@@ -213,10 +242,13 @@ fn test_get_projects_by_anchorer() {
     client.anchor_document(&project_id1, &ipfs_cid, &doc_type);
     client.anchor_document(&project_id2, &ipfs_cid, &doc_type);
 
+    let normalized_project_id1 = SorobanString::from_str(&env, "proj-001");
+    let normalized_project_id2 = SorobanString::from_str(&env, "proj-002");
+
     let projects = client.get_projects_by_anchorer(&project_owner);
     assert_eq!(projects.len(), 2);
-    assert!(projects.contains(&project_id1));
-    assert!(projects.contains(&project_id2));
+    assert!(projects.contains(&normalized_project_id1));
+    assert!(projects.contains(&normalized_project_id2));
 }
 
 #[test]
@@ -294,6 +326,96 @@ fn test_valid_cid_min_length() {
     // Exactly 46 characters should pass
     let cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
     assert!(validate_ipfs_cid(&cid).is_ok());
+}
+
+// A second real, valid CIDv0 (distinct digest) to confirm the decode path
+// isn't coincidentally tied to one specific example.
+#[test]
+fn test_valid_cidv0_second_example() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG");
+    assert!(validate_ipfs_cid(&cid).is_ok());
+}
+
+// #639: a CIDv0 candidate with the correct "Qm" prefix, correct 46-character
+// length, and an entirely valid base58 charset throughout — exactly what the
+// old length+charset-only check accepted — but whose base58-decoded bytes do
+// not form a 0x12 0x20 (SHA2-256, 32-byte) multihash. Decoding this value
+// yields a second byte of 0x1e, not the required 0x20.
+#[test]
+fn test_invalid_cidv0_wrong_multihash_structure() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "Qm11111111111111111111111111111111111111111111");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+// #639: a CIDv1 base32 candidate with the correct 'b' prefix, a length
+// matching a real CID, and an entirely valid base32 charset — but its
+// decoded bytes are all zero, giving a version byte of 0x00 instead of the
+// required CIDv1 marker 0x01.
+#[test]
+fn test_invalid_cidv1_base32_wrong_structure() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(
+        &env,
+        "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+// #639: previously, any of these multibase prefixes was accepted the moment
+// the first byte matched — no charset check, no decoding. Each of these
+// candidates is a plausible length (46 chars, within the accepted range)
+// with a uniform, printable-ASCII body following the prefix. All must now
+// be rejected explicitly, since this contract implements decode-and-verify
+// logic only for CIDv0 ("Qm...") and CIDv1 base32 ("b...").
+#[test]
+fn test_unsupported_multibase_prefix_z_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "zaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_z_uppercase_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "Zaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_f_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_f_uppercase_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "Faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_u_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_u_uppercase_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "Uaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
+}
+
+#[test]
+fn test_unsupported_multibase_prefix_b_uppercase_rejected() {
+    let env = Env::default();
+    let cid = SorobanString::from_str(&env, "Baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    assert_eq!(validate_ipfs_cid(&cid), Err(Error::InvalidCidFormat));
 }
 
 // ========== Monotonic Timestamp Tests ==========
@@ -482,9 +604,10 @@ fn test_manual_compaction_removes_duplicates() {
 
     // Manually inject a duplicate entry into the anchorer projects index
     // to simulate a scenario where duplicates exist
+    let normalized_project_id = SorobanString::from_str(&env, "proj-001");
     let mut projects = Vec::new(&env);
-    projects.push_back(project_id.clone());
-    projects.push_back(project_id.clone()); // duplicate
+    projects.push_back(normalized_project_id.clone());
+    projects.push_back(normalized_project_id.clone()); // duplicate
     env.as_contract(&contract_id, || {
         env.storage().persistent().set(
             &storage::StorageKey::AncorerProjects(anchorer.clone()),
@@ -504,9 +627,10 @@ fn test_manual_compaction_removes_duplicates() {
     assert_eq!(size_after, 1);
 
     // Verify the project is still listed
+    let normalized_project_id = SorobanString::from_str(&env, "proj-001");
     let projects_after = client.get_projects_by_anchorer(&anchorer);
     assert_eq!(projects_after.len(), 1);
-    assert_eq!(projects_after.get(0).unwrap(), project_id);
+    assert_eq!(projects_after.get(0).unwrap(), normalized_project_id);
 }
 
 #[test]
@@ -633,34 +757,45 @@ fn test_get_projects_by_anchorer_paginated() {
         client.anchor_document(&pid, &ipfs_cid, &doc_type);
     }
 
+    let normalized_project_ids = Vec::from_array(
+        &env,
+        [
+            SorobanString::from_str(&env, "proj-001"),
+            SorobanString::from_str(&env, "proj-002"),
+            SorobanString::from_str(&env, "proj-003"),
+            SorobanString::from_str(&env, "proj-004"),
+            SorobanString::from_str(&env, "proj-005"),
+        ],
+    );
+
     // Query with page_size = 2, starting at cursor 0
     let page1: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(0), &Some(2));
-    
+
     assert_eq!(page1.projects.len(), 2);
     assert_eq!(page1.total, 5);
     assert_eq!(page1.next_cursor, Some(2));
-    assert_eq!(page1.projects.get(0).unwrap(), project_ids.get(0).unwrap());
-    assert_eq!(page1.projects.get(1).unwrap(), project_ids.get(1).unwrap());
+    assert_eq!(page1.projects.get(0).unwrap(), normalized_project_ids.get(0).unwrap());
+    assert_eq!(page1.projects.get(1).unwrap(), normalized_project_ids.get(1).unwrap());
 
     // Second page
     let page2: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(2), &Some(2));
-    
+
     assert_eq!(page2.projects.len(), 2);
     assert_eq!(page2.total, 5);
     assert_eq!(page2.next_cursor, Some(4));
-    assert_eq!(page2.projects.get(0).unwrap(), project_ids.get(2).unwrap());
-    assert_eq!(page2.projects.get(1).unwrap(), project_ids.get(3).unwrap());
+    assert_eq!(page2.projects.get(0).unwrap(), normalized_project_ids.get(2).unwrap());
+    assert_eq!(page2.projects.get(1).unwrap(), normalized_project_ids.get(3).unwrap());
 
     // Third page (last partial page)
     let page3: PaginatedProjects = client
         .get_anchorer_projects_page(&anchorer, &Some(4), &Some(2));
-    
+
     assert_eq!(page3.projects.len(), 1);
     assert_eq!(page3.total, 5);
     assert_eq!(page3.next_cursor, None);
-    assert_eq!(page3.projects.get(0).unwrap(), project_ids.get(4).unwrap());
+    assert_eq!(page3.projects.get(0).unwrap(), normalized_project_ids.get(4).unwrap());
 }
 
 #[test]
@@ -891,6 +1026,93 @@ fn test_owner_transferred_event_emitted() {
 
     assert_eq!(last.0, contract_id);
     assert_eq!(last.1.len(), 1, "OwnerTransferred should have 1 topic");
+}
+
+// #699
+#[test]
+fn test_project_registered_event_emitted() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    client.initialize(&admin);
+
+    let events_before = env.events().all().len();
+    client.register_project(&project_id, &owner);
+    let events_after = env.events().all().len();
+
+    assert_eq!(
+        events_after,
+        events_before + 1,
+        "register_project should emit exactly one event"
+    );
+
+    let events = env.events().all();
+    let last = events.get(events.len() - 1).unwrap();
+
+    assert_eq!(last.0, contract_id);
+    assert_eq!(last.1.len(), 1, "ProjectRegistered should have 1 topic");
+}
+
+// #699: a register_project call that fails (here, the project already
+// exists) must not emit a ProjectRegistered event — the function returns
+// its error before ever reaching storage::set_project_owner / the emit call.
+#[test]
+fn test_register_project_duplicate_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let owner = Address::generate(&env);
+    let other_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &owner);
+
+    let result = client.try_register_project(&project_id, &other_owner);
+    assert!(result.is_err());
+
+    assert!(
+        env.events().all().is_empty(),
+        "a failed register_project call must not emit an event"
+    );
+}
+
+// #699: the other documented failure mode — an invalid (contract) owner
+// address — must likewise emit no event.
+#[test]
+fn test_register_project_invalid_owner_emits_no_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(ProjectRegistry, ());
+    let client = ProjectRegistryClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-001");
+
+    // A separate contract address is not a valid project owner.
+    let invalid_owner = env.register(ProjectRegistry, ());
+
+    client.initialize(&admin);
+
+    let result = client.try_register_project(&project_id, &invalid_owner);
+    assert!(result.is_err());
+
+    assert!(
+        env.events().all().is_empty(),
+        "a failed register_project call must not emit an event"
+    );
 }
 
 // ========== Two-Step Ownership Transfer Tests ==========

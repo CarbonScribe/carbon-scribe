@@ -1,4 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { RedisService } from '../../cache/redis.service';
 import { IdempotencyKeyValidator } from './idempotency-key.validator';
@@ -20,6 +24,12 @@ export class IdempotencyKeyService {
   private readonly logger = new Logger(IdempotencyKeyService.name);
   private readonly LOCK_TTL = 30000; // 30 seconds lock timeout
   private readonly RETENTION_DAYS = 90;
+  // Bounds the lock-wait recursion in processIdempotencyKey (#650):
+  // previously an unacquired lock recursed into processIdempotencyKey
+  // again with no attempt counter at all, so a lock that never clears —
+  // whether held by a crashed process or because Redis itself is
+  // unreachable — recursed for the entire life of the request.
+  private readonly MAX_LOCK_WAIT_ATTEMPTS = 3;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -36,6 +46,7 @@ export class IdempotencyKeyService {
     userId: string,
     processor: () => Promise<T>,
     metadata?: Record<string, any>,
+    lockWaitAttempt = 0,
   ): Promise<IdempotencyResult<T>> {
     // Validate key format
     const validation = IdempotencyKeyValidator.validate(idempotencyKey);
@@ -100,18 +111,43 @@ export class IdempotencyKeyService {
       }
     }
 
+    // Fail closed, not open (#650): this lock exists specifically to
+    // prevent a duplicate on-chain retirement submission. Proceeding
+    // without it while Redis is down would trade "the request hangs" for
+    // "the request silently double-processes a financial transaction" —
+    // strictly worse for this particular guard, so an unhealthy Redis
+    // rejects the request immediately with a clear 503 instead of ever
+    // attempting a lock. A plain cached-result replay (above, for an
+    // already-CONFIRMED call) never reaches this check and still works
+    // fine with Redis down, since it never needed the lock at all.
+    if (!this.redisService.isHealthy()) {
+      throw new ServiceUnavailableException(
+        'Idempotency guard is temporarily unavailable (Redis unreachable). ' +
+          'Retirement submission rejected to avoid processing without duplicate protection.',
+      );
+    }
+
     // Acquire distributed lock to prevent concurrent processing
     const lockAcquired = await this.acquireLock(lockKey);
     if (!lockAcquired) {
+      if (lockWaitAttempt >= this.MAX_LOCK_WAIT_ATTEMPTS) {
+        throw new ServiceUnavailableException(
+          `Could not acquire idempotency lock for key ${normalizedKey} after ` +
+            `${this.MAX_LOCK_WAIT_ATTEMPTS} attempts. The lock is held by another ` +
+            'in-flight request, or Redis degraded mid-request.',
+        );
+      }
       // Wait for the lock to be released and check again
       await this.waitForLock(lockKey);
-      // Recursively check again after lock is released
+      // Recursively check again after lock is released — bounded by
+      // MAX_LOCK_WAIT_ATTEMPTS above, not unbounded.
       return this.processIdempotencyKey(
         normalizedKey,
         companyId,
         userId,
         processor,
         metadata,
+        lockWaitAttempt + 1,
       );
     }
 
@@ -184,9 +220,24 @@ export class IdempotencyKeyService {
   }
 
   /**
-   * Acquires a distributed lock using Redis
+   * Acquires a distributed lock using Redis.
+   *
+   * Checks isHealthy() before issuing the command (#650) and throws
+   * rather than returning false when Redis is unavailable — either up
+   * front or because the SET command itself failed. This is deliberate:
+   * `false` means "lock is legitimately held by someone else, caller
+   * should wait and retry"; an unavailable Redis is a completely
+   * different situation (the lock's safety guarantee can't be trusted at
+   * all) and must never be conflated with a busy lock, which is exactly
+   * what caused the unbounded-recursion bug this issue reports — every
+   * attempt looked like "busy, try again" instead of "broken, stop".
    */
   private async acquireLock(lockKey: string): Promise<boolean> {
+    if (!this.redisService.isHealthy()) {
+      throw new ServiceUnavailableException(
+        `Cannot acquire idempotency lock ${lockKey}: Redis is unavailable.`,
+      );
+    }
     const client = this.redisService.getClient();
     try {
       const result = await client.set(
@@ -200,14 +251,30 @@ export class IdempotencyKeyService {
     } catch (error) {
       const err = error as Error;
       this.logger.error(`Failed to acquire lock ${lockKey}: ${err.message}`);
-      return false;
+      throw new ServiceUnavailableException(
+        `Cannot acquire idempotency lock ${lockKey}: Redis command failed (${err.message}).`,
+      );
     }
   }
 
   /**
-   * Releases a distributed lock
+   * Releases a distributed lock.
+   *
+   * Unlike acquireLock, an unavailable Redis here only logs a warning
+   * rather than throwing (#650): we already hold a result to return (or
+   * an error to propagate) from processIdempotencyKey's try/finally by
+   * the time this runs, and the lock's own LOCK_TTL guarantees it expires
+   * on its own even if this DEL never reaches Redis. Throwing from a
+   * cleanup step would mask whatever the actual operation outcome was.
    */
   private async releaseLock(lockKey: string): Promise<void> {
+    if (!this.redisService.isHealthy()) {
+      this.logger.warn(
+        `Skipping release of lock ${lockKey}: Redis is unavailable. ` +
+          `It will expire on its own via its ${this.LOCK_TTL}ms TTL.`,
+      );
+      return;
+    }
     const client = this.redisService.getClient();
     try {
       await client.del(lockKey);
@@ -218,7 +285,11 @@ export class IdempotencyKeyService {
   }
 
   /**
-   * Waits for a lock to be released
+   * Waits for a lock to be released. Returns early — rather than spinning
+   * for the full maxWait — the moment Redis looks unhealthy or the EXISTS
+   * command itself fails (#650), since neither situation will resolve by
+   * continuing to poll; the caller's bounded lockWaitAttempt counter (see
+   * processIdempotencyKey) takes it from there.
    */
   private async waitForLock(lockKey: string): Promise<void> {
     const maxWait = 5000; // 5 seconds max wait
@@ -226,9 +297,23 @@ export class IdempotencyKeyService {
     let waited = 0;
 
     while (waited < maxWait) {
+      if (!this.redisService.isHealthy()) {
+        this.logger.warn(
+          `Redis became unavailable while waiting for lock ${lockKey}`,
+        );
+        return;
+      }
       const client = this.redisService.getClient();
-      const exists = await client.exists(lockKey);
-      if (!exists) {
+      try {
+        const exists = await client.exists(lockKey);
+        if (!exists) {
+          return;
+        }
+      } catch (error) {
+        const err = error as Error;
+        this.logger.warn(
+          `Error checking lock ${lockKey} while waiting: ${err.message}`,
+        );
         return;
       }
       await this.sleep(interval);

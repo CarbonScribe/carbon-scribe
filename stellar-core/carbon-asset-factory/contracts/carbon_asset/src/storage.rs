@@ -28,4 +28,9 @@ pub enum DataKey {
     MaxSupply,
     TotalMinted,
     MintingFrozen,
+    // Buffer pool contract address for automatic reserve deposits on mint
+    // (issue #684). Optional, like RegulatoryCheck: unset means this
+    // deployment hasn't opted into the integration, and mint() behaves
+    // exactly as it did before #684 — no call, no event.
+    BufferPool,
 }

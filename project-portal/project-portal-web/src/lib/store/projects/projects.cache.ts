@@ -1,4 +1,4 @@
-import type { Project } from './projects.types';
+import type { Project, ProjectFilters } from './projects.types';
 
 // Configurable TTL for the stale-while-revalidate cache.
 export const PROJECTS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -11,12 +11,19 @@ export interface ProjectsCacheEntry {
 export type ProjectsCache = Record<string, ProjectsCacheEntry>;
 
 /**
- * Cache is keyed by limit/offset only. Status/type/search filters are
- * applied client-side (see projects.selectors.ts) and never hit the API,
- * so they don't need to participate in the cache key.
+ * Filter values are part of the key so pages from different server queries
+ * can never be served as though they belonged to one another.
  */
-export function makeProjectsCacheKey(limit: number, offset: number): string {
-  return `${limit}:${offset}`;
+export function makeProjectsCacheKey(
+  limit: number,
+  offset: number,
+  filters: ProjectFilters = { search: '', type: 'All', status: 'All' }
+): string {
+  const baseKey = `${limit}:${offset}`;
+  if (!filters.search && filters.type === 'All' && filters.status === 'All') {
+    return baseKey;
+  }
+  return `${baseKey}:${JSON.stringify([filters.search, filters.type, filters.status])}`;
 }
 
 export function isCacheEntryStale(

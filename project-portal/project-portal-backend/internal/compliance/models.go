@@ -109,11 +109,17 @@ type PrivacyRequest struct {
 	VerifiedAt          *time.Time     `json:"verified_at,omitempty"`
 	ExportFileURL       string         `json:"export_file_url,omitempty"`
 	ExportFileHash      string         `json:"export_file_hash,omitempty"`
-	DeletionSummary     map[string]any `gorm:"serializer:json" json:"deletion_summary,omitempty"`
-	ErrorMessage        string         `json:"error_message,omitempty"`
-	LegalBasis          string         `json:"legal_basis,omitempty"`
-	CreatedAt           time.Time      `json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
+	// ExportPurgedAt is set once the cleanup worker (issue #691) has deleted
+	// this request's export file from storage. ExportFileURL is left
+	// untouched so the request record still shows what was generated, even
+	// though the underlying file is gone; a non-nil ExportPurgedAt is what
+	// callers check instead.
+	ExportPurgedAt  *time.Time     `json:"export_purged_at,omitempty"`
+	DeletionSummary map[string]any `gorm:"serializer:json" json:"deletion_summary,omitempty"`
+	ErrorMessage    string         `json:"error_message,omitempty"`
+	LegalBasis      string         `json:"legal_basis,omitempty"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // PrivacyPreference stores a user's privacy settings with version tracking.

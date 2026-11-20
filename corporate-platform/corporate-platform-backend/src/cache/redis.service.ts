@@ -10,6 +10,32 @@ import { ConfigService } from '../config/config.service';
 
 export type RedisClient = Redis | Cluster;
 
+/**
+ * NOTE on the two RedisService implementations (#650):
+ *
+ * This file and src/shared/cache/redis.service.ts both define an
+ * `@Injectable() class RedisService` — two separate NestJS providers (one
+ * per module they're registered in), each opening its own ioredis
+ * connection to the same Redis instance. They are NOT the same class and
+ * NestJS's DI never confuses them, but a bug fix (like this one) or a
+ * config change applied to one does not automatically apply to the other.
+ *
+ * This one (cluster/sentinel-aware, synchronous cached `isHealthy()`) is
+ * used by: team-collaboration's gateway/services, config's
+ * module/service-validator, and retirement/idempotency's
+ * IdempotencyKeyService.
+ *
+ * src/shared/cache/redis.service.ts (per-command timeouts, exponential
+ * backoff retry strategy, async ping-based `isHealthy()`) is used by:
+ * health.service.ts and rate-limit's module/service.
+ *
+ * Consolidating them into one shared provider is tracked as a follow-up,
+ * not done as part of #650 — it would mean reconciling two different
+ * `isHealthy()` contracts (sync/cached here vs. async/live-ping there)
+ * across every consumer above, which is a larger change than the
+ * idempotency-lock fail-fast behavior #650 actually needs. Until then: a
+ * future Redis-availability fix needs to be checked against both files.
+ */
 @Injectable()
 export class RedisService
   implements OnModuleInit, OnModuleDestroy, OnApplicationBootstrap

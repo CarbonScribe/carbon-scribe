@@ -91,7 +91,7 @@
                   "symbol": "ProjectOwner"
                 },
                 {
-                  "string": "PROJ-001"
+                  "string": "proj-001"
                 }
               ]
             },
@@ -111,7 +111,7 @@
                       "symbol": "ProjectOwner"
                     },
                     {
-                      "string": "PROJ-001"
+                      "string": "proj-001"
                     }
                   ]
                 },

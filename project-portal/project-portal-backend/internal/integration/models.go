@@ -45,7 +45,7 @@ type WebhookDelivery struct {
 	Payload        map[string]any `gorm:"serializer:json" json:"payload"`
 	ResponseStatus int            `json:"response_status"`
 	ResponseBody   string         `json:"response_body"`
-	Status         string         `gorm:"index;not null" json:"status"` // success, failed, pending
+	Status         string         `gorm:"index;not null" json:"status"` // pending, success, failed, dead_letter
 	Attempt        int            `json:"attempt"`
 	NextRetryAt    *time.Time     `gorm:"index" json:"next_retry_at,omitempty"`
 	CreatedAt      time.Time      `json:"created_at"`
@@ -58,6 +58,7 @@ type EventSubscription struct {
 	EventType    string         `gorm:"index;not null" json:"event_type"`
 	Filters      map[string]any `gorm:"serializer:json" json:"filters,omitempty"`
 	CallbackURL  string         `gorm:"not null" json:"callback_url"`
+	Secret       string         `gorm:"not null;default:''" json:"secret,omitempty"`
 	IsActive     bool           `gorm:"default:true" json:"is_active"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`

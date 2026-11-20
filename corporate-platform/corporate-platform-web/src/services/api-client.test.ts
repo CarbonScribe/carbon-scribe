@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { apiClient } from './api-client';
 import * as errorReporter from '@/lib/telemetry/errorReporter';
+import { ErrorCode } from '@/lib/utils/errorParser';
 
 describe('ApiClient secure response handling', () => {
   const originalFetch = global.fetch;
@@ -105,5 +106,25 @@ describe('ApiClient secure response handling', () => {
     const response = await apiClient.get<{ id: number; name: string }>('/credits/1');
     expect(response.success).toBe(true);
     expect(response.data).toEqual(jsonPayload);
+  });
+
+  it('classifies a throttled bid POST and never replays it', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: 'Slow down' }), {
+        status: 429,
+        headers: {
+          'content-type': 'application/json',
+          'Retry-After': '5',
+        },
+      }),
+    );
+
+    const response = await apiClient.post('/auctions/1/bids', { bidPrice: 10 });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(response.success).toBe(false);
+    expect(response.statusCode).toBe(429);
+    expect(response.parsedError?.code).toBe(ErrorCode.RATE_LIMITED);
+    expect(response.retryAfterMs).toBe(5000);
   });
 });

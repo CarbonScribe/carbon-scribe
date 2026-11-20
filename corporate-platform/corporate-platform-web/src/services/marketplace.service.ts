@@ -142,15 +142,41 @@ class MarketplaceService {
   // ── Checkout ────────────────────────────────────────────────────────────
 
   /** POST /cart/checkout – initiate checkout; returns a pending order */
-  async checkout(payload: CheckoutPayload): Promise<ApiResponse<CheckoutOrder>> {
-    return apiClient.post<CheckoutOrder>('/cart/checkout', payload);
+  async checkout(
+    payload: CheckoutPayload,
+    idempotencyKey?: string,
+  ): Promise<ApiResponse<CheckoutOrder>> {
+    const key =
+      idempotencyKey ||
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          }));
+    return apiClient.post<CheckoutOrder>('/cart/checkout', payload, {
+      idempotencyKey: key,
+    });
   }
 
   /** POST /checkout/confirm – confirm and complete a pending order */
   async confirmPurchase(
     payload: ConfirmCheckoutPayload,
+    idempotencyKey?: string,
   ): Promise<ApiResponse<CheckoutOrder>> {
-    return apiClient.post<CheckoutOrder>('/checkout/confirm', payload);
+    const key =
+      idempotencyKey ||
+      (typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+          }));
+    return apiClient.post<CheckoutOrder>('/checkout/confirm', payload, {
+      idempotencyKey: key,
+    });
   }
 }
 

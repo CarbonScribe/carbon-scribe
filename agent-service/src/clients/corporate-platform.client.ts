@@ -2,6 +2,12 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { signServiceToken } from "../shared/auth/service-token.js";
+import {
+  type ClientCallOptions,
+  type CallContext,
+  requestWithLogging,
+  logSchemaValidationError,
+} from "./http-client.helper.js";
 
 // Thin HTTP client for corporate-platform-backend (NestJS). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
@@ -84,43 +90,7 @@ const PortfolioResponseSchema = z.object({
 
 export type PortfolioHolding = z.infer<typeof PortfolioHoldingSchema>;
 export type Portfolio = z.infer<typeof PortfolioSchema>;
-
-const MAX_RETRIES = 2;
-const RETRY_BASE_DELAY_MS = 250;
-
-function isRetryableError(err: unknown): boolean {
-  if (!axios.isAxiosError(err)) {
-    return false;
-  }
-  // No response at all means the request never completed (network error,
-  // timeout, connection reset) — worth retrying. A response with a 4xx
-  // status is a permanent rejection (bad companyId, auth failure, etc.)
-  // and retrying it would just repeat the same failure.
-  if (!err.response) {
-    return true;
-  }
-  return err.response.status >= 500;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Retries `fn` on a transient network/5xx failure with exponential backoff. */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let attempt = 0;
-  for (;;) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (attempt >= MAX_RETRIES || !isRetryableError(err)) {
-        throw err;
-      }
-      await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
-      attempt += 1;
-    }
-  }
-}
+export type { ClientCallOptions };
 
 /**
  * Fetch a company's current carbon credit portfolio.
@@ -134,16 +104,44 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
  * {@link MAX_RETRIES} times with exponential backoff; 4xx responses and
  * schema-validation failures are not retried and reject immediately.
  *
+ * Logs a request-start and request-complete/failed line (method, path,
+ * duration, attempts, outcome — never the body), a distinct line per
+ * retry attempt, and, on a schema-validation failure, the response status
+ * plus a truncated shape summary of the unparseable body (#706). Pass
+ * `options.requestId` to correlate these log lines with the agent run
+ * that triggered the call, when the caller has one available.
+ *
  * @throws {z.ZodError} if the response body doesn't match the expected
  * portfolio shape — this is treated as a hard failure rather than passed
  * through unvalidated.
  */
-async function getPortfolio(companyId: string): Promise<Portfolio> {
-  const response = await withRetry(() =>
-    http.get(`/api/v1/portfolio/${encodeURIComponent(companyId)}`),
+async function getPortfolio(
+  companyId: string,
+  options: ClientCallOptions = {},
+): Promise<Portfolio> {
+  const context: CallContext = {
+    clientName: "corporate-platform",
+    operation: "getPortfolio",
+    method: "GET",
+    path: `/api/v1/portfolio/${encodeURIComponent(companyId)}`,
+    requestId: options.requestId,
+  };
+
+  const response = await requestWithLogging(context, () =>
+    http.get(context.path),
   );
-  const parsed = PortfolioResponseSchema.parse(response.data);
-  return parsed.data;
+
+  const result = PortfolioResponseSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data.data;
 }
 
 export const corporatePlatformClient = {

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Search, Filter } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
 
@@ -18,17 +19,28 @@ const STATUSES = ['All', 'active', 'completed', 'pending'];
 const ProjectFilters = () => {
   const filters = useStore((state) => state.filters);
   const setFilters = useStore((state) => state.setFilters);
+  const [searchValue, setSearchValue] = useState(filters.search);
+
+  useEffect(() => {
+    setSearchValue(filters.search);
+  }, [filters.search]);
+
+  useEffect(() => {
+    if (searchValue === filters.search) return;
+    const timeout = window.setTimeout(() => setFilters({ search: searchValue }), 300);
+    return () => window.clearTimeout(timeout);
+  }, [filters.search, searchValue, setFilters]);
 
   return (
-    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="flex flex-col md:flex-row md:items-center gap-4">
       {/* Search */}
       <div className="flex-1">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            value={filters.search}
-            onChange={(e) => setFilters({ search: e.target.value })}
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
             placeholder="Search projects by name or location..."
             className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
           />

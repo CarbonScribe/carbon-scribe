@@ -212,6 +212,7 @@ dependencies = [
 name = "carbon_asset"
 version = "0.1.0"
 dependencies = [
+ "buffer_pool",
  "soroban-sdk",
 ]
 

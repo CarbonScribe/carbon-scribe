@@ -56,6 +56,7 @@ model Company {
   auditEvents              AuditEvent[]
   emissionSources          EmissionSource[]
   emissionRecords          EmissionRecord[]
+  idempotencyRecords       IdempotencyRecord[]
 
   materialityAssessments MaterialityAssessment[]
   esrsDisclosures        EsrsDisclosure[]
@@ -180,6 +181,7 @@ model Credit {
   // Blockchain
   assetCode  String?
   issuer     String?
+  verificationDocumentUrl String?
   contractId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -1392,6 +1394,8 @@ model CreditTransfer {
   companyId       String
   projectId       String
   amount          Int
+  fromAddress     String?
+  toAddress       String?
   transactionHash String?
   // SUBMITTED — accepted by the API, broadcast not yet acknowledged on-chain.
   // PENDING    — broadcast to the network, awaiting confirmation.
@@ -1641,4 +1645,24 @@ model CbamQuarterlyReport {
   @@index([companyId])
   @@index([status])
   @@map("cbam_quarterly_reports")
+}
+
+model IdempotencyRecord {
+  id             String    @id @default(cuid())
+  key            String
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  route          String
+  requestHash    String
+  status         String    @default("pending") // "pending", "completed", "failed"
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  expiresAt      DateTime
+
+  @@unique([companyId, key])
+  @@index([expiresAt])
+  @@index([companyId, status])
+  @@map("idempotency_records")
 }

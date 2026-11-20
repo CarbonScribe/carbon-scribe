@@ -15,15 +15,21 @@ import {
   PieChart, 
   LineChart as LineChartIcon, 
   Award, 
-  Target 
+  Target,
+  Loader2,
+  AlertCircle
 } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useCorporate } from '@/contexts/CorporateContext'
 import { Pagination } from '@/components/common/Pagination'
 import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts'
+import { portfolioService } from '@/services/portfolio.service'
+import { useAnnouncement } from '@/hooks/useAnnouncement'
+import { reportError } from '@/lib/telemetry/errorReporter'
 
 export default function PortfolioPage() {
   const {
+    company,
     portfolioSummary,
     portfolioAnalytics,
     portfolioHoldings,
@@ -33,6 +39,9 @@ export default function PortfolioPage() {
     portfolioError,
   } = useCorporate();
   const [timeRange, setTimeRange] = useState<'1m' | '3m' | '6m' | '1y' | 'all'>('6m');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const { announce } = useAnnouncement();
   const transactionsContainerRef = useRef<HTMLDivElement>(null);
 
   // Prepare data from API
@@ -57,6 +66,46 @@ export default function PortfolioPage() {
     date: (h as any).purchaseDate || '', // fallback if not typed
     status: 'Completed', // TODO: map real status if available
   }));
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      setExportError(null);
+      announce('Exporting transactions as CSV', 'polite');
+
+      if (!recentTransactions || recentTransactions.length === 0) {
+        throw new Error('No transactions available to export');
+      }
+
+      const blob = await portfolioService.exportTransactionsCsv(recentTransactions);
+      if (!blob) {
+        throw new Error('Failed to generate CSV export');
+      }
+
+      const companySlug = company?.name
+        ? company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+        : 'portfolio';
+      const filename = `${companySlug}-transactions-${timeRange}-${new Date().toISOString().split('T')[0]}.csv`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      announce('Export completed successfully', 'polite');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to export transactions as CSV';
+      setExportError(message);
+      announce(`Export failed: ${message}`, 'assertive');
+      reportError(err, 'PortfolioPage', 'error', { operation: 'exportCsv' });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const rowVirtualizer = useVirtualizer({
     count: recentTransactions.length,
@@ -222,11 +271,29 @@ export default function PortfolioPage() {
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">Recent Transactions</h2>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Purchase and retirement activity</p>
               </div>
-              <button className="corporate-btn-secondary text-sm px-4 py-2">
-                <Download size={16} className="mr-2" />
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="corporate-btn-secondary text-sm px-4 py-2 flex items-center disabled:opacity-60"
+              >
+                {exporting ? (
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                ) : (
+                  <Download size={16} className="mr-2" />
+                )}
                 Export CSV
               </button>
             </div>
+
+            {exportError && (
+              <div
+                className="mx-6 mb-4 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl"
+                role="alert"
+              >
+                <AlertCircle size={18} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                <span className="text-sm text-red-800 dark:text-red-300">{exportError}</span>
+              </div>
+            )}
             {recentTransactions.length === 0 ? (
               <div className="p-6 text-sm text-gray-600 dark:text-gray-400">No transactions found.</div>
             ) : (

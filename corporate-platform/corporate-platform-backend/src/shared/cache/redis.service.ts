@@ -16,6 +16,17 @@ import { ConfigService } from '../../config/config.service';
  * - Connection timeout and idle timeout
  * - Automatic reconnection with backoff
  * - Health check support
+ *
+ * NOTE on the two RedisService implementations (#650): this file and
+ * src/cache/redis.service.ts both define an `@Injectable() class
+ * RedisService` — two separate NestJS providers, each with its own ioredis
+ * connection to the same Redis instance, and two different `isHealthy()`
+ * contracts (this one pings live and returns a Promise<boolean>;
+ * src/cache's returns a synchronous, event-driven cached boolean). This
+ * one is used by health.service.ts and rate-limit's module/service;
+ * src/cache's is used by retirement/idempotency (the module #650 actually
+ * fixes), team-collaboration, and config. See src/cache/redis.service.ts
+ * for the full consumer list and why these haven't been consolidated.
  */
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {

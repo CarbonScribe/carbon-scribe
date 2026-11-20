@@ -72,6 +72,8 @@ impl TaxAttributeContract {
     /// One-time contract initialization.
     /// Returns ContractError::AlreadyInitialized on re-initialization attempts.
     pub fn init(env: Env, admin: Address) -> Result<(), ContractError> {
+        admin.require_auth();
+
         if Self::is_initialized(env.clone()) {
             events::emit_reinitialization_attempted_event(&env, admin);
             return Err(ContractError::AlreadyInitialized);

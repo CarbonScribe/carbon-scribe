@@ -3,6 +3,12 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import type { ErrorCategory } from "../llm/errors.js";
 import {
+  type ClientCallOptions,
+  type CallContext,
+  requestWithLogging,
+  logSchemaValidationError,
+} from "./http-client.helper.js";
+import {
   mockConfirmAlertResponse,
   mockMethodologies,
 } from "./project-portal.client.fixtures.js";
@@ -65,43 +71,7 @@ const MethodologiesResponseSchema = z.object({
 });
 
 export type Methodology = z.infer<typeof MethodologySchema>;
-
-const MAX_RETRIES = 2;
-const RETRY_BASE_DELAY_MS = 250;
-
-function isRetryableError(err: unknown): boolean {
-  if (!axios.isAxiosError(err)) {
-    return false;
-  }
-  // No response at all means the request never completed (network error,
-  // timeout, connection reset) — worth retrying. A response with a 4xx
-  // status is a permanent rejection and retrying it would just repeat the
-  // same failure.
-  if (!err.response) {
-    return true;
-  }
-  return err.response.status >= 500;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Retries `fn` on a transient network/5xx failure with exponential backoff. */
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let attempt = 0;
-  for (;;) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (attempt >= MAX_RETRIES || !isRetryableError(err)) {
-        throw err;
-      }
-      await delay(RETRY_BASE_DELAY_MS * 2 ** attempt);
-      attempt += 1;
-    }
-  }
-}
+export type { ClientCallOptions };
 
 /**
  * Fetch the catalog of eligible methodology types (agroforestry, improved
@@ -116,17 +86,46 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
  * {@link MAX_RETRIES} times with exponential backoff; 4xx responses and
  * schema-validation failures are not retried and reject immediately.
  *
+ * Logs a request-start and request-complete/failed line (method, path,
+ * duration, attempts, outcome — never the body), a distinct line per
+ * retry attempt, and, on a schema-validation failure, the response status
+ * plus a truncated shape summary of the unparseable body (#707). Pass
+ * `options.requestId` to correlate these log lines with the agent run
+ * that triggered the call, when the caller has one available.
+ *
  * @throws {z.ZodError} if the response body doesn't match the expected
  * methodology-list shape — this is treated as a hard failure rather than
  * passed through unvalidated.
  */
-async function getMethodologies(): Promise<Methodology[]> {
+async function getMethodologies(
+  options: ClientCallOptions = {},
+): Promise<Methodology[]> {
   if (env.mockProjectPortal) {
     return mockMethodologies;
   }
-  const response = await withRetry(() => http.get("/methodologies"));
-  const parsed = MethodologiesResponseSchema.parse(response.data);
-  return parsed.methodologies;
+  const context: CallContext = {
+    clientName: "project-portal",
+    operation: "getMethodologies",
+    method: "GET",
+    path: "/methodologies",
+    requestId: options.requestId,
+  };
+
+  const response = await requestWithLogging(context, () =>
+    http.get(context.path),
+  );
+
+  const result = MethodologiesResponseSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data.methodologies;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +206,14 @@ export type ConfirmAlertResponse = z.infer<typeof ConfirmAlertResponseSchema>;
  * this is a write, callers must supply `alertPayload.idempotencyKey` so a
  * retried request cannot raise a duplicate notification.
  *
+ * Logs a request-start and request-complete/failed line (method, path,
+ * duration, attempts, outcome — never the body), a distinct line per
+ * retry attempt, and, on a schema-validation failure, the response status
+ * plus a truncated shape summary of the unparseable body (#707). Pass
+ * `options.requestId` to correlate these log lines with the agent run
+ * that triggered the call, when the caller has one available; falls back to
+ * `alertPayload.idempotencyKey` if `options.requestId` is omitted.
+ *
  * @throws {z.ZodError} if the response body doesn't match the expected
  * notification shape — treated as a hard failure rather than passed through
  * unvalidated.
@@ -214,6 +221,7 @@ export type ConfirmAlertResponse = z.infer<typeof ConfirmAlertResponseSchema>;
 async function confirmAlert(
   projectId: string,
   alertPayload: ConfirmAlertPayload,
+  options: ClientCallOptions = {},
 ): Promise<ConfirmAlertResponse> {
   if (env.mockProjectPortal) {
     return {
@@ -224,16 +232,35 @@ async function confirmAlert(
     };
   }
   const { idempotencyKey, ...body } = alertPayload;
-  const response = await withRetry(() =>
+  const context: CallContext = {
+    clientName: "project-portal",
+    operation: "confirmAlert",
+    method: "POST",
+    path: "/internal/notifications/confirmed-alerts",
+    requestId: options.requestId ?? idempotencyKey,
+  };
+
+  const response = await requestWithLogging(context, () =>
     http.post(
-      "/internal/notifications/confirmed-alerts",
+      context.path,
       { project_id: projectId, ...body },
       idempotencyKey
         ? { headers: { "Idempotency-Key": idempotencyKey } }
         : undefined,
     ),
   );
-  return ConfirmAlertResponseSchema.parse(response.data);
+
+  const result = ConfirmAlertResponseSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data;
 }
 
 /**

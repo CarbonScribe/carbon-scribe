@@ -12,12 +12,15 @@ import {
   checkApproval,
   PDD_DRAFT_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
+import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
+import { enforceNumericGrounding } from "../../shared/guardrails/numeric-grounding.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { pddDraftTools } from "./pdd-draft.tools.js";
 
 const SYSTEM_PROMPT = `You are the PDD (Project Design Document) drafting agent for CarbonScribe.
@@ -47,12 +50,7 @@ const PddOutputSchema = z.object({
       reason: z.string(),
     }),
   ),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
 });
 
 const outputFormat = betaZodOutputFormat(PddOutputSchema);
@@ -189,14 +187,49 @@ export async function runPddDraftAgent(
   }
 
   const citations: AgentCitation[] = parsed.citations;
+  const grounding = enforceNumericGrounding({
+    sections: parsed.sections,
+    incompleteSections: parsed.incompleteSections,
+    citations,
+    toolCalls,
+  });
+  if (grounding.reclassified.length > 0) {
+    logger.warn(
+      {
+        agent: "pdd-draft",
+        requestId: req.requestId,
+        sections: grounding.reclassified,
+      },
+      "reclassified sections carrying ungrounded numeric claims",
+    );
+  }
+
   const decision = checkApproval({
     actionType: PDD_DRAFT_ACTION_TYPES.DRAFT_SECTIONS,
     payload: {
-      sections: parsed.sections,
-      incompleteSections: parsed.incompleteSections,
+      sections: grounding.sections,
+      incompleteSections: grounding.incompleteSections,
     },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
+  // Drafting zero sections (everything flagged incomplete instead) is a
+  // legitimate "couldn't draft anything grounded" outcome — only an
+  // actual drafted section is required to cite the data it's grounded in
+  // (#705). Sections reclassified by the numeric-grounding guardrail above
+  // count as incomplete, not drafted, so they don't require citations.
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: grounding.sections.length === 0,
+    });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -217,8 +250,8 @@ export async function runPddDraftAgent(
     status,
     output: {
       methodology: parsed.methodology,
-      sections: parsed.sections,
-      incompleteSections: parsed.incompleteSections,
+      sections: grounding.sections,
+      incompleteSections: grounding.incompleteSections,
     },
     citations,
   };

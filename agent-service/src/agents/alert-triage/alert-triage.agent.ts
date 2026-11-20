@@ -12,33 +12,36 @@ import {
   ALERT_TRIAGE_ACTION_TYPES,
   checkApproval,
 } from "../../shared/guardrails/approval-gate.js";
+import { assertCitationsForStatus } from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { alertTriageTools } from "./alert-triage.tools.js";
 
 const SYSTEM_PROMPT = `You are the alert-triage agent for CarbonScribe's project monitoring pipeline.
 Given a candidate deforestation/anomaly alert, correlate satellite NDVI data, IoT sensor
 readings, and weather context to decide whether this is a genuine event, seasonal variation,
-or a sensor fault. Only recommend escalating to project-portal's notification pipeline when
-the correlated evidence supports it — the goal is cutting false-positive alert fatigue, not
-adding a second alarm on top of the existing rule-based one.`;
+or a sensor fault. Return one of four verdicts:
+- "escalate": a genuine event with corroborating evidence worth notifying about
+- "suppress": seasonal variation or benign environmental change, no action needed
+- "sensor-fault": the alert is due to unreliable sensor data or hardware issues
+- "needs-more-data": insufficient data to make a confident determination
+
+Only recommend escalating to project-portal's notification pipeline when the correlated
+evidence supports it — the goal is cutting false-positive alert fatigue, not adding a
+second alarm on top of the existing rule-based one.`;
 
 // Forces the final turn into machine-readable JSON so the triage decision
 // is an explicit verdict the caller can branch on, not prose the caller
 // has to re-parse.
 const AlertTriageOutputSchema = z.object({
-  verdict: z.enum(["escalate", "suppress", "needs-more-data"]),
+  verdict: z.enum(["escalate", "suppress", "needs-more-data", "sensor-fault"]),
   reasoning: z.string(),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
 });
 
 const outputFormat = betaZodOutputFormat(AlertTriageOutputSchema);
@@ -177,8 +180,8 @@ export async function runAlertTriageAgent(
   // An escalate verdict feeds project-portal's notification pipeline —
   // that's consequential enough to require human sign-off, so it comes
   // back as "needs-approval" rather than a final "drafted" result. A
-  // suppress or needs-more-data verdict doesn't trigger anything on its
-  // own, so "drafted" is sufficient there. The verdict-to-action-type
+  // suppress, needs-more-data, or sensor-fault verdict doesn't trigger
+  // anything on its own, so "drafted" is sufficient there. The verdict-to-action-type
   // mapping and the actual approval decision both live in checkApproval,
   // not here.
   const actionType: string =
@@ -186,12 +189,34 @@ export async function runAlertTriageAgent(
       ? ALERT_TRIAGE_ACTION_TYPES.ESCALATE
       : parsed.verdict === "suppress"
         ? ALERT_TRIAGE_ACTION_TYPES.SUPPRESS
-        : ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA;
+        : parsed.verdict === "sensor-fault"
+          ? ALERT_TRIAGE_ACTION_TYPES.SENSOR_FAULT
+          : ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA;
   const decision = checkApproval({
     actionType,
     payload: { verdict: parsed.verdict, reasoning: parsed.reasoning },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+  const citations: AgentCitation[] = parsed.citations;
+
+  // Only an escalate verdict feeds a real downstream action (project-portal's
+  // notification pipeline) and so is the only one required to cite the
+  // evidence it's grounded in — suppress/needs-more-data/sensor-fault are
+  // "nothing happens" dispositions where the reasoning text itself is the
+  // record, the same way an empty shortlist or zero drafted sections is
+  // elsewhere in this service (#705).
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: parsed.verdict !== "escalate",
+    });
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -210,8 +235,6 @@ export async function runAlertTriageAgent(
     },
     "agent run token usage",
   );
-
-  const citations: AgentCitation[] = parsed.citations;
 
   return {
     agent: "alert-triage",

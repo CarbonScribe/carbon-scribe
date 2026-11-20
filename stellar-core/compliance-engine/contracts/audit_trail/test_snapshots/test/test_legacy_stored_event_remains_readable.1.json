@@ -4,7 +4,13 @@
     "nonce": 0,
     "mux_id": 0
   },
-  "auth": [[], [], [], [], []],
+  "auth": [
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
   "ledger": {
     "protocol_version": 23,
     "sequence_number": 0,
@@ -180,6 +186,18 @@
                         },
                         "val": {
                           "map": []
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "0"
                         }
                       },
                       {

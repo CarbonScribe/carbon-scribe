@@ -86,3 +86,21 @@ pub fn emit_anchorer_index_compacted_event(
     }
     .publish(env);
 }
+
+/// Structured event emitted when a new project is registered
+#[contractevent]
+pub struct ProjectRegistered {
+    pub project_id: String,
+    pub owner: Address,
+    pub timestamp: u64,
+}
+
+/// Emit a structured event when a new project is registered
+pub fn emit_project_registered_event(env: &Env, project_id: String, owner: Address) {
+    ProjectRegistered {
+        project_id,
+        owner,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}

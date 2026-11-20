@@ -21,7 +21,18 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      
+          targets: wasm32-unknown-unknown
+
+      # carbon_asset (#684) imports buffer_pool's compiled WASM via
+      # soroban_sdk::contractimport! for a typed auto_deposit call — not a
+      # Cargo dependency, since linking buffer_pool's own compiled contract
+      # code into carbon_asset's cdylib would embed both contracts'
+      # interface specs in one binary (see carbon_asset/Cargo.toml for the
+      # full reasoning). contractimport! only reads a file off disk, so
+      # nothing else builds it; it has to happen here, first.
+      - name: Build buffer_pool WASM (dependency for carbon_asset)
+        run: cargo build -p buffer_pool --target wasm32-unknown-unknown --release --verbose
+
       - name: Verify Rust project
         run: |
           if [ ! -f "Cargo.toml" ]; then

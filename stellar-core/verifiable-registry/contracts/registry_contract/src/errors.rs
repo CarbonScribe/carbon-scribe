@@ -20,4 +20,5 @@ pub enum Error {
     PendingTransferExists = 14,
     NoPendingTransfer = 15,
     NotPendingOwner = 16,
+    InvalidProjectId = 17,
 }

@@ -1,14 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   MapPin, 
   Target, 
   Users, 
   Calendar,
-  Filter,
-  Search,
   Grid3x3,
   List,
   ChevronRight,
@@ -18,15 +16,14 @@ import {
 } from 'lucide-react';
 import { useStore } from '@/lib/store/store';
 import { useFilteredProjects, useProjectStats } from '@/lib/store/projects/projects.selectors';
+import ProjectFilters from '@/components/projects/ProjectFilters';
 import CreateProjectModal from '@/components/projects/CreateProjectModal';
 import DeleteProjectDialog from '@/components/projects/DeleteProjectDialog';
 import ProjectLoadingSkeleton from '@/components/projects/ProjectLoadingSkeleton';
 
-const PROJECT_TYPES = ['All', 'Reforestation', 'Agroforestry', 'Blue Carbon', 'Regenerative Farming', 'REDD+', 'Afforestation'];
-const STATUSES = ['All', 'active', 'completed', 'pending'];
-
 export default function ProjectsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const fetchProjects = useStore((state) => state.fetchProjects);
   const refreshProjects = useStore((state) => state.refreshProjects);
   const loading = useStore((state) => state.loading);
@@ -41,31 +38,53 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
 
-  // Fetch projects on mount
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    const params = new URLSearchParams(window.location.search);
+    setFilters({
+      search: params.get('search') ?? '',
+      type: params.get('type') ?? 'All',
+      status: params.get('status') ?? 'All',
+    });
+    setFiltersHydrated(true);
+  }, [setFilters]);
+
+  useEffect(() => {
+    if (!filtersHydrated) return;
+
+    fetchProjects(pagination.limit, 0, { force: true });
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete('search');
+    params.delete('type');
+    params.delete('status');
+    if (filters.search) params.set('search', filters.search);
+    if (filters.type !== 'All') params.set('type', filters.type);
+    if (filters.status !== 'All') params.set('status', filters.status);
+    const query = params.toString();
+    const nextUrl = query ? `${pathname}?${query}` : pathname;
+    if (`${window.location.pathname}${window.location.search}` !== nextUrl) {
+      window.history.replaceState(null, '', nextUrl);
+    }
+  }, [fetchProjects, filters, filtersHydrated, pagination.limit, pathname]);
 
   const handleProjectClick = (projectId: string) => {
     router.push(`/projects/${projectId}`);
   };
 
   const handleNextPage = () => {
-    const newOffset = pagination.offset + pagination.limit;
-    fetchProjects(pagination.limit, newOffset);
+    fetchProjects(pagination.limit, pagination.offset + pagination.limit);
   };
 
   const handlePrevPage = () => {
-    const newOffset = Math.max(0, pagination.offset - pagination.limit);
-    fetchProjects(pagination.limit, newOffset);
+    fetchProjects(pagination.limit, Math.max(0, pagination.offset - pagination.limit));
   };
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'N/A';
     try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     } catch {
       return dateStr;
     }
@@ -108,60 +127,21 @@ export default function ProjectsPage() {
       <div className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(e) => setFilters({ search: e.target.value })}
-                placeholder="Search projects by name or location..."
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
-              />
-            </div>
+            <ProjectFilters />
           </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Filter className="w-5 h-5 text-gray-600" />
-              <select
-                value={filters.type}
-                onChange={(e) => setFilters({ type: e.target.value })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
-              >
-                {PROJECT_TYPES.map(type => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <select
-                value={filters.status}
-                onChange={(e) => setFilters({ status: e.target.value })}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-colors"
-              >
-                {STATUSES.map(status => (
-                  <option key={status} value={status}>
-                    {status.charAt(0).toUpperCase() + status.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                <Grid3x3 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                <List className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="flex items-center space-x-2 border-l border-gray-300 pl-4">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <Grid3x3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-lg ${viewMode === 'list' ? 'bg-emerald-100 text-emerald-600' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <List className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
