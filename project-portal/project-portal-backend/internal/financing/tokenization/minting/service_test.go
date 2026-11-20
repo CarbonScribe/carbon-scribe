@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stellar/go/keypair"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // fakeContractClient is an explicit test double injected directly via
@@ -51,7 +52,7 @@ func TestMintingConstants(t *testing.T) {
 
 func TestMintingMetadataPreparation(t *testing.T) {
 	projectID := uuid.New()
-	
+
 	// Testing internal logic that we can verify without a DB
 	assert.NotEqual(t, uuid.Nil, projectID)
 }
@@ -59,7 +60,7 @@ func TestMintingMetadataPreparation(t *testing.T) {
 func TestMockMinting(t *testing.T) {
 	mockClient := &mockContractClient{}
 	ctx := context.Background()
-	
+
 	projectID := uuid.New()
 	metadata := CarbonAssetMetadata{
 		ProjectID:     projectID.String(),
@@ -144,6 +145,17 @@ func TestNewContractClientFromEnv_ValidKey_ReturnsRealClient(t *testing.T) {
 	assert.False(t, isMockContractClient(client))
 	_, ok := client.(*realContractClient)
 	assert.True(t, ok)
+}
+
+// #695: the Soroban RPC client must propagate trace context on its
+// outbound HTTP calls, via an otelhttp-wrapped transport rather than the
+// bare default transport.
+func TestNewTracedHTTPClientWrapsDefaultTransport(t *testing.T) {
+	client := newTracedHTTPClient()
+
+	assert.NotNil(t, client)
+	_, ok := client.Transport.(*otelhttp.Transport)
+	assert.True(t, ok, "expected client.Transport to be *otelhttp.Transport, got %T", client.Transport)
 }
 
 func TestIsMockContractClient(t *testing.T) {
