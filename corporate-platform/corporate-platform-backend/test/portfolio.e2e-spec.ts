@@ -4,7 +4,11 @@ import {
   ValidationPipe,
   ExecutionContext,
   UnauthorizedException,
+  MiddlewareConsumer,
+  Module,
+  NestModule,
 } from '@nestjs/common';
+import { Request, Response, NextFunction } from 'express';
 import * as request from 'supertest';
 import { PortfolioModule } from '../src/portfolio/portfolio.module';
 import { RbacModule } from '../src/rbac/rbac.module';
@@ -12,10 +16,56 @@ import { AuthModule } from '../src/auth/auth.module';
 import { JwtAuthGuard } from '../src/auth/guards/jwt-auth.guard';
 import { PrismaService } from '../src/shared/database/prisma.service';
 
+/**
+ * The real TenantGuard is registered globally (via DatabaseModule ->
+ * TenantModule, imported transitively through PortfolioModule/AuthModule)
+ * and requires request.tenant to already be populated by TenantMiddleware —
+ * which normally only happens because AppModule.configure() applies it.
+ * Global APP_GUARD-registered guards aren't reachable through
+ * overrideGuard()/overrideProvider() in a TestingModule (Nest collects them
+ * directly from the module that declared them, not through the override's
+ * replacement token), so the only reliable way to satisfy TenantGuard here
+ * is to actually populate request.tenant before it runs — via middleware,
+ * same as production. This stand-in mirrors the real TenantMiddleware's
+ * header-based resolution closely enough for this suite's purposes, using
+ * the same identity the mocked JwtAuthGuard below derives, so the two never
+ * disagree.
+ */
+const MOCK_COMPANY_ID = 'test-company-id-1';
+
+function testTenantMiddleware(
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) {
+  const companyId =
+    (req.headers['x-test-authenticated-company'] as string | undefined) ||
+    (req.headers['x-company-id'] as string | undefined) ||
+    (req.headers.authorization ? MOCK_COMPANY_ID : undefined);
+  if (companyId) {
+    (req as Request & { tenant?: unknown }).tenant = {
+      companyId,
+      userId: 'user-1',
+      role: 'admin',
+      source: 'test',
+    };
+  }
+  next();
+}
+
+@Module({
+  imports: [PortfolioModule, RbacModule, AuthModule],
+})
+class PortfolioTestModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(testTenantMiddleware).forRoutes('*');
+  }
+}
+
 describe('Portfolio API Integration Tests', () => {
   let app: INestApplication;
 
-  const mockCompanyId = 'test-company-id-1';
+  const mockCompanyId = MOCK_COMPANY_ID;
   const mockAuthToken = 'valid-jwt-token';
 
   const mockPrismaService = new Proxy({} as any, {
@@ -39,7 +89,7 @@ describe('Portfolio API Integration Tests', () => {
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [PortfolioModule, RbacModule, AuthModule],
+      imports: [PortfolioTestModule],
     })
       .overrideGuard(JwtAuthGuard)
       .useValue({
@@ -48,9 +98,18 @@ describe('Portfolio API Integration Tests', () => {
           if (!req.headers.authorization) {
             throw new UnauthorizedException();
           }
+          // x-test-authenticated-company simulates "what the caller's JWT
+          // actually says" (set independently of x-company-id below), so a
+          // test can send a spoofed/forged x-company-id alongside a
+          // genuinely different authenticated identity — the way a real
+          // attacker would supply a stale/forged company header against a
+          // JWT asserting a different company (#740).
           req.user = {
             sub: 'user-1',
-            companyId: req.headers['x-company-id'] || mockCompanyId,
+            companyId:
+              req.headers['x-test-authenticated-company'] ||
+              req.headers['x-company-id'] ||
+              mockCompanyId,
             role: 'admin',
           };
           return true;
@@ -415,6 +474,66 @@ describe('Portfolio API Integration Tests', () => {
         expect.objectContaining({
           where: { companyId: mockCompanyId },
         }),
+      );
+    });
+
+    it('does not leak company B data when a company-A request also carries a spoofed X-Company-Id header for company B (#740)', async () => {
+      const otherCompanyId = 'test-company-id-2-attacker-target';
+
+      // A tiny multi-tenant-aware fake: unlike a fixed mockResolvedValue,
+      // this actually returns different data depending on which companyId
+      // the controller queried with, so the test can tell *whose* data came
+      // back — a real guard/controller regression that queried with the
+      // wrong companyId would be caught here, not just asserted-away.
+      mockPrismaService.portfolio.findUnique.mockImplementation(
+        ({ where }: { where: { companyId: string } }) => {
+          if (where.companyId === mockCompanyId) {
+            return Promise.resolve({
+              id: 'portfolio-A',
+              companyId: mockCompanyId,
+              holdings: [
+                {
+                  quantity: 1,
+                  credit: { projectId: 'proj-A', country: 'A-land' },
+                },
+              ],
+            });
+          }
+          if (where.companyId === otherCompanyId) {
+            return Promise.resolve({
+              id: 'portfolio-B',
+              companyId: otherCompanyId,
+              holdings: [
+                {
+                  quantity: 999,
+                  credit: {
+                    projectId: 'proj-B-secret',
+                    country: 'B-land-secret',
+                  },
+                },
+              ],
+            });
+          }
+          return Promise.resolve(null);
+        },
+      );
+
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/portfolio/composition')
+        .set('Authorization', `Bearer ${mockAuthToken}`)
+        .set('X-Test-Authenticated-Company', mockCompanyId) // real identity: company A
+        .set('X-Company-Id', otherCompanyId) // attacker-controlled/spoofed
+        .expect(200);
+
+      // getPortfolioComposition surfaces methodology/country breakdowns, not
+      // raw holding/project IDs — assert on the distinguishing field it
+      // actually returns.
+      const serializedResponse = JSON.stringify(response.body.data);
+      expect(serializedResponse).not.toContain('B-land-secret');
+      expect(serializedResponse).toContain('A-land');
+
+      expect(mockPrismaService.portfolio.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { companyId: mockCompanyId } }),
       );
     });
   });

@@ -32,6 +32,14 @@ export class RequestLoggerMiddleware implements NestMiddleware {
       (req.headers['x-trace-id'] as string) ||
       randomUUID();
 
+    // Store trace ID on request object so downstream code (e.g.
+    // ContextInterceptor) can reuse the exact same ID instead of deriving
+    // its own, and echo both back to the caller so a client that hits a
+    // failure has an ID to hand support for log correlation (#736).
+    (req as any).traceId = traceId;
+    res.setHeader('x-request-id', requestId);
+    res.setHeader('x-trace-id', traceId);
+
     // Set request context
     const context = RequestContext.get();
     if (context) {

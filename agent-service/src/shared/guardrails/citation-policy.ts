@@ -55,3 +55,52 @@ export function assertCitationsForStatus(
   }
   throw new MissingCitationsError(status);
 }
+
+// #708: assertCitationsForStatus only checks that *some* citation exists —
+// it would pass a result with 3 recommendations and 1 citation covering
+// only one of them. This is the stricter, per-recommendation check: every
+// recommended credit must have its own citation, not just the result as a
+// whole. A legitimate empty shortlist (zero recommendations) is vacuously
+// fine regardless of citations, same as assertCitationsForStatus's
+// allowEmpty case — there's nothing to cite.
+//
+// Reusable by any agent with a recommendation-plus-citation shape: it only
+// needs the recommended ID and the citations array, not a specific agent's
+// output schema.
+
+export class UncitedRecommendationsError extends Error {
+  constructor(public readonly uncitedIds: string[]) {
+    super(
+      `Agent recommended credit(s) with no corresponding citation: ${uncitedIds.join(", ")}. ` +
+        "Every recommended credit must be backed by a citation referencing it.",
+    );
+  }
+}
+
+export interface RecommendationLike {
+  creditId: string;
+}
+
+/**
+ * Throws UncitedRecommendationsError if any `recommendations[].creditId` has
+ * no citation whose `reference` matches it. Call this alongside (not
+ * instead of) assertCitationsForStatus — that check guards the "citations
+ * is empty at all" case; this one guards "citations exist but don't cover
+ * every recommendation".
+ */
+export function assertAllRecommendationsCited(
+  recommendations: RecommendationLike[],
+  citations: AgentCitation[],
+): void {
+  if (recommendations.length === 0) {
+    return;
+  }
+  const citedReferences = new Set(citations.map((c) => c.reference));
+  const uncitedIds = recommendations
+    .map((r) => r.creditId)
+    .filter((creditId) => !citedReferences.has(creditId));
+
+  if (uncitedIds.length > 0) {
+    throw new UncitedRecommendationsError(uncitedIds);
+  }
+}

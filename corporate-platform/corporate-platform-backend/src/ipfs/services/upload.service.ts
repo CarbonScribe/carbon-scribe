@@ -14,6 +14,7 @@ import {
   DocumentStorageClass,
 } from '../upload-policy.constants';
 import { RetrievalService } from './retrieval.service';
+import { IpfsMetricsService } from '../metrics/ipfs-metrics.service';
 import * as NodeClam from 'clamscan';
 
 export const DEFAULT_PAGE_LIMIT = 20;
@@ -28,6 +29,7 @@ export class UploadService {
     private readonly prisma: PrismaService,
     @Inject(IPFS_PROVIDER) private readonly provider: IIpfsProvider,
     private readonly retrieval: RetrievalService,
+    private readonly metrics: IpfsMetricsService,
   ) {}
 
   private async computeSha256(file: any): Promise<string> {
@@ -147,10 +149,12 @@ export class UploadService {
 
     try {
       // Use provider abstraction (#340)
-      const cid = await this.provider.pinFile(ipfsFile, {
-        ...metadata,
-        storageClass,
-      });
+      const cid = await this.metrics.timeOperation('upload', () =>
+        this.provider.pinFile(ipfsFile, {
+          ...metadata,
+          storageClass,
+        }),
+      );
 
       const verification = await this.retrieval.verifyPin(cid);
       if (!verification.verified) {
@@ -191,6 +195,12 @@ export class UploadService {
         `${this.provider.providerName} upload failed`,
         err?.message || err,
       );
+      this.metrics.recordFailure(
+        'upload',
+        err?.message?.includes('Pin verification failed')
+          ? 'pin-verification-failed'
+          : 'exception',
+      );
       // Transaction rollback: never persist a mock CID on failure.
       // Callers must handle the thrown error and prevent database writes.
       throw new Error(
@@ -215,9 +225,7 @@ export class UploadService {
     pagination?: { page?: number; limit?: number },
   ) {
     const page =
-      pagination?.page && pagination.page > 0
-        ? Math.floor(pagination.page)
-        : 1;
+      pagination?.page && pagination.page > 0 ? Math.floor(pagination.page) : 1;
 
     let limit =
       pagination?.limit !== undefined
