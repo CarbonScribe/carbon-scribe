@@ -126,7 +126,7 @@ func TestInitiateOAuth2GeneratesStateAndPKCEChallenge(t *testing.T) {
 	repo := newOAuthMockRepository()
 	conn := newTestConnection()
 	repo.addConnection(conn)
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	authURL, err := svc.InitiateOAuth2(context.Background(), "stripe", "")
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestInitiateOAuth2GeneratesStateAndPKCEChallenge(t *testing.T) {
 func TestInitiateOAuth2RejectsMismatchedRedirectURI(t *testing.T) {
 	repo := newOAuthMockRepository()
 	repo.addConnection(newTestConnection())
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	_, err := svc.InitiateOAuth2(context.Background(), "stripe", "https://evil.example.com/callback")
 	require.Error(t, err)
@@ -164,7 +164,7 @@ func TestInitiateOAuth2RejectsMismatchedRedirectURI(t *testing.T) {
 
 func TestInitiateOAuth2UnknownProvider(t *testing.T) {
 	repo := newOAuthMockRepository()
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	_, err := svc.InitiateOAuth2(context.Background(), "unknown", "")
 	require.Error(t, err)
@@ -183,7 +183,7 @@ func setupCallbackTest(t *testing.T, tokenServerURL string) (*Service, *oauthMoc
 		conn.Config["token_url"] = tokenServerURL
 	}
 	repo.addConnection(conn)
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	authURL, err := svc.InitiateOAuth2(context.Background(), "stripe", "")
 	require.NoError(t, err)
@@ -297,7 +297,7 @@ func TestVerifyIncomingWebhookSignatureValid(t *testing.T) {
 		Credentials: map[string]any{"webhook_secret": "shh"},
 	}
 	repo.addConnection(conn)
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	payload := []byte(`{"event":"ping"}`)
 	mac := hmac.New(sha256.New, []byte("shh"))
@@ -316,7 +316,7 @@ func TestVerifyIncomingWebhookSignatureInvalid(t *testing.T) {
 		Credentials: map[string]any{"webhook_secret": "shh"},
 	}
 	repo.addConnection(conn)
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	err := svc.VerifyIncomingWebhookSignature(context.Background(), "conn-2", []byte(`{"event":"ping"}`), "deadbeef")
 	assert.Error(t, err)
@@ -324,7 +324,7 @@ func TestVerifyIncomingWebhookSignatureInvalid(t *testing.T) {
 
 func TestVerifyIncomingWebhookSignatureMissing(t *testing.T) {
 	repo := newOAuthMockRepository()
-	svc := NewService(repo)
+	svc := NewService(repo, testKeyring())
 
 	err := svc.VerifyIncomingWebhookSignature(context.Background(), "conn-2", []byte(`{}`), "")
 	assert.Error(t, err)
