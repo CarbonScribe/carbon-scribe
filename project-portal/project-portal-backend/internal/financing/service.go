@@ -48,13 +48,19 @@ type service struct {
 	capService     methodology.CapEnforcementService
 }
 
+// sorobanRPCURL/sorobanNetworkPassphrase (#794) come from internal/config —
+// the single source for both, resolved once at startup — rather than
+// tokenization.NewClientFromEnv reading its own environment variables and
+// applying its own testnet fallback.
 func NewService(
 	repo Repository,
 	methService methodology.Service,
 	capService methodology.CapEnforcementService,
 	walletResolver payments.WalletResolver,
+	sorobanRPCURL string,
+	sorobanNetworkPassphrase string,
 ) Service {
-	stellarClient := tokenization.NewClientFromEnv()
+	stellarClient := tokenization.NewClientFromEnv(sorobanRPCURL, sorobanNetworkPassphrase)
 	monitor := tokenization.NewMonitor()
 	return &service{
 		repo:           repo,
