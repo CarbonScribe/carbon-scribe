@@ -352,7 +352,18 @@ func main() {
 	go complianceWorker.Run(workerCtx)
 	log.Println("✅ Compliance request worker started")
 
-	webhookService := integration.NewService(integration.NewRepository(db))
+	// Encrypts IntegrationConnection.Credentials at rest (#795), reusing
+	// SETTINGS_ENCRYPTION_KEY_HEX rather than a second encryption key.
+	credentialsKeyring, err := integration.BuildCredentialsKeyring(
+		cfg.Settings.EncryptionKeyVersion,
+		cfg.Settings.EncryptionKeyHex,
+		cfg.Settings.PreviousEncryptionKeysHex,
+	)
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize integration credentials encryption: %v", err)
+	}
+	webhookService := integration.NewService(integration.NewRepository(db), credentialsKeyring)
+	integrationHandler := integration.NewHandler(webhookService)
 	webhookWorker := workers.NewWebhookWorker(webhookService, time.Minute, log.Default())
 	go func() {
 		if err := webhookWorker.Run(workerCtx); err != nil && err != context.Canceled {
@@ -539,6 +550,11 @@ func main() {
 
 		// Register all project and quality routes (no duplicates)
 		project.RegisterRoutes(router, projectHandler, qualityHandler)
+
+		// Register integration connection/webhook routes (#797, #795) —
+		// previously constructed (webhookService/integrationHandler above)
+		// but never actually wired into the router.
+		integration.RegisterRoutes(router, integrationHandler)
 
 		// Register methodology validation endpoints
 		validation.RegisterValidationRoutes(v1, methodologyValidator)
