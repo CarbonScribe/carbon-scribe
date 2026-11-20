@@ -28,6 +28,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications"
 	"carbon-scribe/project-portal/project-portal-backend/internal/notifications/channels"
 	notiftemplates "carbon-scribe/project-portal/project-portal-backend/internal/notifications/templates"
+	"carbon-scribe/project-portal/project-portal-backend/internal/observability"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/inventory"
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/methodology"
@@ -47,6 +48,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	otelgin "go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -69,6 +71,26 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("❌ Invalid configuration: %v", err)
 	}
+
+	// ============================================================================
+	// Initialize OpenTelemetry Tracing (issue #695)
+	// ============================================================================
+	// Configured as early as possible so every subsequent initialization step
+	// runs under a process with a real (or explicitly no-op) TracerProvider
+	// already installed, rather than the OTel API's silent default no-op.
+	otelCtx, otelCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	tracingShutdown, err := observability.InitFromEnv(otelCtx)
+	otelCancel()
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize OpenTelemetry tracing: %v", err)
+	}
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := tracingShutdown(shutdownCtx); err != nil {
+			log.Printf("⚠️  Error shutting down OpenTelemetry tracer provider: %v", err)
+		}
+	}()
 
 	// Initialize database connection
 	db, err := initDatabase(cfg)
@@ -472,6 +494,11 @@ func main() {
 	}
 
 	router := gin.Default()
+
+	// Create a root span for every HTTP request (issue #695). Registered
+	// before CORS/auth/everything else so its span wraps the full request,
+	// including time spent in later middleware.
+	router.Use(otelgin.Middleware(observability.DefaultServiceName))
 
 	// Add CORS middleware
 	router.Use(corsMiddleware())
