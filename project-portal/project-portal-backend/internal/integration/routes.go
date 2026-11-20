@@ -1,8 +1,17 @@
 package integration
 
-import "github.com/gin-gonic/gin"
+import (
+	"carbon-scribe/project-portal/project-portal-backend/pkg/security"
 
-func RegisterRoutes(r *gin.Engine, h *Handler) {
+	"github.com/gin-gonic/gin"
+)
+
+// RegisterRoutes wires integration connection/webhook/OAuth2 routes.
+// webhookMaxBytes overrides the global default body-size limit (#797) for
+// POST /webhooks/incoming specifically — an unauthenticated endpoint, read
+// before signature verification, so it gets a much tighter limit than the
+// rest of this group (which stays on the global default).
+func RegisterRoutes(r *gin.Engine, h *Handler, webhookMaxBytes int64) {
 	v1 := r.Group("/api/v1/integrations")
 	{
 		// Connection Management
@@ -10,7 +19,7 @@ func RegisterRoutes(r *gin.Engine, h *Handler) {
 
 		// Webhooks
 		v1.POST("/webhooks", h.ConfigureWebhook)
-		v1.POST("/webhooks/incoming", h.IncomingWebhook)
+		v1.POST("/webhooks/incoming", security.BodyLimit(webhookMaxBytes), h.IncomingWebhook)
 
 		// Subscriptions
 		v1.POST("/subscriptions", h.SubscribeToEvent)
