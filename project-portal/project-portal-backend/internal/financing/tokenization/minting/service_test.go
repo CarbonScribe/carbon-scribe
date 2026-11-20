@@ -77,13 +77,13 @@ func TestMockMinting(t *testing.T) {
 
 func TestNewServicePanicsOnNilClient(t *testing.T) {
 	assert.Panics(t, func() {
-		NewService(nil, nil, nil)
+		NewService(nil, nil, nil, "Test Passphrase")
 	})
 }
 
 func TestNewServiceAcceptsExplicitClientInjection(t *testing.T) {
 	client := &fakeContractClient{tokenID: 7, txHash: "REAL_TX_HASH"}
-	svc := NewService(nil, client, nil)
+	svc := NewService(nil, client, nil, "Test Passphrase")
 	assert.NotNil(t, svc)
 
 	impl, ok := svc.(*service)
@@ -95,7 +95,7 @@ func TestNewContractClientFromEnv_NoKeyConfigured_NeverImplicitlyMocks(t *testin
 	clearMintingEnv(t)
 
 	for _, isProduction := range []bool{true, false} {
-		client, err := NewContractClientFromEnv(isProduction)
+		client, err := NewContractClientFromEnv(isProduction, "https://rpc.example.com", "Test Passphrase")
 		assert.Error(t, err, "isProduction=%v", isProduction)
 		assert.Nil(t, client, "isProduction=%v", isProduction)
 		assert.Contains(t, err.Error(), "CARBON_ASSET_AUTHORITY_SECRET_KEY")
@@ -107,7 +107,7 @@ func TestNewContractClientFromEnv_InvalidKey_FailsLoudlyInsteadOfMocking(t *test
 	t.Setenv("CARBON_ASSET_AUTHORITY_SECRET_KEY", "not-a-valid-stellar-seed")
 
 	for _, isProduction := range []bool{true, false} {
-		client, err := NewContractClientFromEnv(isProduction)
+		client, err := NewContractClientFromEnv(isProduction, "https://rpc.example.com", "Test Passphrase")
 		assert.Error(t, err, "isProduction=%v", isProduction)
 		assert.Nil(t, client, "isProduction=%v", isProduction)
 	}
@@ -117,7 +117,7 @@ func TestNewContractClientFromEnv_MockOptIn_RejectedInProduction(t *testing.T) {
 	clearMintingEnv(t)
 	t.Setenv(MintingUseMockClientEnvVar, "true")
 
-	client, err := NewContractClientFromEnv(true)
+	client, err := NewContractClientFromEnv(true, "https://rpc.example.com", "Test Passphrase")
 	assert.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "not permitted in production")
@@ -127,7 +127,7 @@ func TestNewContractClientFromEnv_MockOptIn_AllowedOutsideProduction(t *testing.
 	clearMintingEnv(t)
 	t.Setenv(MintingUseMockClientEnvVar, "true")
 
-	client, err := NewContractClientFromEnv(false)
+	client, err := NewContractClientFromEnv(false, "https://rpc.example.com", "Test Passphrase")
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.True(t, isMockContractClient(client))
@@ -139,7 +139,7 @@ func TestNewContractClientFromEnv_ValidKey_ReturnsRealClient(t *testing.T) {
 	assert.NoError(t, err)
 	t.Setenv("CARBON_ASSET_AUTHORITY_SECRET_KEY", kp.Seed())
 
-	client, err := NewContractClientFromEnv(true)
+	client, err := NewContractClientFromEnv(true, "https://rpc.example.com", "Test Passphrase")
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.False(t, isMockContractClient(client))
