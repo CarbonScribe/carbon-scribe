@@ -283,11 +283,27 @@ impl RetirementTracker {
         // The contract must be pre-authorized as a burner on the CarbonAsset contract
         // We assume CarbonAsset has a burn_token function that accepts (token_id: u32, from: Address)
         // The CarbonAsset contract should verify ownership before allowing burn
+        //
+        // try_invoke_contract (not invoke_contract) so a failing burn — the
+        // callee panicking, returning a contract error, or carbon_asset_contract
+        // simply not implementing burn_token — surfaces as
+        // ContractError::BurnFailed instead of trapping (aborting) this whole
+        // transaction. invoke_contract has no such escape hatch: any callee
+        // failure there aborts the host call outright, which is exactly what
+        // made a single bad token abort an entire batch_retire instead of
+        // being reported as one failed entry (#686).
         let burn_symbol = Symbol::new(&env, "burn_token");
         let mut burn_args = Vec::new(&env);
         burn_args.push_back(token_id.into_val(&env));
         burn_args.push_back(retiring_entity.clone().into_val(&env));
-        env.invoke_contract::<()>(&carbon_asset_contract, &burn_symbol, burn_args);
+        match env.try_invoke_contract::<(), soroban_sdk::Error>(
+            &carbon_asset_contract,
+            &burn_symbol,
+            burn_args,
+        ) {
+            Ok(Ok(())) => {}
+            Ok(Err(_)) | Err(_) => return Err(ContractError::BurnFailed),
+        }
 
         let event_nonce = Self::next_event_nonce(&env)?;
 
@@ -637,7 +653,36 @@ mod test {
 
     #[contractimpl]
     impl MockCarbonAsset {
-        pub fn burn_token(_env: Env, _token_id: u32, _from: Address) {}
+        /// Burns successfully unless `token_id` has been marked to fail via
+        /// `set_failing_token_ids` — lets one test simulate a mix of
+        /// succeeding and failing burns against the same contract address
+        /// (#686).
+        pub fn burn_token(env: Env, token_id: u32, _from: Address) {
+            let failing: Vec<u32> = env
+                .storage()
+                .instance()
+                .get(&Symbol::new(&env, "failing"))
+                .unwrap_or(Vec::new(&env));
+            if failing.contains(token_id) {
+                panic!("simulated burn failure");
+            }
+        }
+
+        pub fn set_failing_token_ids(env: Env, ids: Vec<u32>) {
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "failing"), &ids);
+        }
+    }
+
+    /// A contract with no `burn_token` function at all, for testing the
+    /// "callee doesn't implement burn_token" failure path (#686).
+    #[contract]
+    pub struct EmptyContract;
+
+    #[contractimpl]
+    impl EmptyContract {
+        pub fn noop(_env: Env) {}
     }
 
     fn setup() -> (Env, RetirementTrackerClient<'static>, Address) {
@@ -653,6 +698,24 @@ mod test {
         client.initialize(&admin, &asset_contract);
 
         (env, client, retiring_entity)
+    }
+
+    /// Like `setup`, but also returns the CarbonAsset contract's address so
+    /// a test can call `MockCarbonAssetClient::set_failing_token_ids` on it
+    /// (#686).
+    fn setup_with_asset_contract() -> (Env, RetirementTrackerClient<'static>, Address, Address) {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let retiring_entity = Address::generate(&env);
+        let asset_contract = env.register(MockCarbonAsset, ());
+        let tracker_contract = env.register(RetirementTracker, ());
+        let client = RetirementTrackerClient::new(&env, &tracker_contract);
+
+        client.initialize(&admin, &asset_contract);
+
+        (env, client, retiring_entity, asset_contract)
     }
 
     /// Collect the `(token_id, reason)` pairs from every emitted
@@ -1079,5 +1142,131 @@ mod test {
 
         let empty_page = client.get_retirements_by_entity_page(&retiring_entity, &999, &10);
         assert!(empty_page.is_empty());
+    }
+
+    // ====================================================================
+    // Burn failure surfaces as BurnFailed instead of trapping (issue #686)
+    // ====================================================================
+
+    #[test]
+    fn retire_returns_burn_failed_when_burn_token_panics() {
+        let (env, client, retiring_entity, asset_contract) = setup_with_asset_contract();
+        let mut failing = Vec::new(&env);
+        failing.push_back(1u32);
+        MockCarbonAssetClient::new(&env, &asset_contract).set_failing_token_ids(&failing);
+
+        let result = client.try_retire(&1, &retiring_entity, &None);
+        assert!(matches!(result, Err(Ok(ContractError::BurnFailed))));
+
+        // No state was written for the token whose burn failed.
+        assert!(!client.is_retired(&1));
+        assert!(client.get_retirement_record(&1).is_none());
+        assert_eq!(client.get_event_nonce(), 0);
+        assert!(client
+            .get_retirements_by_entity(&retiring_entity)
+            .is_empty());
+        assert!(failed_batch_events(&env).is_empty());
+    }
+
+    #[test]
+    fn retire_with_tx_hash_returns_burn_failed_when_burn_token_panics() {
+        let (env, client, retiring_entity, asset_contract) = setup_with_asset_contract();
+        let mut failing = Vec::new(&env);
+        failing.push_back(1u32);
+        MockCarbonAssetClient::new(&env, &asset_contract).set_failing_token_ids(&failing);
+        let tx_hash = BytesN::from_array(&env, &[3u8; 32]);
+
+        let result = client.try_retire_with_tx_hash(&1, &retiring_entity, &None, &tx_hash);
+        assert!(matches!(result, Err(Ok(ContractError::BurnFailed))));
+        assert!(client.get_retirement_record(&1).is_none());
+        assert_eq!(client.get_event_nonce(), 0);
+    }
+
+    #[test]
+    fn retire_returns_burn_failed_when_contract_has_no_burn_token() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let retiring_entity = Address::generate(&env);
+        let empty_contract = env.register(EmptyContract, ());
+        let tracker_contract = env.register(RetirementTracker, ());
+        let client = RetirementTrackerClient::new(&env, &tracker_contract);
+        client.initialize(&admin, &empty_contract);
+
+        let result = client.try_retire(&1, &retiring_entity, &None);
+        assert!(matches!(result, Err(Ok(ContractError::BurnFailed))));
+        assert!(client.get_retirement_record(&1).is_none());
+        assert_eq!(client.get_event_nonce(), 0);
+    }
+
+    #[test]
+    fn batch_retire_with_one_burn_failure_reports_it_without_aborting_the_batch() {
+        let (env, client, retiring_entity, asset_contract) = setup_with_asset_contract();
+        let mut failing = Vec::new(&env);
+        failing.push_back(1u32);
+        MockCarbonAssetClient::new(&env, &asset_contract).set_failing_token_ids(&failing);
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+        token_ids.push_back(3);
+
+        let result = client.batch_retire(&token_ids, &retiring_entity, &None);
+
+        // The two valid tokens still succeed — the failing burn doesn't
+        // abort the whole batch.
+        assert_eq!(result.succeeded.len(), 2);
+        assert_eq!(result.succeeded.get(0).unwrap().token_id, 2);
+        assert_eq!(result.succeeded.get(1).unwrap().token_id, 3);
+
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (1, RetirementFailureReason::BurnFailed)
+        );
+
+        // No ledger entry for the failing token; the two valid ones are recorded.
+        assert!(client.get_retirement_record(&1).is_none());
+        assert!(client.get_retirement_record(&2).is_some());
+        assert!(client.get_retirement_record(&3).is_some());
+
+        // Not asserted here: env.events().all() in this soroban-sdk version
+        // only surfaces events from the most recent cross-contract call
+        // frame, so after three sequential try_invoke_contract calls (one
+        // per token) only the last one's events remain visible to the test
+        // harness — a testutils observability limit, not a contract bug.
+        // The RetirementFailedEvent publish call itself is the same one
+        // already covered (and verified) by the InvalidTokenId/
+        // TokenAlreadyRetired failure-reporting tests above, which don't
+        // involve a cross-contract call before it.
+    }
+
+    #[test]
+    fn batch_retire_with_tx_hashes_with_one_burn_failure_reports_it_without_aborting_the_batch() {
+        let (env, client, retiring_entity, asset_contract) = setup_with_asset_contract();
+        let mut failing = Vec::new(&env);
+        failing.push_back(2u32);
+        MockCarbonAssetClient::new(&env, &asset_contract).set_failing_token_ids(&failing);
+
+        let mut token_ids = Vec::new(&env);
+        token_ids.push_back(1);
+        token_ids.push_back(2);
+        let hash = BytesN::from_array(&env, &[5u8; 32]);
+        let mut tx_hashes = Vec::new(&env);
+        tx_hashes.push_back(hash.clone());
+        tx_hashes.push_back(hash.clone());
+
+        let result =
+            client.batch_retire_with_tx_hashes(&token_ids, &retiring_entity, &None, &tx_hashes);
+
+        assert_eq!(result.succeeded.len(), 1);
+        assert_eq!(result.succeeded.get(0).unwrap().token_id, 1);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(
+            result.failed.get(0).unwrap(),
+            (2, RetirementFailureReason::BurnFailed)
+        );
+        assert!(client.get_retirement_record(&2).is_none());
     }
 }
