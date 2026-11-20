@@ -15,6 +15,7 @@ Standalone agentic AI microservice for the CarbonScribe platform. Powers automat
 - [Development & Testing](#-development--testing)
   - [Mock Mode for Local Development](#-mock-mode-for-local-development)
   - [Load Testing](#-load-testing)
+- [On-Call Runbook](#-on-call-runbook)
 - [Folder Structure](#-folder-structure)
 - [License](#-license)
 
@@ -198,6 +199,12 @@ npm run loadtest
 ```
 
 For more details on load test benchmarks and options, see [LOAD_TESTING.md](./LOAD_TESTING.md).
+
+---
+
+## 🚨 On-Call Runbook
+
+For incident response procedures covering realistic failure modes (Anthropic API outages, upstream backend unreachability, audit database issues, and more), see [RUNBOOK.md](./RUNBOOK.md).
 
 ---
 

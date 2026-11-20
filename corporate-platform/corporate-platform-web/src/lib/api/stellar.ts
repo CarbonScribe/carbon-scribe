@@ -2,6 +2,8 @@ import { ApiError, apiRequest } from '@/lib/api/http'
 import type {
   BatchTransferRequest,
   InitiateTransferRequest,
+  TransferHistoryPage,
+  TransferHistoryQuery,
   TransferRecord,
 } from '@/types/stellar'
 
@@ -83,6 +85,25 @@ export class StellarApiClient {
         options,
       )
     }
+  }
+
+  async getTransferHistory(
+    query: TransferHistoryQuery,
+  ): Promise<TransferHistoryPage> {
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== '') params.set(key, String(value))
+    }
+    const suffix = params.size ? `?${params.toString()}` : ''
+    return apiRequest<TransferHistoryPage>(
+      `/api/v1/stellar/transfers${suffix}`,
+      { method: 'GET' },
+      {
+        baseUrl: this.baseUrl,
+        token: this.getAuthToken(),
+        fetchImpl: this.fetchImpl,
+      },
+    )
   }
 
   private getAuthToken(): string | undefined {

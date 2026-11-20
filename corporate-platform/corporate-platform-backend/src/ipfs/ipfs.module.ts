@@ -14,11 +14,14 @@ import { CertificateFailureController } from './certificate-failure.controller';
 import { DatabaseModule } from '../shared/database/database.module';
 import { PinataProvider } from './providers/pinata.provider';
 import { IPFS_PROVIDER } from './interfaces/ipfs-provider.interface';
+import { IpfsMetricsService } from './metrics/ipfs-metrics.service';
+import { IpfsMetricsController } from './metrics/ipfs-metrics.controller';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
     IpfsConfig,
+    IpfsMetricsService,
     PinataHealthService,
     // Register the active provider via injection token.
     // To switch providers, replace PinataProvider with another IIpfsProvider implementation.
@@ -37,7 +40,11 @@ import { IPFS_PROVIDER } from './interfaces/ipfs-provider.interface';
     CertificateFailureNotificationService,
     CertificateRetrySchedulerService,
   ],
-  controllers: [IpfsController, CertificateFailureController],
+  controllers: [
+    IpfsController,
+    CertificateFailureController,
+    IpfsMetricsController,
+  ],
   exports: [
     IPFS_PROVIDER,
     IpfsService,
@@ -47,6 +54,7 @@ import { IPFS_PROVIDER } from './interfaces/ipfs-provider.interface';
     PinningService,
     CertificateIpfsService,
     CertificateDeadLetterService,
+    IpfsMetricsService,
   ],
 })
 export class IpfsModule {}

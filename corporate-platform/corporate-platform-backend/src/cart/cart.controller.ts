@@ -9,6 +9,7 @@ import {
   Query,
   Res,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { CartService } from './cart.service';
@@ -22,6 +23,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { IdempotencyInterceptor } from '../shared/idempotency/idempotency.interceptor';
 
 @UseGuards(JwtAuthGuard)
 @Controller('api/v1')
@@ -69,11 +71,13 @@ export class CartController {
   // ==========================================
 
   @Post('cart/checkout')
+  @UseInterceptors(IdempotencyInterceptor)
   async checkout(@CurrentUser() user: JwtPayload, @Body() dto: CheckoutDto) {
     return this.cartService.checkout(user.companyId, user.sub, dto);
   }
 
   @Post('checkout/confirm')
+  @UseInterceptors(IdempotencyInterceptor)
   async confirmPurchase(
     @CurrentUser() user: JwtPayload,
     @Body() dto: ConfirmCheckoutDto,

@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { retirementService } from '@/services/retirement.service'
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer'
 import type { RetirementRecord, RetirementHistoryQuery } from '@/types/retirement'
 
 const PAGE_SIZE = 10
@@ -159,7 +160,7 @@ export default function RetirementHistory() {
                       <td className="py-4">
                         {r.transactionHash ? (
                           <a
-                            href={`https://stellar.expert/explorer/public/tx/${r.transactionHash}`}
+                            href={getStellarExplorerUrl(r.transactionHash)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-corporate-blue"

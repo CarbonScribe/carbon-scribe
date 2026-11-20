@@ -116,4 +116,117 @@ describe('OutboxService', () => {
       expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
     );
   });
+
+  describe('request correlation propagation (#736)', () => {
+    it('embeds the captured correlation IDs into the stored payload', async () => {
+      outboxEvent.create.mockImplementation(async ({ data }: any) => ({
+        id: 'outbox-3',
+        ...data,
+      }));
+      const service = new OutboxService(prisma, kafkaService, configService);
+
+      await service.create({
+        topic: 'orders',
+        payload: { id: 'evt-1', type: 'order.created' },
+        key: 'orders:evt-1:created',
+        correlation: { requestId: 'req-1', traceId: 'trace-1' },
+      });
+
+      expect(outboxEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            payload: expect.objectContaining({
+              id: 'evt-1',
+              type: 'order.created',
+              __correlation: { requestId: 'req-1', traceId: 'trace-1' },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('stores the payload unchanged when no correlation is captured', async () => {
+      outboxEvent.create.mockImplementation(async ({ data }: any) => ({
+        id: 'outbox-4',
+        ...data,
+      }));
+      const service = new OutboxService(prisma, kafkaService, configService);
+
+      await service.create({
+        topic: 'orders',
+        payload: { id: 'evt-2' },
+        key: 'orders:evt-2:created',
+      });
+
+      expect(outboxEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ payload: { id: 'evt-2' } }),
+        }),
+      );
+    });
+
+    it('sends the correlation IDs as Kafka message headers, stripped from the published value', async () => {
+      const row = {
+        id: 'outbox-5',
+        topic: 'orders',
+        payload: {
+          id: 'evt-3',
+          type: 'order.created',
+          __correlation: { requestId: 'req-3', traceId: 'trace-3' },
+        },
+        key: 'orders:evt-3:created',
+        status: 'pending',
+        attempts: 0,
+      };
+      outboxEvent.findUnique.mockResolvedValue(row);
+      outboxEvent.update.mockResolvedValue(row);
+      kafkaService.isEnabled.mockReturnValue(true);
+      const send = jest.fn().mockResolvedValue(undefined);
+      kafkaService.getProducer.mockReturnValue({ send });
+      const service = new OutboxService(prisma, kafkaService, configService);
+
+      await service.publish(row.id);
+
+      expect(send).toHaveBeenCalledWith({
+        topic: 'orders',
+        messages: [
+          {
+            key: row.key,
+            value: JSON.stringify({ id: 'evt-3', type: 'order.created' }),
+            headers: { 'x-request-id': 'req-3', 'x-trace-id': 'trace-3' },
+          },
+        ],
+      });
+    });
+
+    it('sends no headers when the payload carries no correlation metadata', async () => {
+      const row = {
+        id: 'outbox-6',
+        topic: 'orders',
+        payload: { id: 'evt-4' },
+        key: 'orders:evt-4:created',
+        status: 'pending',
+        attempts: 0,
+      };
+      outboxEvent.findUnique.mockResolvedValue(row);
+      outboxEvent.update.mockResolvedValue(row);
+      kafkaService.isEnabled.mockReturnValue(true);
+      const send = jest.fn().mockResolvedValue(undefined);
+      kafkaService.getProducer.mockReturnValue({ send });
+      const service = new OutboxService(prisma, kafkaService, configService);
+
+      await service.publish(row.id);
+
+      expect(send).toHaveBeenCalledWith({
+        topic: 'orders',
+        messages: [
+          {
+            key: row.key,
+            value: JSON.stringify({ id: 'evt-4' }),
+            headers: undefined,
+          },
+        ],
+      });
+    });
+  });
 });

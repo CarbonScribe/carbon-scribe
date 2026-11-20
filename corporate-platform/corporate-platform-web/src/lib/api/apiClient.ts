@@ -1,6 +1,10 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
 import { parseApiError, ParsedError, ErrorCode } from '@/lib/utils/errorParser';
 import { withRetry, isRetryableError, RetryOptions, generateIdempotencyKey } from '@/lib/utils/retry';
+import {
+  buildRateLimitRetryOptions,
+  getRetryAfterMs,
+} from '@/lib/utils/rateLimit';
 import { requestQueue } from '@/lib/utils/requestQueue';
 import { reportError } from '@/lib/telemetry/errorReporter';
 import { requestManager } from '@/lib/api/requestManager';
@@ -26,6 +30,8 @@ export interface ApiResponse<T> {
   fromCache?: boolean;
   /** Cache headers from the response */
   cacheHeaders?: Record<string, string>;
+  /** Milliseconds to wait before retrying a rate-limited request */
+  retryAfterMs?: number;
 }
 
 export interface ApiFetchOptions extends RequestInit {
@@ -257,25 +263,35 @@ class ApiClient {
         if (!response.ok) {
           const errorBody = parsedResponse.data ?? parsedResponse.raw;
           const parsedError = parseApiError(errorBody, response.status);
-          
+          const isRateLimited = response.status === 429;
+          const retryAfterMs = isRateLimited
+            ? getRetryAfterMs(response.headers, errorBody)
+            : undefined;
+          if (retryAfterMs !== undefined) {
+            parsedError.retryAfterMs = retryAfterMs;
+          }
+
           reportError(
             parsedError.message,
             'api-client',
-            response.status >= 500 ? 'error' : 'warning',
+            isRateLimited ? 'warning' : response.status >= 500 ? 'error' : 'warning',
             {
               endpoint,
               status: response.status,
               contentType: parsedResponse.contentType,
               bodyPreview: parsedResponse.preview,
+              ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
             },
           );
 
           // Check if this is a retryable error (5xx, 408, 429)
-          const isRetryable = response.status >= 500 || response.status === 408 || response.status === 429;
+          const isRetryable = response.status >= 500 || response.status === 408 || isRateLimited;
           if (isRetryable) {
             const err = new Error(parsedError.message) as any;
             err.status = response.status;
             err.statusCode = response.status;
+            err.retryAfterMs = retryAfterMs;
+            err.parsedError = parsedError;
             throw err;
           }
           
@@ -339,10 +355,20 @@ class ApiClient {
           };
         }
         
-        const parsedError = parseApiError(error, error?.status ?? error?.statusCode);
+        const parsedError =
+          error?.parsedError ??
+          parseApiError(error, error?.status ?? error?.statusCode);
+        if (error?.retryAfterMs !== undefined && parsedError.retryAfterMs === undefined) {
+          parsedError.retryAfterMs = error.retryAfterMs;
+        }
         
-        // Check if this is a retryable network error
-        if (isRetryableError(error, 0)) {
+        // Check if this is a retryable network error, or a rate limit that
+        // the policy layer needs to see (GETs get one Retry-After-aware retry).
+        if (
+          isRetryableError(error, 0) ||
+          error?.status === 429 ||
+          error?.statusCode === 429
+        ) {
           throw error; // Let retry logic handle it
         }
         
@@ -378,33 +404,54 @@ class ApiClient {
           statusCode: error?.statusCode ?? error?.status ?? parsedError.statusCode,
           timestamp: new Date().toISOString(),
           parsedError,
+          retryAfterMs: error?.retryAfterMs,
         };
       }
     };
 
-    // Apply retry logic if retry options are provided
-    if (options?.retry) {
-      try {
-        return await withRetry(executeRequest, {
-          ...options.retry,
-          onRetry: (attempt, error) => {
-            console.log(`Retrying request to ${endpoint} (attempt ${attempt})...`);
-            options.retry?.onRetry?.(attempt, error);
-          },
-        });
-      } catch (error) {
-        const parsedError = parseApiError(error);
-        reportError(error, 'api-client', 'error', { endpoint, message: parsedError.message, retried: true });
-        return {
-          success: false,
-          error: parsedError.message,
-          timestamp: new Date().toISOString(),
-          parsedError,
-        };
+    // Rate-limit retries are always policy-controlled; other failures keep
+    // their opt-in retry behaviour via the caller's options.
+    const retryOptions = buildRateLimitRetryOptions(method, endpoint, options?.retry);
+    try {
+      return await withRetry(executeRequest, {
+        ...retryOptions,
+        onRetry: (attempt, error) => {
+          console.log(`Retrying request to ${endpoint} (attempt ${attempt})...`);
+          options?.retry?.onRetry?.(attempt, error);
+        },
+      });
+    } catch (error: any) {
+      const parsedError =
+        error?.parsedError ??
+        parseApiError(error, error?.status ?? error?.statusCode);
+      if (error?.retryAfterMs !== undefined && parsedError.retryAfterMs === undefined) {
+        parsedError.retryAfterMs = error.retryAfterMs;
       }
+      // Without caller-supplied retry options, only rate limits are converted
+      // into an ApiResponse here. Everything else keeps its previous contract.
+      if (!options?.retry && parsedError.code !== ErrorCode.RATE_LIMITED) {
+        throw error;
+      }
+      reportError(
+        error,
+        'api-client',
+        parsedError.code === ErrorCode.RATE_LIMITED ? 'warning' : 'error',
+        {
+          endpoint,
+          message: parsedError.message,
+          retried: true,
+          retryAfterMs: error?.retryAfterMs,
+        },
+      );
+      return {
+        success: false,
+        error: parsedError.message,
+        statusCode: error?.statusCode ?? error?.status ?? parsedError.statusCode,
+        timestamp: new Date().toISOString(),
+        parsedError,
+        retryAfterMs: error?.retryAfterMs,
+      };
     }
-
-    return executeRequest();
   }
 
   /**

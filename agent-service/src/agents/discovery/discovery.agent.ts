@@ -12,12 +12,17 @@ import {
   checkApproval,
   DISCOVERY_ACTION_TYPES,
 } from "../../shared/guardrails/approval-gate.js";
+import {
+  assertAllRecommendationsCited,
+  assertCitationsForStatus,
+} from "../../shared/guardrails/citation-policy.js";
 import { logger } from "../../shared/logging/logger.js";
 import type {
   AgentCitation,
   AgentRunRequest,
   AgentRunResult,
 } from "../../shared/types/agent.types.js";
+import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { discoveryTools } from "./discovery.tools.js";
 
 const SYSTEM_PROMPT = `You are the credit-discovery agent for CarbonScribe's corporate marketplace.
@@ -36,12 +41,7 @@ const DiscoveryOutputSchema = z.object({
       justification: z.string(),
     }),
   ),
-  citations: z.array(
-    z.object({
-      source: z.string(),
-      reference: z.string(),
-    }),
-  ),
+  citations: z.array(AgentCitationSchema),
   notes: z
     .string()
     .optional()
@@ -191,6 +191,28 @@ export async function runDiscoveryAgent(
     payload: { recommendations: parsed.recommendations, citations },
   });
   const status = decision === "auto-approved" ? "drafted" : "needs-approval";
+
+  // An empty shortlist is a legitimate "nothing matched" outcome (see
+  // `notes`), not an ungrounded claim — only a non-empty shortlist is
+  // required to cite the records it's recommending (#705). That check only
+  // guards "citations is empty at all"; assertAllRecommendationsCited
+  // additionally guards against a shortlist where some, but not all,
+  // recommendations are backed by a citation (#708) — rejecting the run
+  // (status: "failed") rather than demoting it, consistent with how #705's
+  // check is already handled immediately below.
+  try {
+    assertCitationsForStatus(status, citations, {
+      allowEmpty: parsed.recommendations.length === 0,
+    });
+    assertAllRecommendationsCited(parsed.recommendations, citations);
+  } catch (err) {
+    return failRun(
+      req,
+      toolCalls,
+      err instanceof Error ? err.message : String(err),
+      cumulativeTokens,
+    );
+  }
 
   await auditLog.record({
     timestamp: new Date().toISOString(),

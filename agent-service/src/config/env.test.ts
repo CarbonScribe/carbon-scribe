@@ -49,4 +49,37 @@ describe("env configuration", () => {
       expect(env.agentMaxTokensPerRun).toBe(50000);
     });
   });
+
+  describe("request body size limit (#704)", () => {
+    const original = process.env.MAX_REQUEST_BODY_BYTES;
+
+    afterEach(() => {
+      if (original === undefined) {
+        delete process.env.MAX_REQUEST_BODY_BYTES;
+      } else {
+        process.env.MAX_REQUEST_BODY_BYTES = original;
+      }
+      vi.resetModules();
+    });
+
+    it("defaults to the shared body-limit constant when no env var is set", async () => {
+      delete process.env.MAX_REQUEST_BODY_BYTES;
+      vi.resetModules();
+
+      const { env } = await import("./env.js");
+      const { DEFAULT_MAX_REQUEST_BODY_BYTES } =
+        await import("../shared/middleware/body-limit.js");
+
+      expect(env.maxRequestBodyBytes).toBe(DEFAULT_MAX_REQUEST_BODY_BYTES);
+    });
+
+    it("is overridable via MAX_REQUEST_BODY_BYTES without any code change", async () => {
+      process.env.MAX_REQUEST_BODY_BYTES = "2097152";
+      vi.resetModules();
+
+      const { env } = await import("./env.js");
+
+      expect(env.maxRequestBodyBytes).toBe(2_097_152);
+    });
+  });
 });

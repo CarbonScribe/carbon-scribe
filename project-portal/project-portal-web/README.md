@@ -164,3 +164,9 @@ Pull requests welcome! See root CONTRIBUTING.md for guidelines.
 ---
 
 _Part of the CarbonScribe 7-Layer Architecture. See project-portal/README.md for full context._
+
+## React Strict Mode
+
+`next.config.ts` sets `reactStrictMode: true` (#722). In development, React
+double-invokes effects to surface missing cleanups. If something "runs twice",
+fix the effect (unsubscribe / abort / dispose), do not disable strict mode.

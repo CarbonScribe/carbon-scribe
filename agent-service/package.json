@@ -17,14 +17,14 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",
-    "axios": "^1.13.5",
+    "axios": "^1.21.1",
     "dotenv": "^17.3.1",
-    "express": "^4.21.2",
+    "express": "^4.22.3",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
     "pino": "^10.3.1",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/autocannon": "^7.12.7",
@@ -33,9 +33,9 @@
     "@types/node": "^20.3.1",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.0",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "autocannon": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.73.0",
+    "@typescript-eslint/parser": "^8.73.0",
+    "autocannon": "^9.0.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-prettier": "^5.0.0",
@@ -44,6 +44,10 @@
     "supertest": "^7.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.2"
+    "vite": "^8.2.6",
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "body-parser": "^1.20.9"
   }
 }

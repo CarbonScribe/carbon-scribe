@@ -354,7 +354,16 @@ export default function ProjectDetailPage() {
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <h3 className="text-lg font-bold text-gray-900 mb-2">Project Geospatial Map</h3>
                 <p className="text-sm text-gray-600 mb-4">Explore project boundaries, geofences, and satellite layers for this project.</p>
-                <CarbonMap projectId={project.id} height="h-[480px]" className="w-full" />
+                <CarbonMap
+                  projectId={project.id}
+                  expectedArea={project.area}
+                  editable={true}
+                  height="h-[480px]"
+                  className="w-full"
+                  onAreaReconciled={() => {
+                    fetchProjectById(project.id);
+                  }}
+                />
               </div>
             </div>
           )}

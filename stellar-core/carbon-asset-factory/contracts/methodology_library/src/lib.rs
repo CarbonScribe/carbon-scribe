@@ -79,7 +79,20 @@ pub struct MethodologyLibrary;
 
 #[contractimpl]
 impl MethodologyLibrary {
-   
+
+    /// Bootstraps the contract: sets the admin, name, symbol, and delay
+    /// period, and initializes the authority list empty. May only be
+    /// called once — a second call returns `Error::AlreadyInitialized`
+    /// without touching storage or emitting anything (issue #690).
+    ///
+    /// On success, publishes an `"init"` event (topic distinct from this
+    /// contract's other admin-action events — `auth_add`/`auth_rem`/
+    /// `delay_upd`/`adm_trns` — so an off-chain indexer can tell contract
+    /// bootstrap apart from a later admin action) carrying
+    /// `(admin, name, symbol, delay_period)`, so a block explorer or audit
+    /// service can detect when and by whom this contract was initialized,
+    /// and confirm the authority list started empty, without falling back
+    /// to a direct storage read.
     pub fn initialize(env: Env, admin: Address, name: String, symbol: String, delay_period: u64) -> Result<(), Error> {
 
         admin.require_auth();
@@ -94,6 +107,12 @@ impl MethodologyLibrary {
         env.storage().persistent().set(&DataKey::Authorities, &Vec::<Address>::new(&env));
         env.storage().persistent().set(&DataKey::DelayPeriod, &delay_period);
         env.storage().persistent().set(&DataKey::NextProposalId, &1u32);
+
+        env.events().publish(
+            (symbol_short!("init"),),
+            (admin, name, symbol, delay_period),
+        );
+
         Ok(())
     }
 
@@ -663,8 +682,88 @@ impl MethodologyLibrary {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
-    use soroban_sdk::{Env, String};
+    use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+    use soroban_sdk::{Env, String, Symbol, TryFromVal};
+
+    /// Returns the data payload of the first `"init"`-topic event found, if
+    /// any (issue #690). Mirrors the event-decoding pattern used for
+    /// retirement_tracker's RetirementFailedEvent assertions: find the
+    /// event by its topic symbol, then decode its data as the concrete
+    /// tuple type initialize() actually publishes.
+    fn init_event(env: &Env) -> Option<(Address, String, String, u64)> {
+        let init_symbol = Symbol::new(env, "init");
+        let events = env.events().all();
+        for i in 0..events.len() {
+            let (_, topics, data) = events.get(i).unwrap();
+            if topics
+                .get(0)
+                .is_some_and(|t| Symbol::try_from_val(env, &t) == Ok(init_symbol.clone()))
+            {
+                return <(Address, String, String, u64)>::try_from_val(env, &data).ok();
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn test_initialize_emits_init_event_with_admin_name_symbol_and_delay() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let name = String::from_str(&env, "Carbon methodology");
+        let symbol = String::from_str(&env, "CSC-METH");
+        let delay_period = 7u64;
+
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &name, &symbol, &delay_period);
+
+        let (event_admin, event_name, event_symbol, event_delay) =
+            init_event(&env).expect("initialize() should publish an \"init\" event");
+        assert_eq!(event_admin, admin);
+        assert_eq!(event_name, name);
+        assert_eq!(event_symbol, symbol);
+        assert_eq!(event_delay, delay_period);
+    }
+
+    #[test]
+    fn test_second_initialize_fails_and_emits_no_event() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let contract_id = env.register(MethodologyLibrary, ());
+        let client = MethodologyLibraryClient::new(&env, &contract_id);
+
+        client.initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology"),
+            &String::from_str(&env, "CSC-METH"),
+            &7u64,
+        );
+        assert!(init_event(&env).is_some());
+
+        let result = client.try_initialize(
+            &admin,
+            &String::from_str(&env, "Carbon methodology 2"),
+            &String::from_str(&env, "CSC-METH-2"),
+            &14u64,
+        );
+        assert_eq!(result, Err(Ok(Error::AlreadyInitialized)));
+
+        // The test harness scopes env.events().all() to the most recent
+        // top-level call, so checking immediately after this rejected
+        // second call — rather than trying to accumulate across both
+        // calls — is exactly what proves it published nothing: the
+        // AlreadyInitialized error path returns before reaching
+        // env.events().publish() at all.
+        assert!(
+            init_event(&env).is_none(),
+            "a rejected second initialize() call must not publish an \"init\" event"
+        );
+    }
 
     #[test]
     fn test_lifecycle() {

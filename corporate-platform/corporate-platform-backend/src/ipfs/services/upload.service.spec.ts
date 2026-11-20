@@ -51,6 +51,11 @@ describe('UploadService hash persistence', () => {
     verifyPin: jest.fn().mockResolvedValue({ verified: true, attempts: 1 }),
   } as any;
 
+  const mockMetrics = {
+    timeOperation: jest.fn((_op: string, fn: () => any) => fn()),
+    recordFailure: jest.fn(),
+  } as any;
+
   let service: UploadService;
 
   beforeEach(() => {
@@ -60,6 +65,7 @@ describe('UploadService hash persistence', () => {
       mockPrisma,
       mockProvider,
       mockRetrieval,
+      mockMetrics,
     );
     mockPrisma.ipfsDocument.findFirst.mockResolvedValue(null);
     mockPrisma.ipfsDocument.create.mockResolvedValue({
@@ -246,4 +252,3 @@ describe('UploadService hash persistence', () => {
     });
   });
 });
-

@@ -18,5 +18,6 @@ export interface CreditDetail extends CreditSummary {
   lastVerification?: Date | null;
   assetCode?: string | null;
   issuer?: string | null;
+  verificationDocumentUrl?: string | null;
   contractId?: string | null;
 }

@@ -23,7 +23,9 @@ type Repository interface {
 
 	// Webhook Delivery
 	CreateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error
+	GetWebhookDelivery(ctx context.Context, id string) (*WebhookDelivery, error)
 	UpdateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error
+	ListPendingWebhookDeliveries(ctx context.Context, before time.Time) ([]WebhookDelivery, error)
 
 	// Event Subscription
 	CreateSubscription(ctx context.Context, sub *EventSubscription) error
@@ -122,8 +124,29 @@ func (r *repository) CreateWebhookDelivery(ctx context.Context, delivery *Webhoo
 	return r.db.WithContext(ctx).Create(delivery).Error
 }
 
+func (r *repository) GetWebhookDelivery(ctx context.Context, id string) (*WebhookDelivery, error) {
+	var delivery WebhookDelivery
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&delivery).Error; err != nil {
+		return nil, err
+	}
+	return &delivery, nil
+}
+
 func (r *repository) UpdateWebhookDelivery(ctx context.Context, delivery *WebhookDelivery) error {
 	return r.db.WithContext(ctx).Save(delivery).Error
+}
+
+func (r *repository) ListPendingWebhookDeliveries(ctx context.Context, before time.Time) ([]WebhookDelivery, error) {
+	var deliveries []WebhookDelivery
+	if err := r.db.WithContext(ctx).
+		Where(
+			"(status = ? AND attempt = 0) OR (status = ? AND (next_retry_at IS NULL OR next_retry_at <= ?))",
+			"pending", "failed", before,
+		).
+		Find(&deliveries).Error; err != nil {
+		return nil, err
+	}
+	return deliveries, nil
 }
 
 // Event Subscription

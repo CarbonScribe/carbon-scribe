@@ -123,6 +123,19 @@ func (r *fakeRepo) SaveAPIKey(_ context.Context, key *APIKey) error {
 	r.apiKeys[key.ID] = &cp
 	return nil
 }
+func (r *fakeRepo) DeleteStaleAPIKeys(_ context.Context, now time.Time, inactiveGracePeriod time.Duration) (int64, error) {
+	cutoff := now.Add(-inactiveGracePeriod)
+	var removed int64
+	for id, k := range r.apiKeys {
+		stale := (k.ExpiresAt != nil && !k.ExpiresAt.After(now)) ||
+			(!k.IsActive && !k.CreatedAt.After(cutoff))
+		if stale {
+			delete(r.apiKeys, id)
+			removed++
+		}
+	}
+	return removed, nil
+}
 func (r *fakeRepo) ListIntegrations(_ context.Context, userID uuid.UUID) ([]IntegrationConfiguration, error) {
 	out := []IntegrationConfiguration{}
 	for _, it := range r.integrations {

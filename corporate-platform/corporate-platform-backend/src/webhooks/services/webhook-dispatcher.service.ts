@@ -6,6 +6,7 @@ import {
 } from '../interfaces/webhook.interface';
 import { ProducerService } from '../../event-bus/producer.service';
 import { UnitOfWorkService } from '../../shared/database/unit-of-work.service';
+import { RequestContext } from '../../logger/context/request-context';
 
 @Injectable()
 export class WebhookDispatcherService implements OnModuleInit {
@@ -29,7 +30,16 @@ export class WebhookDispatcherService implements OnModuleInit {
   }
 
   async dispatch(payload: WebhookPayload) {
-    this.logger.log(`Dispatching event: ${payload.eventType}`);
+    // #736: this module has no outbound HTTP delivery with a signature
+    // header to attach a correlation header alongside — its only outbound
+    // call is the Kafka publish below, which already carries the
+    // originating request's correlation IDs in its envelope (producer ->
+    // outbox). Logging the request ID here keeps this dispatch's own log
+    // line joinable to that same request.
+    this.logger.log(
+      `Dispatching event: ${payload.eventType}`,
+      JSON.stringify({ requestId: RequestContext.getRequestId() }),
+    );
 
     const event = {
       id: `webhook:${payload.eventType}:${payload.data.hash || payload.data.transactionHash || payload.data.accountId || payload.timestamp}`,

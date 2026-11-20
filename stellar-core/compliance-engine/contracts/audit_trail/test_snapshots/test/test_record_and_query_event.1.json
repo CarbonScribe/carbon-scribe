@@ -111,7 +111,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                      "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                     }
                   ]
                 }
@@ -160,7 +160,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                      "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                     }
                   ]
                 }
@@ -209,7 +209,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                      "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                     }
                   ]
                 }
@@ -230,7 +230,7 @@
                   "symbol": "Events"
                 },
                 {
-                  "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                  "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                 }
               ]
             },
@@ -250,7 +250,7 @@
                       "symbol": "Events"
                     },
                     {
-                      "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                      "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                     }
                   ]
                 },
@@ -278,7 +278,15 @@
                         "symbol": "event_id"
                       },
                       "val": {
-                        "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                        "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "event_nonce"
+                      },
+                      "val": {
+                        "u64": "0"
                       }
                     },
                     {
@@ -386,7 +394,7 @@
                 "val": {
                   "vec": [
                     {
-                      "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                      "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
                     }
                   ]
                 }
@@ -478,7 +486,19 @@
                           ]
                         },
                         "val": {
-                          "bytes": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb"
+                          "bytes": "17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "1"
                         }
                       },
                       {
@@ -502,7 +522,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "142"
+                          "u64": "150"
                         }
                       },
                       {

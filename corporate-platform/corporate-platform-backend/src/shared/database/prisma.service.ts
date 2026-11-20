@@ -48,6 +48,7 @@ export class PrismaService
     'FlightRecord',
     'CorsiaComplianceYear',
     'CorsiaEligibleCredit',
+    'IdempotencyRecord',
   ]);
 
   private readonly scopedModelsByRelation = new Set<string>([

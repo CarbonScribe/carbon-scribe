@@ -53,6 +53,8 @@ export interface MarketplaceCredit {
   pricePerTon: number;
   status: string;
   verificationStandard?: string;
+  issuer?: string | null;
+  verificationDocumentUrl?: string | null;
   sdgs: number[];
   dynamicScore: number;
   lastVerification?: string;

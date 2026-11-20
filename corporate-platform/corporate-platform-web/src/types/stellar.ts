@@ -63,6 +63,8 @@ export interface TransferRecord {
   companyId: string
   projectId: string
   amount: number
+  fromAddress?: string | null
+  toAddress?: string | null
   status: StellarTransferState
   transactionHash?: string | null
   errorMessage?: string | null
@@ -80,4 +82,22 @@ export interface TransferRecord {
   confirmedAt?: string | null
   createdAt?: string
   updatedAt?: string
+}
+
+export interface TransferHistoryQuery {
+  page?: number
+  limit?: number
+  status?: StellarTransferState
+  walletAddress?: string
+  search?: string
+  fromDate?: string
+  toDate?: string
+}
+
+export interface TransferHistoryPage {
+  data: TransferRecord[]
+  total: number
+  page: number
+  limit: number
+  totalPages: number
 }
