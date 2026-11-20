@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +21,13 @@ const (
 	// development. HMAC-backed tokens should use at least a 256-bit key; using
 	// characters here is a proxy for entropy in the common case.
 	MinJWTSecretLength = 32
+
+	// DefaultSorobanTestnetRPCURL and DefaultTestnetPassphrase (#794) are the
+	// single source of the Soroban testnet defaults, applied only in
+	// development/test mode (see Load) — minting/tokenization no longer
+	// declare their own copies of these.
+	DefaultSorobanTestnetRPCURL = "https://soroban-testnet.stellar.org:443"
+	DefaultTestnetPassphrase    = "Test SDF Network ; September 2015"
 )
 
 // insecureDatabaseMarkers are substrings that only appear in the documented
@@ -246,6 +254,24 @@ func Load() (*Config, error) {
 	debug := os.Getenv("DEBUG") == "true" || os.Getenv("SERVER_MODE") == "development"
 	seedDevUsers := getEnvOrDefault("SEED_DEV_USERS", "true") == "true"
 
+	// Soroban RPC URL / network passphrase (#794): no testnet fallback is
+	// applied here when unset — only in development/test mode, with a
+	// warning, since a silent fallback in production is exactly how a real
+	// deployment ends up minting against testnet without anyone noticing.
+	// Validate() refuses to start in production when either is empty.
+	sorobanRPCURL := os.Getenv("SOROBAN_RPC_URL")
+	sorobanNetworkPassphrase := os.Getenv("STELLAR_NETWORK_PASSPHRASE")
+	if debug {
+		if sorobanRPCURL == "" {
+			log.Println("⚠️  SOROBAN_RPC_URL not set — defaulting to Soroban testnet (development mode only)")
+			sorobanRPCURL = DefaultSorobanTestnetRPCURL
+		}
+		if sorobanNetworkPassphrase == "" {
+			log.Println("⚠️  STELLAR_NETWORK_PASSPHRASE not set — defaulting to the testnet passphrase (development mode only)")
+			sorobanNetworkPassphrase = DefaultTestnetPassphrase
+		}
+	}
+
 	esAddresses := os.Getenv("ELASTICSEARCH_ADDRESSES")
 	if esAddresses == "" {
 		esAddresses = "http://localhost:9200"
@@ -350,8 +376,8 @@ func Load() (*Config, error) {
 			GraduatedCooldownBaseSeconds: getIntOrDefault("RATE_LIMIT_COOLDOWN_BASE_SECS", 60),
 		},
 		Soroban: SorobanConfig{
-			RPCURL:              getEnvOrDefault("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
-			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
+			RPCURL:              sorobanRPCURL,
+			NetworkPassphrase:   sorobanNetworkPassphrase,
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
 		},
@@ -432,6 +458,16 @@ func (c *Config) Validate() error {
 	// Settings encryption key — encrypts stored integration credentials.
 	if err := validateEncryptionKey(c.Settings.EncryptionKeyHex); err != nil {
 		problems = append(problems, fmt.Sprintf("SETTINGS_ENCRYPTION_KEY_HEX %v", err))
+	}
+
+	// Soroban RPC URL / network passphrase (#794) — minting silently
+	// defaulting to testnet in production is exactly the failure mode this
+	// guards against; Load only applies that default in development mode.
+	if strings.TrimSpace(c.Soroban.RPCURL) == "" {
+		problems = append(problems, "SOROBAN_RPC_URL must be set in production — there is no testnet fallback outside development mode")
+	}
+	if strings.TrimSpace(c.Soroban.NetworkPassphrase) == "" {
+		problems = append(problems, "STELLAR_NETWORK_PASSPHRASE must be set in production — there is no testnet fallback outside development mode")
 	}
 
 	// Database connection string.
