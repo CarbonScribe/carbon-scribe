@@ -484,6 +484,10 @@ impl MerkleBridge {
     ) -> Result<u32, MerkleBridgeError> {
         caller.require_auth();
 
+        // Require carbon asset contract to be configured before mint_wrapped execution (#737).
+        // Checked immediately after auth before any validation, root lookup, or state modification.
+        let carbon_asset_contract = Self::get_carbon_asset_contract(env.clone())?;
+
         // Validate registry_credit_id length and charset before any state access
         validate_registry_credit_id(&registry_credit_id)?;
 
@@ -525,16 +529,20 @@ impl MerkleBridge {
             return Err(MerkleBridgeError::InvalidProof);
         }
 
-        // Mark credit as minted
+        // Mint the real, canonical token on the configured CarbonAsset
+        // contract (#521, #737). This replaces the old local-only NextTokenId
+        // counter, whose value never corresponded to any real, mintable
+        // token on carbon_asset.
+        let token_id =
+            Self::mint_on_carbon_asset(&env, &carbon_asset_contract, &registry_credit_id, &caller)?;
+
+        // Mark credit as minted only after successful cross-contract mint on CarbonAsset (#737).
+        // If the cross-contract mint call fails, execution aborts with MintFailed without
+        // writing MintedCredit, ensuring is_credit_minted never returns true for a credit that
+        // was not actually minted on CarbonAsset.
         env.storage()
             .persistent()
             .set(&DataKey::MintedCredit(registry_credit_id.clone()), &true);
-
-        // Mint the real, canonical token on the configured CarbonAsset
-        // contract (#521). This replaces the old local-only NextTokenId
-        // counter, whose value never corresponded to any real, mintable
-        // token on carbon_asset.
-        let token_id = Self::mint_on_carbon_asset(&env, &registry_credit_id, &caller)?;
 
         // Emit bridged event
         CreditBridgedEvent {
@@ -691,11 +699,11 @@ impl MerkleBridge {
     /// CarbonAsset's own compliance hook.
     fn mint_on_carbon_asset(
         env: &Env,
+        carbon_asset_contract: &Address,
         registry_credit_id: &String,
         owner: &Address,
     ) -> Result<u32, MerkleBridgeError> {
-        let carbon_asset_contract = Self::get_carbon_asset_contract(env.clone())?;
-        let client = carbon_asset::Client::new(env, &carbon_asset_contract);
+        let client = carbon_asset::Client::new(env, carbon_asset_contract);
 
         let geo_hash: BytesN<32> = env.crypto().sha256(&registry_credit_id.to_bytes()).into();
         let metadata = carbon_asset::CarbonAssetMetadata {
@@ -880,7 +888,44 @@ impl MerkleBridge {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Bytes, Env};
+    use soroban_sdk::{
+        testutils::Address as _, testutils::Events as _, testutils::Ledger as _, Bytes, Env, Map,
+        Symbol, TryFromVal, Val,
+    };
+
+    fn find_credit_bridged_event(env: &Env) -> Option<(String, u32, Address, u64)> {
+        for event in env.events().all().iter() {
+            let (_, topics, data) = event;
+            if !topics.is_empty() {
+                if let Ok(topic_sym) = Symbol::try_from_val(env, &topics.get(0).unwrap()) {
+                    if topic_sym == Symbol::new(env, "credit_bridged_event") {
+                        if let Ok(map) = Map::<Symbol, Val>::try_from_val(env, &data) {
+                            let reg_id: String = String::try_from_val(
+                                env,
+                                &map.get(Symbol::new(env, "registry_credit_id"))?,
+                            )
+                            .ok()?;
+                            let token_id: u32 = u32::try_from_val(
+                                env,
+                                &map.get(Symbol::new(env, "stellar_token_id"))?,
+                            )
+                            .ok()?;
+                            let bridged_by: Address = Address::try_from_val(
+                                env,
+                                &map.get(Symbol::new(env, "bridged_by"))?,
+                            )
+                            .ok()?;
+                            let epoch_id: u64 =
+                                u64::try_from_val(env, &map.get(Symbol::new(env, "epoch_id"))?)
+                                    .ok()?;
+                            return Some((reg_id, token_id, bridged_by, epoch_id));
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 
     fn setup_env() -> (Env, Address, Address) {
         let env = Env::default();
@@ -1135,7 +1180,7 @@ mod tests {
         assert!(client.is_minted(&registry_id));
     }
 
-    // ── Real CarbonAsset mint integration (#521) ────────────────────────────
+    // ── Real CarbonAsset mint integration (#521, #737) ──────────────────────
 
     #[test]
     fn test_mint_wrapped_mints_a_real_carbon_asset_token() {
@@ -1155,14 +1200,23 @@ mod tests {
         let proof: Vec<BytesN<32>> = Vec::new(&env);
         let token_id = client.mint_wrapped(&user, &registry_id, &proof, &0, &1);
 
+        // Capture and assert CreditBridgedEvent immediately after mint_wrapped
+        // before any subsequent contract calls clear the event buffer (#737).
+        let (event_reg_id, event_token_id, event_bridged_by, event_epoch) =
+            find_credit_bridged_event(&env).expect("CreditBridgedEvent must be emitted");
+        assert_eq!(event_reg_id, registry_id);
+        assert_eq!(event_token_id, token_id);
+        assert_eq!(event_bridged_by, user);
+        assert_eq!(event_epoch, 1);
+
         // The returned token_id, and the one in CreditBridgedEvent, must be a
         // real, owned token on the configured CarbonAsset contract — not a
         // disconnected local counter value.
         let carbon_asset_id = client.get_carbon_asset_contract();
         let carbon_asset_client = carbon_asset::Client::new(&env, &carbon_asset_id);
         assert_eq!(carbon_asset_client.owner_of(&token_id), user);
-
         assert_eq!(token_id, 1);
+        assert!(client.is_minted(&registry_id));
     }
 
     #[test]
@@ -1183,6 +1237,32 @@ mod tests {
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
         client.mint_wrapped(&user, &registry_id, &proof, &0, &1); // Should panic: CarbonAssetNotSet
+    }
+
+    #[test]
+    fn test_mint_wrapped_without_carbon_asset_rejects_and_writes_no_minted_flag() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        // Deliberately skip wire_carbon_asset: CarbonAssetContract is unset.
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+        let registry_id = String::from_str(&env, "VER-737-UNSET-001");
+
+        // Fails with CarbonAssetNotSet even without root/epoch setup (#737)
+        let res = client.try_mint_wrapped(&user, &registry_id, &proof, &0, &1);
+        assert_eq!(res, Err(Ok(MerkleBridgeError::CarbonAssetNotSet)));
+        assert!(!client.is_minted(&registry_id));
+
+        // Even with an invalid registry credit id (e.g. too short), CarbonAssetNotSet
+        // is returned first before any validation or state access occurs.
+        let short_id = String::from_str(&env, "SHORT");
+        let res_short = client.try_mint_wrapped(&user, &short_id, &proof, &0, &1);
+        assert_eq!(res_short, Err(Ok(MerkleBridgeError::CarbonAssetNotSet)));
+        assert!(!client.is_minted(&short_id));
     }
 
     #[test]
@@ -1210,6 +1290,39 @@ mod tests {
         let user = Address::generate(&env);
         let proof: Vec<BytesN<32>> = Vec::new(&env);
         client.mint_wrapped(&user, &registry_id, &proof, &0, &1); // Should panic: MintFailed
+    }
+
+    #[test]
+    fn test_mint_wrapped_failing_mint_does_not_set_minted_credit_flag() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        // Freeze minting on the CarbonAsset side so the cross-contract mint call fails
+        let carbon_asset_id = client.get_carbon_asset_contract();
+        let carbon_asset_client = carbon_asset::Client::new(&env, &carbon_asset_id);
+        carbon_asset_client.freeze_minting(&contract_id);
+
+        let registry_id = String::from_str(&env, "VER-737-FAIL-001");
+        let leaf_hash = compute_test_leaf_hash(&env, "VER-737-FAIL-001");
+        client.update_root(&updater, &1, &leaf_hash);
+        finalize_root(&env, &client, &admin, 1);
+
+        let user = Address::generate(&env);
+        let proof: Vec<BytesN<32>> = Vec::new(&env);
+
+        let res = client.try_mint_wrapped(&user, &registry_id, &proof, &0, &1);
+        assert_eq!(res, Err(Ok(MerkleBridgeError::MintFailed)));
+
+        // Failure-handling policy (#737): MintedCredit flag must NOT be set,
+        // so is_credit_minted returns false for a credit that was never actually minted on CarbonAsset.
+        assert!(!client.is_minted(&registry_id));
+
+        // Verify no CreditBridgedEvent was emitted for this failed mint
+        assert!(find_credit_bridged_event(&env).is_none());
     }
 
     #[test]
@@ -1354,7 +1467,8 @@ mod tests {
         assert_eq!(computed_root_0, root);
 
         // With wrong leaf_index = 1 (right child), concatenation order is inverted (leaf_1 || leaf_0)
-        let computed_root_wrong_idx = MerkleBridge::verify_merkle_proof(&env, leaf_0.clone(), &proof_0, 1);
+        let computed_root_wrong_idx =
+            MerkleBridge::verify_merkle_proof(&env, leaf_0.clone(), &proof_0, 1);
         assert_ne!(computed_root_wrong_idx, root);
 
         // Proof for leaf_1 is sibling leaf_0
