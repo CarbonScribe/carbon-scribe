@@ -26,25 +26,9 @@ export function useProjectStats(): ProjectStats {
   };
 }
 
-/**
- * Select projects filtered by the current filter state.
- */
+/** The projects list already contains the current server-filtered page. */
 export function useFilteredProjects(): Project[] {
-  const projects = useStore((state) => state.projects);
-  const filters = useStore((state) => state.filters);
-
-  return projects.filter((project) => {
-    const matchesStatus =
-      filters.status === 'All' || project.status === filters.status;
-    const matchesType =
-      filters.type === 'All' || project.type === filters.type;
-    const matchesSearch =
-      filters.search === '' ||
-      project.name.toLowerCase().includes(filters.search.toLowerCase()) ||
-      project.location.toLowerCase().includes(filters.search.toLowerCase());
-
-    return matchesStatus && matchesType && matchesSearch;
-  });
+  return useStore((state) => state.projects);
 }
 
 /**
