@@ -34,24 +34,32 @@ var insecureDatabaseMarkers = []string{
 
 // Config holds application configuration
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	Debug         bool
-	SeedDevUsers  bool
-	Elasticsearch ElasticsearchConfig
-	AWS           AWSConfig
-	Storage       StorageConfig
-	Geospatial    GeospatialConfig
-	Settings      SettingsConfig
-	Auth          AuthConfig
-	Redis         RedisConfig
-	RateLimit     RateLimitConfig
-	Soroban       SorobanConfig
-	Notifications NotificationsConfig
-	MQTT          MQTTConfig
-	SES           SESConfig
-	Monitoring    MonitoringConfig
-	Minting       MintingConfig
+	Port         string
+	DatabaseURL  string
+	Debug        bool
+	SeedDevUsers bool
+	// MaxRequestBodyBytes is the default request body size limit applied to
+	// every route (#797), configurable via MAX_REQUEST_BODY_BYTES.
+	MaxRequestBodyBytes int64
+	// MaxWebhookBodyBytes is the tighter limit applied specifically to the
+	// incoming-webhook endpoint (#797), configurable via
+	// MAX_WEBHOOK_BODY_BYTES — unauthenticated callers can reach it, so it
+	// is deliberately much smaller than the general default.
+	MaxWebhookBodyBytes int64
+	Elasticsearch       ElasticsearchConfig
+	AWS                 AWSConfig
+	Storage             StorageConfig
+	Geospatial          GeospatialConfig
+	Settings            SettingsConfig
+	Auth                AuthConfig
+	Redis               RedisConfig
+	RateLimit           RateLimitConfig
+	Soroban             SorobanConfig
+	Notifications       NotificationsConfig
+	MQTT                MQTTConfig
+	SES                 SESConfig
+	Monitoring          MonitoringConfig
+	Minting             MintingConfig
 }
 
 // MonitoringConfig holds monitoring-module settings.
@@ -165,20 +173,20 @@ type RedisConfig struct {
 // RateLimitConfig holds per-route rate limiting configuration.
 type RateLimitConfig struct {
 	// Auth endpoints
-	LoginMaxRequests          int    // attempts per window (default: 5)
-	LoginWindowSeconds        int    // window in seconds (default: 900 — 15 min)
-	RegisterMaxRequests       int    // default: 3
-	RegisterWindowSeconds     int    // default: 3600 — 1 hour
-	RefreshMaxRequests        int    // default: 10
-	RefreshWindowSeconds      int    // default: 3600 — 1 hour
-	ForgotPasswordMaxRequests int    // default: 3
-	ForgotPasswordWindowSecs  int    // default: 3600 — 1 hour
-	WalletChallengeMax        int    // default: 5
-	WalletChallengeWindowSecs int    // default: 60 — 1 min
+	LoginMaxRequests          int // attempts per window (default: 5)
+	LoginWindowSeconds        int // window in seconds (default: 900 — 15 min)
+	RegisterMaxRequests       int // default: 3
+	RegisterWindowSeconds     int // default: 3600 — 1 hour
+	RefreshMaxRequests        int // default: 10
+	RefreshWindowSeconds      int // default: 3600 — 1 hour
+	ForgotPasswordMaxRequests int // default: 3
+	ForgotPasswordWindowSecs  int // default: 3600 — 1 hour
+	WalletChallengeMax        int // default: 5
+	WalletChallengeWindowSecs int // default: 60 — 1 min
 	// Minting / payment endpoints
-	MintMaxRequests     int // default: 10
-	MintWindowSeconds   int // default: 60
-	PaymentMaxRequests  int // default: 5
+	MintMaxRequests      int // default: 10
+	MintWindowSeconds    int // default: 60
+	PaymentMaxRequests   int // default: 5
 	PaymentWindowSeconds int // default: 60
 	// Whitelist (comma-separated CIDRs or IPs that bypass rate limiting)
 	IPWhitelist string
@@ -263,10 +271,12 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:         port,
-		DatabaseURL:  databaseURL,
-		Debug:        debug,
-		SeedDevUsers: seedDevUsers,
+		Port:                port,
+		DatabaseURL:         databaseURL,
+		Debug:               debug,
+		SeedDevUsers:        seedDevUsers,
+		MaxRequestBodyBytes: getInt64OrDefault("MAX_REQUEST_BODY_BYTES", 1<<20),  // 1 MiB
+		MaxWebhookBodyBytes: getInt64OrDefault("MAX_WEBHOOK_BODY_BYTES", 64<<10), // 64 KiB
 		Elasticsearch: ElasticsearchConfig{
 			Addresses: strings.Split(esAddresses, ","),
 			Username:  os.Getenv("ELASTICSEARCH_USERNAME"),
@@ -517,6 +527,23 @@ func getEnvOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// getInt64OrDefault reads an int64 from the environment (used for byte-size
+// limits, #797), falling back to defaultVal when unset, unparsable, or not
+// strictly positive — a zero or negative body limit would either reject
+// every request or disable enforcement entirely, neither of which is a sane
+// override.
+func getInt64OrDefault(key string, defaultVal int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || parsed <= 0 {
+		return defaultVal
+	}
+	return parsed
 }
 
 func getIntOrDefault(key string, defaultVal int) int {
