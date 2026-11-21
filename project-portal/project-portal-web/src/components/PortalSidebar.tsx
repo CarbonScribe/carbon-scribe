@@ -1,6 +1,6 @@
 'use client';
 
-import { Home, FolderKanban, BarChart3, Satellite, CreditCard, Users, FileText, Settings, LogOut, ChevronLeft, FileBarChart } from 'lucide-react';
+import { Home, FolderKanban, BarChart3, Satellite, CreditCard, Users, FileText, Settings, LogOut, ChevronLeft, FileBarChart, Store } from 'lucide-react';
 import { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/store';
@@ -13,6 +13,7 @@ const navItems = [
   { icon: FileBarChart, label: 'Reports', href: '/reports' },
   { icon: Satellite, label: 'Monitoring', href: '/monitoring' },
   { icon: CreditCard, label: 'Financing', href: '/financing' },
+  { icon: Store, label: 'Marketplace', href: '/marketplace' },
   { icon: Users, label: 'Team', href: '/team' },
   { icon: FileText, label: 'Documents', href: '/documents' },
   { icon: Settings, label: 'Settings', href: '/settings' },
@@ -145,7 +146,7 @@ const PortalSidebar = () => {
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40" aria-label="Mobile navigation">
         <div className="grid grid-cols-6 gap-1 px-2 py-2">
-          {[navItems[0], navItems[1], navItems[2], navItems[3], navItems[8]].map((item) => {
+          {[navItems[0], navItems[1], navItems[2], navItems[6], navItems[9]].map((item) => {
             if (!item) return null;
             const Icon = item.icon;
             const active = isActive(item.href);
