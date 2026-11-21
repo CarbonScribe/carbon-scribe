@@ -535,8 +535,10 @@ func main() {
 	// including time spent in later middleware.
 	router.Use(otelgin.Middleware(observability.DefaultServiceName))
 
-	// Add CORS middleware
-	router.Use(corsMiddleware())
+	// Add CORS middleware (#798): the allowed origins are parsed, trimmed
+	// and validated once at startup by config.Load, and config.Validate
+	// refuses to boot in production if the list is empty or contains "*".
+	router.Use(security.CORS(cfg.CORS.AllowedOrigins))
 
 	// Health check endpoint
 	router.GET("/health", HealthHandler(db, esClient, notificationMongoClient))
@@ -948,43 +950,6 @@ func runGeospatialDDL(db *gorm.DB) error {
 		}
 	}
 	return nil
-}
-
-// corsMiddleware adds CORS headers
-func corsMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-		if allowedOrigins == "" {
-			allowedOrigins = "*"
-		}
-
-		origin := c.Request.Header.Get("Origin")
-		allowOrigin := "*"
-		if allowedOrigins != "*" {
-			for _, o := range strings.Split(allowedOrigins, ",") {
-				if o == origin {
-					allowOrigin = origin
-					break
-				}
-			}
-			// If not matching, fallback to the first origin so the header is always valid
-			if allowOrigin == "*" {
-				allowOrigin = strings.Split(allowedOrigins, ",")[0]
-			}
-		}
-
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowOrigin)
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-User-ID")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	}
 }
 
 // parseDuration parses a duration string (e.g., "24h", "30m", "15s")

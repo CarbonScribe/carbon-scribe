@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -28,6 +29,11 @@ const (
 	// declare their own copies of these.
 	DefaultSorobanTestnetRPCURL = "https://soroban-testnet.stellar.org:443"
 	DefaultTestnetPassphrase    = "Test SDF Network ; September 2015"
+
+	// DefaultDevCORSOrigins (#798) is the single source of the local-frontend
+	// CORS allowlist, applied only in development mode (see Load) — there is
+	// no wildcard fallback outside development.
+	DefaultDevCORSOrigins = "http://localhost:3000,http://localhost:3001"
 )
 
 // insecureDatabaseMarkers are substrings that only appear in the documented
@@ -63,6 +69,7 @@ type Config struct {
 	Redis               RedisConfig
 	RateLimit           RateLimitConfig
 	Soroban             SorobanConfig
+	CORS                CORSConfig
 	Notifications       NotificationsConfig
 	MQTT                MQTTConfig
 	SES                 SESConfig
@@ -211,6 +218,16 @@ type SorobanConfig struct {
 	InventoryCacheTTL   string
 }
 
+// CORSConfig holds the explicit cross-origin allowlist (#798). AllowedOrigins
+// is matched by exact string equality against the request's Origin header —
+// including a literal "*" entry, which a real browser's Origin header can
+// never equal, so it is a permanent non-match rather than a wildcard. See
+// security.CORS, which consumes this list, and Validate, which refuses to
+// start in production when the list is empty or contains "*".
+type CORSConfig struct {
+	AllowedOrigins []string
+}
+
 // MQTTConfig holds configuration for the IoT telemetry MQTT client.
 // The client is only started (see cmd/api/main.go) when BrokerURL is set.
 type MQTTConfig struct {
@@ -270,6 +287,22 @@ func Load() (*Config, error) {
 			log.Println("⚠️  STELLAR_NETWORK_PASSPHRASE not set — defaulting to the testnet passphrase (development mode only)")
 			sorobanNetworkPassphrase = DefaultTestnetPassphrase
 		}
+	}
+
+	// CORS allowed origins (#798): no wildcard fallback is applied here when
+	// unset — only in development mode, with a warning. Validate refuses to
+	// start in production when the list is empty or contains "*". The list is
+	// parsed and format-validated unconditionally so a malformed entry (e.g.
+	// a trailing path or missing scheme, which could never match any real
+	// Origin header) fails fast in every mode, not just production.
+	corsAllowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if debug && corsAllowedOrigins == "" {
+		log.Println("⚠️  CORS_ALLOWED_ORIGINS not set — defaulting to localhost dev origins (development mode only)")
+		corsAllowedOrigins = DefaultDevCORSOrigins
+	}
+	parsedCORSOrigins, err := parseAllowedOrigins(corsAllowedOrigins)
+	if err != nil {
+		return nil, fmt.Errorf("CORS_ALLOWED_ORIGINS: %w", err)
 	}
 
 	esAddresses := os.Getenv("ELASTICSEARCH_ADDRESSES")
@@ -381,6 +414,9 @@ func Load() (*Config, error) {
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: parsedCORSOrigins,
+		},
 		SES: SESConfig{
 			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
 		},
@@ -470,6 +506,21 @@ func (c *Config) Validate() error {
 		problems = append(problems, "STELLAR_NETWORK_PASSPHRASE must be set in production — there is no testnet fallback outside development mode")
 	}
 
+	// CORS allowed origins (#798) — an empty allowlist is how the previous
+	// implementation fell back to "*", and a "*" entry defeats an allowlist
+	// entirely; Load only applies the documented localhost default in
+	// development mode.
+	if len(c.CORS.AllowedOrigins) == 0 {
+		problems = append(problems, "CORS_ALLOWED_ORIGINS must be set in production — there is no wildcard fallback outside development mode")
+	} else {
+		for _, origin := range c.CORS.AllowedOrigins {
+			if origin == "*" {
+				problems = append(problems, `CORS_ALLOWED_ORIGINS must not contain "*" in production`)
+				break
+			}
+		}
+	}
+
 	// Database connection string.
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		problems = append(problems, "DATABASE_URL must be set")
@@ -556,6 +607,48 @@ func parseVersionedKeys(raw string) map[int]string {
 		result[version] = strings.TrimSpace(kv[1])
 	}
 	return result
+}
+
+// parseAllowedOrigins splits a comma-separated CORS_ALLOWED_ORIGINS value,
+// trims each entry, drops empties, and validates every entry other than a
+// literal "*" as a bare origin URL (#798). A malformed entry — one with a
+// path, missing scheme, or missing host — could never match any real
+// browser Origin header, so it's rejected here rather than silently never
+// matching anything.
+func parseAllowedOrigins(raw string) ([]string, error) {
+	var origins []string
+	for entry := range strings.SplitSeq(raw, ",") {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed != "*" {
+			if err := validateOriginURL(trimmed); err != nil {
+				return nil, fmt.Errorf("invalid origin %q: %w", trimmed, err)
+			}
+		}
+		origins = append(origins, trimmed)
+	}
+	return origins, nil
+}
+
+// validateOriginURL checks that origin is a bare "scheme://host[:port]" with
+// no path, query or fragment.
+func validateOriginURL(origin string) error {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme must be http or https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("missing host")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("must be a bare origin (scheme://host[:port]), not a URL with a path, query or fragment")
+	}
+	return nil
 }
 
 func getEnvOrDefault(key, defaultVal string) string {
