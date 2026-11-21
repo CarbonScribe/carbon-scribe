@@ -3,6 +3,8 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"carbon-scribe/project-portal/project-portal-backend/internal/financing/tokenization/minting"
@@ -10,7 +12,22 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/internal/project/validation"
 
 	"github.com/google/uuid"
+	"github.com/stellar/go/keypair"
 )
+
+// validateStellarWalletAddress returns a trimmed, syntactically-valid
+// Stellar account address, or an error — never a partially-validated value
+// (#793). An empty input is valid (clears/omits the field).
+func validateStellarWalletAddress(address string) (string, error) {
+	trimmed := strings.TrimSpace(address)
+	if trimmed == "" {
+		return "", nil
+	}
+	if _, err := keypair.ParseAddress(trimmed); err != nil {
+		return "", fmt.Errorf("stellar_wallet_address is not a valid Stellar account address: %w", err)
+	}
+	return trimmed, nil
+}
 
 type Service interface {
 	CreateProject(ctx context.Context, req *ProjectCreateRequest) (*Project, error)
@@ -28,28 +45,28 @@ type service struct {
 }
 
 func NewService(repo Repository, methService methodology.Service, mintService minting.Service, validator validation.Validator) Service {
-       return &service{
-	       repo:        repo,
-	       methService: methService,
-	       mintService: mintService,
-	       validator:   validator,
-       }
+	return &service{
+		repo:        repo,
+		methService: methService,
+		mintService: mintService,
+		validator:   validator,
+	}
 }
 
 func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) (*Project, error) {
-       project := &Project{
-	       Name:          req.Name,
-	       Type:          req.Type,
-	       Location:      req.Location,
-	       Area:          req.Area,
-	       Farmers:       req.Farmers,
-	       CarbonCredits: req.CarbonCredits,
-	       Progress:      req.Progress,
-	       Icon:          req.Icon,
-	       Status:        req.Status,
-	       CreatedAt:     time.Now(),
-	       UpdatedAt:     time.Now(),
-       }
+	project := &Project{
+		Name:          req.Name,
+		Type:          req.Type,
+		Location:      req.Location,
+		Area:          req.Area,
+		Farmers:       req.Farmers,
+		CarbonCredits: req.CarbonCredits,
+		Progress:      req.Progress,
+		Icon:          req.Icon,
+		Status:        req.Status,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
 
 	if req.Status == "" {
 		project.Status = "pending"
@@ -61,6 +78,14 @@ func (s *service) CreateProject(ctx context.Context, req *ProjectCreateRequest) 
 			return nil, errors.New("invalid start_date format, use YYYY-MM-DD")
 		}
 		project.StartDate = startDate
+	}
+
+	if req.StellarWalletAddress != "" {
+		validated, err := validateStellarWalletAddress(req.StellarWalletAddress)
+		if err != nil {
+			return nil, err
+		}
+		project.StellarWalletAddress = &validated
 	}
 
 	err := s.repo.Create(ctx, project)
@@ -134,6 +159,17 @@ func (s *service) UpdateProject(ctx context.Context, id uuid.UUID, req *ProjectU
 	}
 	if req.MethodologyContractID != nil {
 		project.MethodologyContractID = *req.MethodologyContractID
+	}
+	if req.StellarWalletAddress != nil {
+		validated, err := validateStellarWalletAddress(*req.StellarWalletAddress)
+		if err != nil {
+			return nil, err
+		}
+		if validated == "" {
+			project.StellarWalletAddress = nil
+		} else {
+			project.StellarWalletAddress = &validated
+		}
 	}
 	if req.StartDate != nil {
 		startDate, err := time.Parse("2006-01-02", *req.StartDate)

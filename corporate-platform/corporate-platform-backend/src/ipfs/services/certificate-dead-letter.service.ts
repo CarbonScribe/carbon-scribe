@@ -7,6 +7,7 @@ import {
   computeNextRetryAt,
   resolveRetryConfig,
 } from '../interfaces/certificate-failure.interface';
+import { IpfsMetricsService } from '../metrics/ipfs-metrics.service';
 
 /** Query filters for listing dead-lettered certificate failures. */
 export interface ListFailuresFilter {
@@ -34,7 +35,10 @@ export class CertificateDeadLetterService {
   private readonly logger = new Logger(CertificateDeadLetterService.name);
   private readonly config: CertificateRetryConfig = resolveRetryConfig();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metrics: IpfsMetricsService,
+  ) {}
 
   /**
    * Record a failed certificate anchoring attempt. If an unresolved record
@@ -42,6 +46,10 @@ export class CertificateDeadLetterService {
    * incremented and backoff recomputed); otherwise a new record is created.
    */
   async recordFailure(input: RecordFailureInput) {
+    // #735: distinct from ordinary IPFS operation failures — this is the
+    // dead-letter/retry fallback rate the team wants visible before
+    // certificate durability silently degrades.
+    this.metrics.recordDeadLetter('certificate-anchor-failed');
     const certificateData = this.toJson(input.certificateData);
     const now = new Date();
 

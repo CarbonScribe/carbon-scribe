@@ -58,6 +58,12 @@ describe("ProjectsSlice - stale-while-revalidate", () => {
     await slice.fetchProjects(10, 0);
 
     expect(mockApi.fetchProjectsApi).toHaveBeenCalledTimes(1);
+    expect(mockApi.fetchProjectsApi).toHaveBeenCalledWith(
+      10,
+      0,
+      { search: "", type: "All", status: "All" },
+      expect.anything()
+    );
     expect(slice.projects).toHaveLength(1);
     expect(slice.projectsCache["10:0"]).toBeDefined();
     expect(slice.lastFetchedAt).not.toBeNull();
@@ -118,8 +124,45 @@ describe("ProjectsSlice - stale-while-revalidate", () => {
 
     await slice.refreshProjects();
 
-    expect(mockApi.fetchProjectsApi).toHaveBeenCalledWith(10, 0);
+    expect(mockApi.fetchProjectsApi).toHaveBeenCalledWith(
+      10,
+      0,
+      { search: "", type: "All", status: "All" },
+      expect.anything()
+    );
     expect(slice.projects[0].id).toBe("fresh-1");
+  });
+
+  it("resets pagination when a filter changes", () => {
+    slice.pagination = { limit: 10, offset: 20, total: 100 };
+
+    slice.setFilters({ search: "forest" });
+
+    expect(slice.pagination.offset).toBe(0);
+    expect(slice.filters.search).toBe("forest");
+  });
+
+  it("aborts an older request and ignores its late response", async () => {
+    let resolveOlder!: (value: { projects: Project[] }) => void;
+    const olderResponse = new Promise<{ projects: Project[] }>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const newestProject = makeProject({ id: "newest" });
+    mockApi.fetchProjectsApi
+      .mockReturnValueOnce(olderResponse)
+      .mockResolvedValueOnce({ projects: [newestProject] });
+
+    const olderFetch = slice.fetchProjects(10, 0, { force: true });
+    slice.setFilters({ search: "new" });
+    const newerFetch = slice.fetchProjects(10, 0, { force: true });
+    const olderSignal = mockApi.fetchProjectsApi.mock.calls[0][3];
+
+    expect(olderSignal?.aborted).toBe(true);
+    await newerFetch;
+    resolveOlder({ projects: [makeProject({ id: "older" })] });
+    await olderFetch;
+
+    expect(slice.projects[0].id).toBe("newest");
   });
 
   it("invalidates the cache after creating a project", async () => {

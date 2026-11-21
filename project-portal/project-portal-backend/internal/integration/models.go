@@ -1,6 +1,8 @@
 package integration
 
 import (
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -8,17 +10,73 @@ import (
 
 // IntegrationConnection represents a connection to an external service
 type IntegrationConnection struct {
-	ID          string         `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
-	Name        string         `gorm:"not null" json:"name"`
-	Provider    string         `gorm:"not null;index" json:"provider"`          // e.g., "stripe", "stellar", "sentinel"
-	Environment string         `gorm:"default:'production'" json:"environment"` // development, staging, production
-	Credentials map[string]any `gorm:"serializer:json" json:"-"`                // Stored securely, never returned in API
-	Config      map[string]any `gorm:"serializer:json" json:"config"`
-	Status      string         `gorm:"default:'active'" json:"status"` // active, inactive, error
-	LastTested  *time.Time     `json:"last_tested,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	ID          string `gorm:"primaryKey;type:uuid;default:gen_random_uuid()" json:"id"`
+	Name        string `gorm:"not null" json:"name"`
+	Provider    string `gorm:"not null;index" json:"provider"`          // e.g., "stripe", "stellar", "sentinel"
+	Environment string `gorm:"default:'production'" json:"environment"` // development, staging, production
+
+	// Credentials holds the decrypted value in memory only — it is never
+	// persisted directly (gorm:"-"). BeforeSave/AfterFind below encrypt it
+	// into CredentialsCiphertext/CredentialsKeyVersion before it reaches the
+	// database and decrypt it back on read (#795). Never log this field.
+	Credentials map[string]any `gorm:"-" json:"-"`
+	// CredentialsCiphertext is the AES-GCM-encrypted, base64-encoded form of
+	// Credentials actually stored in the database.
+	CredentialsCiphertext string `gorm:"column:credentials_ciphertext" json:"-"`
+	// CredentialsKeyVersion records which encryption key encrypted
+	// CredentialsCiphertext, so key_rotation.go can re-encrypt old rows
+	// after the active key changes. 0 means "no credentials set".
+	CredentialsKeyVersion int `gorm:"column:credentials_key_version" json:"-"`
+
+	Config     map[string]any `gorm:"serializer:json" json:"config"`
+	Status     string         `gorm:"default:'active'" json:"status"` // active, inactive, error
+	LastTested *time.Time     `json:"last_tested,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
+}
+
+// BeforeSave encrypts Credentials into CredentialsCiphertext/
+// CredentialsKeyVersion before the row is written (#795).
+func (c *IntegrationConnection) BeforeSave(tx *gorm.DB) error {
+	if c.Credentials == nil {
+		return nil
+	}
+	if credentialsKeyring == nil {
+		return fmt.Errorf("integration: credentials keyring not configured — call SetCredentialsKeyring before persisting connections")
+	}
+	plaintext, err := json.Marshal(c.Credentials)
+	if err != nil {
+		return fmt.Errorf("marshal credentials: %w", err)
+	}
+	ciphertext, version, err := credentialsKeyring.Encrypt(string(plaintext))
+	if err != nil {
+		return fmt.Errorf("encrypt credentials: %w", err)
+	}
+	c.CredentialsCiphertext = ciphertext
+	c.CredentialsKeyVersion = version
+	return nil
+}
+
+// AfterFind decrypts CredentialsCiphertext back into Credentials so the
+// service layer always sees the plaintext map (#795).
+func (c *IntegrationConnection) AfterFind(tx *gorm.DB) error {
+	if c.CredentialsCiphertext == "" {
+		return nil
+	}
+	if credentialsKeyring == nil {
+		return fmt.Errorf("integration: credentials keyring not configured — call SetCredentialsKeyring before reading connections")
+	}
+	plaintext, err := credentialsKeyring.Decrypt(c.CredentialsCiphertext, c.CredentialsKeyVersion)
+	if err != nil {
+		return fmt.Errorf("decrypt credentials: %w", err)
+	}
+	var creds map[string]any
+	if err := json.Unmarshal([]byte(plaintext), &creds); err != nil {
+		return fmt.Errorf("unmarshal decrypted credentials: %w", err)
+	}
+	c.Credentials = creds
+	return nil
 }
 
 // WebhookConfig represents an outgoing webhook configuration

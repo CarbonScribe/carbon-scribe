@@ -236,23 +236,47 @@ describe('MarketplaceService', () => {
   // ── checkout ───────────────────────────────────────────────────────────
 
   describe('checkout', () => {
-    it('calls POST /cart/checkout with payment method', async () => {
+    it('calls POST /cart/checkout with payment method and generated idempotency key', async () => {
       const order: CheckoutOrder = { id: 'order-1', status: 'pending' }
       mockPost.mockResolvedValue({ success: true, data: order })
 
       const result = await marketplaceService.checkout({ paymentMethod: 'credit_card' })
 
-      expect(mockPost).toHaveBeenCalledWith('/cart/checkout', { paymentMethod: 'credit_card' })
+      expect(mockPost).toHaveBeenCalledWith(
+        '/cart/checkout',
+        { paymentMethod: 'credit_card' },
+        expect.objectContaining({ idempotencyKey: expect.any(String) }),
+      )
       expect(result.data?.id).toBe('order-1')
     })
 
-    it('confirmPurchase calls POST /checkout/confirm with orderId', async () => {
+    it('calls POST /cart/checkout with explicit idempotency key', async () => {
+      const order: CheckoutOrder = { id: 'order-1', status: 'pending' }
+      mockPost.mockResolvedValue({ success: true, data: order })
+
+      const key = '123e4567-e89b-12d3-a456-426614174000'
+      const result = await marketplaceService.checkout({ paymentMethod: 'credit_card' }, key)
+
+      expect(mockPost).toHaveBeenCalledWith(
+        '/cart/checkout',
+        { paymentMethod: 'credit_card' },
+        { idempotencyKey: key },
+      )
+      expect(result.data?.id).toBe('order-1')
+    })
+
+    it('confirmPurchase calls POST /checkout/confirm with orderId and idempotency key', async () => {
       const order: CheckoutOrder = { id: 'order-1', status: 'completed' }
       mockPost.mockResolvedValue({ success: true, data: order })
 
-      const result = await marketplaceService.confirmPurchase({ orderId: 'order-1' })
+      const key = '123e4567-e89b-12d3-a456-426614174001'
+      const result = await marketplaceService.confirmPurchase({ orderId: 'order-1' }, key)
 
-      expect(mockPost).toHaveBeenCalledWith('/checkout/confirm', { orderId: 'order-1' })
+      expect(mockPost).toHaveBeenCalledWith(
+        '/checkout/confirm',
+        { orderId: 'order-1' },
+        { idempotencyKey: key },
+      )
       expect(result.data?.status).toBe('completed')
     })
 

@@ -29,6 +29,11 @@ describe('RetrievalService hash verification', () => {
     },
   } as any;
 
+  const mockMetrics = {
+    timeOperation: jest.fn((_op: string, fn: () => any) => fn()),
+    recordFailure: jest.fn(),
+  } as any;
+
   let service: RetrievalService;
 
   beforeEach(() => {
@@ -37,6 +42,7 @@ describe('RetrievalService hash verification', () => {
       mockIpfs,
       new IpfsConfig(mockConfigService),
       mockPrisma,
+      mockMetrics,
     );
     mockIpfs.validateCid.mockReturnValue(true);
     mockIpfs.gatewayForCid.mockReturnValue(
@@ -143,6 +149,11 @@ describe('RetrievalService verifyPin', () => {
     ipfsDocument: { findUnique: jest.fn() },
   } as any;
 
+  const mockMetrics = {
+    timeOperation: jest.fn((_op: string, fn: () => any) => fn()),
+    recordFailure: jest.fn(),
+  } as any;
+
   let service: RetrievalService;
 
   beforeEach(() => {
@@ -152,6 +163,7 @@ describe('RetrievalService verifyPin', () => {
       mockIpfs,
       new IpfsConfig(mockConfigService),
       mockPrisma,
+      mockMetrics,
     );
   });
 

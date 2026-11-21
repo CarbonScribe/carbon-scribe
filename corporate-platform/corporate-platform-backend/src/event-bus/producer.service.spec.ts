@@ -5,6 +5,7 @@ import { ConfigService } from '../config/config.service';
 import { EventValidatorService } from './event-validator.service';
 import { DeadLetterService } from './dead-letter/dead-letter.service';
 import { OutboxService } from './outbox.service';
+import { RequestContext } from '../logger/context/request-context';
 
 describe('ProducerService', () => {
   let service: ProducerService;
@@ -133,6 +134,46 @@ describe('ProducerService', () => {
       outboxService.publish.mockResolvedValue(false);
 
       await expect(service.publish(topic, event)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('request correlation propagation (#736)', () => {
+    const event = {
+      id: 'corr-1',
+      type: 'credit.purchased',
+      source: 'credit-ms',
+      timestamp: new Date().toISOString(),
+      correlationId: 'abc',
+      companyId: 'comp-1',
+      data: {},
+      version: '1.0',
+    };
+
+    it('captures the active RequestContext requestId/traceId into the outbox correlation', async () => {
+      await RequestContext.run(
+        { requestId: 'req-42', traceId: 'trace-42' },
+        async () => {
+          await service.publish('credit.events', event);
+        },
+      );
+
+      expect(outboxService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          correlation: { requestId: 'req-42', traceId: 'trace-42' },
+        }),
+        undefined,
+      );
+    });
+
+    it('captures undefined correlation IDs outside any request context', async () => {
+      await service.publish('credit.events', event);
+
+      expect(outboxService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          correlation: { requestId: undefined, traceId: undefined },
+        }),
+        undefined,
+      );
     });
   });
 

@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from './redis.service';
 import { CacheEvictOptions, CacheStats } from './cache.interfaces';
 import { CACHE_STATS_KEY } from './cache.constants';
+
+const HORIZON_CURSOR_KEY = 'horizon:listener:last_cursor';
 import { gzipSync, gunzipSync } from 'zlib';
 
 @Injectable()
@@ -161,6 +163,26 @@ export class CacheService {
 
   async warmup(): Promise<void> {
     await this.withClient(async () => undefined);
+  }
+
+  /**
+   * Persist the last successfully processed Horizon paging token so a
+   * restarted listener can resume from it instead of 'now'.
+   * No TTL: the cursor must survive until it is overwritten.
+   */
+  async setHorizonCursor(cursor: string): Promise<void> {
+    await this.withClient((c) => c.set(HORIZON_CURSOR_KEY, cursor));
+  }
+
+  /**
+   * Returns the persisted Horizon paging token, or undefined on first-ever
+   * startup (when no cursor has been stored yet) or if Redis is unavailable.
+   */
+  async getHorizonCursor(): Promise<string | undefined> {
+    const raw = await this.withClient<string | null>((c) =>
+      c.get(HORIZON_CURSOR_KEY),
+    );
+    return raw ?? undefined;
   }
 
   async getStats(): Promise<CacheStats> {

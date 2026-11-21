@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import LoginPage from '@/app/login/page';
+import { ApiError } from '@/lib/api/http';
 
 let mockResetParam: string | null = null;
 let mockRedirectParam: string | null = null;
@@ -61,5 +62,28 @@ describe('LoginPage', () => {
         '/portfolio?tab=credits',
       );
     });
+  });
+
+  it('shows a rate-limit countdown and blocks resubmission', async () => {
+    mockResetParam = null;
+    mockRedirectParam = null;
+    mockLogin.mockRejectedValueOnce(
+      new ApiError(429, 'Too many attempts', null, 3000),
+    );
+
+    render(<LoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/email address/i), {
+      target: { value: 'user@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: 'password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(
+      await screen.findByText(/too many attempts — try again in \d+s/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeDisabled();
   });
 });

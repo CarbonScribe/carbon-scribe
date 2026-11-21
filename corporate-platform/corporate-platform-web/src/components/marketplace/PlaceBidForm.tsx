@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { PlaceBidPayload } from '@/types/auction';
+import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 
 export const HIGH_BID_THRESHOLD_PERCENT = 25;
 export const HIGH_TOTAL_COST_THRESHOLD = 100000;
@@ -15,6 +16,8 @@ interface PlaceBidFormProps {
   isActive: boolean;
   placingBid: boolean;
   bidError: string | null;
+  /** Rate-limit error object powering the retry countdown. */
+  bidRateLimitError?: unknown;
   bidSuccess: string | null;
   onPlaceBid: (payload: PlaceBidPayload) => Promise<void>;
   onClearFeedback: () => void;
@@ -217,6 +220,7 @@ export default function PlaceBidForm({
   isActive,
   placingBid,
   bidError,
+  bidRateLimitError,
   bidSuccess,
   onPlaceBid,
   onClearFeedback,
@@ -228,6 +232,7 @@ export default function PlaceBidForm({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const submittingRef = useRef(false);
+  const rateLimit = useRateLimitCountdown(bidRateLimitError);
 
   // Keep bid price in sync with live current price
   useEffect(() => {
@@ -281,6 +286,7 @@ export default function PlaceBidForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (rateLimit.isBlocked) return;
     onClearFeedback();
     if (placingBid || submittingRef.current) return;
     if (!validate()) return;
@@ -389,6 +395,18 @@ export default function PlaceBidForm({
           </div>
         )}
 
+        {/* Rate-limit countdown */}
+        {rateLimit.isRateLimited && rateLimit.message && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
+          >
+            <AlertCircle size={15} className="mt-0.5 shrink-0" />
+            {rateLimit.message}
+          </div>
+        )}
+
         {/* Success */}
         {bidSuccess && (
           <div className="flex items-center gap-2 rounded-lg bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-700 dark:text-green-400">
@@ -399,7 +417,7 @@ export default function PlaceBidForm({
 
         <button
           type="submit"
-          disabled={placingBid}
+          disabled={placingBid || rateLimit.isBlocked}
           className="w-full corporate-btn-primary py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {placingBid ? (
