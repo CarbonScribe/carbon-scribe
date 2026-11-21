@@ -119,4 +119,23 @@ export const env = {
     "MAX_REQUEST_BODY_BYTES",
     DEFAULT_MAX_REQUEST_BODY_BYTES,
   ),
+
+  // Per-caller and per-agent rate limits (#831)
+  agentRateLimitPerMinute: positiveInteger("AGENT_RATE_LIMIT_PER_MINUTE", 60),
+  agentRateLimitDiscoveryPerMinute: process.env
+    .AGENT_RATE_LIMIT_DISCOVERY_PER_MINUTE
+    ? positiveInteger("AGENT_RATE_LIMIT_DISCOVERY_PER_MINUTE", 60)
+    : undefined,
+  agentRateLimitPddDraftPerMinute: process.env
+    .AGENT_RATE_LIMIT_PDD_DRAFT_PER_MINUTE
+    ? positiveInteger("AGENT_RATE_LIMIT_PDD_DRAFT_PER_MINUTE", 60)
+    : undefined,
+  agentRateLimitComplianceReportPerMinute: process.env
+    .AGENT_RATE_LIMIT_COMPLIANCE_REPORT_PER_MINUTE
+    ? positiveInteger("AGENT_RATE_LIMIT_COMPLIANCE_REPORT_PER_MINUTE", 60)
+    : undefined,
+  agentRateLimitAlertTriagePerMinute: process.env
+    .AGENT_RATE_LIMIT_ALERT_TRIAGE_PER_MINUTE
+    ? positiveInteger("AGENT_RATE_LIMIT_ALERT_TRIAGE_PER_MINUTE", 60)
+    : undefined,
 };

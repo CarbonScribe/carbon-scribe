@@ -211,6 +211,9 @@ export const openApiSpec = {
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
+          "429": {
+            $ref: "#/components/responses/RateLimitExceededError",
+          },
           "502": {
             $ref: "#/components/responses/AgentRunFailure",
           },
@@ -295,6 +298,9 @@ export const openApiSpec = {
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
+          "429": {
+            $ref: "#/components/responses/RateLimitExceededError",
+          },
           "502": {
             $ref: "#/components/responses/AgentRunFailure",
           },
@@ -377,6 +383,9 @@ export const openApiSpec = {
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
+          "429": {
+            $ref: "#/components/responses/RateLimitExceededError",
+          },
           "502": {
             $ref: "#/components/responses/AgentRunFailure",
           },
@@ -452,6 +461,9 @@ export const openApiSpec = {
           },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
+          },
+          "429": {
+            $ref: "#/components/responses/RateLimitExceededError",
           },
           "502": {
             $ref: "#/components/responses/AgentRunFailure",
@@ -772,6 +784,21 @@ export const openApiSpec = {
             },
             example: {
               error: "reviewerId is required",
+            },
+          },
+        },
+      },
+      RateLimitExceededError: {
+        description: "Rate limit exceeded for calling service",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/RateLimitErrorResponse",
+            },
+            example: {
+              error: "rate_limit_exceeded",
+              message: "Too many requests, please try again later.",
+              retryAfter: 60,
             },
           },
         },
@@ -1516,6 +1543,24 @@ export const openApiSpec = {
           error: {
             type: "string",
             example: "reviewerId is required",
+          },
+        },
+      },
+      RateLimitErrorResponse: {
+        type: "object",
+        required: ["error", "message"],
+        properties: {
+          error: {
+            type: "string",
+            example: "rate_limit_exceeded",
+          },
+          message: {
+            type: "string",
+            example: "Too many requests, please try again later.",
+          },
+          retryAfter: {
+            type: "number",
+            example: 60,
           },
         },
       },

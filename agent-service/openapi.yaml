@@ -139,6 +139,8 @@ paths:
                     reference: cred-redd-456
         401:
           $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitExceededError"
         502:
           $ref: "#/components/responses/AgentRunFailure"
   /agents/pdd-draft/run:
@@ -189,6 +191,8 @@ paths:
                     reference: VM0042
         401:
           $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitExceededError"
         502:
           $ref: "#/components/responses/AgentRunFailure"
   /agents/compliance-report/run:
@@ -238,6 +242,8 @@ paths:
                     reference: comp-acme-corp
         401:
           $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitExceededError"
         502:
           $ref: "#/components/responses/AgentRunFailure"
   /agents/alert-triage/run:
@@ -288,6 +294,8 @@ paths:
                     reference: sentinel-2-tile-202609
         401:
           $ref: "#/components/responses/UnauthorizedError"
+        429:
+          $ref: "#/components/responses/RateLimitExceededError"
         502:
           $ref: "#/components/responses/AgentRunFailure"
   /approvals:
@@ -493,6 +501,16 @@ components:
             $ref: "#/components/schemas/BadRequestErrorResponse"
           example:
             error: reviewerId is required
+    RateLimitExceededError:
+      description: Rate limit exceeded for calling service
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/RateLimitErrorResponse"
+          example:
+            error: rate_limit_exceeded
+            message: Too many requests, please try again later.
+            retryAfter: 60
     AgentRunFailure:
       description: Agent execution encountered an LLM provider error, parsing issue, tool failure, or refusal
       content:
@@ -1121,3 +1139,18 @@ components:
         error:
           type: string
           example: reviewerId is required
+    RateLimitErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: rate_limit_exceeded
+        message:
+          type: string
+          example: Too many requests, please try again later.
+        retryAfter:
+          type: number
+          example: 60

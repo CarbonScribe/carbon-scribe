@@ -49,6 +49,12 @@ export async function startLoadTestServer(
     env.serviceTokenSecrets["project-portal"] = jwtSecret;
   }
 
+  // Ensure load test benchmark is not prematurely throttled by default agent rate limit
+  env.agentRateLimitPerMinute = 100_000;
+  if (env.agentRateLimitDiscoveryPerMinute) {
+    env.agentRateLimitDiscoveryPerMinute = 100_000;
+  }
+
   const app = createApp();
 
   const server = await new Promise<Server>((resolve) => {

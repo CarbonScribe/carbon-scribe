@@ -178,4 +178,22 @@ describe("all four agent routes enforce requireInternalAuth", () => {
       );
     },
   );
+
+  it("attaches rate-limit headers to authenticated agent requests", async () => {
+    const token = signServiceToken("project-portal", SECRETS["project-portal"]);
+
+    const res = await request(buildApp())
+      .post("/agents/discovery/run")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        requestId: "req-1",
+        requestedBy: "client-supplied",
+        input: {},
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["x-ratelimit-limit"]).toBeDefined();
+    expect(res.headers["x-ratelimit-remaining"]).toBeDefined();
+    expect(res.headers["x-ratelimit-reset"]).toBeDefined();
+  });
 });
