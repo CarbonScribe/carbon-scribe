@@ -146,11 +146,12 @@ func (s *service) MintProjectCredits(ctx context.Context, projectID uuid.UUID, v
 	// but for now we'll query directly to avoid circular dependency
 	// or complex injection if we're in the same transaction
 	var project struct {
-		ID                 uuid.UUID
-		Name               string
-		MethodologyTokenID int
-		VintageYear        int
-		CarbonCredits      int
+		ID                   uuid.UUID
+		Name                 string
+		MethodologyTokenID   int
+		VintageYear          int
+		CarbonCredits        int
+		StellarWalletAddress *string
 	}
 	if err := s.db.WithContext(ctx).Table("projects").Where("id = ?", projectID).First(&project).Error; err != nil {
 		job.Status = "failed"
@@ -159,14 +160,19 @@ func (s *service) MintProjectCredits(ctx context.Context, projectID uuid.UUID, v
 		return nil, fmt.Errorf("fetch project for minting: %w", err)
 	}
 
+	var walletAddress string
+	if project.StellarWalletAddress != nil {
+		walletAddress = *project.StellarWalletAddress
+	}
+
 	// Async minting or immediate? Requirement says "handle failures with retry logic".
 	// For now we'll do it synchronously here, but in a real app this would be a background task.
-	go s.processMintingJob(context.Background(), job, project.MethodologyTokenID, project.VintageYear, project.CarbonCredits)
+	go s.processMintingJob(context.Background(), job, project.MethodologyTokenID, project.VintageYear, project.CarbonCredits, walletAddress)
 
 	return job, nil
 }
 
-func (s *service) processMintingJob(ctx context.Context, job *MintingJob, methodologyID int, vintageYear int, projectCredits int) {
+func (s *service) processMintingJob(ctx context.Context, job *MintingJob, methodologyID int, vintageYear int, projectCredits int, walletAddress string) {
 	// Root span for the whole async minting job (issue #695). This runs in
 	// its own goroutine detached from the originating HTTP request's
 	// context (see MintProjectCredits — the job must outlive the request
@@ -182,9 +188,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 	job.Status = "processing"
 	s.db.WithContext(ctx).Save(job)
 
-	// In a real scenario, we would determine the owner physical address from the project wallet
-	// Using a placeholder address for demonstration
-	ownerAddress, ownerErr := resolveDefaultOwnerAddress()
+	// Mint to the project's own registered Stellar wallet (#793) — never a
+	// single environment-configured fallback shared by every project.
+	ownerAddress, ownerErr := resolveOwnerAddress(walletAddress)
 	if ownerErr != nil {
 		job.Status = "failed"
 		job.Error = ownerErr.Error()
@@ -280,6 +286,7 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 				VintageYear:   int(metadata.VintageYear),
 				MethodologyID: int(metadata.MethodologyID),
 				Network:       s.network,
+				OwnerAddress:  ownerAddress,
 			}
 			s.db.WithContext(dbCtx).Create(mintedToken)
 			dbSpan.End()
@@ -436,33 +443,73 @@ func newTracedHTTPClient() *http.Client {
 	return &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 }
 
-// resolveDefaultOwnerAddress determines the placeholder mint recipient from
-// CARBON_ASSET_DEFAULT_PROJECT_OWNER, then CARBON_ASSET_AUTHORITY_PUBLIC_KEY,
-// then STELLAR_PUBLIC_KEY, and validates that whichever is set is a
-// syntactically valid Stellar account address — an unconfigured or malformed
-// value fails explicitly rather than proceeding with a bad address.
+// resolveOwnerAddress returns walletAddress (the project's own registered
+// Stellar wallet) when set, falling back to resolveDefaultOwnerAddress's
+// opt-in-only mechanism otherwise (#793). The returned error, when non-nil,
+// is already phrased as "project has no registered Stellar wallet: ..." —
+// the clear job.Error callers are expected to surface.
+func resolveOwnerAddress(walletAddress string) (string, error) {
+	if trimmed := strings.TrimSpace(walletAddress); trimmed != "" {
+		return trimmed, nil
+	}
+	fallback, err := resolveDefaultOwnerAddress()
+	if err != nil {
+		return "", fmt.Errorf("project has no registered Stellar wallet: %w", err)
+	}
+	return fallback, nil
+}
+
+// MintingAllowDefaultOwnerEnvVar explicitly opts into resolveDefaultOwnerAddress
+// as a fallback recipient when a project has no registered wallet. It is
+// only ever honored outside production — see resolveDefaultOwnerAddress.
+const MintingAllowDefaultOwnerEnvVar = "MINTING_ALLOW_DEFAULT_OWNER"
+
+// resolveDefaultOwnerAddress is an explicit, opt-in-only fallback recipient
+// for a project with no registered Stellar wallet (#793) — never used
+// unless MINTING_ALLOW_DEFAULT_OWNER=true, and refused outright in
+// production even then, since a shared fallback recipient defeats the
+// purpose of minting to each project's own wallet. It deliberately never
+// reads CARBON_ASSET_AUTHORITY_PUBLIC_KEY: that key signs mints, and using
+// it as the recipient too would mix custody with signing authority.
 func resolveDefaultOwnerAddress() (string, error) {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv(MintingAllowDefaultOwnerEnvVar)), "true") {
+		return "", fmt.Errorf(
+			"no registered wallet, and the %s fallback is not enabled", MintingAllowDefaultOwnerEnvVar,
+		)
+	}
+	if isProductionServerMode() {
+		return "", fmt.Errorf(
+			"%s is not permitted in production; every project must have its own registered Stellar wallet",
+			MintingAllowDefaultOwnerEnvVar,
+		)
+	}
+
 	var source string
 	ownerAddress := os.Getenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER")
 	source = "CARBON_ASSET_DEFAULT_PROJECT_OWNER"
-	if strings.TrimSpace(ownerAddress) == "" {
-		ownerAddress = os.Getenv("CARBON_ASSET_AUTHORITY_PUBLIC_KEY")
-		source = "CARBON_ASSET_AUTHORITY_PUBLIC_KEY"
-	}
 	if strings.TrimSpace(ownerAddress) == "" {
 		ownerAddress = os.Getenv("STELLAR_PUBLIC_KEY")
 		source = "STELLAR_PUBLIC_KEY"
 	}
 	ownerAddress = strings.TrimSpace(ownerAddress)
 	if ownerAddress == "" {
-		return "", errors.New(
-			"missing CARBON_ASSET_DEFAULT_PROJECT_OWNER, CARBON_ASSET_AUTHORITY_PUBLIC_KEY, or STELLAR_PUBLIC_KEY",
+		return "", fmt.Errorf(
+			"%s=true but neither CARBON_ASSET_DEFAULT_PROJECT_OWNER nor STELLAR_PUBLIC_KEY is set",
+			MintingAllowDefaultOwnerEnvVar,
 		)
 	}
 	if _, err := keypair.ParseAddress(ownerAddress); err != nil {
 		return "", fmt.Errorf("%s is not a valid Stellar account address: %w", source, err)
 	}
 	return ownerAddress, nil
+}
+
+// isProductionServerMode mirrors the isProduction signal main.go derives
+// from cfg.Debug (SERVER_MODE/DEBUG) — resolveDefaultOwnerAddress has no
+// Config in scope (it runs deep inside a detached goroutine), so it checks
+// the same underlying environment variable directly.
+func isProductionServerMode() bool {
+	return !(strings.EqualFold(os.Getenv("SERVER_MODE"), "development") || os.Getenv("DEBUG") == "true")
 }
 
 func (c *realContractClient) Mint(ctx context.Context, owner string, metadata CarbonAssetMetadata) (int, string, error) {

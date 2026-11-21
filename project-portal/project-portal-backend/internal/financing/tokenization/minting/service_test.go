@@ -36,6 +36,9 @@ func clearMintingEnv(t *testing.T) {
 		"CARBON_ASSET_DEFAULT_PROJECT_OWNER",
 		"CARBON_ASSET_AUTHORITY_PUBLIC_KEY",
 		"STELLAR_PUBLIC_KEY",
+		MintingAllowDefaultOwnerEnvVar,
+		"SERVER_MODE",
+		"DEBUG",
 	} {
 		t.Setenv(key, "")
 	}
@@ -163,8 +166,14 @@ func TestIsMockContractClient(t *testing.T) {
 	assert.False(t, isMockContractClient(&fakeContractClient{}))
 }
 
+// These four tests all opt into the (#793) fallback explicitly and run in
+// development mode — resolveDefaultOwnerAddress's own opt-in/production
+// gating is covered separately in owner_address_test.go.
+
 func TestResolveDefaultOwnerAddress_MissingEnv_FailsExplicitly(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 
 	address, err := resolveDefaultOwnerAddress()
 	assert.Error(t, err)
@@ -174,6 +183,8 @@ func TestResolveDefaultOwnerAddress_MissingEnv_FailsExplicitly(t *testing.T) {
 
 func TestResolveDefaultOwnerAddress_MalformedValue_FailsExplicitly(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	t.Setenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER", "not-a-stellar-address")
 
 	address, err := resolveDefaultOwnerAddress()
@@ -184,6 +195,8 @@ func TestResolveDefaultOwnerAddress_MalformedValue_FailsExplicitly(t *testing.T)
 
 func TestResolveDefaultOwnerAddress_ValidValue_Succeeds(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	kp, err := keypair.Random()
 	assert.NoError(t, err)
 	t.Setenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER", kp.Address())
@@ -195,6 +208,8 @@ func TestResolveDefaultOwnerAddress_ValidValue_Succeeds(t *testing.T) {
 
 func TestResolveDefaultOwnerAddress_PrefersMostSpecificEnvVar(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	primary, err := keypair.Random()
 	assert.NoError(t, err)
 	fallback, err := keypair.Random()
