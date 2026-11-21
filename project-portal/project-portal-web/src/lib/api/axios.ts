@@ -14,6 +14,12 @@ declare module "axios" {
     retry?: RetryOptions | false;
     /** Internal attempt counter. */
     __retryAttempt?: number;
+    /**
+     * Skip the generic error toast below for this request (#799) — for a
+     * caller that shows its own, more specific toast for the same error and
+     * would otherwise end up double-toasting.
+     */
+    suppressErrorToast?: boolean;
   }
 }
 
@@ -212,7 +218,7 @@ api.interceptors.response.use(
     const errorKey = `${status}-${errorMessage}`;
     const shouldShowToast = !shownErrors.has(errorKey);
 
-    if (shouldShowToast && status !== 401) {
+    if (shouldShowToast && status !== 401 && !originalRequest?.suppressErrorToast) {
       shownErrors.add(errorKey);
       setTimeout(() => shownErrors.delete(errorKey), ERROR_COOLDOWN);
 

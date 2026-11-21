@@ -16,6 +16,8 @@ import { TimelineService } from './services/timeline.service';
 
 import { PrismaService } from '../shared/database/prisma.service';
 import { CacheModule } from '../cache/cache.module';
+import { EventBusModule } from '../event-bus/event-bus.module';
+import { DashboardCacheInvalidationListener } from './services/dashboard-cache-invalidation.listener';
 
 import { RetirementAggregationService } from './services/retirement-aggregation.service';
 import { RetirementAggregationHandler } from './services/retirement-aggregation.handler';
@@ -30,6 +32,7 @@ import { WebhookDispatcherService } from '../webhooks/services/webhook-dispatche
     CacheModule,
     WebhooksModule,
     SorobanModule,
+    EventBusModule,
     MongooseModule.forFeature([
       { name: RetirementAggregation.name, schema: RetirementAggregationSchema },
     ]),
@@ -48,6 +51,7 @@ import { WebhookDispatcherService } from '../webhooks/services/webhook-dispatche
     PrismaService,
     RetirementAggregationService,
     RetirementAggregationHandler,
+    DashboardCacheInvalidationListener,
   ],
   exports: [AnalyticsService],
 })

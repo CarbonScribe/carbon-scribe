@@ -21,9 +21,6 @@ import (
 )
 
 const (
-	// PlaceholderHealthCheckLatencyMs is a temporary placeholder latency value
-	// pending real latency measurement in TestConnection.
-	PlaceholderHealthCheckLatencyMs = 45
 	// MaxRetryAttempts is the maximum number of total delivery attempts,
 	// including the initial attempt.
 	MaxRetryAttempts            = 5
@@ -61,29 +58,43 @@ func (s *Service) RegisterConnection(ctx context.Context, conn *IntegrationConne
 	return s.repo.CreateConnection(ctx, conn)
 }
 
-// TestConnection verifies connectivity (placeholder)
+// TestConnection runs a real outbound connectivity probe against the
+// connection's provider (#796) — Stripe's balance endpoint, Sentinel Hub's
+// OAuth2 token endpoint, or the configured Stellar RPC's getHealth method —
+// using s.HTTPClient so the request context's cancellation/timeout carry
+// through, and records the measured outcome.
 func (s *Service) TestConnection(ctx context.Context, id string) error {
 	conn, err := s.repo.GetConnection(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// Simulate connection test based on Provider
-	// e.g., if conn.Provider == "stripe" { ... }
+	prober, err := proberForProvider(conn.Provider)
+	if err != nil {
+		return err
+	}
 
-	// Update LastTested
+	result := prober.Probe(ctx, s.HTTPClient, conn)
+
 	now := time.Now()
 	conn.LastTested = &now
-	_ = s.repo.UpdateConnection(ctx, conn)
+	if err := s.repo.UpdateConnection(ctx, conn); err != nil {
+		log.Printf("integration: failed to update connection %s after test: %v", conn.ID, err)
+	}
 
-	// Record Health
-	_ = s.repo.RecordHealth(ctx, &IntegrationHealth{
+	if err := s.repo.RecordHealth(ctx, &IntegrationHealth{
 		ConnectionID: conn.ID,
-		Status:       "healthy",
-		LatencyMs:    PlaceholderHealthCheckLatencyMs,
-		CheckedAt:    time.Now(),
-		Message:      "Connection successful",
-	})
+		Status:       string(result.Status),
+		LatencyMs:    result.LatencyMs,
+		CheckedAt:    now,
+		Message:      result.Message,
+	}); err != nil {
+		log.Printf("integration: failed to record health for connection %s: %v", conn.ID, err)
+	}
+
+	if result.Status == ProbeUnhealthy {
+		return fmt.Errorf("connection test failed: %s", result.Message)
+	}
 
 	return nil
 }

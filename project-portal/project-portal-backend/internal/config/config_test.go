@@ -29,6 +29,9 @@ func validProductionConfig() *Config {
 			RPCURL:            "https://soroban-rpc.mainnet.example.com",
 			NetworkPassphrase: "Public Global Stellar Network ; September 2015",
 		},
+		CORS: CORSConfig{
+			AllowedOrigins: []string{"https://app.carbonscribe.io"},
+		},
 	}
 }
 
@@ -132,6 +135,22 @@ func TestConfig_Validate(t *testing.T) {
 				c.Notifications.TwilioFromNumber = "+15550000000"
 			},
 		},
+		{
+			name: "empty CORS allowlist is rejected",
+			mutate: func(c *Config) {
+				c.CORS.AllowedOrigins = nil
+			},
+			wantErr:     true,
+			errContains: []string{"CORS_ALLOWED_ORIGINS", "must be set"},
+		},
+		{
+			name: "wildcard CORS origin is rejected",
+			mutate: func(c *Config) {
+				c.CORS.AllowedOrigins = []string{"https://app.carbonscribe.io", "*"}
+			},
+			wantErr:     true,
+			errContains: []string{"CORS_ALLOWED_ORIGINS", `"*"`},
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,10 +198,73 @@ func TestLoad_ValidProductionSecretsPassValidation(t *testing.T) {
 	t.Setenv("SETTINGS_ENCRYPTION_KEY_HEX", validEncryptionKeyHex)
 	t.Setenv("SOROBAN_RPC_URL", "https://soroban-rpc.mainnet.example.com")
 	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "Public Global Stellar Network ; September 2015")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://app.carbonscribe.io")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.NoError(t, cfg.Validate())
+}
+
+// TestLoad_ProductionWithoutCORSOriginsFailsValidation (#798): production
+// mode never falls back to a wildcard allowlist.
+func TestLoad_ProductionWithoutCORSOriginsFailsValidation(t *testing.T) {
+	t.Setenv("DEBUG", "false")
+	t.Setenv("SERVER_MODE", "production")
+	t.Setenv("DATABASE_URL", "postgres://app_rw:s3cr3t-password@db.internal:5432/carbonscribe?sslmode=require")
+	t.Setenv("JWT_SECRET", strings.Repeat("b", MinJWTSecretLength))
+	t.Setenv("SETTINGS_ENCRYPTION_KEY_HEX", validEncryptionKeyHex)
+	t.Setenv("SOROBAN_RPC_URL", "https://soroban-rpc.mainnet.example.com")
+	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "Public Global Stellar Network ; September 2015")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Empty(t, cfg.CORS.AllowedOrigins, "production must not fall back to a wildcard default")
+
+	err = cfg.Validate()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "CORS_ALLOWED_ORIGINS")
+}
+
+// TestLoad_DevelopmentCORSDefaultApplies (#798): development mode keeps the
+// documented localhost defaults when unset.
+func TestLoad_DevelopmentCORSDefaultApplies(t *testing.T) {
+	t.Setenv("DEBUG", "true")
+	t.Setenv("SERVER_MODE", "development")
+	t.Setenv("DATABASE_URL", "postgres://user:password@localhost:5432/carbonscribe?sslmode=disable")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, strings.Split(DefaultDevCORSOrigins, ","), cfg.CORS.AllowedOrigins)
+}
+
+// TestLoad_CORSConfiguredValueIsNeverOverridden confirms an explicitly
+// configured allowlist is used as-is rather than always defaulting in
+// development regardless of what's set.
+func TestLoad_CORSConfiguredValueIsNeverOverridden(t *testing.T) {
+	t.Setenv("DEBUG", "true")
+	t.Setenv("SERVER_MODE", "development")
+	t.Setenv("DATABASE_URL", "postgres://user:password@localhost:5432/carbonscribe?sslmode=disable")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://custom.example.com")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"https://custom.example.com"}, cfg.CORS.AllowedOrigins)
+}
+
+// TestLoad_MalformedCORSOriginFailsToLoad (#798): a malformed origin (one
+// that could never match a real browser Origin header) fails fast at Load,
+// in every mode, rather than silently never matching anything.
+func TestLoad_MalformedCORSOriginFailsToLoad(t *testing.T) {
+	t.Setenv("DEBUG", "true")
+	t.Setenv("SERVER_MODE", "development")
+	t.Setenv("DATABASE_URL", "postgres://user:password@localhost:5432/carbonscribe?sslmode=disable")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com/some/path")
+
+	_, err := Load()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "CORS_ALLOWED_ORIGINS")
 }
 
 // TestLoad_ProductionWithoutSorobanConfigFailsValidation (#794): production
