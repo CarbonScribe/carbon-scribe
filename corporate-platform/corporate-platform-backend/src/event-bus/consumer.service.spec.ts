@@ -47,6 +47,8 @@ describe('ConsumerService', () => {
           useValue: {
             get: jest.fn(),
             set: jest.fn(),
+            setNX: jest.fn(),
+            del: jest.fn(),
           },
         },
       ],
@@ -96,7 +98,7 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(false); // not processed
+      cacheService.setNX.mockResolvedValue(true); // claim succeeded
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -108,15 +110,12 @@ describe('ConsumerService', () => {
         heartbeat: jest.fn(),
       });
 
-      expect(cacheService.get).toHaveBeenCalledWith(
-        'event_bus:processed:event-1',
-      );
-      expect(handler).toHaveBeenCalledWith(event);
-      expect(cacheService.set).toHaveBeenCalledWith(
+      expect(cacheService.setNX).toHaveBeenCalledWith(
         'event_bus:processed:event-1',
         true,
         86400,
       );
+      expect(handler).toHaveBeenCalledWith(event);
       expect(mockConsumer.commitOffsets).toHaveBeenCalledWith([
         { topic: 'topic1', partition: 0, offset: '11' }, // offset + 1
       ]);
@@ -142,7 +141,7 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(true); // Already processed
+      cacheService.setNX.mockResolvedValue(false); // Already claimed
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -182,7 +181,7 @@ describe('ConsumerService', () => {
         data: {},
       };
 
-      cacheService.get.mockResolvedValue(false);
+      cacheService.setNX.mockResolvedValue(true); // claim succeeded
 
       await eachMessageHandler({
         topic: 'topic1',
@@ -201,9 +200,104 @@ describe('ConsumerService', () => {
         event,
         expect.any(Error),
       );
+      // Claim released so DLQ replay can re-process the event
+      expect(cacheService.del).toHaveBeenCalledWith(
+        'event_bus:processed:event-3',
+      );
       expect(mockConsumer.commitOffsets).toHaveBeenCalledWith([
         { topic: 'topic1', partition: 0, offset: '31' },
       ]);
+    });
+
+    it('should ensure concurrent deliveries of the same event run messageHandler at most once', async () => {
+      let handlerCallCount = 0;
+      const handler = jest.fn().mockImplementation(async () => {
+        handlerCallCount++;
+      });
+
+      let eachMessageHandler: any;
+      mockConsumer.run.mockImplementation(async (config) => {
+        eachMessageHandler = config.eachMessage;
+      });
+
+      await service.consume('group1', 'topic1', handler);
+
+      const event = {
+        id: 'event-concurrent',
+        type: 'test.type',
+        source: 'test.source',
+        version: '1',
+        timestamp: new Date().toISOString(),
+        correlationId: 'test-correlation',
+        data: {},
+      };
+
+      // First call wins the atomic claim, second call loses
+      let setNXCallCount = 0;
+      cacheService.setNX.mockImplementation(async () => {
+        setNXCallCount++;
+        // First invocation succeeds (claim won), second returns false
+        return setNXCallCount === 1;
+      });
+
+      const msgPayload = {
+        topic: 'topic1',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(event)),
+          offset: '50',
+        },
+        heartbeat: jest.fn(),
+      };
+
+      // Simulate two concurrent deliveries of the same event
+      await Promise.all([
+        eachMessageHandler(msgPayload),
+        eachMessageHandler(msgPayload),
+      ]);
+
+      // The handler should have been called exactly once
+      expect(handler).toHaveBeenCalledTimes(1);
+      // setNX was called twice (once per delivery)
+      expect(cacheService.setNX).toHaveBeenCalledTimes(2);
+    });
+
+    it('should proceed without dedup guard when Redis is unavailable', async () => {
+      const handler = jest.fn().mockResolvedValue(undefined);
+
+      let eachMessageHandler: any;
+      mockConsumer.run.mockImplementation(async (config) => {
+        eachMessageHandler = config.eachMessage;
+      });
+
+      await service.consume('group1', 'topic1', handler);
+
+      const event = {
+        id: 'event-no-redis',
+        type: 'test.type',
+        source: 'test.source',
+        version: '1',
+        timestamp: new Date().toISOString(),
+        correlationId: 'test-correlation',
+        data: {},
+      };
+
+      // Redis unavailable — setNX returns undefined
+      cacheService.setNX.mockResolvedValue(undefined);
+
+      await eachMessageHandler({
+        topic: 'topic1',
+        partition: 0,
+        message: {
+          value: Buffer.from(JSON.stringify(event)),
+          offset: '60',
+        },
+        heartbeat: jest.fn(),
+      });
+
+      // Handler still runs (fail-open)
+      expect(handler).toHaveBeenCalledWith(event);
+      expect(mockConsumer.commitOffsets).toHaveBeenCalled();
     });
   });
 });
