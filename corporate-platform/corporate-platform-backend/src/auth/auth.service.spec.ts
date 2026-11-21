@@ -3,6 +3,8 @@ import { AuthService } from './auth.service';
 import { PrismaService } from '../shared/database/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { SecurityService } from '../security/security.service';
+import { ConfigService } from '../config/config.service';
+import { MailService } from '../mail/mail.service';
 import * as bcrypt from 'bcrypt';
 import {
   InvalidRefreshTokenError,
@@ -42,12 +44,22 @@ describe('AuthService Refresh Token Reuse', () => {
       logEvent: jest.fn(),
     };
 
+    const configServiceMock = {
+      get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
+    };
+
+    const mailServiceMock = {
+      sendPasswordResetEmail: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: JwtService, useValue: jwtMock },
         { provide: SecurityService, useValue: securityMock },
+        { provide: ConfigService, useValue: configServiceMock },
+        { provide: MailService, useValue: mailServiceMock },
       ],
     }).compile();
 

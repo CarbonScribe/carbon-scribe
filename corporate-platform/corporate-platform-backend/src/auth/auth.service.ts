@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../shared/database/prisma.service';
@@ -13,6 +13,10 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { randomBytes } from 'crypto';
 import { SecurityService } from '../security/security.service';
 import { SecurityEvents } from '../security/constants/security-events.constants';
+import { ConfigService } from '../config/config.service';
+import { MailService } from '../mail/mail.service';
+import { hashPassword } from './password-policy';
+import { hashResetToken } from './password-reset-token';
 import {
   InvalidCredentialsError,
   UserNotFoundError,
@@ -55,10 +59,14 @@ export class AuthService {
   // - Reset password: 3 attempts per hour per IP + token
   // ============================================================================
 
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly securityService: SecurityService,
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
   async register(
@@ -498,47 +506,84 @@ export class AuthService {
     return { success: true };
   }
 
-  async forgotPassword(dto: ForgotPasswordDto) {
+  async forgotPassword(dto: ForgotPasswordDto, metadata: RequestMetadata = {}) {
+    const neutralResponse = {
+      message:
+        'If an account exists for this email, a reset link has been sent',
+    };
+
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
     if (!user) {
-      return {
-        message:
-          'If an account exists for this email, a reset link has been sent',
-      };
+      return neutralResponse;
     }
 
-    const token = randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 60 * 60 * 1000);
+    // The database only ever stores the hash (#810) — the raw token is
+    // sent to the user once, by email, and is never persisted. Anyone with
+    // database or backup access gets a value that's useless without also
+    // knowing the raw token, since lookups below re-hash and compare.
+    const rawToken = randomBytes(32).toString('hex');
+    const hashedToken = hashResetToken(rawToken);
+    const ttlMinutes = this.configService.get('PASSWORD_RESET_TTL_MINUTES', 30);
+    const expires = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordResetToken: token,
+        passwordResetToken: hashedToken,
         passwordResetExpires: expires,
       },
     });
 
-    await this.securityService.logEvent({
-      eventType: SecurityEvents.AuthPasswordReset,
-      companyId: user.companyId,
-      userId: user.id,
-      status: 'success',
-      statusCode: 200,
-    });
+    const frontendUrl = this.configService.get(
+      'FRONTEND_URL',
+      'http://localhost:3000',
+    );
+    const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
 
-    return {
-      message:
-        'If an account exists for this email, a reset link has been sent',
-    };
+    try {
+      await this.mailService.sendPasswordResetEmail(user.email, resetLink);
+
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthPasswordReset,
+        companyId: user.companyId,
+        userId: user.id,
+        ipAddress: metadata.ipAddress ?? null,
+        userAgent: metadata.userAgent ?? null,
+        status: 'success',
+        statusCode: 200,
+      });
+    } catch (error) {
+      // The email failed to send, but the neutral response below must stay
+      // identical either way — a different response here would let an
+      // attacker distinguish "account exists but mail is down" from
+      // "account doesn't exist" (#810).
+      const err = error as Error;
+      this.logger.error(
+        `Failed to send password reset email for user ${user.id}: ${err.message}`,
+      );
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthPasswordResetFailed,
+        companyId: user.companyId,
+        userId: user.id,
+        ipAddress: metadata.ipAddress ?? null,
+        userAgent: metadata.userAgent ?? null,
+        status: 'failed',
+        statusCode: 500,
+        details: { reason: 'email_send_failed' },
+      });
+    }
+
+    return neutralResponse;
   }
 
-  async resetPassword(dto: ResetPasswordDto) {
+  async resetPassword(dto: ResetPasswordDto, metadata: RequestMetadata = {}) {
+    const hashedToken = hashResetToken(dto.token);
     const user = await this.prisma.user.findFirst({
       where: {
-        passwordResetToken: dto.token,
+        passwordResetToken: hashedToken,
         passwordResetExpires: {
           gt: new Date(),
         },
@@ -546,10 +591,18 @@ export class AuthService {
     });
 
     if (!user) {
+      await this.securityService.logEvent({
+        eventType: SecurityEvents.AuthPasswordResetFailed,
+        ipAddress: metadata.ipAddress ?? null,
+        userAgent: metadata.userAgent ?? null,
+        status: 'failed',
+        statusCode: 400,
+        details: { reason: 'invalid_or_expired_token' },
+      });
       throw new ValidationError('Invalid or expired reset token');
     }
 
-    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    const newHash = await hashPassword(dto.newPassword);
 
     await this.prisma.$transaction([
       this.prisma.user.update({
@@ -572,6 +625,8 @@ export class AuthService {
       eventType: SecurityEvents.AuthPasswordChange,
       companyId: user.companyId,
       userId: user.id,
+      ipAddress: metadata.ipAddress ?? null,
+      userAgent: metadata.userAgent ?? null,
       status: 'success',
       statusCode: 200,
     });
