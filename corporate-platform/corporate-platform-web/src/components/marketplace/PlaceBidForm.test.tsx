@@ -33,9 +33,9 @@ describe('PlaceBidForm rate limiting', () => {
     )
 
     expect(
-      screen.getByText(/too many attempts — try again in \d+s/i),
+      screen.getByText(/retry in \d+s/i),
     ).toBeInTheDocument()
-    const submit = screen.getByRole('button', { name: /place bid/i })
+    const submit = screen.getByRole('button', { name: /retry in/i })
     expect(submit).toBeDisabled()
 
     fireEvent.click(submit)
