@@ -11,6 +11,7 @@ import {
 import {
   mockConfirmAlertResponse,
   mockMethodologies,
+  mockProject,
 } from "./project-portal.client.fixtures.js";
 
 // Thin HTTP client for project-portal-backend (Go). Agent tools call
@@ -18,7 +19,6 @@ import {
 // logic lives in one place.
 //
 // TODO: add the remaining endpoints agent tools need, e.g.:
-//   - getProject(projectId)
 //   - getMonitoringAlerts(projectId, since)
 //   - getSatelliteTimeseries(projectId, metric: "ndvi" | "biomass")
 // Outbound auth (agent-service authenticating itself to
@@ -126,6 +126,100 @@ async function getMethodologies(
     throw result.error;
   }
   return result.data.methodologies;
+}
+
+// ---------------------------------------------------------------------------
+// getProject (#834)
+// ---------------------------------------------------------------------------
+
+export const ProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.string(),
+  location: z.string(),
+  area: z.number(),
+  start_date: z.coerce.date(),
+  farmers: z.number().int(),
+  carbon_credits: z.number().int(),
+  progress: z.number().int(),
+  icon: z.string().optional(),
+  methodology_token_id: z.number().int(),
+  methodology_contract_id: z.string(),
+  status: z.string(),
+  stellar_wallet_address: z.string().nullable().optional(),
+  created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
+});
+
+export type Project = z.infer<typeof ProjectSchema>;
+
+/**
+ * Thrown when a project does not exist (404 from project-portal-backend).
+ * Typed not-found error that is non-retryable.
+ */
+export class ProjectNotFoundError extends Error {
+  public readonly projectId: string;
+
+  constructor(projectId: string) {
+    super(`Project not found: ${projectId}`);
+    this.name = "ProjectNotFoundError";
+    this.projectId = projectId;
+  }
+}
+
+/**
+ * Fetch project details by project ID from project-portal-backend.
+ *
+ * Request: `GET /api/v1/projects/:id` on project-portal-backend.
+ * Response body (on success): validated `Project` object.
+ *
+ * Retries transient network errors or 5xx responses up to
+ * {@link MAX_RETRIES} times with exponential backoff; 4xx responses (including 404)
+ * and schema-validation failures are not retried and reject immediately.
+ *
+ * @throws {ProjectNotFoundError} if the project does not exist (HTTP 404).
+ * @throws {z.ZodError} if the response body doesn't match the expected Project schema.
+ */
+async function getProject(
+  projectId: string,
+  options: ClientCallOptions = {},
+): Promise<Project> {
+  if (env.mockProjectPortal) {
+    return {
+      ...mockProject,
+      id: projectId,
+    };
+  }
+
+  const context: CallContext = {
+    clientName: "project-portal",
+    operation: "getProject",
+    method: "GET",
+    path: `/api/v1/projects/${encodeURIComponent(projectId)}`,
+    requestId: options.requestId,
+  };
+
+  let response;
+  try {
+    response = await requestWithLogging(context, () => http.get(context.path));
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      throw new ProjectNotFoundError(projectId);
+    }
+    throw err;
+  }
+
+  const result = ProjectSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,5 +384,6 @@ export function classifyConfirmAlertError(err: unknown): {
 export const projectPortalClient = {
   http,
   getMethodologies,
+  getProject,
   confirmAlert,
 };

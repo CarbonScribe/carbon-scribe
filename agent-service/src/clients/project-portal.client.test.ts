@@ -15,7 +15,7 @@ vi.mock("axios", async () => {
   };
 });
 
-const { projectPortalClient, classifyConfirmAlertError } =
+const { projectPortalClient, classifyConfirmAlertError, ProjectNotFoundError } =
   await import("./project-portal.client.js");
 const { env } = await import("../config/env.js");
 const { logger } = await import("../shared/logging/logger.js");
@@ -25,6 +25,8 @@ const {
   mockConfirmAlertPayload,
   mockConfirmAlertResponseBody,
   mockConfirmAlertResponse,
+  mockProject,
+  mockProjectResponseBody,
 } = await import("./project-portal.client.fixtures.js");
 
 function axiosError({
@@ -558,6 +560,148 @@ describe("projectPortalClient.confirmAlert", () => {
           responseShape: {
             type: "object",
             keys: ["missingStatus"],
+          },
+        }),
+        expect.any(String),
+      );
+    });
+  });
+});
+
+describe("projectPortalClient.getProject", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+    env.mockProjectPortal = false;
+  });
+
+  afterEach(() => {
+    env.mockProjectPortal = false;
+    vi.restoreAllMocks();
+  });
+
+  it("returns the validated, typed project", async () => {
+    getMock.mockResolvedValue({ data: mockProjectResponseBody });
+
+    const result = await projectPortalClient.getProject(mockProject.id);
+
+    expect(result).toEqual(mockProject);
+    expect(getMock).toHaveBeenCalledWith(`/api/v1/projects/${mockProject.id}`);
+  });
+
+  it("encodes special characters in the project ID", async () => {
+    getMock.mockResolvedValue({ data: mockProjectResponseBody });
+
+    await projectPortalClient.getProject("proj/alpha#1");
+
+    expect(getMock).toHaveBeenCalledWith("/api/v1/projects/proj%2Falpha%231");
+  });
+
+  it("maps 404 to a typed ProjectNotFoundError without retrying", async () => {
+    getMock.mockRejectedValue(axiosError({ status: 404 }));
+
+    const promise = projectPortalClient.getProject("missing-proj-id");
+    await expect(promise).rejects.toBeInstanceOf(ProjectNotFoundError);
+    await expect(promise).rejects.toThrow("Project not found: missing-proj-id");
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws on a malformed response instead of passing it through", async () => {
+    getMock.mockResolvedValue({
+      status: 200,
+      data: { id: "not-a-valid-project-shape" },
+    });
+
+    await expect(
+      projectPortalClient.getProject("proj-1"),
+    ).rejects.toThrow();
+  });
+
+  it("retries a 5xx transient failure and succeeds", async () => {
+    getMock
+      .mockRejectedValueOnce(axiosError({ status: 503 }))
+      .mockResolvedValueOnce({ data: mockProjectResponseBody });
+
+    const result = await projectPortalClient.getProject(mockProject.id);
+
+    expect(result).toEqual(mockProject);
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a network error with no response and eventually gives up", async () => {
+    getMock.mockRejectedValue(axiosError({ hasResponse: false }));
+
+    await expect(
+      projectPortalClient.getProject("proj-1"),
+    ).rejects.toThrow();
+    expect(getMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("returns fixture data directly without HTTP calls when mock mode is enabled", async () => {
+    env.mockProjectPortal = true;
+    const result = await projectPortalClient.getProject("custom-mock-id");
+
+    expect(result).toEqual({ ...mockProject, id: "custom-mock-id" });
+    expect(getMock).not.toHaveBeenCalled();
+  });
+
+  describe("request/response logging (#707)", () => {
+    it("logs a request-start and a request-complete line with method/path/status/duration", async () => {
+      const infoSpy = vi.spyOn(logger, "info");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: mockProjectResponseBody,
+      });
+
+      await projectPortalClient.getProject(mockProject.id, {
+        requestId: "req-project-123",
+      });
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getProject",
+          method: "GET",
+          path: `/api/v1/projects/${mockProject.id}`,
+          requestId: "req-project-123",
+          event: "request_start",
+        }),
+        expect.any(String),
+      );
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getProject",
+          method: "GET",
+          path: `/api/v1/projects/${mockProject.id}`,
+          requestId: "req-project-123",
+          event: "request_complete",
+          outcome: "success",
+          status: 200,
+        }),
+        expect.any(String),
+      );
+    });
+
+    it("logs the response status and a top-level-keys shape summary on a schema-validation failure", async () => {
+      const errorSpy = vi.spyOn(logger, "error");
+      getMock.mockResolvedValue({
+        status: 200,
+        data: { unexpectedField: "bad" },
+      });
+
+      await expect(
+        projectPortalClient.getProject("proj-1"),
+      ).rejects.toThrow();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientName: "project-portal",
+          operation: "getProject",
+          event: "schema_validation_failed",
+          status: 200,
+          responseShape: {
+            type: "object",
+            keys: ["unexpectedField"],
           },
         }),
         expect.any(String),

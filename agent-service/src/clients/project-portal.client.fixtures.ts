@@ -2,6 +2,7 @@ import type {
   ConfirmAlertPayload,
   ConfirmAlertResponse,
   Methodology,
+  Project,
 } from "./project-portal.client.js";
 
 // Sample fixture data for exercising projectPortalClient.getMethodologies()
@@ -130,4 +131,47 @@ export const mockConfirmAlertResponseBody = {
   subject: "Confirmed alert for project proj-fixture-1",
   status: "PENDING",
   created_at: "2026-09-27T12:00:00.000Z",
+};
+
+// ---------------------------------------------------------------------------
+// getProject fixtures (#834)
+// ---------------------------------------------------------------------------
+
+export const mockProject: Project = {
+  id: "550e8400-e29b-41d4-a716-446655440000",
+  name: "Amazon Agroforestry Initiative",
+  type: "Agroforestry",
+  location: "Pará, Brazil",
+  area: 1250.5,
+  start_date: new Date("2024-03-15T00:00:00.000Z"),
+  farmers: 45,
+  carbon_credits: 12000,
+  progress: 65,
+  icon: "tree-icon.png",
+  methodology_token_id: 1,
+  methodology_contract_id: "CA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  status: "active",
+  stellar_wallet_address: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  created_at: new Date("2024-03-15T10:00:00.000Z"),
+  updated_at: new Date("2024-09-20T15:30:00.000Z"),
+};
+
+/** The raw wire-shape response body project-portal-backend would send. */
+export const mockProjectResponseBody = {
+  id: "550e8400-e29b-41d4-a716-446655440000",
+  name: "Amazon Agroforestry Initiative",
+  type: "Agroforestry",
+  location: "Pará, Brazil",
+  area: 1250.5,
+  start_date: "2024-03-15T00:00:00.000Z",
+  farmers: 45,
+  carbon_credits: 12000,
+  progress: 65,
+  icon: "tree-icon.png",
+  methodology_token_id: 1,
+  methodology_contract_id: "CA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  status: "active",
+  stellar_wallet_address: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+  created_at: "2024-03-15T10:00:00.000Z",
+  updated_at: "2024-09-20T15:30:00.000Z",
 };
