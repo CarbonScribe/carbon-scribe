@@ -16,8 +16,13 @@ import type {
 const BASE = '/collaboration';
 
 export async function fetchMembersApi(projectId: string): Promise<ProjectMember[]> {
-  const { data } = await apiClient.get<ProjectMember[]>(`${BASE}/projects/${projectId}/members`);
-  return Array.isArray(data) ? data : [];
+  // The backend wraps this list in a pagination envelope
+  // (PaginationResponse{Data, Pagination} -> {"data": [...], "pagination": {...}}),
+  // not a bare array (#801) — reading response.data directly as the member
+  // list would always fail the Array.isArray check below and silently
+  // return an empty list against the real API.
+  const { data } = await apiClient.get<{ data: ProjectMember[] }>(`${BASE}/projects/${projectId}/members`);
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function fetchInvitationsApi(projectId: string): Promise<ProjectInvitation[]> {
