@@ -210,10 +210,7 @@ describe('ConsumerService', () => {
     });
 
     it('should ensure concurrent deliveries of the same event run messageHandler at most once', async () => {
-      let handlerCallCount = 0;
-      const handler = jest.fn().mockImplementation(async () => {
-        handlerCallCount++;
-      });
+      const handler = jest.fn().mockResolvedValue(undefined);
 
       let eachMessageHandler: any;
       mockConsumer.run.mockImplementation(async (config) => {

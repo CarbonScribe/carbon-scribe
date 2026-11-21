@@ -7,11 +7,7 @@ class RedisServiceMock {
   getClient() {
     return {
       get: async (key: string) => this.store.get(key) ?? null,
-      set: async (
-        key: string,
-        value: string,
-        ...args: (string | number)[]
-      ) => {
+      set: async (key: string, value: string, ...args: (string | number)[]) => {
         const nx = args.includes('NX');
         if (nx && this.store.has(key)) {
           return null;
