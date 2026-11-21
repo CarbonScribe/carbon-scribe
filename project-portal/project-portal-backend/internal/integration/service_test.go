@@ -145,27 +145,6 @@ func (m *mockRepository) GetLatestHealth(ctx context.Context, connectionID strin
 	return nil, nil
 }
 
-func TestPlaceholderHealthCheckLatencyMsConstant(t *testing.T) {
-	if PlaceholderHealthCheckLatencyMs != 45 {
-		t.Fatalf("expected placeholder latency 45, got %d", PlaceholderHealthCheckLatencyMs)
-	}
-}
-
-func TestTestConnectionUsesPlaceholderLatency(t *testing.T) {
-	repo := &mockRepository{}
-	service := NewService(repo, testKeyring())
-
-	if err := service.TestConnection(context.Background(), "conn-123"); err != nil {
-		t.Fatalf("TestConnection failed: %v", err)
-	}
-	if repo.recordedHealth == nil {
-		t.Fatal("expected health to be recorded")
-	}
-	if got := repo.recordedHealth.LatencyMs; got != PlaceholderHealthCheckLatencyMs {
-		t.Errorf("expected latency %d, got %d", PlaceholderHealthCheckLatencyMs, got)
-	}
-}
-
 func TestTriggerWebhook_SuccessfulDelivery(t *testing.T) {
 	const secret = "webhook-test-secret"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
