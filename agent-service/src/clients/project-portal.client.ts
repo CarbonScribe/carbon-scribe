@@ -1,6 +1,7 @@
 import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import { signServiceToken } from "../shared/auth/service-token.js";
 import type { ErrorCategory } from "../llm/errors.js";
 import {
   type ClientCallOptions,
@@ -18,18 +19,34 @@ import {
 // logic lives in one place.
 //
 // TODO: add the remaining endpoints agent tools need, e.g.:
-//   - getProject(projectId)
 //   - getMonitoringAlerts(projectId, since)
 //   - getSatelliteTimeseries(projectId, metric: "ndvi" | "biomass")
-// Outbound auth (agent-service authenticating itself to
-// project-portal-backend) is a separate, not-yet-specified concern — out
-// of scope for issue #579, which replaced the shared-secret check on
-// agent-service's own inbound routes (see
-// shared/middleware/auth.middleware.ts). project-portal-backend has no
-// service-to-service auth guard today regardless of what header this
-// client sends, so there is nothing to authenticate against yet.
+// Outbound requests carry a short-lived HS256 service token signed with
+// issuer "agent-service" (issue #835). In mock mode, auth header injection
+// is skipped.
 const http = axios.create({
   baseURL: env.projectPortalBaseUrl,
+});
+
+http.interceptors.request.use((config) => {
+  if (env.mockProjectPortal) {
+    return config;
+  }
+
+  const secret =
+    env.projectPortalOutboundJwtSecret || env.agentServiceJwtSecret;
+  if (!secret) {
+    throw new Error(
+      "Missing required env var: PROJECT_PORTAL_OUTBOUND_JWT_SECRET or AGENT_SERVICE_JWT_SECRET",
+    );
+  }
+
+  config.headers = config.headers || {};
+  config.headers.Authorization = `Bearer ${signServiceToken(
+    "agent-service",
+    secret,
+  )}`;
+  return config;
 });
 
 // ---------------------------------------------------------------------------

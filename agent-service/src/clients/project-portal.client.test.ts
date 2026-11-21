@@ -3,6 +3,12 @@ import type { ConfirmAlertPayload } from "./project-portal.client.js";
 
 const getMock = vi.fn();
 const postMock = vi.fn();
+const requestConfigMock = vi.fn();
+let requestInterceptor:
+  ((config: { headers: Record<string, string> }) => unknown) | undefined;
+
+const outboundSecret = "project-portal-outbound-test-secret";
+vi.stubEnv("PROJECT_PORTAL_OUTBOUND_JWT_SECRET", outboundSecret);
 
 vi.mock("axios", async () => {
   const actual = await vi.importActual<typeof import("axios")>("axios");
@@ -10,13 +16,32 @@ vi.mock("axios", async () => {
     ...actual,
     default: {
       ...actual.default,
-      create: () => ({ get: getMock, post: postMock }),
+      create: () => ({
+        interceptors: {
+          request: {
+            use: (interceptor: typeof requestInterceptor) => {
+              requestInterceptor = interceptor;
+            },
+          },
+        },
+        get: (...args: unknown[]) => {
+          const config = requestInterceptor?.({ headers: {} });
+          requestConfigMock(config);
+          return getMock(...args);
+        },
+        post: (...args: unknown[]) => {
+          const config = requestInterceptor?.({ headers: {} });
+          requestConfigMock(config);
+          return postMock(...args);
+        },
+      }),
     },
   };
 });
 
 const { projectPortalClient, classifyConfirmAlertError } =
   await import("./project-portal.client.js");
+const { verifyServiceToken } = await import("../shared/auth/service-token.js");
 const { env } = await import("../config/env.js");
 const { logger } = await import("../shared/logging/logger.js");
 const {
@@ -589,5 +614,55 @@ describe("classifyConfirmAlertError", () => {
       category: "unknown",
       retryable: false,
     });
+  });
+});
+
+describe("project-portal outbound auth token injection (#835)", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+    postMock.mockReset();
+    requestConfigMock.mockReset();
+    env.mockProjectPortal = false;
+    env.projectPortalOutboundJwtSecret = outboundSecret;
+  });
+
+  it("attaches a signed agent-service bearer token to outbound requests", async () => {
+    getMock.mockResolvedValue({ data: mockMethodologiesResponseBody });
+
+    await projectPortalClient.getMethodologies();
+
+    const config = requestConfigMock.mock.lastCall?.[0] as {
+      headers: { Authorization: string };
+    };
+    expect(config?.headers?.Authorization).toBeDefined();
+    const [scheme, token] = config.headers.Authorization.split(" ");
+    expect(scheme).toBe("Bearer");
+    expect(
+      verifyServiceToken(token, { "agent-service": outboundSecret }),
+    ).toEqual({ service: "agent-service" });
+  });
+
+  it("throws a clear error when outbound secret is missing outside mock mode", async () => {
+    env.projectPortalOutboundJwtSecret = "";
+    env.agentServiceJwtSecret = "";
+    try {
+      expect(() => {
+        requestInterceptor?.({ headers: {} });
+      }).toThrow(/Missing required env var/);
+    } finally {
+      env.projectPortalOutboundJwtSecret = outboundSecret;
+    }
+  });
+
+  it("skips auth token injection in mock mode", async () => {
+    env.mockProjectPortal = true;
+    try {
+      const config = requestInterceptor?.({ headers: {} }) as {
+        headers: Record<string, string>;
+      };
+      expect(config.headers?.Authorization).toBeUndefined();
+    } finally {
+      env.mockProjectPortal = false;
+    }
   });
 });

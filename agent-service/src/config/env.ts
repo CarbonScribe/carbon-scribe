@@ -53,6 +53,10 @@ export const env = {
   agentModel: process.env.AGENT_MODEL ?? "claude-opus-5",
 
   agentServiceJwtSecret: process.env.AGENT_SERVICE_JWT_SECRET ?? "",
+  projectPortalOutboundJwtSecret:
+    process.env.PROJECT_PORTAL_OUTBOUND_JWT_SECRET ??
+    process.env.AGENT_SERVICE_JWT_SECRET ??
+    "",
 
   serviceTokenSecrets,
   approvalReviewerServices: (process.env.APPROVAL_REVIEWER_SERVICES ?? "")
