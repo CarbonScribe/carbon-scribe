@@ -89,6 +89,9 @@ export const env = {
   mockProjectPortal:
     boolean("AGENT_SERVICE_MOCK_PROJECT_PORTAL") ||
     boolean("MOCK_PROJECT_PORTAL"),
+  mockCorporatePlatform:
+    boolean("AGENT_SERVICE_MOCK_CORPORATE_PLATFORM") ||
+    boolean("MOCK_CORPORATE_PLATFORM"),
 
   agentAuditDatabaseUrl: required(
     "AGENT_AUDIT_DATABASE_URL",

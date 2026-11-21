@@ -8,13 +8,13 @@ import {
   requestWithLogging,
   logSchemaValidationError,
 } from "./http-client.helper.js";
+import { mockMarketplaceCreditsResponseBody } from "./corporate-platform.client.fixtures.js";
 
 // Thin HTTP client for corporate-platform-backend (NestJS). Agent tools call
 // through here rather than hitting axios directly, so auth/base-URL/retry
 // logic lives in one place.
 //
 // TODO: add the remaining endpoints agent tools need, e.g.:
-//   - listMarketplaceCredits(filters)
 //   - getComplianceFramework(framework: "csrd" | "cbam" | "corsia" | "sbti" | "ghg-protocol")
 //   - getRetirementHistory(companyId)
 // Outbound requests use the same short-lived HS256 service-token format as
@@ -144,7 +144,206 @@ async function getPortfolio(
   return result.data.data;
 }
 
+// ---------------------------------------------------------------------------
+// listMarketplaceCredits
+// ---------------------------------------------------------------------------
+
+/** Query filters accepted by listMarketplaceCredits, mirroring SearchQueryDto. */
+export interface MarketplaceCreditFilters {
+  query?: string;
+  projectName?: string;
+  country?: string;
+  methodology?: string;
+  standard?: string;
+  sdgs?: number[];
+  vintageFrom?: number;
+  vintageTo?: number;
+  priceMin?: number;
+  priceMax?: number;
+  sortBy?: "price" | "vintage" | "popularity" | "createdAt";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Error thrown when corporate-platform-backend responds with 429 Too Many Requests.
+ * Extracts Retry-After header seconds if present.
+ */
+export class RateLimitExceededError extends Error {
+  readonly retryAfterSeconds?: number;
+
+  constructor(
+    message: string,
+    public readonly response?: {
+      status: number;
+      headers?: Record<string, unknown>;
+    },
+    retryAfterSeconds?: number,
+  ) {
+    super(message);
+    this.name = "RateLimitExceededError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+export const MarketplaceCreditSchema = z.object({
+  id: z.string(),
+  companyId: z.string().nullable().optional(),
+  projectId: z.string(),
+  projectName: z.string(),
+  pricePerTon: z.number(),
+  availableAmount: z.number(),
+  totalAmount: z.number(),
+  status: z.string().optional(),
+  dynamicScore: z.number().optional(),
+  verificationScore: z.number().optional(),
+  additionalityScore: z.number().optional(),
+  permanenceScore: z.number().optional(),
+  leakageScore: z.number().optional(),
+  cobenefitsScore: z.number().optional(),
+  transparencyScore: z.number().optional(),
+  methodology: z.string().nullable().optional(),
+  vintage: z.number().int().nullable().optional(),
+  verificationStandard: z.string().nullable().optional(),
+  lastVerification: z.coerce.date().nullable().optional(),
+  country: z.string().nullable().optional(),
+  sdgs: z.array(z.number()).optional().default([]),
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
+});
+
+export const MarketplaceFacetValueSchema = z.object({
+  value: z.union([z.string(), z.number()]),
+  count: z.number(),
+});
+
+export const MarketplaceFacetsSchema = z.object({
+  countries: z.array(MarketplaceFacetValueSchema).optional().default([]),
+  methodologies: z.array(MarketplaceFacetValueSchema).optional().default([]),
+  standards: z.array(MarketplaceFacetValueSchema).optional().default([]),
+  sdgs: z.array(MarketplaceFacetValueSchema).optional().default([]),
+  vintageYears: z.array(MarketplaceFacetValueSchema).optional().default([]),
+  priceRange: z
+    .object({
+      min: z.number().optional(),
+      max: z.number().optional(),
+      median: z.number().optional(),
+    })
+    .optional()
+    .default({}),
+});
+
+export const MarketplaceSearchResponseSchema = z.object({
+  data: z.array(MarketplaceCreditSchema),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  facets: MarketplaceFacetsSchema.optional().default({}),
+});
+
+export type MarketplaceCredit = z.infer<typeof MarketplaceCreditSchema>;
+export type MarketplaceSearchFacets = z.infer<typeof MarketplaceFacetsSchema>;
+export type MarketplaceSearchResult = z.infer<
+  typeof MarketplaceSearchResponseSchema
+>;
+
+/**
+ * Builds URLSearchParams from MarketplaceCreditFilters, serialising array
+ * values (such as sdgs) as repeated parameters.
+ */
+export function buildMarketplaceSearchParams(
+  filters: MarketplaceCreditFilters = {},
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null) {
+          params.append(key, String(item));
+        }
+      }
+    } else {
+      params.append(key, String(value));
+    }
+  }
+  return params;
+}
+
+/**
+ * Search available marketplace credits.
+ *
+ * Request: `GET /api/v1/marketplace/search` on corporate-platform-backend.
+ * Accepts filters mapping to SearchQueryDto, serialising array query parameters as repeated keys.
+ * Returns validated `{ data, total, page, limit, facets }`.
+ * Rate limit (429) responses are surfaced as a typed {@link RateLimitExceededError}.
+ */
+async function listMarketplaceCredits(
+  filters: MarketplaceCreditFilters = {},
+  options: ClientCallOptions & { mock?: boolean } = {},
+): Promise<MarketplaceSearchResult> {
+  if (env.mockCorporatePlatform || options.mock) {
+    return MarketplaceSearchResponseSchema.parse(
+      mockMarketplaceCreditsResponseBody,
+    );
+  }
+
+  const params = buildMarketplaceSearchParams(filters);
+  const queryString = params.toString();
+  const path = queryString
+    ? `/api/v1/marketplace/search?${queryString}`
+    : `/api/v1/marketplace/search`;
+
+  const context: CallContext = {
+    clientName: "corporate-platform",
+    operation: "listMarketplaceCredits",
+    method: "GET",
+    path,
+    requestId: options.requestId,
+  };
+
+  let response;
+  try {
+    response = await requestWithLogging(context, () => http.get(context.path));
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 429) {
+      const retryAfterHeader =
+        err.response.headers?.["retry-after"] ??
+        err.response.headers?.["Retry-After"];
+      let retryAfterSeconds: number | undefined;
+      if (typeof retryAfterHeader === "string") {
+        const parsed = parseInt(retryAfterHeader, 10);
+        if (!isNaN(parsed)) {
+          retryAfterSeconds = parsed;
+        }
+      } else if (typeof retryAfterHeader === "number") {
+        retryAfterSeconds = retryAfterHeader;
+      }
+      throw new RateLimitExceededError(
+        `Marketplace search rate limit exceeded (429)${retryAfterSeconds !== undefined ? `, retry after ${retryAfterSeconds}s` : ""}`,
+        err.response as any,
+        retryAfterSeconds,
+      );
+    }
+    throw err;
+  }
+
+  const result = MarketplaceSearchResponseSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data;
+}
+
 export const corporatePlatformClient = {
   http,
   getPortfolio,
+  listMarketplaceCredits,
 };

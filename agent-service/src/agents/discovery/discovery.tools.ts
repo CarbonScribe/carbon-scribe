@@ -1,12 +1,13 @@
 import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { corporatePlatformClient } from "../../clients/corporate-platform.client.js";
+import {
+  corporatePlatformClient,
+  type MarketplaceCreditFilters,
+} from "../../clients/corporate-platform.client.js";
 
 // Credit-discovery agent tools — corporate-platform's
 // marketplace/discovery-engine.service.ts is the natural home for the
 // business logic this calls into; this tool is the thin bridge.
-//
-// TODO: replace with the real marketplace search endpoint once it exists.
 export const searchMarketplaceCredits = betaZodTool({
   name: "search_marketplace_credits",
   description:
@@ -19,9 +20,13 @@ export const searchMarketplaceCredits = betaZodTool({
       .optional(),
   }),
   run: async (input) => {
-    void corporatePlatformClient; // TODO: wire real call, remove this line
-    void input;
-    throw new Error("not implemented");
+    const filters: MarketplaceCreditFilters = {
+      methodology: input.methodology,
+      priceMax: input.maxPricePerTonne,
+    };
+    const results =
+      await corporatePlatformClient.listMarketplaceCredits(filters);
+    return JSON.stringify(results);
   },
 });
 

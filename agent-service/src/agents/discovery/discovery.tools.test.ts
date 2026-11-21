@@ -1,31 +1,69 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getPortfolioMock = vi.fn();
+const listMarketplaceCreditsMock = vi.fn();
 vi.mock("../../clients/corporate-platform.client.js", () => ({
   corporatePlatformClient: {
     getPortfolio: (...args: unknown[]) => getPortfolioMock(...args),
+    listMarketplaceCredits: (...args: unknown[]) =>
+      listMarketplaceCreditsMock(...args),
   },
 }));
 
-const { getBuyerPortfolio, discoveryTools } =
+const { getBuyerPortfolio, searchMarketplaceCredits, discoveryTools } =
   await import("./discovery.tools.js");
 
-describe("getBuyerPortfolio tool", () => {
+describe("discoveryTools", () => {
   beforeEach(() => {
     getPortfolioMock.mockReset();
+    listMarketplaceCreditsMock.mockReset();
   });
 
-  it("is registered in discoveryTools", () => {
-    expect(discoveryTools.map((t) => t.name)).toContain("get_buyer_portfolio");
+  describe("getBuyerPortfolio tool", () => {
+    it("is registered in discoveryTools", () => {
+      expect(discoveryTools.map((t) => t.name)).toContain(
+        "get_buyer_portfolio",
+      );
+    });
+
+    it("calls corporatePlatformClient.getPortfolio with the given companyId and returns it as JSON", async () => {
+      const portfolio = { companyId: "co-1", holdings: [] };
+      getPortfolioMock.mockResolvedValue(portfolio);
+
+      const result = await getBuyerPortfolio.run({ companyId: "co-1" });
+
+      expect(getPortfolioMock).toHaveBeenCalledWith("co-1");
+      expect(JSON.parse(result as string)).toEqual(portfolio);
+    });
   });
 
-  it("calls corporatePlatformClient.getPortfolio with the given companyId and returns it as JSON", async () => {
-    const portfolio = { companyId: "co-1", holdings: [] };
-    getPortfolioMock.mockResolvedValue(portfolio);
+  describe("searchMarketplaceCredits tool", () => {
+    it("is registered in discoveryTools", () => {
+      expect(discoveryTools.map((t) => t.name)).toContain(
+        "search_marketplace_credits",
+      );
+    });
 
-    const result = await getBuyerPortfolio.run({ companyId: "co-1" });
+    it("calls corporatePlatformClient.listMarketplaceCredits with mapped filters and returns results as JSON", async () => {
+      const searchResult = {
+        data: [{ id: "credit-1", projectName: "Forest" }],
+        total: 1,
+        page: 1,
+        limit: 10,
+        facets: {},
+      };
+      listMarketplaceCreditsMock.mockResolvedValue(searchResult);
 
-    expect(getPortfolioMock).toHaveBeenCalledWith("co-1");
-    expect(JSON.parse(result as string)).toEqual(portfolio);
+      const result = await searchMarketplaceCredits.run({
+        methodology: "REDD+",
+        maxPricePerTonne: 50,
+      });
+
+      expect(listMarketplaceCreditsMock).toHaveBeenCalledWith({
+        methodology: "REDD+",
+        priceMax: 50,
+      });
+      expect(JSON.parse(result as string)).toEqual(searchResult);
+    });
   });
 });

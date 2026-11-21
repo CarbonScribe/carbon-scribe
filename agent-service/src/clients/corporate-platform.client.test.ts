@@ -32,27 +32,33 @@ vi.mock("axios", async () => {
   };
 });
 
-const { corporatePlatformClient } =
+const { corporatePlatformClient, RateLimitExceededError } =
   await import("./corporate-platform.client.js");
 const { verifyServiceToken } = await import("../shared/auth/service-token.js");
 const { logger } = await import("../shared/logging/logger.js");
-const { mockPortfolioResponseBody, mockPortfolio } =
-  await import("./corporate-platform.client.fixtures.js");
+const {
+  mockPortfolioResponseBody,
+  mockPortfolio,
+  mockMarketplaceCreditsResponseBody,
+  mockMarketplaceCreditsResult,
+} = await import("./corporate-platform.client.fixtures.js");
 
 function axiosError({
   status,
   hasResponse = true,
+  headers,
 }: {
   status?: number;
   hasResponse?: boolean;
+  headers?: Record<string, unknown>;
 }) {
   const err = new Error("request failed") as Error & {
     isAxiosError: boolean;
-    response?: { status: number };
+    response?: { status: number; headers?: Record<string, unknown> };
   };
   err.isAxiosError = true;
   if (hasResponse) {
-    err.response = { status: status ?? 500 };
+    err.response = { status: status ?? 500, headers };
   }
   return err;
 }
@@ -293,5 +299,182 @@ describe("corporatePlatformClient.getPortfolio", () => {
         expect.any(String),
       );
     });
+  });
+});
+
+describe("corporatePlatformClient.listMarketplaceCredits", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+    requestConfigMock.mockReset();
+  });
+
+  it("calls /api/v1/marketplace/search with empty query when no filters provided", async () => {
+    getMock.mockResolvedValue({ data: mockMarketplaceCreditsResponseBody });
+
+    const result = await corporatePlatformClient.listMarketplaceCredits();
+
+    expect(getMock).toHaveBeenCalledWith("/api/v1/marketplace/search");
+    expect(result.data.length).toBe(2);
+    expect(result.total).toBe(2);
+  });
+
+  it("serialises filters into query params and repeats array values", async () => {
+    getMock.mockResolvedValue({ data: mockMarketplaceCreditsResponseBody });
+
+    await corporatePlatformClient.listMarketplaceCredits({
+      query: "reforest",
+      country: "Brazil",
+      methodology: "REDD+",
+      standard: "VCS",
+      sdgs: [13, 15],
+      vintageFrom: 2020,
+      vintageTo: 2025,
+      priceMin: 10,
+      priceMax: 30,
+      sortBy: "price",
+      sortOrder: "asc",
+      page: 1,
+      limit: 10,
+    });
+
+    const calledUrl = getMock.mock.lastCall?.[0] as string;
+    expect(calledUrl).toContain("/api/v1/marketplace/search?");
+    const url = new URL(`http://localhost${calledUrl}`);
+    expect(url.searchParams.get("query")).toBe("reforest");
+    expect(url.searchParams.get("country")).toBe("Brazil");
+    expect(url.searchParams.get("methodology")).toBe("REDD+");
+    expect(url.searchParams.get("standard")).toBe("VCS");
+    expect(url.searchParams.getAll("sdgs")).toEqual(["13", "15"]);
+    expect(url.searchParams.get("vintageFrom")).toBe("2020");
+    expect(url.searchParams.get("vintageTo")).toBe("2025");
+    expect(url.searchParams.get("priceMin")).toBe("10");
+    expect(url.searchParams.get("priceMax")).toBe("30");
+    expect(url.searchParams.get("sortBy")).toBe("price");
+    expect(url.searchParams.get("sortOrder")).toBe("asc");
+    expect(url.searchParams.get("page")).toBe("1");
+    expect(url.searchParams.get("limit")).toBe("10");
+  });
+
+  it("attaches a signed agent-service bearer token to outbound requests", async () => {
+    getMock.mockResolvedValue({ data: mockMarketplaceCreditsResponseBody });
+
+    await corporatePlatformClient.listMarketplaceCredits();
+
+    const config = requestConfigMock.mock.lastCall?.[0] as {
+      headers: { Authorization: string };
+    };
+    const [scheme, token] = config.headers.Authorization.split(" ");
+    expect(scheme).toBe("Bearer");
+    expect(
+      verifyServiceToken(token, { "agent-service": agentServiceSecret }),
+    ).toEqual({ service: "agent-service" });
+  });
+
+  it("validates response schema and returns structured typed data", async () => {
+    getMock.mockResolvedValue({ data: mockMarketplaceCreditsResponseBody });
+
+    const result = await corporatePlatformClient.listMarketplaceCredits();
+
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0]?.projectName).toBe("Amazon Basin Reforestation");
+    expect(result.data[0]?.pricePerTon).toBe(15.5);
+    expect(result.facets.countries).toEqual([
+      { value: "Brazil", count: 1 },
+      { value: "Kenya", count: 1 },
+    ]);
+  });
+
+  it("throws on malformed response schema and logs schema validation failure", async () => {
+    getMock.mockResolvedValue({
+      status: 200,
+      data: { data: [{ invalid: "credit" }], total: "not-a-number" },
+    });
+
+    await expect(
+      corporatePlatformClient.listMarketplaceCredits(),
+    ).rejects.toThrow();
+  });
+
+  it("does not retry 4xx errors like 400 Bad Request", async () => {
+    getMock.mockRejectedValue(axiosError({ status: 400 }));
+
+    await expect(
+      corporatePlatformClient.listMarketplaceCredits({ page: -1 }),
+    ).rejects.toThrow();
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries 5xx server errors and transient failures up to MAX_RETRIES", async () => {
+    getMock
+      .mockRejectedValueOnce(axiosError({ status: 502 }))
+      .mockResolvedValueOnce({ data: mockMarketplaceCreditsResponseBody });
+
+    const result = await corporatePlatformClient.listMarketplaceCredits();
+    expect(result.total).toBe(2);
+    expect(getMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("surfaces 429 Too Many Requests as RateLimitExceededError with retryAfterSeconds", async () => {
+    getMock.mockRejectedValue(
+      axiosError({
+        status: 429,
+        headers: { "retry-after": "60" },
+      }),
+    );
+
+    let caughtError: unknown;
+    try {
+      await corporatePlatformClient.listMarketplaceCredits();
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(RateLimitExceededError);
+    const rateLimitErr = caughtError as RateLimitExceededError;
+    expect(rateLimitErr.message).toContain("429");
+    expect(rateLimitErr.retryAfterSeconds).toBe(60);
+    expect(getMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns mock fixtures when options.mock is true without calling network", async () => {
+    const result = await corporatePlatformClient.listMarketplaceCredits(
+      {},
+      { mock: true },
+    );
+
+    expect(getMock).not.toHaveBeenCalled();
+    expect(result.data).toHaveLength(2);
+    expect(result.total).toBe(2);
+  });
+
+  it("logs request-start and request-complete lines with requestId", async () => {
+    const infoSpy = vi.spyOn(logger, "info");
+    getMock.mockResolvedValue({
+      status: 200,
+      data: mockMarketplaceCreditsResponseBody,
+    });
+
+    await corporatePlatformClient.listMarketplaceCredits(
+      { query: "solar" },
+      { requestId: "req-marketplace-1" },
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "listMarketplaceCredits",
+        event: "request_start",
+        requestId: "req-marketplace-1",
+      }),
+      expect.any(String),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "listMarketplaceCredits",
+        event: "request_complete",
+        outcome: "success",
+        requestId: "req-marketplace-1",
+      }),
+      expect.any(String),
+    );
   });
 });
