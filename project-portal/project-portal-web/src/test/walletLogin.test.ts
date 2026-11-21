@@ -24,10 +24,13 @@ describe("Stellar wallet login", () => {
     vi.clearAllMocks();
   });
 
+  // A real, checksum-valid Ed25519 Stellar public key (#803) — the previous
+  // example here only matched the loose /^G[A-Z0-9]{55}$/ regex and was not
+  // actually checksum-valid, so it would have failed the strict validator.
+  const VALID_ADDRESS = "GCUARJVWFF6OZP2SWL2JOLTFMNLMJDEAISPRPBTVSMELNTLLCXR6F5ZQ";
+
   it("validates correct Stellar G-address format", () => {
-    const valid =
-      "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL";
-    expect(isValidStellarAddress(valid)).toBe(true);
+    expect(isValidStellarAddress(VALID_ADDRESS)).toBe(true);
   });
 
   it("rejects non-G prefix addresses", () => {
@@ -40,8 +43,33 @@ describe("Stellar wallet login", () => {
     expect(isValidStellarAddress("GBZ3POYXCBG5V2I4")).toBe(false);
   });
 
+  it("rejects a checksum-invalid address (#803) — right shape, wrong checksum", () => {
+    // Same prefix/length/alphabet as VALID_ADDRESS but with its last
+    // character flipped, which the old regex-only validator would have
+    // accepted.
+    const checksumInvalid =
+      "GCUARJVWFF6OZP2SWL2JOLTFMNLMJDEAISPRPBTVSMELNTLLCXR6F5ZA";
+    expect(isValidStellarAddress(checksumInvalid)).toBe(false);
+  });
+
+  it("rejects an address containing a character outside Stellar's base32 alphabet (#803)", () => {
+    // '0' is never valid in Stellar's base32 alphabet (only 2-7 and A-Z),
+    // but the old /^G[A-Z0-9]{55}$/ regex accepted it.
+    const invalidCharacter =
+      "GCUARJVWFF6OZP2SWL2JOLTFMNLMJDEAISPRPBTVSMELNTLLCXR6F5Z0";
+    expect(isValidStellarAddress(invalidCharacter)).toBe(false);
+  });
+
+  it("accepts a lowercase address by normalizing it (#803)", () => {
+    expect(isValidStellarAddress(VALID_ADDRESS.toLowerCase())).toBe(true);
+  });
+
+  it("accepts an address with surrounding whitespace by normalizing it (#803)", () => {
+    expect(isValidStellarAddress(`  ${VALID_ADDRESS}\n`)).toBe(true);
+  });
+
   it("calls connectWallet and returns a public key", async () => {
-    const mockKey = "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL";
+    const mockKey = VALID_ADDRESS;
     vi.mocked(connectWallet).mockResolvedValue(mockKey);
 
     const key = await connectWallet();
@@ -63,7 +91,7 @@ describe("Stellar wallet login", () => {
   });
 
   it("calls walletChallengeApi with the connected public key", async () => {
-    const mockKey = "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL";
+    const mockKey = VALID_ADDRESS;
     vi.mocked(walletChallengeApi).mockResolvedValue({
       challenge: "signed-xdr-string",
       expires_in: 900,
@@ -93,13 +121,13 @@ describe("Stellar wallet login", () => {
     vi.mocked(walletLoginApi).mockResolvedValue(mockResponse);
 
     const result = await walletLoginApi({
-      public_key: "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL",
+      public_key: VALID_ADDRESS,
       signed_challenge: "signed-xdr",
     });
 
     expect(result.access_token).toBe("jwt-token");
     expect(walletLoginApi).toHaveBeenCalledWith({
-      public_key: "GBZ3POYXCBG5V2I4XVQUQMN7G3QE4X7KQXQ5YHVKCEN4QCU6LM4V36XL",
+      public_key: VALID_ADDRESS,
       signed_challenge: "signed-xdr",
     });
   });

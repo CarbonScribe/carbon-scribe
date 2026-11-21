@@ -3,7 +3,8 @@ import type { StoreState } from "../store";
 import type { RegisterPayload, AuthSlice, WalletState } from "./auth.types";
 import { getProfileApi, loginApi, logoutApi, refreshApi, registerApi, normalizeUser, walletChallengeApi, walletLoginApi } from "@/lib/api/auth.api";
 import { setAuthToken, setOnUnauthorized } from "@/lib/api/axios";
-import { connectWallet as connectWalletHelper, isValidStellarAddress } from "@/lib/stellar/wallet";
+import { connectWallet as connectWalletHelper } from "@/lib/stellar/wallet";
+import { isValidStellarAddress } from "@/lib/stellar/address";
 
 const INITIAL_AUTH_STATE = {
   token: null,

@@ -1,3 +1,9 @@
+// Re-exported for backward compatibility (#803) — the real implementation
+// now lives in a single shared module, since this file's own copy was a
+// loose regex that accepted out-of-alphabet characters and skipped the
+// checksum entirely.
+export { isValidStellarAddress } from './address';
+
 let freighterApi: any = null;
 
 export type WalletConnectionState =
@@ -69,8 +75,4 @@ export async function signChallengeXdr(
     throw new Error(result.error.message || "Signature rejected by the user.");
   }
   return result.signedTxXdr;
-}
-
-export function isValidStellarAddress(address: string): boolean {
-  return /^G[A-Z0-9]{55}$/.test(address);
 }
