@@ -102,7 +102,9 @@ export interface ProjectsSlice {
   _refreshProjectsInBackground: (
     limit: number,
     offset: number,
-    key: string
+    key: string,
+    filters?: ProjectFilters,
+    requestId?: number
   ) => Promise<void>;
   fetchProjectById: (id: string) => Promise<void>;
   createProject: (data: ProjectCreateRequest) => Promise<Project | null>;

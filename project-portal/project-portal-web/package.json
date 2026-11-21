@@ -32,7 +32,6 @@
     "react-turnstile": "^1.1.5",
     "recharts": "^3.7.0",
     "sonner": "^1.7.1",
-    "xss-clean": "^0.1.4",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

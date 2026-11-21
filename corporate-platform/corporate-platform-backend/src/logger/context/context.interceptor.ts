@@ -18,20 +18,32 @@ export class ContextInterceptor implements NestInterceptor {
     const httpContext = context.switchToHttp();
     const request = httpContext.getRequest<Request>();
 
-    // Extract or generate trace ID from headers (W3C Trace Context)
+    // Prefer the IDs RequestLoggerMiddleware already resolved (it runs
+    // before this interceptor) so the ID a client sees echoed back in the
+    // x-request-id/x-trace-id response headers is the exact same one
+    // threaded through RequestContext here — not a second, independently
+    // generated value derived from the same headers (#736). Falls back to
+    // deriving them directly in case this interceptor is ever used on a
+    // route where that middleware isn't applied.
+    const requestId =
+      (request as any).requestId ||
+      (() => {
+        const requestIdHeader = request.headers['x-request-id'];
+        return (
+          (Array.isArray(requestIdHeader)
+            ? requestIdHeader[0]
+            : requestIdHeader) || randomUUID()
+        );
+      })();
+
     const traceId =
+      (request as any).traceId ||
       (request.headers['traceparent'] as string)?.split('-')[1] ||
       (request.headers['x-trace-id'] as string) ||
       randomUUID();
 
     // Generate span ID
     const spanId = randomUUID().slice(0, 16);
-
-    // Get request ID from header or generate
-    const requestIdHeader = request.headers['x-request-id'];
-    const requestId =
-      (Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader) ||
-      randomUUID();
 
     // Extract user from request
     const user = (request as any).user;

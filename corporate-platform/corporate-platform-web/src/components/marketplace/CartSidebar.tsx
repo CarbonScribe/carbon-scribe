@@ -39,6 +39,29 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
   const firstFocusableRef = useRef<HTMLElement | null>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
 
+  // Refs for idempotency across checkout attempts & retries
+  const checkoutKeyRef = useRef<string | null>(null)
+  const confirmKeyRef = useRef<string | null>(null)
+
+  const getOrGenerateKey = (keyRef: React.MutableRefObject<string | null>) => {
+    if (!keyRef.current) {
+      keyRef.current =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0
+              const v = c === 'x' ? r : (r & 0x3) | 0x8
+              return v.toString(16)
+            })
+    }
+    return keyRef.current
+  }
+
+  const resetIdempotencyKeys = () => {
+    checkoutKeyRef.current = null
+    confirmKeyRef.current = null
+  }
+
   const subtotal = cart.reduce((sum, item) => sum + item.pricePerTon * 1000, 0)
   const serviceFee = subtotal * 0.05
   const total = subtotal + serviceFee
@@ -132,22 +155,29 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
         }
       }
 
-      // 2. Initiate checkout
-      const checkoutResult = await marketplaceService.checkout({ paymentMethod })
+      // 2. Initiate checkout with idempotency key
+      const checkoutKey = getOrGenerateKey(checkoutKeyRef)
+      const checkoutResult = await marketplaceService.checkout(
+        { paymentMethod },
+        checkoutKey,
+      )
       if (!checkoutResult.success || !checkoutResult.data) {
         throw new Error(checkoutResult.error || 'Checkout failed')
       }
 
-      // 3. Confirm the purchase
-      const confirmResult = await marketplaceService.confirmPurchase({
-        orderId: checkoutResult.data.id,
-      })
+      // 3. Confirm the purchase with idempotency key
+      const confirmKey = getOrGenerateKey(confirmKeyRef)
+      const confirmResult = await marketplaceService.confirmPurchase(
+        { orderId: checkoutResult.data.id },
+        confirmKey,
+      )
       if (!confirmResult.success) {
         throw new Error(confirmResult.error || 'Purchase confirmation failed')
       }
 
       setSuccessOrderId(confirmResult.data?.id ?? checkoutResult.data.id)
       clearCart()
+      resetIdempotencyKeys()
       setStep('success')
       announce('Purchase completed successfully', 'assertive')
     } catch (err) {
@@ -164,6 +194,7 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
       setStep('cart')
       setErrorMessage(null)
       setSuccessOrderId(null)
+      resetIdempotencyKeys()
     }
     onClose()
   }
@@ -431,7 +462,10 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                   Proceed to Checkout
                 </button>
                 <button 
-                  onClick={clearCart} 
+                  onClick={() => {
+                    clearCart()
+                    resetIdempotencyKeys()
+                  }} 
                   className="w-full corporate-btn-secondary py-3"
                   aria-label="Clear all items from cart"
                 >
@@ -480,7 +514,10 @@ export default function CartSidebar({ isOpen, onClose }: CartSidebarProps) {
                   Try Again
                 </button>
                 <button 
-                  onClick={() => setStep('cart')} 
+                  onClick={() => {
+                    setStep('cart')
+                    resetIdempotencyKeys()
+                  }} 
                   className="w-full corporate-btn-secondary py-3"
                   aria-label="Return to cart"
                 >

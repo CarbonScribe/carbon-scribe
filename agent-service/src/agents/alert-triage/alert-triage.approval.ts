@@ -29,7 +29,8 @@ import type { AgentRunResult } from "../../shared/types/agent.types.js";
 // queue/UI exists (tracked separately), nothing calls this automatically, but
 // no escalation can reach project-portal without going through it.
 
-export type AlertTriageVerdict = "escalate" | "suppress" | "needs-more-data";
+export type AlertTriageVerdict =
+  "escalate" | "suppress" | "needs-more-data" | "sensor-fault";
 
 /** A triage run a reviewer must sign off on before anything goes downstream. */
 export interface PendingAlertTriageEscalation {
@@ -63,7 +64,7 @@ export type AlertTriageApprovalDecision = "approved" | "rejected";
  */
 export type AlertTriageApprovalOutcome =
   | {
-      /** suppress / needs-more-data: auto-approved by definition, never notifies. */
+      /** suppress / needs-more-data / sensor-fault: auto-approved by definition, never notifies. */
       status: "not-applicable";
       verdict: AlertTriageVerdict;
     }
@@ -87,7 +88,8 @@ function verdictOf(result: AgentRunResult): AlertTriageVerdict {
   if (
     verdict === "escalate" ||
     verdict === "suppress" ||
-    verdict === "needs-more-data"
+    verdict === "needs-more-data" ||
+    verdict === "sensor-fault"
   ) {
     return verdict;
   }
@@ -105,6 +107,8 @@ function actionTypeFor(verdict: AlertTriageVerdict): string {
       return ALERT_TRIAGE_ACTION_TYPES.SUPPRESS;
     case "needs-more-data":
       return ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA;
+    case "sensor-fault":
+      return ALERT_TRIAGE_ACTION_TYPES.SENSOR_FAULT;
   }
 }
 
@@ -119,8 +123,8 @@ function reasoningOf(result: AgentRunResult): string {
  *
  * Re-runs the approval guardrail on the result rather than trusting the
  * caller: only `alert-triage.escalate` resolves to "needs-approval", so a
- * suppress / needs-more-data result returns `not-applicable` and never calls
- * project-portal even if a caller passes `"approved"`.
+ * suppress / needs-more-data / sensor-fault result returns `not-applicable`
+ * and never calls project-portal even if a caller passes `"approved"`.
  *
  * When the escalation is approved, this pushes the confirmed alert via
  * {@link projectPortalClient.confirmAlert} and returns `notified` with the

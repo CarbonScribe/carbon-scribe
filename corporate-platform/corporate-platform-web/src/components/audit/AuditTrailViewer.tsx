@@ -11,6 +11,7 @@ import { useAnnouncement } from '@/hooks/useAnnouncement';
 import { IconButton } from '@/components/common/IconButton';
 import { AccessibleIcon } from '@/components/common/AccessibleIcon';
 import { Pagination } from '@/components/common/Pagination';
+import { getStellarExplorerUrl } from '@/lib/stellar/explorer';
 
 interface AuditTrailViewerProps {
   entityType?: string;
@@ -477,8 +478,37 @@ export default function AuditTrailViewer({
                       {event.entityType}: {event.entityId.substring(0, 8)}...
                     </td>
                     {!compact && (
-                      <td className="px-4 py-3 text-sm font-mono text-xs text-gray-500 dark:text-gray-400">
-                        {event.hash.substring(0, 16)}...
+                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs">
+                            {event.hash.substring(0, 16)}...
+                          </span>
+                          {event.hashMatch === false ? (
+                            <span className="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/40 dark:text-red-200">
+                              Tamper detected
+                            </span>
+                          ) : event.anchored ? (
+                            event.anchorTxHash || event.transactionHash ? (
+                              <a
+                                href={getStellarExplorerUrl(event.anchorTxHash || event.transactionHash!)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800 hover:underline dark:bg-green-900/40 dark:text-green-200"
+                                aria-label="Chain-anchored: view Stellar transaction"
+                              >
+                                Chain-anchored
+                              </a>
+                            ) : (
+                              <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-200">
+                                Chain-anchored
+                              </span>
+                            )
+                          ) : (
+                            <span className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200">
+                              Hash-chained
+                            </span>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>

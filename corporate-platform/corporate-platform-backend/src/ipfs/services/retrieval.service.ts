@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { IpfsService } from '../ipfs.service';
 import { IpfsConfig } from '../ipfs.config';
 import { PrismaService } from '../../shared/database/prisma.service';
+import { IpfsMetricsService } from '../metrics/ipfs-metrics.service';
 
 @Injectable()
 export class RetrievalService {
@@ -13,16 +14,19 @@ export class RetrievalService {
     private readonly ipfs: IpfsService,
     private readonly config: IpfsConfig,
     private readonly prisma: PrismaService,
+    private readonly metrics: IpfsMetricsService,
   ) {}
 
   async get(cid: string) {
     if (!this.ipfs.validateCid(cid)) return { error: 'invalid cid' };
     const url = this.ipfs.gatewayForCid(cid);
     try {
-      const res = await axios.get(url, {
-        responseType: 'arraybuffer',
-        timeout: this.config.timeout,
-      });
+      const res = await this.metrics.timeOperation('retrieve', () =>
+        axios.get(url, {
+          responseType: 'arraybuffer',
+          timeout: this.config.timeout,
+        }),
+      );
 
       const dataBuffer = Buffer.from(res.data);
       const computedHash = createHash('sha256')
@@ -36,6 +40,7 @@ export class RetrievalService {
         this.logger.error(
           `Integrity mismatch for CID ${cid}. stored=${record.contentHash} computed=${computedHash}`,
         );
+        this.metrics.recordFailure('retrieve', 'integrity-check-failed');
         return {
           cid,
           url,
@@ -55,6 +60,7 @@ export class RetrievalService {
         integrityVerified: !!record?.contentHash,
       };
     } catch (err) {
+      this.metrics.recordFailure('retrieve', 'not-retrievable');
       return { cid, url, error: 'not-retrievable', details: err?.message };
     }
   }

@@ -991,6 +991,40 @@ export function isCarbonTokenInfo(info: unknown): info is CarbonTokenInfo {
 // Export Default
 // ============================================================================
 
+
+/**
+ * Confirm a mint transaction is present on Horizon before treating mint as final (#715).
+ * Returns true when the transaction is found and successful; false on timeout/failure.
+ */
+export async function confirmMintOnChain(
+  transactionHash: string,
+  options: { timeoutMs?: number; pollMs?: number } = {},
+): Promise<{ confirmed: boolean; error?: string }> {
+  if (!transactionHash || !/^[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    return { confirmed: false, error: 'Missing or invalid transaction hash' };
+  }
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const pollMs = options.pollMs ?? 2_000;
+  const started = Date.now();
+  let lastError = 'Transaction not found';
+
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const tx = await getTransaction(transactionHash);
+      if (tx && (tx.successful === true || tx.successful === undefined)) {
+        return { confirmed: true };
+      }
+      if (tx && tx.successful === false) {
+        return { confirmed: false, error: 'On-chain transaction failed' };
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Lookup failed';
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+  return { confirmed: false, error: lastError || 'On-chain confirmation timed out' };
+}
+
 export default {
   initializeStellarNetwork,
   isStellarNetworkInitialized,
@@ -998,6 +1032,7 @@ export default {
   transferCarbonTokens,
   getCarbonTokenInfo,
   getTokenHistory,
+  confirmMintOnChain,
   checkTrustline,
   isValidStellarAddress,
   formatStellarAmount,

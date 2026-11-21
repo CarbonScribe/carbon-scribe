@@ -116,6 +116,74 @@ fn test_duplicate_rule_conflict() {
 }
 
 #[test]
+fn test_rule_schema_validation_on_add_and_update() {
+    let env = Env::default();
+    let (client, _admin, governance) = setup(&env);
+    let empty_id = String::from_str(&env, "");
+    let mut invalid_id = make_rule(&env, "R1", "US", "CA", "ANY", OperationType::TRANSFER, true);
+    invalid_id.rule_id = empty_id.clone();
+    assert!(matches!(
+        client.try_add_rule(&governance, &invalid_id),
+        Err(Ok(ContractError::InvalidRuleSchema))
+    ));
+    assert!(client.get_rule(&empty_id).is_none());
+
+    let too_long = String::from_bytes(&env, &[b'x'; 101]);
+    for field in 0..5 {
+        let mut invalid = make_rule(&env, "R2", "US", "CA", "ANY", OperationType::TRANSFER, true);
+        match field {
+            0 => invalid.rule_id = too_long.clone(),
+            1 => invalid.description = too_long.clone(),
+            2 => invalid.source_jur = String::from_bytes(&env, &[b'x'; 11]),
+            3 => invalid.dest_jur = String::from_bytes(&env, &[b'x'; 11]),
+            _ => invalid.host_jur = String::from_bytes(&env, &[b'x'; 11]),
+        }
+        assert!(matches!(
+            client.try_add_rule(&governance, &invalid),
+            Err(Ok(ContractError::InvalidRuleSchema))
+        ));
+    }
+
+    let valid = make_rule(&env, "R3", "US", "CA", "ANY", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &valid);
+    let mut invalid_update = valid.clone();
+    invalid_update.description = too_long;
+    assert!(matches!(
+        client.try_update_rule(&governance, &invalid_update),
+        Err(Ok(ContractError::InvalidRuleSchema))
+    ));
+    assert_eq!(
+        client.get_rule(&String::from_str(&env, "R3")).unwrap().description,
+        String::from_str(&env, "desc")
+    );
+}
+
+#[test]
+fn test_jurisdiction_normalization_detects_conflicts_and_matches_transactions() {
+    let env = Env::default();
+    let (client, admin, governance) = setup(&env);
+
+    let first = make_rule(&env, "R1", "US", "CA", "ANY", OperationType::TRANSFER, true);
+    client.add_rule(&governance, &first);
+    let variant = make_rule(&env, "R2", " us ", "ca", " any ", OperationType::TRANSFER, true);
+    assert!(matches!(
+        client.try_add_rule(&governance, &variant),
+        Err(Ok(ContractError::RuleConflict))
+    ));
+
+    let source = address_in(&env, &client, &admin, " us ");
+    let destination = address_in(&env, &client, &admin, " ca ");
+    let result = client.validate_transaction(
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+        &String::from_str(&env, " any "),
+    );
+    assert!(result.is_compliant);
+    assert_eq!(result.rule_id, Some(String::from_str(&env, "R1")));
+}
+
+#[test]
 fn test_unique_rule_addition() {
     let env = Env::default();
     let contract_id = env.register(RegulatoryCheck, ());

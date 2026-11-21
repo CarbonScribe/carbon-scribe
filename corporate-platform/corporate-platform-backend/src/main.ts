@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 import { StartupValidator } from './config/validation/startup-validator';
@@ -21,12 +22,24 @@ function parseCorsOrigins(value?: string): string[] {
   return origins.length > 0 ? origins : defaults;
 }
 
-function isLocalDevOrigin(origin: string): boolean {
+function isLocalDevOrigin(origin: string, isProduction: boolean): boolean {
+  // Localhost is never implicitly trusted in production (#646) — a
+  // deployed instance must list it explicitly in CORS_ORIGINS like any
+  // other origin if it genuinely needs to allow it.
+  if (isProduction) {
+    return false;
+  }
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
+  // JSON APIs are capped at 1 MB. Multipart IPFS uploads use multer's explicit
+  // 50 MB per-file and 200 MB per-batch limits in ipfs.controller.ts.
+  app.useBodyParser('json', { limit: '1mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '1mb' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableShutdownHooks();
 
@@ -286,6 +299,11 @@ async function bootstrap() {
   // ============================================================================
 
   const configuredOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
+  // Startup validation (StartupValidator) has already failed the boot in
+  // production if CORS_ORIGINS was unset/empty or contained a malformed
+  // entry, so by the time this runs, configuredOrigins is always the real,
+  // intentional allowlist — logged here for operational visibility (#646).
+  logger.log(`🌐 CORS origins: ${configuredOrigins.join(', ')}`);
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -294,7 +312,10 @@ async function bootstrap() {
         return;
       }
 
-      if (configuredOrigins.includes(origin) || isLocalDevOrigin(origin)) {
+      if (
+        configuredOrigins.includes(origin) ||
+        isLocalDevOrigin(origin, isProduction)
+      ) {
         callback(null, true);
         return;
       }

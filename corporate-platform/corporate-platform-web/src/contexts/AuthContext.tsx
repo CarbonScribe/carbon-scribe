@@ -48,6 +48,7 @@ import {
   TOKEN_REFRESH_BUFFER,
 } from '@/lib/auth/sessionConfig';
 import { clearAllUnsavedChanges } from '@/lib/forms/unsavedChangesRegistry';
+import { getLoginRedirectUrl, getSafeRedirectTarget } from '@/lib/auth/redirect';
 
 export type SessionExpiryState = 'active' | 'warning' | 'grace' | 'expired';
 
@@ -63,7 +64,7 @@ interface AuthContextType {
   hasAnyRole: (roles: AuthRole[]) => boolean;
   hasPermission: (permission: AuthPermission) => boolean;
   canAccessRoute: (path: string) => { allowed: boolean; reason?: string };
-  login: (credentials: LoginCredentials) => Promise<void>;
+  login: (credentials: LoginCredentials, redirectTarget?: string | null) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<boolean>;
@@ -201,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshTokenSilently]);
 
   // Login function
-  const login = useCallback(async (credentials: LoginCredentials) => {
+  const login = useCallback(async (credentials: LoginCredentials, redirectTarget?: string | null) => {
     setIsLoading(true)
     try {
       const response = await loginApi(credentials)
@@ -217,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       broadcastAuthEvent((window as any).__csAuthChannel ?? null, 'login')
-      router.push('/')
+      router.push(getSafeRedirectTarget(redirectTarget) ?? '/')
     } catch (error) {
       reportError(error, 'AuthContext', 'error', { operation: 'login' })
       throw error
@@ -274,9 +275,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
 
       // Redirect to login
-      router.push('/login');
+      router.push(getLoginRedirectUrl(pathname));
     }
-  }, [router]);
+  }, [pathname, router]);
 
   // Session expiry tracking: drives countdown banner and auto-refresh
   useEffect(() => {
@@ -338,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearAllUnsavedChanges();
           setUser(null);
           if (!isPublicRoute(pathname)) {
-            router.push('/login');
+            router.push(getLoginRedirectUrl(pathname));
           }
         }
       }
@@ -360,7 +361,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthData();
       setUser(null);
       if (!isPublicRoute(pathname || '/')) {
-        router.push('/login');
+        router.push(getLoginRedirectUrl(pathname));
       }
     };
 
@@ -435,7 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!user && !isPublicRoute(currentPath)) {
       // Redirect to login if not authenticated
-      router.push('/login');
+      router.push(getLoginRedirectUrl(currentPath));
     } else if (user && isPublicRoute(currentPath)) {
       // Redirect to dashboard if already authenticated
       router.push('/');

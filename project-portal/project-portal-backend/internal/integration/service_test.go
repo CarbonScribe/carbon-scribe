@@ -153,7 +153,7 @@ func TestPlaceholderHealthCheckLatencyMsConstant(t *testing.T) {
 
 func TestTestConnectionUsesPlaceholderLatency(t *testing.T) {
 	repo := &mockRepository{}
-	service := NewService(repo)
+	service := NewService(repo, testKeyring())
 
 	if err := service.TestConnection(context.Background(), "conn-123"); err != nil {
 		t.Fatalf("TestConnection failed: %v", err)
@@ -202,7 +202,7 @@ func TestTriggerWebhook_SuccessfulDelivery(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	payload := map[string]any{"test": "data"}
@@ -255,7 +255,7 @@ func TestTriggerWebhook_FailedDeliveryWithRetry(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	payload := map[string]any{"test": "data"}
@@ -322,7 +322,7 @@ func TestDeliverWebhookByID_RecoversPendingDelivery(t *testing.T) {
 			Payload:   map[string]any{"test": "data"},
 		}},
 	}
-	service := NewService(repo)
+	service := NewService(repo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	if err := service.DeliverWebhookByID(context.Background(), deliveryID); err != nil {
@@ -372,7 +372,7 @@ func TestDeliverWebhookByID_DeadLettersAfterMaxAttempts(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	if err := service.DeliverWebhookByID(context.Background(), deliveryID); err == nil {
@@ -409,7 +409,7 @@ func TestTriggerWebhook_PropagatesCreateError(t *testing.T) {
 			IsActive:  true,
 		}},
 	}
-	service := NewService(repo)
+	service := NewService(repo, testKeyring())
 
 	err := service.TriggerWebhook(context.Background(), "test.event", map[string]any{"test": "data"})
 	if !errors.Is(err, wantErr) {

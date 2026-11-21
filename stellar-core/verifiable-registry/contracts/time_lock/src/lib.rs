@@ -29,6 +29,8 @@ pub enum TimeLockError {
     TtlNotConfigured = 11,
     /// The underlying token-ID-aware transfer call failed.
     TokenTransferFailed = 12,
+    NoPendingAdmin = 13,
+    NotPendingAdmin = 14,
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +62,7 @@ pub struct TtlConfig {
 #[contracttype]
 enum DataKey {
     Admin,
+    PendingAdmin,
     CarbonAssetContract,
     ValidateVintage,
     VintageCheckContract,
@@ -111,6 +114,28 @@ pub struct TtlConfigured {
     pub ttl_seconds: u64,
     pub configured_at: u64,
     pub configured_by: Address,
+}
+
+#[contractevent]
+pub struct PendingAdminProposed {
+    pub current_admin: Address,
+    pub pending_admin: Address,
+    pub proposed_at: u64,
+}
+
+#[contractevent]
+pub struct AdminUpdated {
+    pub old_admin: Address,
+    pub new_admin: Address,
+    pub updated_at: u64,
+}
+
+#[contractevent]
+pub struct VintageValidationConfigured {
+    pub validate: bool,
+    pub vintage_check_contract: Option<Address>,
+    pub configured_by: Address,
+    pub configured_at: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +203,39 @@ fn emit_ttl_configured(env: &Env, ttl_seconds: u64, configured_by: Address) {
         ttl_seconds,
         configured_at: env.ledger().timestamp(),
         configured_by,
+    }
+    .publish(env);
+}
+
+fn emit_pending_admin_proposed(env: &Env, current_admin: Address, pending_admin: Address) {
+    PendingAdminProposed {
+        current_admin,
+        pending_admin,
+        proposed_at: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
+fn emit_admin_updated(env: &Env, old_admin: Address, new_admin: Address) {
+    AdminUpdated {
+        old_admin,
+        new_admin,
+        updated_at: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
+fn emit_vintage_validation_configured(
+    env: &Env,
+    validate: bool,
+    vintage_check_contract: Option<Address>,
+    configured_by: Address,
+) {
+    VintageValidationConfigured {
+        validate,
+        vintage_check_contract,
+        configured_by,
+        configured_at: env.ledger().timestamp(),
     }
     .publish(env);
 }
@@ -624,6 +682,15 @@ impl TimeLock {
     // Admin helpers
     // -----------------------------------------------------------------------
 
+    pub fn propose_admin(
+        env: Env,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), TimeLockError> {
+        Self::propose_admin_for(&env, current_admin, new_admin)
+    }
+
+    /// Compatibility alias for propose_admin. It never changes the active admin.
     pub fn set_admin(env: Env, new_admin: Address) -> Result<(), TimeLockError> {
         Self::require_initialized(&env)?;
         let current_admin: Address = env
@@ -631,8 +698,60 @@ impl TimeLock {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(TimeLockError::NotInitialized)?;
+        Self::propose_admin_for(&env, current_admin, new_admin)
+    }
+
+    pub fn accept_admin(env: Env, pending_admin: Address) -> Result<(), TimeLockError> {
+        Self::require_initialized(&env)?;
+        let stored_pending_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .ok_or(TimeLockError::NoPendingAdmin)?;
+        if pending_admin != stored_pending_admin {
+            return Err(TimeLockError::NotPendingAdmin);
+        }
+
+        pending_admin.require_auth();
+        let old_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TimeLockError::NotInitialized)?;
+        env.storage().instance().set(&DataKey::Admin, &pending_admin);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+        emit_admin_updated(&env, old_admin, pending_admin);
+        Ok(())
+    }
+
+    pub fn get_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::Admin)
+    }
+
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    fn propose_admin_for(
+        env: &Env,
+        current_admin: Address,
+        new_admin: Address,
+    ) -> Result<(), TimeLockError> {
+        Self::require_initialized(env)?;
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(TimeLockError::NotInitialized)?;
+        if current_admin != stored_admin {
+            return Err(TimeLockError::Unauthorized);
+        }
+
         current_admin.require_auth();
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+        emit_pending_admin_proposed(env, current_admin, new_admin);
         Ok(())
     }
 
@@ -654,6 +773,12 @@ impl TimeLock {
         env.storage()
             .instance()
             .set(&DataKey::VintageCheckContract, &vintage_check_contract);
+        emit_vintage_validation_configured(
+            &env,
+            validate,
+            vintage_check_contract,
+            admin,
+        );
         Ok(())
     }
 
@@ -822,8 +947,8 @@ mod test {
         TimeLockClient, TimeLockError,
     };
     use soroban_sdk::{
-        contract, contractimpl, contracttype, testutils::Address as _, vec, Address, Env, IntoVal,
-        Map, Symbol, Vec,
+        contract, contractimpl, contracttype, testutils::Address as _, testutils::Events as _,
+        vec, Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec,
     };
     use soroban_sdk::testutils::Ledger;
 
@@ -880,6 +1005,127 @@ mod test {
         let ttl_config = client.get_ttl_config();
         assert!(ttl_config.is_some());
         assert_eq!(ttl_config.unwrap().ttl_seconds, 172800);
+    }
+
+    fn last_event(env: &Env) -> (Symbol, Map<Symbol, Val>) {
+        let events = env.events().all();
+        let (_, topics, data) = events.get(events.len() - 1).unwrap();
+        let event_name = Symbol::try_from_val(env, &topics.get(0).unwrap()).unwrap();
+        let fields = Map::try_from_val(env, &data).unwrap();
+        (event_name, fields)
+    }
+
+    #[test]
+    fn test_admin_transfer_proposal_requires_admin_and_acceptance() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin, &Address::generate(&env), &false, &None, &86400);
+        let new_admin = Address::generate(&env);
+        let unauthorized = Address::generate(&env);
+
+        assert_eq!(
+            client.try_propose_admin(&unauthorized, &new_admin),
+            Err(Ok(TimeLockError::Unauthorized))
+        );
+        assert!(env.events().all().is_empty());
+
+        client.propose_admin(&admin, &new_admin);
+        let (event_name, fields) = last_event(&env);
+        assert_eq!(event_name, Symbol::new(&env, "pending_admin_proposed"));
+        assert_eq!(
+            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "current_admin")).unwrap())
+                .unwrap(),
+            admin
+        );
+        assert_eq!(
+            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "pending_admin")).unwrap())
+                .unwrap(),
+            new_admin
+        );
+        assert_eq!(client.get_admin(), Some(admin));
+        assert_eq!(client.get_pending_admin(), Some(new_admin));
+    }
+
+    #[test]
+    fn test_admin_acceptance_rejects_wrong_or_missing_nominee_and_emits_update() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin, &Address::generate(&env), &false, &None, &86400);
+
+        assert_eq!(
+            client.try_accept_admin(&admin),
+            Err(Ok(TimeLockError::NoPendingAdmin))
+        );
+        assert!(env.events().all().is_empty());
+
+        let new_admin = Address::generate(&env);
+        client.propose_admin(&admin, &new_admin);
+        assert_eq!(
+            client.try_accept_admin(&admin),
+            Err(Ok(TimeLockError::NotPendingAdmin))
+        );
+        assert!(env.events().all().is_empty());
+
+        client.accept_admin(&new_admin);
+        let (event_name, fields) = last_event(&env);
+        assert_eq!(event_name, Symbol::new(&env, "admin_updated"));
+        assert_eq!(
+            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "old_admin")).unwrap())
+                .unwrap(),
+            admin
+        );
+        assert_eq!(
+            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "new_admin")).unwrap())
+                .unwrap(),
+            new_admin
+        );
+        assert_eq!(client.get_admin(), Some(new_admin));
+        assert_eq!(client.get_pending_admin(), None);
+    }
+
+    #[test]
+    fn test_set_admin_is_a_proposal_alias_not_direct_transfer() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin, &Address::generate(&env), &false, &None, &86400);
+        let new_admin = Address::generate(&env);
+
+        client.set_admin(&new_admin);
+
+        assert_eq!(client.get_admin(), Some(admin));
+        assert_eq!(client.get_pending_admin(), Some(new_admin));
+    }
+
+    #[test]
+    fn test_set_validate_vintage_emits_configuration_event() {
+        let (env, admin, _, client) = setup();
+        client.initialize(&admin, &Address::generate(&env), &false, &None, &86400);
+        let vintage_contract = Address::generate(&env);
+
+        client.set_validate_vintage(&true, &Some(vintage_contract.clone()));
+        assert_eq!(env.events().all().len(), 1);
+
+        let (event_name, fields) = last_event(&env);
+        assert_eq!(
+            event_name,
+            Symbol::new(&env, "vintage_validation_configured")
+        );
+        assert_eq!(
+            bool::try_from_val(&env, &fields.get(Symbol::new(&env, "validate")).unwrap()).unwrap(),
+            true
+        );
+        assert_eq!(
+            Option::<Address>::try_from_val(
+                &env,
+                &fields
+                    .get(Symbol::new(&env, "vintage_check_contract"))
+                    .unwrap()
+            )
+            .unwrap(),
+            Some(vintage_contract)
+        );
+        assert_eq!(
+            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "configured_by")).unwrap())
+                .unwrap(),
+            admin
+        );
     }
 
     #[test]

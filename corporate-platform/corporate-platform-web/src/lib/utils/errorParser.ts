@@ -11,6 +11,7 @@ export enum ErrorCode {
   VALIDATION_ERROR = 'VALIDATION_ERROR',
   AUTH_ERROR = 'AUTH_ERROR',
   NOT_FOUND = 'NOT_FOUND',
+  RATE_LIMITED = 'RATE_LIMITED',
   SERVER_ERROR = 'SERVER_ERROR',
   NETWORK_ERROR = 'NETWORK_ERROR',
   UNKNOWN_ERROR = 'UNKNOWN_ERROR',
@@ -25,6 +26,8 @@ export interface ParsedError {
   statusCode?: number;
   fieldErrors?: Record<string, string[]>;
   originalError?: unknown;
+  /** Milliseconds a rate-limited client should wait before retrying. */
+  retryAfterMs?: number;
 }
 
 /**
@@ -37,7 +40,7 @@ const STATUS_CODE_MESSAGES: Record<number, string> = {
   404: 'Resource not found.',
   409: 'Conflict. The resource already exists.',
   422: 'Validation error. Please check your input.',
-  429: 'Too many requests. Please try again later.',
+  429: 'Too many attempts. Please wait before trying again.',
   500: 'Server error. Please try again later.',
   502: 'Bad gateway. Please try again later.',
   503: 'Service unavailable. Please try again later.',
@@ -53,7 +56,7 @@ const STATUS_CODE_TO_ERROR: Record<number, ErrorCode> = {
   403: ErrorCode.AUTH_ERROR,
   404: ErrorCode.NOT_FOUND,
   422: ErrorCode.VALIDATION_ERROR,
-  429: ErrorCode.SERVER_ERROR,
+  429: ErrorCode.RATE_LIMITED,
   500: ErrorCode.SERVER_ERROR,
   502: ErrorCode.SERVER_ERROR,
   503: ErrorCode.SERVER_ERROR,
@@ -325,6 +328,7 @@ export function getErrorMessageForCode(code: ErrorCode): string {
     [ErrorCode.VALIDATION_ERROR]: 'Please check your input and try again.',
     [ErrorCode.AUTH_ERROR]: 'Authentication required. Please log in.',
     [ErrorCode.NOT_FOUND]: 'The requested resource was not found.',
+    [ErrorCode.RATE_LIMITED]: 'Too many attempts. Please wait before trying again.',
     [ErrorCode.SERVER_ERROR]: 'Server error. Please try again later.',
     [ErrorCode.NETWORK_ERROR]: 'Network error. Please check your connection.',
     [ErrorCode.UNKNOWN_ERROR]: 'Something went wrong. Please try again.',
@@ -381,8 +385,10 @@ export function isRetryableParsedError(parsedError: ParsedError): boolean {
     return true;
   }
 
-  // 429 Too Many Requests is retryable
-  if (parsedError.statusCode === 429) {
+  // 429 Too Many Requests is retryable in principle. Whether a specific
+  // request is actually replayed is decided by the HTTP client's rate-limit
+  // policy (mutations and auth endpoints are never retried).
+  if (parsedError.code === ErrorCode.RATE_LIMITED || parsedError.statusCode === 429) {
     return true;
   }
 

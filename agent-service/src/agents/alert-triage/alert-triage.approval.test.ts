@@ -40,7 +40,7 @@ function escalateResult(
 }
 
 function readOnlyResult(
-  verdict: "suppress" | "needs-more-data",
+  verdict: "suppress" | "needs-more-data" | "sensor-fault",
 ): AgentRunResult {
   return {
     agent: "alert-triage",
@@ -100,7 +100,7 @@ describe("applyAlertTriageApproval", () => {
     });
   });
 
-  it.each(["suppress", "needs-more-data"] as const)(
+  it.each(["suppress", "needs-more-data", "sensor-fault"] as const)(
     "never calls project-portal for a %s verdict, even when passed 'approved'",
     async (verdict) => {
       const outcome = await applyAlertTriageApproval(

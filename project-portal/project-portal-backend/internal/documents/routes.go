@@ -1,11 +1,22 @@
 package documents
 
-import "github.com/gin-gonic/gin"
+import (
+	"carbon-scribe/project-portal/project-portal-backend/pkg/security"
+
+	"github.com/gin-gonic/gin"
+)
 
 // RegisterRoutes wires all document endpoints under the given router group.
 // Expected base: /api/v1 (caller's group).
-func RegisterRoutes(v1 *gin.RouterGroup, h *Handler) {
+//
+// maxUploadBytes overrides the global default body-size limit (#797) for
+// every route under /documents, including the non-upload ones — a GET/List
+// request never sends a body large enough to matter, so there's no benefit
+// to a tighter limit just for those, and splitting the group further would
+// only add complexity.
+func RegisterRoutes(v1 *gin.RouterGroup, h *Handler, maxUploadBytes int64) {
 	docs := v1.Group("/documents")
+	docs.Use(security.BodyLimit(maxUploadBytes))
 	{
 		// Core CRUD
 		docs.POST("/upload", h.Upload)

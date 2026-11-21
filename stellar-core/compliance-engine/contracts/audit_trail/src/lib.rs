@@ -17,6 +17,29 @@ use soroban_sdk::{
 /// Maximum allowed event payload size in bytes.
 pub const MAX_EVENT_PAYLOAD_SIZE: u32 = 1024;
 
+/// Exact event names accepted by `record_event`.
+pub const CANONICAL_EVENT_TYPES: &[&str] = &[
+    "RETIREMENT",
+    "COMPLIANCE_REPORT",
+    "TARGET_UPDATE",
+    "FRAMEWORK_REGISTRATION",
+    "GHG_CALCULATION",
+    "SBTI_VALIDATION",
+    "CSRD_DISCLOSURE",
+    "CORSIA_SUBMISSION",
+    "CBAM_REPORT",
+    "USER_ACTION",
+    "SYSTEM_CONFIG",
+    "TOKEN_MINTED",
+    "TOKEN_RETIRED",
+];
+
+fn is_canonical_event_type(env: &Env, event_type: &String) -> bool {
+    CANONICAL_EVENT_TYPES
+        .iter()
+        .any(|canonical| event_type == &String::from_str(env, canonical))
+}
+
 /// An immutable audit record stored on-chain.
 ///
 /// `emitting_contract` always holds the address of the contract that actually
@@ -231,6 +254,10 @@ impl AuditTrailContract {
         event_data: String,
         tx_hash: BytesN<32>,
     ) -> Result<BytesN<32>, AuditTrailError> {
+        if !is_canonical_event_type(&env, &event_type) {
+            return Err(AuditTrailError::UnknownEventType);
+        }
+
         // Step 1: verify caller is in the authorized-emitters allowlist.
         // Check this BEFORE require_auth so we can emit a provenance-failure
         // event when rejecting, creating a tamper-evident violation record.

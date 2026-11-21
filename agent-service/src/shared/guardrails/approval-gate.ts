@@ -18,8 +18,11 @@
 //   - discovery.recommend-credits: a marketplace search + shortlist.
 //   - pdd-draft.draft-sections: drafts PDD text. An actual PDD submission is
 //     a separate, not-yet-built flow that would define its own action type.
-//   - alert-triage.suppress / alert-triage.needs-more-data: the "nothing
-//     happens" outcomes of triage — neither notifies anyone.
+//   - alert-triage.suppress / alert-triage.needs-more-data / alert-triage.sensor-fault:
+//     the "nothing happens" outcomes of triage — neither notifies anyone.
+//     sensor-fault is distinct from suppress to enable downstream maintenance
+//     workflows to flag unreliable hardware, but like suppress it doesn't
+//     trigger project-portal's notification pipeline.
 //
 // Consequential / regulatory-facing results (always needs-approval):
 //   - compliance-report.draft-report: feeds a real regulatory filing. Always
@@ -57,6 +60,7 @@ export const COMPLIANCE_REPORT_ACTION_TYPES = {
 export const ALERT_TRIAGE_ACTION_TYPES = {
   SUPPRESS: "alert-triage.suppress",
   NEEDS_MORE_DATA: "alert-triage.needs-more-data",
+  SENSOR_FAULT: "alert-triage.sensor-fault",
   ESCALATE: "alert-triage.escalate",
 } as const;
 
@@ -73,6 +77,7 @@ const AUTO_APPROVABLE_ACTION_TYPES = new Set<string>([
   PDD_DRAFT_ACTION_TYPES.DRAFT_SECTIONS,
   ALERT_TRIAGE_ACTION_TYPES.SUPPRESS,
   ALERT_TRIAGE_ACTION_TYPES.NEEDS_MORE_DATA,
+  ALERT_TRIAGE_ACTION_TYPES.SENSOR_FAULT,
 ]);
 
 export function checkApproval(input: ApprovalCheckInput): ApprovalDecision {

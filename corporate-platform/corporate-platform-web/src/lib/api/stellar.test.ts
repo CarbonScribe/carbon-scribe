@@ -85,4 +85,34 @@ describe('StellarApiClient', () => {
       expect.objectContaining({ method: 'POST' }),
     )
   })
+
+  it('requests a filtered page of company transfer history', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      buildResponse({ data: [], total: 0, page: 2, limit: 10, totalPages: 0 }),
+    )
+    const client = new StellarApiClient({
+      baseUrl: 'http://localhost:4000',
+      token: 'token-123',
+      fetchImpl,
+    })
+
+    await client.getTransferHistory({
+      page: 2,
+      limit: 10,
+      status: 'FAILED',
+      walletAddress: 'GA_FROM',
+      search: 'order-1',
+      fromDate: '2026-09-01',
+      toDate: '2026-09-30',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringMatching(/^http:\/\/localhost:4000\/api\/v1\/stellar\/transfers\?/),
+      expect.objectContaining({ method: 'GET' }),
+    )
+    const url = new URL((fetchImpl.mock.calls[0] as [string, RequestInit])[0])
+    expect(url.searchParams.get('page')).toBe('2')
+    expect(url.searchParams.get('status')).toBe('FAILED')
+    expect(url.searchParams.get('walletAddress')).toBe('GA_FROM')
+  })
 })

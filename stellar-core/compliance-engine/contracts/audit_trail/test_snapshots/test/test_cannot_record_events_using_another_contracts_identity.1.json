@@ -137,6 +137,18 @@
                         "key": {
                           "vec": [
                             {
+                              "symbol": "EventNonce"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "u64": "0"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
                               "symbol": "RetentionPeriod"
                             }
                           ]
@@ -288,7 +300,7 @@
                     "symbol": "attempted_event_type"
                   },
                   "val": {
-                    "string": "IMPERSONATE"
+                    "string": "USER_ACTION"
                   }
                 },
                 {

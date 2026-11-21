@@ -8,9 +8,10 @@ import { AuditService } from './services/audit.service';
 import { RetirementModule } from '../retirement/retirement.module';
 import { CreditModule } from '../credit/credit.module';
 import { EventBusModule } from '../event-bus/event-bus.module';
+import { IdempotencyModule } from '../shared/idempotency/idempotency.module';
 
 @Module({
-  imports: [RetirementModule, CreditModule, EventBusModule],
+  imports: [RetirementModule, CreditModule, EventBusModule, IdempotencyModule],
   providers: [
     CartService,
     CheckoutService,

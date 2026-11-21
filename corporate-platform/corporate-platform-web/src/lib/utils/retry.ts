@@ -9,6 +9,16 @@ export interface RetryConfig {
   maxDelayMs: number;
   backoffMultiplier: number;
   onRetry?: (attempt: number, error: Error) => void;
+  /** Custom gate invoked before the built-in retryable check. */
+  shouldRetry?: (error: unknown, statusCode?: number) => boolean;
+  /** Maximum number of attempts when the failure is a 429 response. */
+  maxRateLimitAttempts?: number;
+  /** Override the backoff delay (used to honour a Retry-After header). */
+  retryDelayMs?: (
+    error: unknown,
+    statusCode: number | undefined,
+    backoffMs: number,
+  ) => number;
 }
 
 export interface RetryOptions {
@@ -17,6 +27,13 @@ export interface RetryOptions {
   maxDelayMs?: number;
   backoffMultiplier?: number;
   onRetry?: (attempt: number, error: Error) => void;
+  shouldRetry?: (error: unknown, statusCode?: number) => boolean;
+  maxRateLimitAttempts?: number;
+  retryDelayMs?: (
+    error: unknown,
+    statusCode: number | undefined,
+    backoffMs: number,
+  ) => number;
 }
 
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
@@ -98,26 +115,48 @@ export async function withRetry<T>(
     try {
       return await fn();
     } catch (error) {
-      // Extract status code from error if available
+      // Extract status code from error if available. Clients use `status`,
+      // `statusCode` or a nested `parsed` object depending on the shape.
       let statusCode: number | undefined;
-      if (error && typeof error === 'object' && 'status' in error) {
-        statusCode = (error as any).status;
+      if (error && typeof error === 'object') {
+        const candidate = error as Record<string, any>;
+        statusCode =
+          candidate.status ??
+          candidate.statusCode ??
+          candidate.parsed?.statusCode ??
+          candidate.parsedError?.statusCode;
       }
 
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Custom gate first: this is where 429s for auth endpoints and
+      // non-idempotent requests are vetoed before the generic rules apply.
+      if (config.shouldRetry && !config.shouldRetry(error, statusCode)) {
+        throw lastError;
+      }
 
       // Check if error is retryable
       if (!isRetryableError(error, statusCode)) {
         throw lastError;
       }
 
+      // A throttled request gets at most one retry, and mutations/auth
+      // requests get none at all (maxRateLimitAttempts === 1).
+      const attemptLimit =
+        statusCode === 429 && config.maxRateLimitAttempts
+          ? Math.min(config.maxRateLimitAttempts, config.maxAttempts)
+          : config.maxAttempts;
+
       // Don't retry on last attempt
-      if (attempt === config.maxAttempts) {
+      if (attempt >= attemptLimit) {
         throw lastError;
       }
 
-      // Calculate delay and wait
-      const delay = calculateDelay(attempt, config);
+      // Calculate delay and wait. For 429s this is the Retry-After value.
+      const backoffMs = calculateDelay(attempt, config);
+      const delay = config.retryDelayMs
+        ? config.retryDelayMs(error, statusCode, backoffMs)
+        : backoffMs;
       console.warn(
         `Request failed (attempt ${attempt}/${config.maxAttempts}). Retrying in ${delay}ms...`,
         lastError.message,

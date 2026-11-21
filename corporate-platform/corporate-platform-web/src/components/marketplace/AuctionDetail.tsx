@@ -91,6 +91,7 @@ export default function AuctionDetail({ auctionId }: AuctionDetailProps) {
     bidsLoading,
     error,
     bidError,
+    bidRateLimitError,
     bidSuccess,
     placingBid,
     clockSkewMs,
@@ -277,6 +278,7 @@ export default function AuctionDetail({ auctionId }: AuctionDetailProps) {
             isActive={isActive}
             placingBid={placingBid}
             bidError={bidError}
+            bidRateLimitError={bidRateLimitError}
             bidSuccess={bidSuccess}
             onPlaceBid={placeBid}
             onClearFeedback={clearBidFeedback}

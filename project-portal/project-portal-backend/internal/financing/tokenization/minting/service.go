@@ -14,19 +14,29 @@ import (
 	"github.com/google/uuid"
 	rpcclient "github.com/stellar/go/clients/rpcclient"
 	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/network"
 	protocol "github.com/stellar/go/protocols/rpc"
 	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/txnbuild"
 	"github.com/stellar/go/xdr"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
+
+	"carbon-scribe/project-portal/project-portal-backend/internal/observability"
 )
+
+// tracer names every span this package creates. Using the same
+// instrumentation name as main.go's otelgin.Middleware (rather than this
+// package's own import path) keeps every span in a request's trace grouped
+// under one service identity in the trace backend.
+var tracer = otel.Tracer(observability.DefaultServiceName)
 
 const (
 	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
-	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
-	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
 
 	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
 	DefaultPollAttempts = 15
@@ -65,6 +75,9 @@ type service struct {
 	contractClient CarbonAssetContractClient
 	capValidator   *CapValidator
 	retry          RetryPolicy
+	// network labels every MintedToken row this service creates (#794), so
+	// it's clear later which ledger a given TxHash belongs to.
+	network string
 }
 
 // retryPolicy returns the service's retry policy, normalised. A zero-value
@@ -97,7 +110,11 @@ type CarbonAssetContractClient interface {
 // handle the error it can return) or inject an explicit mock/fake for tests.
 // NewService itself performs no env-based fallback, so production wiring can
 // never silently degrade to the mock client.
-func NewService(db *gorm.DB, client CarbonAssetContractClient, capValidator *CapValidator) Service {
+//
+// network (#794) is recorded on every MintedToken this service creates —
+// pass the same network passphrase/label used to construct client, e.g.
+// cfg.Soroban.NetworkPassphrase.
+func NewService(db *gorm.DB, client CarbonAssetContractClient, capValidator *CapValidator, network string) Service {
 	if client == nil {
 		panic("minting: NewService requires a non-nil CarbonAssetContractClient; " +
 			"construct one via NewContractClientFromEnv and handle its error, " +
@@ -108,6 +125,7 @@ func NewService(db *gorm.DB, client CarbonAssetContractClient, capValidator *Cap
 		contractClient: client,
 		capValidator:   capValidator,
 		retry:          RetryPolicyFromEnv(),
+		network:        network,
 	}
 }
 
@@ -128,37 +146,57 @@ func (s *service) MintProjectCredits(ctx context.Context, projectID uuid.UUID, v
 	// but for now we'll query directly to avoid circular dependency
 	// or complex injection if we're in the same transaction
 	var project struct {
-		ID                 uuid.UUID
-		Name               string
-		MethodologyTokenID int
-		VintageYear        int
-		CarbonCredits      int
+		ID                   uuid.UUID
+		Name                 string
+		MethodologyTokenID   int
+		VintageYear          int
+		CarbonCredits        int
+		StellarWalletAddress *string
 	}
 	if err := s.db.WithContext(ctx).Table("projects").Where("id = ?", projectID).First(&project).Error; err != nil {
 		job.Status = "failed"
 		job.Error = "project not found"
-		s.db.Save(job)
+		s.db.WithContext(ctx).Save(job)
 		return nil, fmt.Errorf("fetch project for minting: %w", err)
+	}
+
+	var walletAddress string
+	if project.StellarWalletAddress != nil {
+		walletAddress = *project.StellarWalletAddress
 	}
 
 	// Async minting or immediate? Requirement says "handle failures with retry logic".
 	// For now we'll do it synchronously here, but in a real app this would be a background task.
-	go s.processMintingJob(context.Background(), job, project.MethodologyTokenID, project.VintageYear, project.CarbonCredits)
+	go s.processMintingJob(context.Background(), job, project.MethodologyTokenID, project.VintageYear, project.CarbonCredits, walletAddress)
 
 	return job, nil
 }
 
-func (s *service) processMintingJob(ctx context.Context, job *MintingJob, methodologyID int, vintageYear int, projectCredits int) {
-	job.Status = "processing"
-	s.db.Save(job)
+func (s *service) processMintingJob(ctx context.Context, job *MintingJob, methodologyID int, vintageYear int, projectCredits int, walletAddress string) {
+	// Root span for the whole async minting job (issue #695). This runs in
+	// its own goroutine detached from the originating HTTP request's
+	// context (see MintProjectCredits — the job must outlive the request
+	// that triggered it), so this is a new trace rather than a child of
+	// that request's span; the Soroban RPC and DB child spans below are
+	// what distinguish where this job's time actually goes.
+	ctx, jobSpan := tracer.Start(ctx, "minting.process_job", oteltrace.WithAttributes(
+		attribute.String("minting.job_id", job.ID.String()),
+		attribute.String("minting.project_id", job.ProjectID.String()),
+	))
+	defer jobSpan.End()
 
-	// In a real scenario, we would determine the owner physical address from the project wallet
-	// Using a placeholder address for demonstration
-	ownerAddress, ownerErr := resolveDefaultOwnerAddress()
+	job.Status = "processing"
+	s.db.WithContext(ctx).Save(job)
+
+	// Mint to the project's own registered Stellar wallet (#793) — never a
+	// single environment-configured fallback shared by every project.
+	ownerAddress, ownerErr := resolveOwnerAddress(walletAddress)
 	if ownerErr != nil {
 		job.Status = "failed"
 		job.Error = ownerErr.Error()
-		s.db.Save(job)
+		s.db.WithContext(ctx).Save(job)
+		jobSpan.RecordError(ownerErr)
+		jobSpan.SetStatus(codes.Error, ownerErr.Error())
 		return
 	}
 
@@ -200,10 +238,24 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		var mintedTokenID int
 		var mintedTxHash string
 		mintFn := func(mintCtx context.Context) error {
+			// Child span isolating Soroban RPC time (load account, simulate,
+			// submit, poll for confirmation) from the DB time spent on
+			// either side of it (issue #695).
+			mintCtx, mintSpan := tracer.Start(mintCtx, "minting.soroban_rpc_call", oteltrace.WithAttributes(
+				attribute.Int("minting.attempt", attempt),
+			))
+			defer mintSpan.End()
+
 			tokenID, txHash, err := s.contractClient.Mint(mintCtx, ownerAddress, metadata)
 			if err != nil {
+				mintSpan.RecordError(err)
+				mintSpan.SetStatus(codes.Error, err.Error())
 				return err
 			}
+			mintSpan.SetAttributes(
+				attribute.Int("minting.token_id", tokenID),
+				attribute.String("minting.tx_hash", txHash),
+			)
 			mintedTokenID = tokenID
 			mintedTxHash = txHash
 			return nil
@@ -216,9 +268,14 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 			RequestedAmount:    requestedAmount,
 		}, mintFn)
 		if err == nil {
+			// Child span isolating the DB writes that persist a successful
+			// mint, distinct from the Soroban RPC time already captured
+			// above (issue #695).
+			dbCtx, dbSpan := tracer.Start(ctx, "minting.persist_result")
+
 			job.Status = "completed"
 			job.TxHash = mintedTxHash
-			s.db.Save(job)
+			s.db.WithContext(dbCtx).Save(job)
 
 			mintedToken := &MintedToken{
 				JobID:         job.ID,
@@ -228,8 +285,12 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 				ProjectID:     job.ProjectID,
 				VintageYear:   int(metadata.VintageYear),
 				MethodologyID: int(metadata.MethodologyID),
+				Network:       s.network,
+				OwnerAddress:  ownerAddress,
 			}
-			s.db.Create(mintedToken)
+			s.db.WithContext(dbCtx).Create(mintedToken)
+			dbSpan.End()
+			jobSpan.SetStatus(codes.Ok, "")
 			return
 		}
 		lastErr = err
@@ -253,7 +314,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 		case <-ctx.Done():
 			job.Status = "failed"
 			job.Error = ctx.Err().Error()
-			s.db.Save(job)
+			s.db.WithContext(ctx).Save(job)
+			jobSpan.RecordError(ctx.Err())
+			jobSpan.SetStatus(codes.Error, ctx.Err().Error())
 			return
 		case <-time.After(delay):
 		}
@@ -261,7 +324,9 @@ func (s *service) processMintingJob(ctx context.Context, job *MintingJob, method
 
 	job.Status = "failed"
 	job.Error = lastErr.Error()
-	s.db.Save(job)
+	s.db.WithContext(ctx).Save(job)
+	jobSpan.RecordError(lastErr)
+	jobSpan.SetStatus(codes.Error, lastErr.Error())
 }
 
 func (s *service) GetMintingStatus(ctx context.Context, projectID uuid.UUID) ([]MintingJob, []MintedToken, error) {
@@ -288,9 +353,8 @@ type realContractClient struct {
 	rpc               *rpcclient.Client
 }
 
-// NewContractClientFromEnv resolves the carbon asset contract client from
-// environment configuration. isProduction gates which failure modes are
-// tolerated:
+// NewContractClientFromEnv resolves the carbon asset contract client.
+// isProduction gates which failure modes are tolerated:
 //
 //   - MINTING_USE_MOCK_CLIENT=true opts into the in-memory mock client, but
 //     is only ever honored outside production; setting it in production is
@@ -299,7 +363,14 @@ type realContractClient struct {
 //     silently downgrades to the mock client, in production or otherwise.
 //     Outside production, use MINTING_USE_MOCK_CLIENT=true explicitly if a
 //     real key isn't available.
-func NewContractClientFromEnv(isProduction bool) (CarbonAssetContractClient, error) {
+//
+// rpcURL and networkPassphrase (#794) come from internal/config — the
+// single source for both, resolved once at startup — rather than this
+// function reading STELLAR_RPC_URL/STELLAR_NETWORK_PASSPHRASE and applying
+// its own testnet fallback. Callers must resolve them via config.Load (which
+// already applies the testnet default outside production) before calling
+// this.
+func NewContractClientFromEnv(isProduction bool, rpcURL, networkPassphrase string) (CarbonAssetContractClient, error) {
 	if useMock := strings.EqualFold(strings.TrimSpace(os.Getenv(MintingUseMockClientEnvVar)), "true"); useMock {
 		if isProduction {
 			return nil, fmt.Errorf(
@@ -334,51 +405,111 @@ func NewContractClientFromEnv(isProduction bool) (CarbonAssetContractClient, err
 			"CARBON_ASSET_AUTHORITY_SECRET_KEY/STELLAR_SECRET_KEY is not a valid Stellar signing key: %w", err,
 		)
 	}
-	rpcURL := os.Getenv("STELLAR_RPC_URL")
-	if rpcURL == "" {
-		rpcURL = defaultSorobanRPCURL
-	}
-	networkPass := os.Getenv("STELLAR_NETWORK_PASSPHRASE")
-	if networkPass == "" {
-		networkPass = network.TestNetworkPassphrase
-	}
-
 	return &realContractClient{
 		contractID:        contractID,
 		rpcURL:            rpcURL,
-		networkPassphrase: networkPass,
+		networkPassphrase: networkPassphrase,
 		authority:         authority,
-		rpc:               rpcclient.NewClient(rpcURL, http.DefaultClient),
+		rpc:               rpcclient.NewClient(rpcURL, newTracedHTTPClient()),
 	}, nil
 }
 
-// resolveDefaultOwnerAddress determines the placeholder mint recipient from
-// CARBON_ASSET_DEFAULT_PROJECT_OWNER, then CARBON_ASSET_AUTHORITY_PUBLIC_KEY,
-// then STELLAR_PUBLIC_KEY, and validates that whichever is set is a
-// syntactically valid Stellar account address — an unconfigured or malformed
-// value fails explicitly rather than proceeding with a bad address.
+// ValidateNetworkConfig queries rpcURL's getNetwork endpoint and fails if
+// the network it reports doesn't match expectedPassphrase (#794) — catching
+// a mainnet RPC URL accidentally paired with the testnet passphrase (or
+// vice versa) at startup, rather than at the first mint attempt.
+func ValidateNetworkConfig(ctx context.Context, rpcURL, expectedPassphrase string) error {
+	client := rpcclient.NewClient(rpcURL, newTracedHTTPClient())
+	resp, err := client.GetNetwork(ctx)
+	if err != nil {
+		return fmt.Errorf("query getNetwork on %s: %w", rpcURL, err)
+	}
+	if resp.Passphrase != expectedPassphrase {
+		return fmt.Errorf(
+			"configured network passphrase %q does not match the passphrase reported by %s (%q)",
+			expectedPassphrase, rpcURL, resp.Passphrase,
+		)
+	}
+	return nil
+}
+
+// newTracedHTTPClient wraps the default transport with otelhttp so every
+// outbound Soroban RPC call carries the active trace context in its headers
+// and gets its own client-side span (issue #695) — this is the only
+// outbound HTTP client this service builds from scratch rather than through
+// a higher-level SDK. Extracted so a test can assert the transport is
+// actually instrumented.
+func newTracedHTTPClient() *http.Client {
+	return &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+}
+
+// resolveOwnerAddress returns walletAddress (the project's own registered
+// Stellar wallet) when set, falling back to resolveDefaultOwnerAddress's
+// opt-in-only mechanism otherwise (#793). The returned error, when non-nil,
+// is already phrased as "project has no registered Stellar wallet: ..." —
+// the clear job.Error callers are expected to surface.
+func resolveOwnerAddress(walletAddress string) (string, error) {
+	if trimmed := strings.TrimSpace(walletAddress); trimmed != "" {
+		return trimmed, nil
+	}
+	fallback, err := resolveDefaultOwnerAddress()
+	if err != nil {
+		return "", fmt.Errorf("project has no registered Stellar wallet: %w", err)
+	}
+	return fallback, nil
+}
+
+// MintingAllowDefaultOwnerEnvVar explicitly opts into resolveDefaultOwnerAddress
+// as a fallback recipient when a project has no registered wallet. It is
+// only ever honored outside production — see resolveDefaultOwnerAddress.
+const MintingAllowDefaultOwnerEnvVar = "MINTING_ALLOW_DEFAULT_OWNER"
+
+// resolveDefaultOwnerAddress is an explicit, opt-in-only fallback recipient
+// for a project with no registered Stellar wallet (#793) — never used
+// unless MINTING_ALLOW_DEFAULT_OWNER=true, and refused outright in
+// production even then, since a shared fallback recipient defeats the
+// purpose of minting to each project's own wallet. It deliberately never
+// reads CARBON_ASSET_AUTHORITY_PUBLIC_KEY: that key signs mints, and using
+// it as the recipient too would mix custody with signing authority.
 func resolveDefaultOwnerAddress() (string, error) {
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv(MintingAllowDefaultOwnerEnvVar)), "true") {
+		return "", fmt.Errorf(
+			"no registered wallet, and the %s fallback is not enabled", MintingAllowDefaultOwnerEnvVar,
+		)
+	}
+	if isProductionServerMode() {
+		return "", fmt.Errorf(
+			"%s is not permitted in production; every project must have its own registered Stellar wallet",
+			MintingAllowDefaultOwnerEnvVar,
+		)
+	}
+
 	var source string
 	ownerAddress := os.Getenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER")
 	source = "CARBON_ASSET_DEFAULT_PROJECT_OWNER"
-	if strings.TrimSpace(ownerAddress) == "" {
-		ownerAddress = os.Getenv("CARBON_ASSET_AUTHORITY_PUBLIC_KEY")
-		source = "CARBON_ASSET_AUTHORITY_PUBLIC_KEY"
-	}
 	if strings.TrimSpace(ownerAddress) == "" {
 		ownerAddress = os.Getenv("STELLAR_PUBLIC_KEY")
 		source = "STELLAR_PUBLIC_KEY"
 	}
 	ownerAddress = strings.TrimSpace(ownerAddress)
 	if ownerAddress == "" {
-		return "", errors.New(
-			"missing CARBON_ASSET_DEFAULT_PROJECT_OWNER, CARBON_ASSET_AUTHORITY_PUBLIC_KEY, or STELLAR_PUBLIC_KEY",
+		return "", fmt.Errorf(
+			"%s=true but neither CARBON_ASSET_DEFAULT_PROJECT_OWNER nor STELLAR_PUBLIC_KEY is set",
+			MintingAllowDefaultOwnerEnvVar,
 		)
 	}
 	if _, err := keypair.ParseAddress(ownerAddress); err != nil {
 		return "", fmt.Errorf("%s is not a valid Stellar account address: %w", source, err)
 	}
 	return ownerAddress, nil
+}
+
+// isProductionServerMode mirrors the isProduction signal main.go derives
+// from cfg.Debug (SERVER_MODE/DEBUG) — resolveDefaultOwnerAddress has no
+// Config in scope (it runs deep inside a detached goroutine), so it checks
+// the same underlying environment variable directly.
+func isProductionServerMode() bool {
+	return !(strings.EqualFold(os.Getenv("SERVER_MODE"), "development") || os.Getenv("DEBUG") == "true")
 }
 
 func (c *realContractClient) Mint(ctx context.Context, owner string, metadata CarbonAssetMetadata) (int, string, error) {

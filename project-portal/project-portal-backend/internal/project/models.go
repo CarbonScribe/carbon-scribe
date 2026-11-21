@@ -24,8 +24,13 @@ type Project struct {
 	MethodologyTokenID    int       `json:"methodology_token_id" gorm:"column:methodology_token_id"`
 	MethodologyContractID string    `json:"methodology_contract_id" gorm:"column:methodology_contract_id;size:56"`
 	Status                string    `json:"status" gorm:"default:'pending'"` // active, pending, completed
-	CreatedAt             time.Time `json:"created_at"`
-	UpdatedAt             time.Time `json:"updated_at"`
+	// StellarWalletAddress is the project's own registered Stellar account
+	// (#793) — minted carbon credits are sent here, never to the minting
+	// authority's own key. Nullable: a project without one registered
+	// cannot be minted to until it is set.
+	StellarWalletAddress *string   `json:"stellar_wallet_address,omitempty" gorm:"column:stellar_wallet_address;size:56"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // BeforeCreate will set a UUID rather than numeric ID.
@@ -50,6 +55,8 @@ type ProjectCreateRequest struct {
 	MethodologyTokenID int                                     `json:"methodology_token_id"`
 	Methodology        *methodology.RegisterMethodologyRequest `json:"methodology,omitempty"`
 	Status             string                                  `json:"status"`
+	// StellarWalletAddress (#793), validated with keypair.ParseAddress.
+	StellarWalletAddress string `json:"stellar_wallet_address,omitempty"`
 }
 
 // ProjectUpdateRequest represents the request to update a project
@@ -66,4 +73,6 @@ type ProjectUpdateRequest struct {
 	MethodologyTokenID    *int     `json:"methodology_token_id,omitempty"`
 	MethodologyContractID *string  `json:"methodology_contract_id,omitempty"`
 	Status                *string  `json:"status,omitempty"`
+	// StellarWalletAddress (#793), validated with keypair.ParseAddress.
+	StellarWalletAddress *string `json:"stellar_wallet_address,omitempty"`
 }

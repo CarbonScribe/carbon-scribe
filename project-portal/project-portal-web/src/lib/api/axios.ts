@@ -1,5 +1,22 @@
 import { showErrorToast } from "@/lib/utils/toast";
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
+import {
+  backoffDelay,
+  isRetryableError,
+  isRetryableMethod,
+  sleep,
+  type RetryOptions,
+} from "./retry";
+
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    /** Per-request retry overrides (#717). */
+    retry?: RetryOptions | false;
+    /** Internal attempt counter. */
+    __retryAttempt?: number;
+  }
+}
+
 
 const RAW_API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8080";
@@ -250,3 +267,38 @@ function getErrorDescription(status?: number): string | undefined {
 function isRetryableStatus(status?: number): boolean {
   return status ? [408, 429, 500, 502, 503, 504].includes(status) : true;
 }
+
+
+// --- Transient network / 5xx retries with exponential backoff (#717) ---
+api.interceptors.response.use(
+  (res) => res,
+  async (err: AxiosError) => {
+    const config = err.config as AxiosRequestConfig | undefined;
+    if (!config || config.retry === false) {
+      return Promise.reject(err);
+    }
+
+    const retryOpts = config.retry === undefined ? {} : config.retry;
+    if (!isRetryableMethod(config.method, retryOpts)) {
+      return Promise.reject(err);
+    }
+    if (!isRetryableError(err)) {
+      return Promise.reject(err);
+    }
+
+    const maxAttempts = retryOpts.retries ?? 3;
+    const attempt = config.__retryAttempt ?? 0;
+    if (attempt >= maxAttempts - 1) {
+      return Promise.reject(err);
+    }
+
+    config.__retryAttempt = attempt + 1;
+    const delay = backoffDelay(
+      attempt,
+      retryOpts.baseDelayMs,
+      retryOpts.maxDelayMs,
+    );
+    await sleep(delay);
+    return api.request(config);
+  },
+);

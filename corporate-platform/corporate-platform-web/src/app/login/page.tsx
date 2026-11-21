@@ -1,30 +1,59 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 
-export default function LoginPage() {
+function ResetSuccessBanner() {
+  const searchParams = useSearchParams();
+  if (searchParams.get('reset') !== 'success') {
+    return null;
+  }
+  return (
+    <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+      <p className="text-sm text-green-600 dark:text-green-400">
+        Your password has been reset. Please sign in with your new password.
+      </p>
+    </div>
+  );
+}
+
+function LoginForm() {
   const { login, isLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const redirectTarget = searchParams.get('redirect');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const rateLimit = useRateLimitCountdown(error);
+
+  const errorMessage = error
+    ? rateLimit.isRateLimited && rateLimit.message
+      ? rateLimit.message
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Login failed. Please check your credentials and try again.'
+    : '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
 
     if (!email || !password) {
       setError('Please fill in all fields');
       return;
     }
 
+    if (rateLimit.isBlocked) return;
+
     try {
-      await login({ email, password });
+      await login({ email, password }, redirectTarget);
     } catch (err: any) {
-      setError(
-        err?.message || 'Login failed. Please check your credentials and try again.'
-      );
+      setError(err ?? 'Login failed. Please check your credentials and try again.');
     }
   };
 
@@ -62,9 +91,28 @@ export default function LoginPage() {
             Sign in to your account
           </h3>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          <Suspense fallback={null}>
+            <ResetSuccessBanner />
+          </Suspense>
+
+          {errorMessage && (
+            <div
+              role={rateLimit.isRateLimited ? 'status' : undefined}
+              className={`mb-4 p-3 border rounded-lg ${
+                rateLimit.isRateLimited
+                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              }`}
+            >
+              <p
+                className={`text-sm ${
+                  rateLimit.isRateLimited
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {errorMessage}
+              </p>
             </div>
           )}
 
@@ -132,7 +180,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || rateLimit.isBlocked}
               className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isLoading ? (
@@ -194,5 +242,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

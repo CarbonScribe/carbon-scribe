@@ -449,4 +449,183 @@ describe("runDiscoveryAgent", () => {
       "agent run token usage",
     );
   });
+
+  // #705: a shared guardrail now rejects a drafted/needs-approval result
+  // with no citations, except where the agent's own output shows there's
+  // nothing substantive to cite in the first place.
+  describe("citation requirement (#705)", () => {
+    it("returns failed, not drafted, for a non-empty shortlist with zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [
+                    {
+                      creditId: "credit-1",
+                      justification: "Matches sector and budget.",
+                    },
+                  ],
+                  citations: [],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-uncited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain(
+        "no citations",
+      );
+      expect(auditRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-uncited",
+          status: "failed",
+        }),
+      );
+    });
+
+    it("does not reject a legitimate empty shortlist (notes-only, no recommendations) for having zero citations", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [],
+                  citations: [],
+                  notes: "No credits matched the buyer's budget and sector.",
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-no-match",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+      expect(result.citations).toEqual([]);
+    });
+  });
+
+  // #708: assertCitationsForStatus (#705) only checks that *some* citation
+  // exists; this is the stricter per-recommendation check added on top of
+  // it — every recommended credit must have its own citation.
+  describe("per-recommendation citation enforcement (#708)", () => {
+    it("drafts normally when every recommendation has a matching citation", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [
+                    { creditId: "credit-1", justification: "Matches sector." },
+                    { creditId: "credit-2", justification: "Matches budget." },
+                  ],
+                  citations: [
+                    { source: "marketplace", reference: "credit-1" },
+                    { source: "marketplace", reference: "credit-2" },
+                  ],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-all-cited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+    });
+
+    it("returns failed when one recommendation has no corresponding citation", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [
+                    { creditId: "credit-1", justification: "Matches sector." },
+                    { creditId: "credit-2", justification: "Matches budget." },
+                  ],
+                  // Only credit-1 is cited — credit-2 is an uncited claim.
+                  citations: [{ source: "marketplace", reference: "credit-1" }],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-partially-cited",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("failed");
+      expect((result.output as { error: string }).error).toContain("credit-2");
+      expect(auditRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: "req-partially-cited",
+          status: "failed",
+        }),
+      );
+    });
+
+    it("does not reject a legitimate empty shortlist (zero recommendations, zero citations)", async () => {
+      toolRunnerMock.mockReturnValue(
+        fakeRunner({
+          finalMessage: {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  recommendations: [],
+                  citations: [],
+                  notes: "No credits matched the buyer's criteria.",
+                }),
+              },
+            ],
+          },
+        }),
+      );
+
+      const result = await runDiscoveryAgent({
+        requestId: "req-empty-shortlist",
+        requestedBy: "user-1",
+        input: {},
+      });
+
+      expect(result.status).toBe("drafted");
+    });
+  });
 });
