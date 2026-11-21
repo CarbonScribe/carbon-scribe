@@ -36,6 +36,9 @@ func clearMintingEnv(t *testing.T) {
 		"CARBON_ASSET_DEFAULT_PROJECT_OWNER",
 		"CARBON_ASSET_AUTHORITY_PUBLIC_KEY",
 		"STELLAR_PUBLIC_KEY",
+		MintingAllowDefaultOwnerEnvVar,
+		"SERVER_MODE",
+		"DEBUG",
 	} {
 		t.Setenv(key, "")
 	}
@@ -77,13 +80,13 @@ func TestMockMinting(t *testing.T) {
 
 func TestNewServicePanicsOnNilClient(t *testing.T) {
 	assert.Panics(t, func() {
-		NewService(nil, nil, nil)
+		NewService(nil, nil, nil, "Test Passphrase")
 	})
 }
 
 func TestNewServiceAcceptsExplicitClientInjection(t *testing.T) {
 	client := &fakeContractClient{tokenID: 7, txHash: "REAL_TX_HASH"}
-	svc := NewService(nil, client, nil)
+	svc := NewService(nil, client, nil, "Test Passphrase")
 	assert.NotNil(t, svc)
 
 	impl, ok := svc.(*service)
@@ -95,7 +98,7 @@ func TestNewContractClientFromEnv_NoKeyConfigured_NeverImplicitlyMocks(t *testin
 	clearMintingEnv(t)
 
 	for _, isProduction := range []bool{true, false} {
-		client, err := NewContractClientFromEnv(isProduction)
+		client, err := NewContractClientFromEnv(isProduction, "https://rpc.example.com", "Test Passphrase")
 		assert.Error(t, err, "isProduction=%v", isProduction)
 		assert.Nil(t, client, "isProduction=%v", isProduction)
 		assert.Contains(t, err.Error(), "CARBON_ASSET_AUTHORITY_SECRET_KEY")
@@ -107,7 +110,7 @@ func TestNewContractClientFromEnv_InvalidKey_FailsLoudlyInsteadOfMocking(t *test
 	t.Setenv("CARBON_ASSET_AUTHORITY_SECRET_KEY", "not-a-valid-stellar-seed")
 
 	for _, isProduction := range []bool{true, false} {
-		client, err := NewContractClientFromEnv(isProduction)
+		client, err := NewContractClientFromEnv(isProduction, "https://rpc.example.com", "Test Passphrase")
 		assert.Error(t, err, "isProduction=%v", isProduction)
 		assert.Nil(t, client, "isProduction=%v", isProduction)
 	}
@@ -117,7 +120,7 @@ func TestNewContractClientFromEnv_MockOptIn_RejectedInProduction(t *testing.T) {
 	clearMintingEnv(t)
 	t.Setenv(MintingUseMockClientEnvVar, "true")
 
-	client, err := NewContractClientFromEnv(true)
+	client, err := NewContractClientFromEnv(true, "https://rpc.example.com", "Test Passphrase")
 	assert.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "not permitted in production")
@@ -127,7 +130,7 @@ func TestNewContractClientFromEnv_MockOptIn_AllowedOutsideProduction(t *testing.
 	clearMintingEnv(t)
 	t.Setenv(MintingUseMockClientEnvVar, "true")
 
-	client, err := NewContractClientFromEnv(false)
+	client, err := NewContractClientFromEnv(false, "https://rpc.example.com", "Test Passphrase")
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.True(t, isMockContractClient(client))
@@ -139,7 +142,7 @@ func TestNewContractClientFromEnv_ValidKey_ReturnsRealClient(t *testing.T) {
 	assert.NoError(t, err)
 	t.Setenv("CARBON_ASSET_AUTHORITY_SECRET_KEY", kp.Seed())
 
-	client, err := NewContractClientFromEnv(true)
+	client, err := NewContractClientFromEnv(true, "https://rpc.example.com", "Test Passphrase")
 	assert.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.False(t, isMockContractClient(client))
@@ -163,8 +166,14 @@ func TestIsMockContractClient(t *testing.T) {
 	assert.False(t, isMockContractClient(&fakeContractClient{}))
 }
 
+// These four tests all opt into the (#793) fallback explicitly and run in
+// development mode — resolveDefaultOwnerAddress's own opt-in/production
+// gating is covered separately in owner_address_test.go.
+
 func TestResolveDefaultOwnerAddress_MissingEnv_FailsExplicitly(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 
 	address, err := resolveDefaultOwnerAddress()
 	assert.Error(t, err)
@@ -174,6 +183,8 @@ func TestResolveDefaultOwnerAddress_MissingEnv_FailsExplicitly(t *testing.T) {
 
 func TestResolveDefaultOwnerAddress_MalformedValue_FailsExplicitly(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	t.Setenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER", "not-a-stellar-address")
 
 	address, err := resolveDefaultOwnerAddress()
@@ -184,6 +195,8 @@ func TestResolveDefaultOwnerAddress_MalformedValue_FailsExplicitly(t *testing.T)
 
 func TestResolveDefaultOwnerAddress_ValidValue_Succeeds(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	kp, err := keypair.Random()
 	assert.NoError(t, err)
 	t.Setenv("CARBON_ASSET_DEFAULT_PROJECT_OWNER", kp.Address())
@@ -195,6 +208,8 @@ func TestResolveDefaultOwnerAddress_ValidValue_Succeeds(t *testing.T) {
 
 func TestResolveDefaultOwnerAddress_PrefersMostSpecificEnvVar(t *testing.T) {
 	clearMintingEnv(t)
+	t.Setenv(MintingAllowDefaultOwnerEnvVar, "true")
+	t.Setenv("SERVER_MODE", "development")
 	primary, err := keypair.Random()
 	assert.NoError(t, err)
 	fallback, err := keypair.Random()

@@ -25,6 +25,10 @@ func validProductionConfig() *Config {
 		Notifications: NotificationsConfig{
 			SMSProvider: "mock",
 		},
+		Soroban: SorobanConfig{
+			RPCURL:            "https://soroban-rpc.mainnet.example.com",
+			NetworkPassphrase: "Public Global Stellar Network ; September 2015",
+		},
 	}
 }
 
@@ -173,10 +177,65 @@ func TestLoad_ValidProductionSecretsPassValidation(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://app_rw:s3cr3t-password@db.internal:5432/carbonscribe?sslmode=require")
 	t.Setenv("JWT_SECRET", strings.Repeat("b", MinJWTSecretLength))
 	t.Setenv("SETTINGS_ENCRYPTION_KEY_HEX", validEncryptionKeyHex)
+	t.Setenv("SOROBAN_RPC_URL", "https://soroban-rpc.mainnet.example.com")
+	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "Public Global Stellar Network ; September 2015")
 
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.NoError(t, cfg.Validate())
+}
+
+// TestLoad_ProductionWithoutSorobanConfigFailsValidation (#794): production
+// mode never falls back to the testnet RPC URL/passphrase.
+func TestLoad_ProductionWithoutSorobanConfigFailsValidation(t *testing.T) {
+	t.Setenv("DEBUG", "false")
+	t.Setenv("SERVER_MODE", "production")
+	t.Setenv("DATABASE_URL", "postgres://app_rw:s3cr3t-password@db.internal:5432/carbonscribe?sslmode=require")
+	t.Setenv("JWT_SECRET", strings.Repeat("b", MinJWTSecretLength))
+	t.Setenv("SETTINGS_ENCRYPTION_KEY_HEX", validEncryptionKeyHex)
+	t.Setenv("SOROBAN_RPC_URL", "")
+	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Empty(t, cfg.Soroban.RPCURL, "production must not fall back to a testnet default")
+	require.Empty(t, cfg.Soroban.NetworkPassphrase, "production must not fall back to a testnet default")
+
+	err = cfg.Validate()
+	require.Error(t, err)
+	require.ErrorContains(t, err, "SOROBAN_RPC_URL")
+	require.ErrorContains(t, err, "STELLAR_NETWORK_PASSPHRASE")
+}
+
+// TestLoad_DevelopmentSorobanDefaultsApply (#794): development mode keeps
+// the documented testnet defaults when unset.
+func TestLoad_DevelopmentSorobanDefaultsApply(t *testing.T) {
+	t.Setenv("DEBUG", "true")
+	t.Setenv("SERVER_MODE", "development")
+	t.Setenv("DATABASE_URL", "postgres://user:password@localhost:5432/carbonscribe?sslmode=disable")
+	t.Setenv("SOROBAN_RPC_URL", "")
+	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, DefaultSorobanTestnetRPCURL, cfg.Soroban.RPCURL)
+	require.Equal(t, DefaultTestnetPassphrase, cfg.Soroban.NetworkPassphrase)
+}
+
+// TestLoad_SorobanConfiguredValueIsNeverOverridden confirms an explicitly
+// configured value is used as-is, in both modes, rather than always
+// defaulting in development regardless of what's set.
+func TestLoad_SorobanConfiguredValueIsNeverOverridden(t *testing.T) {
+	t.Setenv("DEBUG", "true")
+	t.Setenv("SERVER_MODE", "development")
+	t.Setenv("DATABASE_URL", "postgres://user:password@localhost:5432/carbonscribe?sslmode=disable")
+	t.Setenv("SOROBAN_RPC_URL", "https://custom-rpc.example.com")
+	t.Setenv("STELLAR_NETWORK_PASSPHRASE", "Custom Passphrase")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, "https://custom-rpc.example.com", cfg.Soroban.RPCURL)
+	require.Equal(t, "Custom Passphrase", cfg.Soroban.NetworkPassphrase)
 }
 
 // TestLoad_DevelopmentDefaultsPassValidation confirms local development can

@@ -15,7 +15,6 @@ import (
 	"github.com/stellar/go/clients/horizonclient"
 	rpcclient "github.com/stellar/go/clients/rpcclient"
 	"github.com/stellar/go/keypair"
-	"github.com/stellar/go/network"
 	protocol "github.com/stellar/go/protocols/rpc"
 	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/txnbuild"
@@ -25,9 +24,6 @@ import (
 const (
 	// DefaultCarbonAssetContractID is the fallback Soroban contract ID for carbon assets.
 	DefaultCarbonAssetContractID = "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"
-	// defaultSorobanRPCURL is the default RPC endpoint for Soroban testnet.
-	defaultSorobanRPCURL = "https://soroban-testnet.stellar.org:443"
-
 	// DefaultPollAttempts is the default number of attempts to poll for transaction confirmation.
 	DefaultPollAttempts = 15
 
@@ -86,18 +82,23 @@ type RealStellarClient struct {
 
 type MockStellarClient struct{}
 
-func NewClientFromEnv() Client {
+// NewClientFromEnv constructs the Stellar client. rpcURL and
+// networkPassphrase (#794) come from internal/config — the single source
+// for both, resolved once at startup (which already applies the testnet
+// default outside production) — rather than this function reading
+// STELLAR_RPC_URL/STELLAR_NETWORK_PASSPHRASE and applying its own fallback.
+func NewClientFromEnv(rpcURL, networkPassphrase string) Client {
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("CARBON_ASSET_USE_MOCK")), "true") {
 		return &MockStellarClient{}
 	}
-	client, err := newRealClientFromEnv()
+	client, err := newRealClientFromEnv(rpcURL, networkPassphrase)
 	if err != nil {
 		return &MockStellarClient{}
 	}
 	return client
 }
 
-func newRealClientFromEnv() (*RealStellarClient, error) {
+func newRealClientFromEnv(rpcURL, networkPassphrase string) (*RealStellarClient, error) {
 	seed := strings.TrimSpace(os.Getenv("CARBON_ASSET_AUTHORITY_SECRET_KEY"))
 	if seed == "" {
 		seed = strings.TrimSpace(os.Getenv("STELLAR_SECRET_KEY"))
@@ -113,14 +114,6 @@ func newRealClientFromEnv() (*RealStellarClient, error) {
 	contractID := strings.TrimSpace(os.Getenv("CARBON_ASSET_CONTRACT_ID"))
 	if contractID == "" {
 		contractID = DefaultCarbonAssetContractID
-	}
-	rpcURL := strings.TrimSpace(os.Getenv("STELLAR_RPC_URL"))
-	if rpcURL == "" {
-		rpcURL = defaultSorobanRPCURL
-	}
-	networkPassphrase := strings.TrimSpace(os.Getenv("STELLAR_NETWORK_PASSPHRASE"))
-	if networkPassphrase == "" {
-		networkPassphrase = network.TestNetworkPassphrase
 	}
 
 	pollAttempts := DefaultPollAttempts

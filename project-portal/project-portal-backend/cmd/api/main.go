@@ -40,6 +40,7 @@ import (
 	"carbon-scribe/project-portal/project-portal-backend/pkg/aws"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/elastic"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/iot"
+	"carbon-scribe/project-portal/project-portal-backend/pkg/security"
 	"carbon-scribe/project-portal/project-portal-backend/pkg/storage"
 
 	api "carbon-scribe/project-portal/project-portal-backend/api/v1"
@@ -212,12 +213,27 @@ func main() {
 	// Debug is only true when explicitly enabled, so an unconfigured
 	// environment fails closed to the stricter production checks.
 	isProduction := !cfg.Debug
-	mintingContractClient, err := minting.NewContractClientFromEnv(isProduction)
+	mintingContractClient, err := minting.NewContractClientFromEnv(isProduction, cfg.Soroban.RPCURL, cfg.Soroban.NetworkPassphrase)
 	if err != nil {
 		log.Fatalf("❌ Failed to configure carbon asset minting contract client: %v", err)
 	}
+
+	// Catches a mainnet RPC URL accidentally paired with the testnet
+	// passphrase, or vice versa (#794), before any mint is attempted.
+	// Skipped for the mock client (nothing real to query) — only ever
+	// reachable outside production anyway.
+	usingMockMintingClient := strings.EqualFold(strings.TrimSpace(os.Getenv(minting.MintingUseMockClientEnvVar)), "true")
+	if !usingMockMintingClient {
+		networkCheckCtx, networkCheckCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		netErr := minting.ValidateNetworkConfig(networkCheckCtx, cfg.Soroban.RPCURL, cfg.Soroban.NetworkPassphrase)
+		networkCheckCancel()
+		if netErr != nil {
+			log.Fatalf("❌ Soroban network configuration mismatch: %v", netErr)
+		}
+	}
+
 	mintingCapValidator := minting.NewCapValidator(methodologyCapService)
-	mintingService := minting.NewService(db, mintingContractClient, mintingCapValidator)
+	mintingService := minting.NewService(db, mintingContractClient, mintingCapValidator, cfg.Soroban.NetworkPassphrase)
 
 	// Apply the configured minting retry policy (exponential backoff with
 	// jitter). NewService already resolves this from the environment; this
@@ -280,7 +296,7 @@ func main() {
 	geospatialService := geospatial.NewService(geospatialRepo, db)
 	geospatialHandler := geospatial.NewHandler(geospatialService)
 	financingRepo := financing.NewRepository(db)
-	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService, authRepo)
+	financingService := financing.NewService(financingRepo, methodologyService, methodologyCapService, authRepo, cfg.Soroban.RPCURL, cfg.Soroban.NetworkPassphrase)
 	financingHandler := financing.NewHandler(financingService).WithRateLimiter(rateLimiter).WithRateLimiter(rateLimiter)
 	settingsRepo := settings.NewRepository(db)
 	settingsService, err := settings.NewService(settingsRepo, settings.Config{
@@ -352,7 +368,18 @@ func main() {
 	go complianceWorker.Run(workerCtx)
 	log.Println("✅ Compliance request worker started")
 
-	webhookService := integration.NewService(integration.NewRepository(db))
+	// Encrypts IntegrationConnection.Credentials at rest (#795), reusing
+	// SETTINGS_ENCRYPTION_KEY_HEX rather than a second encryption key.
+	credentialsKeyring, err := integration.BuildCredentialsKeyring(
+		cfg.Settings.EncryptionKeyVersion,
+		cfg.Settings.EncryptionKeyHex,
+		cfg.Settings.PreviousEncryptionKeysHex,
+	)
+	if err != nil {
+		log.Fatalf("❌ Failed to initialize integration credentials encryption: %v", err)
+	}
+	webhookService := integration.NewService(integration.NewRepository(db), credentialsKeyring)
+	integrationHandler := integration.NewHandler(webhookService)
 	webhookWorker := workers.NewWebhookWorker(webhookService, time.Minute, log.Default())
 	go func() {
 		if err := webhookWorker.Run(workerCtx); err != nil && err != context.Canceled {
@@ -495,6 +522,14 @@ func main() {
 
 	router := gin.Default()
 
+	// Enforce a maximum request body size on every route (#797), registered
+	// right after the router is created so no other middleware ever gets a
+	// chance to buffer an oversized body first. MaxMultipartMemory is set to
+	// match the upload limit below so multipart form parsing can't exceed it
+	// either.
+	router.Use(security.BodyLimit(cfg.MaxRequestBodyBytes))
+	router.MaxMultipartMemory = cfg.Storage.MaxUploadSizeMB << 20
+
 	// Create a root span for every HTTP request (issue #695). Registered
 	// before CORS/auth/everything else so its span wraps the full request,
 	// including time spent in later middleware.
@@ -540,6 +575,11 @@ func main() {
 		// Register all project and quality routes (no duplicates)
 		project.RegisterRoutes(router, projectHandler, qualityHandler)
 
+		// Register integration connection/webhook routes (#797, #795) —
+		// previously constructed (webhookService/integrationHandler above)
+		// but never actually wired into the router.
+		integration.RegisterRoutes(router, integrationHandler, cfg.MaxWebhookBodyBytes)
+
 		// Register methodology validation endpoints
 		validation.RegisterValidationRoutes(v1, methodologyValidator)
 
@@ -557,7 +597,7 @@ func main() {
 
 		// Register document management routes (only if S3 is available)
 		if docsHandler != nil {
-			documents.RegisterRoutes(v1, docsHandler)
+			documents.RegisterRoutes(v1, docsHandler, cfg.Storage.MaxUploadSizeMB<<20)
 		}
 		// Register compliance routes under v1
 		complianceHandler.RegisterRoutes(v1)

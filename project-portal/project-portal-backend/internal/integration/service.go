@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"carbon-scribe/project-portal/project-portal-backend/pkg/encryption"
 )
 
 const (
@@ -38,18 +40,24 @@ type Service struct {
 	HTTPClient *http.Client
 }
 
-func NewService(repo Repository) *Service {
+// NewService constructs the integration Service and installs
+// credentialsKeyring as the active keyring IntegrationConnection's
+// BeforeSave/AfterFind hooks use to encrypt/decrypt Credentials (#795).
+func NewService(repo Repository, credentialsKeyring *encryption.Keyring) *Service {
+	SetCredentialsKeyring(credentialsKeyring)
 	return &Service{
 		repo:       repo,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-// RegisterConnection creates a new integration connection
+// RegisterConnection creates a new integration connection. Credentials are
+// encrypted at rest by IntegrationConnection's own BeforeSave hook (#795) —
+// CreateConnection's Create call triggers it the same as any other GORM
+// write.
 func (s *Service) RegisterConnection(ctx context.Context, conn *IntegrationConnection) error {
 	conn.CreatedAt = time.Now()
 	conn.UpdatedAt = time.Now()
-	// In a real implementation, we would encrypt Credentials here before saving
 	return s.repo.CreateConnection(ctx, conn)
 }
 
