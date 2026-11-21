@@ -105,4 +105,30 @@ describe("alertTriageRouter POST /run", () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("unexpected");
   });
+
+  it("returns 400 when requestId is missing and does not invoke the agent", async () => {
+    const res = await request(buildApp())
+      .post("/agents/alert-triage/run")
+      .send({ requestedBy: "user-1", input: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_request");
+    expect(res.body.issues).toBeInstanceOf(Array);
+    expect(runAlertTriageAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when input has invalid type and does not invoke the agent", async () => {
+    const res = await request(buildApp())
+      .post("/agents/alert-triage/run")
+      .send({
+        requestId: "req-invalid",
+        requestedBy: "user-1",
+        input: { ndviDropPercent: "twenty-percent" },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_request");
+    expect(res.body.issues).toBeInstanceOf(Array);
+    expect(runAlertTriageAgentMock).not.toHaveBeenCalled();
+  });
 });

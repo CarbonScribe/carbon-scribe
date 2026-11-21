@@ -90,4 +90,30 @@ describe("complianceReportRouter POST /run", () => {
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("unexpected");
   });
+
+  it("returns 400 when requestId is missing and does not invoke the agent", async () => {
+    const res = await request(buildApp())
+      .post("/agents/compliance-report/run")
+      .send({ requestedBy: "user-1", input: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_request");
+    expect(res.body.issues).toBeInstanceOf(Array);
+    expect(runComplianceReportAgentMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when input has invalid type and does not invoke the agent", async () => {
+    const res = await request(buildApp())
+      .post("/agents/compliance-report/run")
+      .send({
+        requestId: "req-invalid",
+        requestedBy: "user-1",
+        input: { companyId: 12345 },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_request");
+    expect(res.body.issues).toBeInstanceOf(Array);
+    expect(runComplianceReportAgentMock).not.toHaveBeenCalled();
+  });
 });

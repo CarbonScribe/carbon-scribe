@@ -1,8 +1,10 @@
 import { Router } from "express";
-import type {
-  AgentRunRequest,
-  AgentRunResult,
+import {
+  type AgentRunResult,
+  AlertTriageRunRequestSchema,
+  type AlertTriageRunRequest,
 } from "../../shared/types/agent.types.js";
+import { validateBody } from "../../shared/middleware/validate-body.js";
 import { runAlertTriageAgent } from "./alert-triage.agent.js";
 import { approvalService } from "../../shared/approvals/approval.service.js";
 
@@ -23,17 +25,21 @@ function statusCodeFor(result: AgentRunResult): number {
   }
 }
 
-alertTriageRouter.post("/run", async (req, res, next) => {
-  try {
-    const body = req.body as AgentRunRequest;
-    // requireInternalAuth verifies who actually called this route — prefer
-    // that over whatever the client claims in the body, so the audit trail
-    // can't be poisoned by a spoofed requestedBy.
-    const requestedBy = req.callingService ?? body.requestedBy;
-    const result = await runAlertTriageAgent({ ...body, requestedBy });
-    await approvalService.queue(result, requestedBy, body.input);
-    res.status(statusCodeFor(result)).json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+alertTriageRouter.post(
+  "/run",
+  validateBody(AlertTriageRunRequestSchema),
+  async (req, res, next) => {
+    try {
+      const body: AlertTriageRunRequest = req.body;
+      // requireInternalAuth verifies who actually called this route — prefer
+      // that over whatever the client claims in the body, so the audit trail
+      // can't be poisoned by a spoofed requestedBy.
+      const requestedBy = req.callingService ?? body.requestedBy ?? "anonymous";
+      const result = await runAlertTriageAgent({ ...body, requestedBy });
+      await approvalService.queue(result, requestedBy, body.input);
+      res.status(statusCodeFor(result)).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);

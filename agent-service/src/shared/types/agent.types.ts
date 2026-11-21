@@ -7,13 +7,89 @@ import { z } from "zod";
 export type AgentName =
   "discovery" | "pdd-draft" | "compliance-report" | "alert-triage";
 
-export interface AgentRunRequest {
+export const AgentRunRequestSchema = z.object({
   /** Caller-provided idempotency/trace id — propagate into the audit log. */
-  requestId: string;
+  requestId: z.string().min(1, "requestId is required").max(256),
   /** Identity of the human or system that triggered this run. */
-  requestedBy: string;
-  input: unknown;
-}
+  requestedBy: z.string().min(1).max(256).default("anonymous"),
+  input: z.unknown(),
+});
+
+export type AgentRunRequest = z.infer<typeof AgentRunRequestSchema>;
+
+export const DiscoveryRunInputSchema = z
+  .object({
+    companyId: z.string().max(256).optional(),
+    budget: z.number().positive().max(1e12).optional(),
+    sector: z.string().max(256).optional(),
+    methodology: z.string().max(256).optional(),
+    complianceFramework: z.string().max(64).optional(),
+    vintage: z.string().max(64).optional(),
+    maxPricePerTonne: z.number().positive().max(1e6).optional(),
+    coBenefits: z.array(z.string().max(128)).max(50).optional(),
+  })
+  .passthrough();
+
+export type DiscoveryRunInput = z.infer<typeof DiscoveryRunInputSchema>;
+
+export const DiscoveryRunRequestSchema = AgentRunRequestSchema.extend({
+  input: DiscoveryRunInputSchema,
+});
+export type DiscoveryRunRequest = z.infer<typeof DiscoveryRunRequestSchema>;
+
+export const PddDraftRunInputSchema = z
+  .object({
+    activityType: z.string().max(256).optional(),
+    country: z.string().max(128).optional(),
+    hectares: z.number().positive().max(1e9).optional(),
+    landDetails: z.string().max(20000).optional(),
+    targetMethodology: z.string().max(256).optional(),
+  })
+  .passthrough();
+
+export type PddDraftRunInput = z.infer<typeof PddDraftRunInputSchema>;
+
+export const PddDraftRunRequestSchema = AgentRunRequestSchema.extend({
+  input: PddDraftRunInputSchema,
+});
+export type PddDraftRunRequest = z.infer<typeof PddDraftRunRequestSchema>;
+
+export const ComplianceReportRunInputSchema = z
+  .object({
+    companyId: z.string().max(256).optional(),
+    framework: z.string().max(64).optional(),
+    periodStart: z.string().max(64).optional(),
+    periodEnd: z.string().max(64).optional(),
+  })
+  .passthrough();
+
+export type ComplianceReportRunInput = z.infer<
+  typeof ComplianceReportRunInputSchema
+>;
+
+export const ComplianceReportRunRequestSchema = AgentRunRequestSchema.extend({
+  input: ComplianceReportRunInputSchema,
+});
+export type ComplianceReportRunRequest = z.infer<
+  typeof ComplianceReportRunRequestSchema
+>;
+
+export const AlertTriageRunInputSchema = z
+  .object({
+    projectId: z.string().max(256).optional(),
+    alertId: z.string().max(256).optional(),
+    ndviDropPercent: z.number().optional(),
+    sensorReadings: z.record(z.string(), z.unknown()).optional(),
+    weatherContext: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export type AlertTriageRunInput = z.infer<typeof AlertTriageRunInputSchema>;
+
+export const AlertTriageRunRequestSchema = AgentRunRequestSchema.extend({
+  input: AlertTriageRunInputSchema,
+});
+export type AlertTriageRunRequest = z.infer<typeof AlertTriageRunRequestSchema>;
 
 export interface AgentRunResult {
   agent: AgentName;

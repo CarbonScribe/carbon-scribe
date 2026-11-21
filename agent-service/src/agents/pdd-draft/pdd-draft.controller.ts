@@ -1,8 +1,10 @@
 import { Router } from "express";
-import type {
-  AgentRunRequest,
-  AgentRunResult,
+import {
+  type AgentRunResult,
+  PddDraftRunRequestSchema,
+  type PddDraftRunRequest,
 } from "../../shared/types/agent.types.js";
+import { validateBody } from "../../shared/middleware/validate-body.js";
 import { runPddDraftAgent } from "./pdd-draft.agent.js";
 import { approvalService } from "../../shared/approvals/approval.service.js";
 
@@ -23,17 +25,21 @@ function statusCodeFor(result: AgentRunResult): number {
   }
 }
 
-pddDraftRouter.post("/run", async (req, res, next) => {
-  try {
-    const body = req.body as AgentRunRequest;
-    // requireInternalAuth verifies who actually called this route — prefer
-    // that over whatever the client claims in the body, so the audit trail
-    // can't be poisoned by a spoofed requestedBy.
-    const requestedBy = req.callingService ?? body.requestedBy;
-    const result = await runPddDraftAgent({ ...body, requestedBy });
-    await approvalService.queue(result, requestedBy, body.input);
-    res.status(statusCodeFor(result)).json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+pddDraftRouter.post(
+  "/run",
+  validateBody(PddDraftRunRequestSchema),
+  async (req, res, next) => {
+    try {
+      const body: PddDraftRunRequest = req.body;
+      // requireInternalAuth verifies who actually called this route — prefer
+      // that over whatever the client claims in the body, so the audit trail
+      // can't be poisoned by a spoofed requestedBy.
+      const requestedBy = req.callingService ?? body.requestedBy ?? "anonymous";
+      const result = await runPddDraftAgent({ ...body, requestedBy });
+      await approvalService.queue(result, requestedBy, body.input);
+      res.status(statusCodeFor(result)).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);

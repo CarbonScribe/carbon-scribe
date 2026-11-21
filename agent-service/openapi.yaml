@@ -137,6 +137,8 @@ paths:
                 citations:
                   - source: marketplace
                     reference: cred-redd-456
+        400:
+          $ref: "#/components/responses/InvalidRequestError"
         401:
           $ref: "#/components/responses/UnauthorizedError"
         502:
@@ -187,6 +189,8 @@ paths:
                 citations:
                   - source: project-portal.methodologies
                     reference: VM0042
+        400:
+          $ref: "#/components/responses/InvalidRequestError"
         401:
           $ref: "#/components/responses/UnauthorizedError"
         502:
@@ -236,6 +240,8 @@ paths:
                 citations:
                   - source: corporatePlatformClient.getPortfolio
                     reference: comp-acme-corp
+        400:
+          $ref: "#/components/responses/InvalidRequestError"
         401:
           $ref: "#/components/responses/UnauthorizedError"
         502:
@@ -286,6 +292,8 @@ paths:
                 citations:
                   - source: satellite-ndvi
                     reference: sentinel-2-tile-202609
+        400:
+          $ref: "#/components/responses/InvalidRequestError"
         401:
           $ref: "#/components/responses/UnauthorizedError"
         502:
@@ -327,6 +335,8 @@ paths:
                     reviewerCallingService: null
                     decisionAt: null
                     createdAt: 2026-09-29T18:00:00.000Z
+        400:
+          $ref: "#/components/responses/InvalidRequestError"
         401:
           $ref: "#/components/responses/UnauthorizedError"
         403:
@@ -493,6 +503,21 @@ components:
             $ref: "#/components/schemas/BadRequestErrorResponse"
           example:
             error: reviewerId is required
+    InvalidRequestError:
+      description: Invalid request payload or schema validation failure
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+          example:
+            error: invalid_request
+            issues:
+              - code: invalid_type
+                expected: string
+                received: undefined
+                path:
+                  - requestId
+                message: Required
     AgentRunFailure:
       description: Agent execution encountered an LLM provider error, parsing issue, tool failure, or refusal
       content:
@@ -1121,3 +1146,16 @@ components:
         error:
           type: string
           example: reviewerId is required
+    ValidationErrorResponse:
+      type: object
+      required:
+        - error
+        - issues
+      properties:
+        error:
+          type: string
+          example: invalid_request
+        issues:
+          type: array
+          items:
+            type: object

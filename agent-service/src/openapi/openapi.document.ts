@@ -208,6 +208,9 @@ export const openApiSpec = {
               },
             },
           },
+          "400": {
+            $ref: "#/components/responses/InvalidRequestError",
+          },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
@@ -292,6 +295,9 @@ export const openApiSpec = {
               },
             },
           },
+          "400": {
+            $ref: "#/components/responses/InvalidRequestError",
+          },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
@@ -374,6 +380,9 @@ export const openApiSpec = {
               },
             },
           },
+          "400": {
+            $ref: "#/components/responses/InvalidRequestError",
+          },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
@@ -450,6 +459,9 @@ export const openApiSpec = {
               },
             },
           },
+          "400": {
+            $ref: "#/components/responses/InvalidRequestError",
+          },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
           },
@@ -509,6 +521,9 @@ export const openApiSpec = {
                 },
               },
             },
+          },
+          "400": {
+            $ref: "#/components/responses/InvalidRequestError",
           },
           "401": {
             $ref: "#/components/responses/UnauthorizedError",
@@ -772,6 +787,28 @@ export const openApiSpec = {
             },
             example: {
               error: "reviewerId is required",
+            },
+          },
+        },
+      },
+      InvalidRequestError: {
+        description: "Invalid request payload or schema validation failure",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ValidationErrorResponse",
+            },
+            example: {
+              error: "invalid_request",
+              issues: [
+                {
+                  code: "invalid_type",
+                  expected: "string",
+                  received: "undefined",
+                  path: ["requestId"],
+                  message: "Required",
+                },
+              ],
             },
           },
         },
@@ -1516,6 +1553,22 @@ export const openApiSpec = {
           error: {
             type: "string",
             example: "reviewerId is required",
+          },
+        },
+      },
+      ValidationErrorResponse: {
+        type: "object",
+        required: ["error", "issues"],
+        properties: {
+          error: {
+            type: "string",
+            example: "invalid_request",
+          },
+          issues: {
+            type: "array",
+            items: {
+              type: "object",
+            },
           },
         },
       },
