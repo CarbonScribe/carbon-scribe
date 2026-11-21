@@ -315,6 +315,10 @@ export default function PlaceBidForm({
     );
   }
 
+  const submitLabel = rateLimit.isBlocked
+    ? `Retry in ${rateLimit.secondsLeft}s`
+    : 'Review Bid';
+
   return (
     <>
       <form onSubmit={handleSubmit} className="corporate-card p-5 space-y-4">
@@ -367,51 +371,24 @@ export default function PlaceBidForm({
           </p>
         </div>
 
-        {/* Total cost preview */}
-        {totalCost > 0 && (
-          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 px-4 py-3 text-sm">
-            <span className="text-gray-600 dark:text-gray-400">
-              Estimated total:{' '}
-            </span>
-            <span className="font-bold text-corporate-blue">
-              {formatCurrency(totalCost)}
-            </span>
-          </div>
-        )}
-
-        {/* Validation error */}
         {validationError && (
-          <div className="flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
             <AlertCircle size={15} className="mt-0.5 shrink-0" />
-            {validationError}
+            <p>{validationError}</p>
           </div>
         )}
 
-        {/* API error */}
-        {bidError && (
-          <div className="flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+        {bidError && !rateLimit.isBlocked && (
+          <div className="flex items-start gap-2 text-sm text-red-600 dark:text-red-400">
             <AlertCircle size={15} className="mt-0.5 shrink-0" />
-            {bidError}
+            <p>{bidError}</p>
           </div>
         )}
 
-        {/* Rate-limit countdown */}
-        {rateLimit.isRateLimited && rateLimit.message && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400"
-          >
-            <AlertCircle size={15} className="mt-0.5 shrink-0" />
-            {rateLimit.message}
-          </div>
-        )}
-
-        {/* Success */}
         {bidSuccess && (
-          <div className="flex items-center gap-2 rounded-lg bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-700 dark:text-green-400">
-            <CheckCircle size={15} className="shrink-0" />
-            {bidSuccess}
+          <div className="flex items-start gap-2 text-sm text-green-600 dark:text-green-400">
+            <CheckCircle size={15} className="mt-0.5 shrink-0" />
+            <p>{bidSuccess}</p>
           </div>
         )}
 
@@ -420,15 +397,15 @@ export default function PlaceBidForm({
           disabled={placingBid || rateLimit.isBlocked}
           className="w-full corporate-btn-primary py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {placingBid ? (
-            <>
-              <Loader2 size={15} className="animate-spin" />
-              Placing Bid…
-            </>
-          ) : (
-            'Review Bid'
-          )}
+          {placingBid && <Loader2 size={15} className="animate-spin" />}
+          {submitLabel}
         </button>
+
+        {rateLimit.isBlocked && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Too many attempts — try again in {rateLimit.secondsLeft}s
+          </p>
+        )}
       </form>
 
       {reviewOpen && (

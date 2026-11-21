@@ -19,7 +19,6 @@ vendor/
 go.work
 
 # IDE specific files
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -120,8 +119,6 @@ web_modules/
 .yarn-integrity
 
 # dotenv environment variable files
-.env
-.env.*
 !.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
@@ -191,3 +188,4 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 ISSUE_CONTEXT.md
+config.bat

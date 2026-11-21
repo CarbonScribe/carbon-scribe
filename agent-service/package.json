@@ -1,14 +1,14 @@
 {
   "name": "agent-service",
   "version": "0.0.1",
-  "description": "Standalone agentic AI service for CarbonScribe — discovery, PDD drafting, compliance-report drafting, and alert-triage agents that call into corporate-platform and project-portal as tools.",
+  "description": "Standalone agentic AI service for CarbonScribe \u2014 discovery, PDD drafting, compliance-report drafting, and alert-triage agents that call into corporate-platform and project-portal as tools.",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "build": "node init && tsc -p tsconfig.json",
+    "start": "node init && node dist/main.js",
+    "start:dev": "node init && tsx watch src/main.ts",
     "generate:openapi": "tsx src/openapi/generate.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",
