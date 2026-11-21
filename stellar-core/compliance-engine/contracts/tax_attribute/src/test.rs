@@ -348,3 +348,167 @@ fn test_revoke_attribute_failure_paths_emit_no_event() {
         }
     }
 }
+
+#[allow(deprecated)]
+fn find_tax_att_event(env: &Env) -> Option<(u32, String, Address, u64, u64)> {
+    let events = env.events().all();
+    let expected_sym = Symbol::short("tax_att");
+    for i in 0..events.len() {
+        let (_, topics, data) = events.get(i).unwrap();
+        if topics.len() >= 2 {
+            if let Ok(sym) = Symbol::try_from_val(env, &topics.get(0).unwrap()) {
+                if sym == expected_sym {
+                    let token_id: u32 = u32::try_from_val(env, &topics.get(1).unwrap()).unwrap();
+                    let (tag_id, issuer, valid_from, valid_until): (String, Address, u64, u64) =
+                        TryFromVal::try_from_val(env, &data).unwrap();
+                    return Some((token_id, tag_id, issuer, valid_from, valid_until));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[allow(deprecated)]
+fn find_tax_rev_event(env: &Env) -> Option<(u32, String, Address)> {
+    let events = env.events().all();
+    let expected_sym = Symbol::short("tax_rev");
+    for i in 0..events.len() {
+        let (_, topics, data) = events.get(i).unwrap();
+        if topics.len() >= 2 {
+            if let Ok(sym) = Symbol::try_from_val(env, &topics.get(0).unwrap()) {
+                if sym == expected_sym {
+                    let token_id: u32 = u32::try_from_val(env, &topics.get(1).unwrap()).unwrap();
+                    let (tag_id, revoked_by): (String, Address) =
+                        TryFromVal::try_from_val(env, &data).unwrap();
+                    return Some((token_id, tag_id, revoked_by));
+                }
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn test_attach_tax_attribute_emits_event() {
+    let env = Env::default();
+    let contract_id = env.register(TaxAttributeContract, ());
+    let client = TaxAttributeContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+
+    init_as_admin(&env, &client, &admin);
+    env.mock_all_auths();
+    client.add_issuer(&issuer);
+
+    env.ledger().set_timestamp(500);
+    let def = make_attribute_def(&env, "TAG-EVENT", 100, 2000);
+    client.attach_tax_attribute(&issuer, &42u32, &def);
+
+    let event = find_tax_att_event(&env);
+    assert!(event.is_some(), "Expected tax_att event to be published");
+    let (token_id, tag_id, event_issuer, valid_from, valid_until) = event.unwrap();
+    assert_eq!(token_id, 42u32);
+    assert_eq!(tag_id, String::from_str(&env, "TAG-EVENT"));
+    assert_eq!(event_issuer, issuer);
+    assert_eq!(valid_from, 100);
+    assert_eq!(valid_until, 2000);
+}
+
+#[test]
+#[allow(deprecated)]
+fn test_failed_attach_emits_no_event() {
+    let env = Env::default();
+    let contract_id = env.register(TaxAttributeContract, ());
+    let client = TaxAttributeContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let rando = Address::generate(&env);
+
+    init_as_admin(&env, &client, &admin);
+    env.mock_all_auths();
+    client.add_issuer(&issuer);
+
+    // 1. Unauthorized issuer
+    let def1 = make_attribute_def(&env, "TAG-FAIL-1", 0, 1000);
+    let _ = client.try_attach_tax_attribute(&rando, &1u32, &def1);
+    assert!(find_tax_att_event(&env).is_none(), "Unauthorized attach emitted event");
+
+    // 2. Expired attribute
+    env.ledger().set_timestamp(2000);
+    let def2 = make_attribute_def(&env, "TAG-FAIL-2", 0, 1000);
+    let _ = client.try_attach_tax_attribute(&issuer, &1u32, &def2);
+    assert!(find_tax_att_event(&env).is_none(), "Expired attach emitted event");
+
+    // 3. Inverted validity window
+    env.ledger().set_timestamp(500);
+    let def3 = make_attribute_def(&env, "TAG-FAIL-3", 2000, 1000);
+    let _ = client.try_attach_tax_attribute(&issuer, &1u32, &def3);
+    assert!(find_tax_att_event(&env).is_none(), "Inverted window attach emitted event");
+
+    // 4. Duplicate tag
+    let def4 = make_attribute_def(&env, "TAG-DUP", 0, 1000);
+    client.attach_tax_attribute(&issuer, &1u32, &def4);
+    assert!(find_tax_att_event(&env).is_some());
+    let res = client.try_attach_tax_attribute(&issuer, &2u32, &def4);
+    assert!(res.is_err());
+    assert!(find_tax_att_event(&env).is_none(), "Duplicate attach emitted event");
+}
+
+#[test]
+fn test_revoke_attribute_emits_tax_rev_event() {
+    let env = Env::default();
+    let contract_id = env.register(TaxAttributeContract, ());
+    let client = TaxAttributeContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+
+    init_as_admin(&env, &client, &admin);
+    env.mock_all_auths();
+    client.add_issuer(&issuer);
+
+    env.ledger().set_timestamp(500);
+    let def = make_attribute_def(&env, "TAG-REV", 0, 1000);
+    client.attach_tax_attribute(&issuer, &10u32, &def);
+
+    env.ledger().set_timestamp(600);
+    let tag_id = String::from_str(&env, "TAG-REV");
+    let reason = String::from_str(&env, "policy change");
+    client.revoke_attribute(&admin, &10u32, &tag_id, &reason);
+
+    let event = find_tax_rev_event(&env);
+    assert!(event.is_some(), "Expected tax_rev event to be published");
+    let (token_id, rev_tag, revoked_by) = event.unwrap();
+    assert_eq!(token_id, 10u32);
+    assert_eq!(rev_tag, tag_id);
+    assert_eq!(revoked_by, admin);
+}
+
+#[test]
+fn test_failed_revoke_emits_no_tax_rev_event() {
+    let env = Env::default();
+    let contract_id = env.register(TaxAttributeContract, ());
+    let client = TaxAttributeContractClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let rando = Address::generate(&env);
+
+    init_as_admin(&env, &client, &admin);
+    env.mock_all_auths();
+    client.add_issuer(&issuer);
+
+    env.ledger().set_timestamp(500);
+    let def = make_attribute_def(&env, "TAG-FAIL-REV", 0, 1000);
+    client.attach_tax_attribute(&issuer, &5u32, &def);
+
+    let tag_id = String::from_str(&env, "TAG-FAIL-REV");
+    let reason = String::from_str(&env, "unauthorized");
+    let res = client.try_revoke_attribute(&rando, &5u32, &tag_id, &reason);
+    assert!(res.is_err());
+    assert!(find_tax_rev_event(&env).is_none(), "Unauthorized revoke emitted tax_rev");
+
+    let non_existent = String::from_str(&env, "DOES-NOT-EXIST");
+    let res2 = client.try_revoke_attribute(&admin, &5u32, &non_existent, &reason);
+    assert!(res2.is_err());
+    assert!(find_tax_rev_event(&env).is_none(), "Non-existent tag revoke emitted tax_rev");
+}

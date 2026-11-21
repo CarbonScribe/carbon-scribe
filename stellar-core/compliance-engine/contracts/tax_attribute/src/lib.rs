@@ -198,7 +198,7 @@ impl TaxAttributeContract {
             jurisdiction: definition.jurisdiction,
             regulation_code: definition.regulation_code,
             eligibility_criteria_hash: definition.eligibility_criteria_hash,
-            issuing_authority: issuer,
+            issuing_authority: issuer.clone(),
             valid_from: definition.valid_from,
             valid_until: definition.valid_until,
             attached_at: current_time,
@@ -216,10 +216,21 @@ impl TaxAttributeContract {
             .get(&DataKey::TokenAttributes(token_id))
             .unwrap_or(Vec::new(&env));
 
-        attached_tags.push_back(definition.tag_id);
+        attached_tags.push_back(definition.tag_id.clone());
         env.storage()
             .persistent()
             .set(&DataKey::TokenAttributes(token_id), &attached_tags);
+
+        #[allow(deprecated)]
+        env.events().publish(
+            (Symbol::short("tax_att"), token_id),
+            (
+                definition.tag_id,
+                issuer,
+                definition.valid_from,
+                definition.valid_until,
+            ),
+        );
 
         Ok(())
     }
@@ -266,6 +277,13 @@ impl TaxAttributeContract {
             env.storage()
                 .persistent()
                 .set(&DataKey::TokenAttributes(token_id), &attached_tags);
+
+            #[allow(deprecated)]
+            env.events().publish(
+                (Symbol::short("tax_rev"), token_id),
+                (tag_id.clone(), caller.clone()),
+            );
+
             events::emit_attribute_revoked_event(&env, token_id, tag_id, caller, reason);
             Ok(())
         } else {
