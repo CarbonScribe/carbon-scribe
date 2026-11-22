@@ -30,3 +30,20 @@ export async function migrateAuditLogSchema(pool: Queryable): Promise<void> {
     await pool.query(sql);
   }
 }
+
+// Standalone execution entry point for container migration runners (issue #825)
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url).endsWith(process.argv[1].replace(/^[./]+/, ""))
+) {
+  const { getPool, closePool } = await import("./db.js");
+  try {
+    const pool = getPool();
+    await migrateAuditLogSchema(pool);
+    await closePool();
+    console.log("Successfully applied audit log database migrations.");
+  } catch (err) {
+    console.error("Failed to apply audit log database migrations:", err);
+    process.exit(1);
+  }
+}

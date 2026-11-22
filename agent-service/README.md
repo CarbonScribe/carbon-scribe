@@ -15,6 +15,7 @@ Standalone agentic AI microservice for the CarbonScribe platform. Powers automat
 - [Development & Testing](#-development--testing)
   - [Mock Mode for Local Development](#-mock-mode-for-local-development)
   - [Load Testing](#-load-testing)
+- [Docker Deployment](#-docker-deployment)
 - [On-Call Runbook](#-on-call-runbook)
 - [Folder Structure](#-folder-structure)
 - [License](#-license)
@@ -199,6 +200,56 @@ npm run loadtest
 ```
 
 For more details on load test benchmarks and options, see [LOAD_TESTING.md](./LOAD_TESTING.md).
+
+---
+
+## 🐳 Docker Deployment
+
+The microservice includes a multi-stage `Dockerfile` and `.dockerignore` for containerized production deployment.
+
+### 1. Building the Docker Image
+
+Run the build from the `agent-service` directory:
+
+```bash
+docker build -t carbonscribe-agent-service:latest .
+```
+
+Features of the image:
+- **Multi-Stage Build:** Compiles TypeScript in a `builder` stage and produces a lean, minimal production image in the `runner` stage (`npm ci --omit=dev`).
+- **Security & Least Privilege:** Executes as the built-in non-root `node` user (`USER node`).
+- **Signal Forwarding & Graceful Shutdown:** Uses `exec`-form `CMD ["node", "dist/main.js"]` so `SIGTERM`/`SIGINT` signals are handled by `registerGracefulShutdown`.
+- **Healthcheck Probe:** Includes built-in `HEALTHCHECK` pinging `/health/liveness` on `PORT` (default 4500).
+
+### 2. Applying Database Migrations
+
+Audit log migrations are automatically applied on service boot. To execute migrations standalone as an init container or pre-deploy step:
+
+```bash
+docker run --rm \
+  -e AGENT_AUDIT_DATABASE_URL="postgres://postgres:postgres@postgres:5432/agent_service" \
+  carbonscribe-agent-service:latest \
+  node dist/shared/audit/audit-log.migrate.js
+```
+
+### 3. Running the Container
+
+```bash
+docker run -d \
+  --name agent-service \
+  -p 4500:4500 \
+  -e PORT=4500 \
+  -e NODE_ENV=production \
+  -e ANTHROPIC_API_KEY="sk-ant-api..." \
+  -e AGENT_MODEL="claude-opus-5" \
+  -e AGENT_SERVICE_JWT_SECRET="secret" \
+  -e CORPORATE_PLATFORM_JWT_SECRET="secret" \
+  -e PROJECT_PORTAL_JWT_SECRET="secret" \
+  -e CORPORATE_PLATFORM_BASE_URL="http://corporate-platform-backend:3000" \
+  -e PROJECT_PORTAL_BASE_URL="http://project-portal-backend:8080" \
+  -e AGENT_AUDIT_DATABASE_URL="postgres://postgres:postgres@postgres:5432/agent_service" \
+  carbonscribe-agent-service:latest
+```
 
 ---
 
