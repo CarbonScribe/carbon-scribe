@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
 import { runWithTokenBudget } from "../../llm/budget.js";
+import { cachedSystem } from "../../llm/cache.js";
 import {
   auditLog,
   truncateToolOutput,
@@ -65,7 +66,7 @@ export async function runDiscoveryAgent(
     model: DEFAULT_MODEL,
     max_tokens: 16000,
     max_iterations: env.agentMaxIterations,
-    system: SYSTEM_PROMPT,
+    system: cachedSystem(SYSTEM_PROMPT),
     tools: discoveryTools,
     output_config: { format: outputFormat },
     messages: [
@@ -116,7 +117,13 @@ export async function runDiscoveryAgent(
   const budgetResult = await runWithTokenBudget(runner, {
     maxTokensPerRun: env.agentMaxTokensPerRun,
   });
-  const { message: finalMessage, cumulativeTokens } = budgetResult;
+  const {
+    message: finalMessage,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  } = budgetResult;
+  const cacheTokens = { cacheCreationInputTokens, cacheReadInputTokens };
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -129,6 +136,7 @@ export async function runDiscoveryAgent(
       classified.message,
       cumulativeTokens,
       classified,
+      cacheTokens,
     );
   }
 
@@ -138,6 +146,8 @@ export async function runDiscoveryAgent(
       extractToolCalls(),
       `Discovery agent aborted after exceeding its token budget (used ${cumulativeTokens} of ${env.agentMaxTokensPerRun} tokens).`,
       cumulativeTokens,
+      undefined,
+      cacheTokens,
     );
   }
 
@@ -151,6 +161,8 @@ export async function runDiscoveryAgent(
       toolCalls,
       "Anthropic declined to complete this discovery request.",
       cumulativeTokens,
+      undefined,
+      cacheTokens,
     );
   }
 
@@ -168,6 +180,8 @@ export async function runDiscoveryAgent(
       toolCalls,
       "Discovery agent finished without producing a text response.",
       cumulativeTokens,
+      undefined,
+      cacheTokens,
     );
   }
 
@@ -182,6 +196,8 @@ export async function runDiscoveryAgent(
         err instanceof Error ? err.message : String(err)
       }`,
       cumulativeTokens,
+      undefined,
+      cacheTokens,
     );
   }
 
@@ -211,6 +227,8 @@ export async function runDiscoveryAgent(
       toolCalls,
       err instanceof Error ? err.message : String(err),
       cumulativeTokens,
+      undefined,
+      cacheTokens,
     );
   }
 
@@ -223,7 +241,14 @@ export async function runDiscoveryAgent(
     status,
   });
   logger.info(
-    { agent: "discovery", requestId: req.requestId, status, cumulativeTokens },
+    {
+      agent: "discovery",
+      requestId: req.requestId,
+      status,
+      cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+    },
     "agent run token usage",
   );
 
@@ -245,6 +270,10 @@ async function failRun(
   message: string,
   cumulativeTokens: number,
   errorInfo?: { category: ErrorCategory; retryable: boolean },
+  cacheTokens?: {
+    cacheCreationInputTokens: number;
+    cacheReadInputTokens: number;
+  },
 ): Promise<AgentRunResult> {
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -260,6 +289,8 @@ async function failRun(
       requestId: req.requestId,
       status: "failed",
       cumulativeTokens,
+      cacheCreationInputTokens: cacheTokens?.cacheCreationInputTokens ?? 0,
+      cacheReadInputTokens: cacheTokens?.cacheReadInputTokens ?? 0,
     },
     "agent run token usage",
   );

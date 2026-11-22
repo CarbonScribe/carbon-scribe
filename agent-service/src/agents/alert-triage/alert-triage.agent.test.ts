@@ -104,7 +104,8 @@ describe("runAlertTriageAgent", () => {
     expect(toolRunnerMock).toHaveBeenCalledTimes(1);
     const params = toolRunnerMock.mock.calls[0]![0];
     expect(params.model).toBe("claude-opus-5");
-    expect(params.system).toContain("alert-triage agent");
+    expect(params.system[0].text).toContain("alert-triage agent");
+    expect(params.system[0].cache_control).toEqual({ type: "ephemeral" });
     expect(params.tools.map((t: { name: string }) => t.name)).toContain(
       "get_monitoring_signals",
     );
@@ -487,5 +488,32 @@ describe("runAlertTriageAgent", () => {
       expect(result.status).toBe("drafted");
       expect(result.citations).toEqual([]);
     });
+  });
+
+  it("configures prompt caching with cache_control on the system block (#830)", async () => {
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: finalTextMessage({
+          verdict: "suppress",
+          reasoning: "Normal seasonal fluctuation.",
+          citations: [],
+        }),
+      }),
+    );
+
+    await runAlertTriageAgent({
+      requestId: "req-caching-alert",
+      requestedBy: "user-cache",
+      input: {},
+    });
+
+    const callArgs = toolRunnerMock.mock.calls[0][0];
+    expect(callArgs.system).toEqual([
+      {
+        type: "text",
+        text: expect.any(String),
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
   });
 });

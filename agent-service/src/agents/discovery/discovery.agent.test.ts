@@ -101,7 +101,8 @@ describe("runDiscoveryAgent", () => {
     expect(toolRunnerMock).toHaveBeenCalledTimes(1);
     const params = toolRunnerMock.mock.calls[0]![0];
     expect(params.model).toBe("claude-opus-5");
-    expect(params.system).toContain("credit-discovery agent");
+    expect(params.system[0].text).toContain("credit-discovery agent");
+    expect(params.system[0].cache_control).toEqual({ type: "ephemeral" });
     expect(params.tools.map((t: { name: string }) => t.name)).toContain(
       "search_marketplace_credits",
     );
@@ -430,7 +431,12 @@ describe("runDiscoveryAgent", () => {
         yield {
           stop_reason: "tool_use",
           content: [],
-          usage: { input_tokens: 900, output_tokens: 200 },
+          usage: {
+            input_tokens: 900,
+            output_tokens: 200,
+            cache_creation_input_tokens: 500,
+            cache_read_input_tokens: 100,
+          },
         };
       },
     });
@@ -445,9 +451,42 @@ describe("runDiscoveryAgent", () => {
         requestId: "req-usage-aborted",
         status: "failed",
         cumulativeTokens: 1100,
+        cacheCreationInputTokens: 500,
+        cacheReadInputTokens: 100,
       }),
       "agent run token usage",
     );
+  });
+
+  it("configures prompt caching with cache_control on the system block (#830)", async () => {
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ recommendations: [], citations: [] }),
+            },
+          ],
+        },
+      }),
+    );
+
+    await runDiscoveryAgent({
+      requestId: "req-caching-test",
+      requestedBy: "user-cache",
+      input: {},
+    });
+
+    const callArgs = toolRunnerMock.mock.calls[0][0];
+    expect(callArgs.system).toEqual([
+      {
+        type: "text",
+        text: expect.any(String),
+        cache_control: { type: "ephemeral" },
+      },
+    ]);
   });
 
   // #705: a shared guardrail now rejects a drafted/needs-approval result

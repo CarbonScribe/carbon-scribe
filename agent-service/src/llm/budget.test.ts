@@ -105,7 +105,39 @@ describe("runWithTokenBudget", () => {
 
     expect(result.message).toBeUndefined();
     expect(result.cumulativeTokens).toBe(0);
+    expect(result.cacheCreationInputTokens).toBe(0);
+    expect(result.cacheReadInputTokens).toBe(0);
     expect(result.budgetExceeded).toBe(false);
     expect(result.error).toBeUndefined();
+  });
+
+  it("accumulates cache_creation_input_tokens and cache_read_input_tokens across turns (#830)", async () => {
+    const turns: BudgetedTurn[] = [
+      {
+        usage: {
+          input_tokens: 1500,
+          output_tokens: 100,
+          cache_creation_input_tokens: 1200,
+          cache_read_input_tokens: 0,
+        },
+      },
+      {
+        usage: {
+          input_tokens: 400,
+          output_tokens: 150,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 1200,
+        },
+      },
+    ];
+
+    const result = await runWithTokenBudget(fakeRunner(turns), {
+      maxTokensPerRun: 5000,
+    });
+
+    expect(result.cumulativeTokens).toBe(2150);
+    expect(result.cacheCreationInputTokens).toBe(1200);
+    expect(result.cacheReadInputTokens).toBe(1200);
+    expect(result.budgetExceeded).toBe(false);
   });
 });
