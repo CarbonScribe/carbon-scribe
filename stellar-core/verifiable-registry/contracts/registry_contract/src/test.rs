@@ -283,6 +283,102 @@ fn test_empty_batch() {
     client.anchor_document_batch(&project_id, &empty_documents); // Should panic
 }
 
+#[test]
+fn test_get_max_batch_size() {
+    let (_env, _, client) = create_contract();
+    assert_eq!(client.get_max_batch_size(), 25);
+}
+
+#[test]
+fn test_anchor_document_batch_at_limit() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-LIMIT");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+
+    let mut documents = Vec::new(&env);
+    let cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let doc_type = SorobanString::from_str(&env, "DOC");
+
+    for _ in 0..25 {
+        documents.push_back((cid.clone(), doc_type.clone()));
+    }
+
+    let version_indices = client.anchor_document_batch(&project_id, &documents);
+    assert_eq!(version_indices.len(), 25);
+    assert_eq!(version_indices.get(24).unwrap(), 24);
+
+    let history = client.get_document_history(&project_id);
+    assert_eq!(history.len(), 25);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #18)")]
+fn test_anchor_document_batch_exceeds_limit() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-OVERFLOW");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+
+    let mut documents = Vec::new(&env);
+    let cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let doc_type = SorobanString::from_str(&env, "DOC");
+
+    for _ in 0..26 {
+        documents.push_back((cid.clone(), doc_type.clone()));
+    }
+
+    client.anchor_document_batch(&project_id, &documents); // Should panic with BatchTooLarge (18)
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #6)")]
+fn test_anchor_document_batch_invalid_cid_fails_fast() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-FAIL-FAST");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+
+    let mut documents = Vec::new(&env);
+    let valid_cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let invalid_cid = SorobanString::from_str(&env, "QmInvalid");
+    let doc_type = SorobanString::from_str(&env, "DOC");
+
+    documents.push_back((valid_cid.clone(), doc_type.clone()));
+    documents.push_back((invalid_cid, doc_type.clone()));
+
+    client.anchor_document_batch(&project_id, &documents); // Should panic with InvalidCidFormat (6)
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #19)")]
+fn test_anchor_document_batch_empty_document_type() {
+    let (env, _, client) = create_contract();
+    let admin = Address::generate(&env);
+    let project_owner = Address::generate(&env);
+    let project_id = SorobanString::from_str(&env, "PROJ-EMPTY-TYPE");
+
+    client.initialize(&admin);
+    client.register_project(&project_id, &project_owner);
+
+    let mut documents = Vec::new(&env);
+    let valid_cid = SorobanString::from_str(&env, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
+    let empty_doc_type = SorobanString::from_str(&env, "");
+
+    documents.push_back((valid_cid, empty_doc_type));
+
+    client.anchor_document_batch(&project_id, &documents); // Should panic with InvalidDocumentType (19)
+}
+
 // ========== Validation Tests ==========
 
 #[test]

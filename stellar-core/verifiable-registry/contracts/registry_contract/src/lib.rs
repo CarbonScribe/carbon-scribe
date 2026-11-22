@@ -13,7 +13,10 @@ use events::{
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use storage::extend_instance_ttl;
 use types::{CompactionConfig, DocumentRecord, Error, PaginatedProjects};
-use validation::{normalize_project_id, validate_address, validate_ipfs_cid, validate_project_id};
+use validation::{
+    normalize_project_id, validate_address, validate_document_type, validate_ipfs_cid,
+    validate_project_id, MAX_ANCHOR_BATCH_SIZE,
+};
 
 #[contract]
 pub struct ProjectRegistry;
@@ -48,6 +51,11 @@ impl ProjectRegistry {
     /// Return whether strict monotonic timestamp enforcement is currently enabled.
     pub fn is_monotonic_enforcement_enabled(env: Env) -> bool {
         storage::get_monotonic_enforcement(&env)
+    }
+
+    /// Return the maximum allowable batch size for anchor_document_batch.
+    pub fn get_max_batch_size(_env: Env) -> u32 {
+        MAX_ANCHOR_BATCH_SIZE
     }
 
     /// Register a new project and assign initial owner (admin only).
@@ -216,8 +224,9 @@ impl ProjectRegistry {
         let owner = storage::get_project_owner(&env, &normalized_project_id)?;
         owner.require_auth();
 
-        // Validate IPFS CID format
+        // Validate IPFS CID format and document type
         validate_ipfs_cid(&ipfs_cid)?;
+        validate_document_type(&document_type)?;
 
         let timestamp = env.ledger().timestamp();
 
@@ -289,6 +298,17 @@ impl ProjectRegistry {
             return Err(Error::EmptyBatch);
         }
 
+        if documents.len() > MAX_ANCHOR_BATCH_SIZE {
+            return Err(Error::BatchTooLarge);
+        }
+
+        // Validate CID and document-type length for every item before any write (all-or-nothing)
+        for i in 0..documents.len() {
+            let (ipfs_cid, document_type) = documents.get(i).unwrap();
+            validate_ipfs_cid(&ipfs_cid)?;
+            validate_document_type(&document_type)?;
+        }
+
         let timestamp = env.ledger().timestamp();
 
         // Enforce strict monotonic timestamps when the flag is enabled
@@ -307,9 +327,6 @@ impl ProjectRegistry {
 
         for i in 0..documents.len() {
             let (ipfs_cid, document_type) = documents.get(i).unwrap();
-
-            // Validate IPFS CID format
-            validate_ipfs_cid(&ipfs_cid)?;
 
             let record = DocumentRecord {
                 ipfs_cid: ipfs_cid.clone(),

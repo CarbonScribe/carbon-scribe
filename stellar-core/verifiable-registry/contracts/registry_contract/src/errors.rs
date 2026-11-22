@@ -21,4 +21,6 @@ pub enum Error {
     NoPendingTransfer = 15,
     NotPendingOwner = 16,
     InvalidProjectId = 17,
+    BatchTooLarge = 18,
+    InvalidDocumentType = 19,
 }

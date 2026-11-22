@@ -2,6 +2,17 @@ use crate::types::Error;
 use soroban_sdk::{Address, Bytes, Executable, String};
 
 const MAX_PROJECT_ID_LEN: u32 = 128;
+pub const MAX_ANCHOR_BATCH_SIZE: u32 = 25;
+pub const MAX_DOCUMENT_TYPE_LEN: u32 = 64;
+
+/// Validates document type length: must be non-empty and at most 64 characters.
+pub fn validate_document_type(document_type: &String) -> Result<(), Error> {
+    let len = document_type.len();
+    if len == 0 || len > MAX_DOCUMENT_TYPE_LEN {
+        return Err(Error::InvalidDocumentType);
+    }
+    Ok(())
+}
 
 // --- IPFS CID validation (#639) ---
 //
