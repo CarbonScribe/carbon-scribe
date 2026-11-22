@@ -1,7 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
+import axios from "axios";
 
 export type ErrorCategory =
-  "rate_limited" | "connection_error" | "invalid_request" | "unknown";
+  | "rate_limited"
+  | "connection_error"
+  | "invalid_request"
+  | "timeout"
+  | "unknown";
 
 export interface ClassifiedError {
   category: ErrorCategory;
@@ -18,6 +23,24 @@ export function classifyAnthropicError(
   err: unknown,
   agentName: string = "agent",
 ): ClassifiedError {
+  if (
+    err instanceof Anthropic.APIUserAbortError ||
+    err instanceof Anthropic.APIConnectionTimeoutError ||
+    (err instanceof Error &&
+      (err.name === "AbortError" || err.name === "TimeoutError")) ||
+    (axios.isAxiosError(err) &&
+      (err.code === "ECONNABORTED" || err.code === "ERR_CANCELED")) ||
+    (err instanceof Error && /aborted|timeout|timed out/i.test(err.message))
+  ) {
+    return {
+      category: "timeout",
+      message: `Request timed out or was aborted: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      retryable: true,
+    };
+  }
+
   if (err instanceof Anthropic.RateLimitError) {
     return {
       category: "rate_limited",

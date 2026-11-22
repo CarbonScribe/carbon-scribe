@@ -816,6 +816,7 @@ export const openApiSpec = {
           "rate_limited",
           "connection_error",
           "invalid_request",
+          "timeout",
           "unknown",
         ],
         description: "Classification of the underlying failure cause",

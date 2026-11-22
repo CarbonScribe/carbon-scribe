@@ -112,6 +112,14 @@ export const env = {
   // force-exits rather than hanging a deploy indefinitely.
   shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", 15000),
 
+  // Wall-clock request timeout (#827): bounds the maximum time an agent run
+  // may take before returning a 504 and aborting pending LLM and tool calls.
+  agentRequestTimeoutMs: positiveInteger("AGENT_REQUEST_TIMEOUT_MS", 120000),
+
+  // Individual timeout for outbound HTTP calls made by agent-service clients
+  // (corporate-platform, project-portal, Anthropic) (#827).
+  upstreamHttpTimeoutMs: positiveInteger("UPSTREAM_HTTP_TIMEOUT_MS", 10000),
+
   // Explicit express.json() body size cap, shared by every agent route
   // (#704) — see shared/middleware/body-limit.ts for why 1 MiB and why one
   // value for all four agents.

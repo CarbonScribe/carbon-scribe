@@ -2,6 +2,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
+import { getRequestAbortSignal } from "../../shared/middleware/timeout.js";
 import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
 import { runWithTokenBudget } from "../../llm/budget.js";
 import {
@@ -63,21 +64,26 @@ interface ToolCallRecord {
 
 export async function runPddDraftAgent(
   req: AgentRunRequest,
+  options?: { signal?: AbortSignal },
 ): Promise<AgentRunResult> {
-  const runner = anthropic.beta.messages.toolRunner({
-    model: DEFAULT_MODEL,
-    max_tokens: 16000,
-    max_iterations: env.agentMaxIterations,
-    system: SYSTEM_PROMPT,
-    tools: pddDraftTools,
-    output_config: { format: outputFormat },
-    messages: [
-      {
-        role: "user",
-        content: `Project developer submission (JSON):\n${JSON.stringify(req.input, null, 2)}`,
-      },
-    ],
-  });
+  const signal = options?.signal ?? getRequestAbortSignal();
+  const runner = anthropic.beta.messages.toolRunner(
+    {
+      model: DEFAULT_MODEL,
+      max_tokens: 16000,
+      max_iterations: env.agentMaxIterations,
+      system: SYSTEM_PROMPT,
+      tools: pddDraftTools,
+      output_config: { format: outputFormat },
+      messages: [
+        {
+          role: "user",
+          content: `Project developer submission (JSON):\n${JSON.stringify(req.input, null, 2)}`,
+        },
+      ],
+    },
+    signal ? { signal } : undefined,
+  );
 
   function extractToolCalls(): ToolCallRecord[] {
     // First pass: collect every tool_result content block from user turns,
@@ -271,6 +277,7 @@ async function failRun(
     requestedBy: req.requestedBy,
     toolCalls,
     status: "failed",
+    errorCategory: errorInfo?.category,
   });
   logger.info(
     {
@@ -278,6 +285,7 @@ async function failRun(
       requestId: req.requestId,
       status: "failed",
       cumulativeTokens,
+      errorCategory: errorInfo?.category,
     },
     "agent run token usage",
   );

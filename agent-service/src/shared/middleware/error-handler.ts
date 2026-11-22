@@ -20,6 +20,10 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (res.headersSent) {
+    return;
+  }
+
   logger.error(
     {
       error: err,

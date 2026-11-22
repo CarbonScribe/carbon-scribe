@@ -7,6 +7,8 @@ ALTER TABLE agent_approval_requests
 
 ALTER TABLE agent_audit_log
     ADD COLUMN IF NOT EXISTS calling_service TEXT;
+ALTER TABLE agent_audit_log
+    ADD COLUMN IF NOT EXISTS error_category TEXT;
 
 ALTER TABLE agent_approved_action_outbox
     ADD COLUMN IF NOT EXISTS id BIGSERIAL;

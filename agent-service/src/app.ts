@@ -4,9 +4,13 @@ import { env } from "./config/env.js";
 import { router } from "./routes/index.js";
 import { errorHandler } from "./shared/middleware/error-handler.js";
 import { helmetOptions } from "./shared/middleware/security-headers.js";
+import { timeoutMiddleware } from "./shared/middleware/timeout.js";
 
 export function createApp(): express.Express {
   const app = express();
+
+  // Request timeout and cancellation deadline (#827)
+  app.use(timeoutMiddleware);
 
   // Baseline HTTP hardening (issue #631), registered before any route so
   // every response — the JSON routes, 401s from the auth middleware, and the

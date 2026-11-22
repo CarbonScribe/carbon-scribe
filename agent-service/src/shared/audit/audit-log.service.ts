@@ -36,6 +36,7 @@ export interface AgentAuditEntry {
   requestedBy: string;
   actor?: string;
   callingService?: string;
+  errorCategory?: string;
   /** Every tool call the agent made this run, in order. */
   toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
   status:
@@ -128,14 +129,15 @@ export class AuditLogService {
 
     await this.pool.query(
       `INSERT INTO agent_audit_log
-         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (request_id, agent, requested_by, actor, calling_service, error_category, status, tool_calls, occurred_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         entry.requestId,
         entry.agent,
         entry.requestedBy,
         entry.actor ?? null,
         entry.callingService ?? null,
+        entry.errorCategory ?? null,
         entry.status,
         JSON.stringify(redactedToolCalls),
         entry.timestamp,
@@ -160,11 +162,12 @@ export class AuditLogService {
       requested_by: string;
       actor: string | null;
       calling_service: string | null;
+      error_category: string | null;
       status: AgentAuditEntry["status"];
       tool_calls: AgentAuditEntry["toolCalls"];
       occurred_at: Date;
     }>(
-      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at
+      `SELECT request_id, agent, requested_by, actor, calling_service, error_category, status, tool_calls, occurred_at
        FROM agent_audit_log
        WHERE request_id = $1
        ORDER BY occurred_at ASC, id ASC`,
@@ -178,6 +181,7 @@ export class AuditLogService {
       requestedBy: row.requested_by,
       ...(row.actor ? { actor: row.actor } : {}),
       ...(row.calling_service ? { callingService: row.calling_service } : {}),
+      ...(row.error_category ? { errorCategory: row.error_category } : {}),
       toolCalls: row.tool_calls,
       status: row.status,
     }));

@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import type { ErrorCategory } from "../llm/errors.js";
+import { getRequestAbortSignal } from "../shared/middleware/timeout.js";
 import {
   type ClientCallOptions,
   type CallContext,
@@ -30,6 +31,15 @@ import {
 // client sends, so there is nothing to authenticate against yet.
 const http = axios.create({
   baseURL: env.projectPortalBaseUrl,
+  timeout: env.upstreamHttpTimeoutMs,
+});
+
+http.interceptors?.request?.use?.((config) => {
+  const signal = getRequestAbortSignal();
+  if (signal && !config.signal) {
+    config.signal = signal;
+  }
+  return config;
 });
 
 // ---------------------------------------------------------------------------

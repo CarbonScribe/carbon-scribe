@@ -14,6 +14,11 @@ export interface ClientCallOptions {
    * AgentRunRequest today, so tool-driven calls currently log without it.
    */
   requestId?: string;
+  /**
+   * Abort signal to cancel outbound HTTP requests when the client disconnects
+   * or the overall agent run times out (#827).
+   */
+  signal?: AbortSignal;
 }
 
 export interface CallContext {
@@ -27,10 +32,21 @@ export interface CallContext {
   method: string;
   path: string;
   requestId?: string;
+  signal?: AbortSignal;
 }
 
 export function isRetryableError(err: unknown): boolean {
+  if (
+    axios.isCancel(err) ||
+    (err instanceof Error &&
+      (err.name === "AbortError" || err.name === "CanceledError"))
+  ) {
+    return false;
+  }
   if (!axios.isAxiosError(err)) {
+    return false;
+  }
+  if (err.code === "ERR_CANCELED") {
     return false;
   }
   // No response at all means the request never completed (network error,
@@ -68,6 +84,9 @@ export async function withRetry<T>(
   let attempt = 0;
   for (;;) {
     try {
+      if (context.signal?.aborted) {
+        throw context.signal.reason ?? new Error("Request aborted");
+      }
       const value = await fn();
       return { value, attempts: attempt + 1 };
     } catch (err) {

@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { signServiceToken } from "../shared/auth/service-token.js";
+import { getRequestAbortSignal } from "../shared/middleware/timeout.js";
 import {
   type ClientCallOptions,
   type CallContext,
@@ -23,9 +24,15 @@ import {
 // a matching service-token guard before these credentials are authenticated.
 const http = axios.create({
   baseURL: env.corporatePlatformBaseUrl,
+  timeout: env.upstreamHttpTimeoutMs,
 });
 
-http.interceptors.request.use((config) => {
+http.interceptors?.request?.use?.((config) => {
+  const signal = getRequestAbortSignal();
+  if (signal && !config.signal) {
+    config.signal = signal;
+  }
+
   if (!env.agentServiceJwtSecret) {
     throw new Error("Missing required env var: AGENT_SERVICE_JWT_SECRET");
   }
