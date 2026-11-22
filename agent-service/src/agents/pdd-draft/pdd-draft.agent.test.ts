@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../shared/logging/logger.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
@@ -34,7 +35,12 @@ const { runPddDraftAgent } = await import("./pdd-draft.agent.js");
 interface FakeTurn {
   stop_reason: string;
   content: unknown[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 interface FakeRunnerOptions {
@@ -582,5 +588,68 @@ describe("runPddDraftAgent", () => {
         cache_control: { type: "ephemeral" },
       },
     ]);
+  });
+
+  it("records per-agent token usage, cost estimate, and emits agent_run_usage log (#829)", async () => {
+    const infoSpy = vi.spyOn(logger, "info");
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                methodology: "VM0007",
+                sections: [],
+                incompleteSections: [],
+                citations: [],
+              }),
+            },
+          ],
+          usage: {
+            input_tokens: 700,
+            output_tokens: 180,
+            cache_creation_input_tokens: 150,
+            cache_read_input_tokens: 80,
+          },
+        },
+      }),
+    );
+
+    await runPddDraftAgent({
+      requestId: "req-cost-pdd",
+      requestedBy: "user-cost",
+      input: {},
+    });
+
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "pdd-draft",
+        requestId: "req-cost-pdd",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 700,
+        outputTokens: 180,
+        cacheCreationInputTokens: 150,
+        cacheReadInputTokens: 80,
+        totalTokens: 880,
+        estimatedCostUsd: expect.any(Number),
+      }),
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "pdd-draft",
+        requestId: "req-cost-pdd",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 700,
+        outputTokens: 180,
+        totalTokens: 880,
+        estimatedCostUsd: expect.any(Number),
+      }),
+      "agent_run_usage",
+    );
   });
 });

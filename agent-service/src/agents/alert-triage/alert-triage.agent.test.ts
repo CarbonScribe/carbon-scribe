@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../shared/logging/logger.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
@@ -34,7 +35,12 @@ const { runAlertTriageAgent } = await import("./alert-triage.agent.js");
 interface FakeTurn {
   stop_reason: string;
   content: unknown[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 interface FakeRunnerOptions {
@@ -515,5 +521,67 @@ describe("runAlertTriageAgent", () => {
         cache_control: { type: "ephemeral" },
       },
     ]);
+  });
+
+  it("records per-agent token usage, cost estimate, and emits agent_run_usage log (#829)", async () => {
+    const infoSpy = vi.spyOn(logger, "info");
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                verdict: "suppress",
+                reasoning: "Seasonal leaf drop.",
+                citations: [],
+              }),
+            },
+          ],
+          usage: {
+            input_tokens: 600,
+            output_tokens: 100,
+            cache_creation_input_tokens: 300,
+            cache_read_input_tokens: 40,
+          },
+        },
+      }),
+    );
+
+    await runAlertTriageAgent({
+      requestId: "req-cost-alert",
+      requestedBy: "user-cost",
+      input: {},
+    });
+
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "alert-triage",
+        requestId: "req-cost-alert",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 600,
+        outputTokens: 100,
+        cacheCreationInputTokens: 300,
+        cacheReadInputTokens: 40,
+        totalTokens: 700,
+        estimatedCostUsd: expect.any(Number),
+      }),
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "alert-triage",
+        requestId: "req-cost-alert",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 600,
+        outputTokens: 100,
+        totalTokens: 700,
+        estimatedCostUsd: expect.any(Number),
+      }),
+      "agent_run_usage",
+    );
   });
 });

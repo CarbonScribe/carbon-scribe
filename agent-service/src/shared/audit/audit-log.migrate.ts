@@ -25,6 +25,7 @@ export async function migrateAuditLogSchema(pool: Queryable): Promise<void> {
     "001_create_agent_audit_log.sql",
     "002_create_agent_approvals.sql",
     "003_extend_approval_outbox.sql",
+    "004_add_token_usage_and_cost.sql",
   ]) {
     const sql = readFileSync(join(MIGRATIONS_DIR, migration), "utf8");
     await pool.query(sql);

@@ -5,6 +5,7 @@ import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
 import { classifyAnthropicError, ErrorCategory } from "../../llm/errors.js";
 import { runWithTokenBudget } from "../../llm/budget.js";
 import { cachedSystem } from "../../llm/cache.js";
+import { estimateRunCost } from "../../llm/cost.js";
 import {
   auditLog,
   truncateToolOutput,
@@ -121,10 +122,29 @@ export async function runPddDraftAgent(
   const {
     message: finalMessage,
     cumulativeTokens,
+    inputTokens,
+    outputTokens,
     cacheCreationInputTokens,
     cacheReadInputTokens,
+    iterations,
   } = budgetResult;
-  const cacheTokens = { cacheCreationInputTokens, cacheReadInputTokens };
+  const estimatedCostUsd = estimateRunCost({
+    model: DEFAULT_MODEL,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  });
+  const usageStats = {
+    model: DEFAULT_MODEL,
+    iterations,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    totalTokens: cumulativeTokens,
+    estimatedCostUsd,
+  };
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -135,9 +155,8 @@ export async function runPddDraftAgent(
       req,
       extractToolCalls(),
       classified.message,
-      cumulativeTokens,
+      usageStats,
       classified,
-      cacheTokens,
     );
   }
 
@@ -146,9 +165,7 @@ export async function runPddDraftAgent(
       req,
       extractToolCalls(),
       `PDD drafting agent aborted after exceeding its token budget (used ${cumulativeTokens} of ${env.agentMaxTokensPerRun} tokens).`,
-      cumulativeTokens,
-      undefined,
-      cacheTokens,
+      usageStats,
     );
   }
 
@@ -161,9 +178,7 @@ export async function runPddDraftAgent(
       req,
       toolCalls,
       "Anthropic declined to complete this PDD drafting request.",
-      cumulativeTokens,
-      undefined,
-      cacheTokens,
+      usageStats,
     );
   }
 
@@ -180,9 +195,7 @@ export async function runPddDraftAgent(
       req,
       toolCalls,
       "PDD drafting agent finished without producing a text response.",
-      cumulativeTokens,
-      undefined,
-      cacheTokens,
+      usageStats,
     );
   }
 
@@ -196,9 +209,7 @@ export async function runPddDraftAgent(
       `PDD drafting agent returned output that could not be parsed: ${
         err instanceof Error ? err.message : String(err)
       }`,
-      cumulativeTokens,
-      undefined,
-      cacheTokens,
+      usageStats,
     );
   }
 
@@ -243,9 +254,7 @@ export async function runPddDraftAgent(
       req,
       toolCalls,
       err instanceof Error ? err.message : String(err),
-      cumulativeTokens,
-      undefined,
-      cacheTokens,
+      usageStats,
     );
   }
 
@@ -256,7 +265,18 @@ export async function runPddDraftAgent(
     requestedBy: req.requestedBy,
     toolCalls,
     status,
+    ...usageStats,
   });
+  logger.info(
+    {
+      agent: "pdd-draft",
+      requestId: req.requestId,
+      requestedBy: req.requestedBy,
+      status,
+      ...usageStats,
+    },
+    "agent_run_usage",
+  );
   logger.info(
     {
       agent: "pdd-draft",
@@ -286,13 +306,19 @@ async function failRun(
   req: AgentRunRequest,
   toolCalls: ToolCallRecord[],
   message: string,
-  cumulativeTokens: number,
-  errorInfo?: { category: ErrorCategory; retryable: boolean },
-  cacheTokens?: {
-    cacheCreationInputTokens: number;
-    cacheReadInputTokens: number;
+  usageStats?: {
+    model?: string;
+    iterations?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+    totalTokens?: number;
+    estimatedCostUsd?: number;
   },
+  errorInfo?: { category: ErrorCategory; retryable: boolean },
 ): Promise<AgentRunResult> {
+  const cumulativeTokens = usageStats?.totalTokens ?? 0;
   await auditLog.record({
     timestamp: new Date().toISOString(),
     agent: "pdd-draft",
@@ -300,15 +326,26 @@ async function failRun(
     requestedBy: req.requestedBy,
     toolCalls,
     status: "failed",
+    ...usageStats,
   });
+  logger.info(
+    {
+      agent: "pdd-draft",
+      requestId: req.requestId,
+      requestedBy: req.requestedBy,
+      status: "failed",
+      ...usageStats,
+    },
+    "agent_run_usage",
+  );
   logger.info(
     {
       agent: "pdd-draft",
       requestId: req.requestId,
       status: "failed",
       cumulativeTokens,
-      cacheCreationInputTokens: cacheTokens?.cacheCreationInputTokens ?? 0,
-      cacheReadInputTokens: cacheTokens?.cacheReadInputTokens ?? 0,
+      cacheCreationInputTokens: usageStats?.cacheCreationInputTokens ?? 0,
+      cacheReadInputTokens: usageStats?.cacheReadInputTokens ?? 0,
     },
     "agent run token usage",
   );

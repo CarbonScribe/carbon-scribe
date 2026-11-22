@@ -56,6 +56,78 @@ describe("AuditLogService", () => {
     },
   );
 
+  it("stores and retrieves token usage, iterations, model, and cost estimate (#829)", async () => {
+    const entry: AgentAuditEntry = {
+      timestamp: "2026-08-26T12:00:00.000Z",
+      agent: "discovery",
+      requestId: "req-cost-test",
+      requestedBy: "user-1",
+      model: "claude-opus-5",
+      iterations: 3,
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheCreationInputTokens: 500,
+      cacheReadInputTokens: 200,
+      totalTokens: 1500,
+      estimatedCostUsd: 0.045,
+      toolCalls: [],
+      status: "drafted",
+    };
+
+    await service.record(entry);
+    const [found] = await service.findByRequestId(entry.requestId);
+
+    expect(found).toEqual(entry);
+  });
+
+  it("queries daily token usage aggregations from the view (#829)", async () => {
+    await service.record({
+      timestamp: "2026-08-26T10:00:00.000Z",
+      agent: "discovery",
+      requestId: "req-d1",
+      requestedBy: "u1",
+      model: "claude-3-5-sonnet",
+      iterations: 2,
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      totalTokens: 1200,
+      estimatedCostUsd: 0.006,
+      toolCalls: [],
+      status: "drafted",
+    });
+
+    await service.record({
+      timestamp: "2026-08-26T14:00:00.000Z",
+      agent: "discovery",
+      requestId: "req-d2",
+      requestedBy: "u2",
+      model: "claude-3-5-sonnet",
+      iterations: 1,
+      inputTokens: 500,
+      outputTokens: 100,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      totalTokens: 600,
+      estimatedCostUsd: 0.003,
+      toolCalls: [],
+      status: "drafted",
+    });
+
+    const daily = await service.getDailyTokenUsage({ agent: "discovery" });
+    expect(daily).toHaveLength(1);
+    expect(daily[0]).toMatchObject({
+      agent: "discovery",
+      model: "claude-3-5-sonnet",
+      runCount: 2,
+      totalInputTokens: 1500,
+      totalOutputTokens: 300,
+      totalTokens: 1800,
+      totalEstimatedCostUsd: 0.009,
+    });
+  });
+
   it("round-trips the output field of tool calls correctly", async () => {
     const toolOutput = {
       credits: [

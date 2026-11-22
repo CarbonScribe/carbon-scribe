@@ -44,10 +44,16 @@ export interface BudgetedRunResult<TTurn> {
   message: TTurn | undefined;
   /** Cumulative input+output tokens across every turn actually consumed. */
   cumulativeTokens: number;
+  /** Cumulative input tokens across all turns (#829). */
+  inputTokens: number;
+  /** Cumulative output tokens across all turns (#829). */
+  outputTokens: number;
   /** Cumulative cache creation tokens across all turns (#830). */
   cacheCreationInputTokens: number;
   /** Cumulative cache read tokens across all turns (#830). */
   cacheReadInputTokens: number;
+  /** Total number of tool-runner iterations (turns) executed (#829). */
+  iterations: number;
   /** True if the run was stopped early for exceeding maxTokensPerRun,
    *  before max_iterations was reached. */
   budgetExceeded: boolean;
@@ -80,13 +86,19 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
 ): Promise<BudgetedRunResult<TTurn>> {
   let message: TTurn | undefined;
   let cumulativeTokens = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let cacheCreationInputTokens = 0;
   let cacheReadInputTokens = 0;
+  let iterations = 0;
 
   try {
     for await (const turn of runner) {
       message = turn;
+      iterations++;
       if (turn.usage) {
+        inputTokens += turn.usage.input_tokens;
+        outputTokens += turn.usage.output_tokens;
         cumulativeTokens += turn.usage.input_tokens + turn.usage.output_tokens;
         if (turn.usage.cache_creation_input_tokens != null) {
           cacheCreationInputTokens += turn.usage.cache_creation_input_tokens;
@@ -99,8 +111,11 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
         return {
           message,
           cumulativeTokens,
+          inputTokens,
+          outputTokens,
           cacheCreationInputTokens,
           cacheReadInputTokens,
+          iterations,
           budgetExceeded: true,
         };
       }
@@ -109,8 +124,11 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
     return {
       message,
       cumulativeTokens,
+      inputTokens,
+      outputTokens,
       cacheCreationInputTokens,
       cacheReadInputTokens,
+      iterations,
       budgetExceeded: false,
       error,
     };
@@ -119,8 +137,11 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
   return {
     message,
     cumulativeTokens,
+    inputTokens,
+    outputTokens,
     cacheCreationInputTokens,
     cacheReadInputTokens,
+    iterations,
     budgetExceeded: false,
   };
 }

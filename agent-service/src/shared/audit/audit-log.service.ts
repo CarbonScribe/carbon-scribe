@@ -36,6 +36,14 @@ export interface AgentAuditEntry {
   requestedBy: string;
   actor?: string;
   callingService?: string;
+  model?: string;
+  iterations?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
   /** Every tool call the agent made this run, in order. */
   toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
   status:
@@ -47,6 +55,19 @@ export interface AgentAuditEntry {
     | "dispatch-processed"
     | "dispatch-retry"
     | "dispatch-failed";
+}
+
+export interface DailyTokenUsageRecord {
+  day: string;
+  agent: string;
+  model: string | null;
+  runCount: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheCreationInputTokens: number;
+  totalCacheReadInputTokens: number;
+  totalTokens: number;
+  totalEstimatedCostUsd: number;
 }
 
 /**
@@ -128,8 +149,9 @@ export class AuditLogService {
 
     await this.pool.query(
       `INSERT INTO agent_audit_log
-         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at,
+          model, iterations, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, total_tokens, estimated_cost_usd)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         entry.requestId,
         entry.agent,
@@ -139,6 +161,14 @@ export class AuditLogService {
         entry.status,
         JSON.stringify(redactedToolCalls),
         entry.timestamp,
+        entry.model ?? null,
+        entry.iterations ?? null,
+        entry.inputTokens ?? null,
+        entry.outputTokens ?? null,
+        entry.cacheCreationInputTokens ?? null,
+        entry.cacheReadInputTokens ?? null,
+        entry.totalTokens ?? null,
+        entry.estimatedCostUsd ?? null,
       ],
     );
   }
@@ -163,8 +193,18 @@ export class AuditLogService {
       status: AgentAuditEntry["status"];
       tool_calls: AgentAuditEntry["toolCalls"];
       occurred_at: Date;
+      model: string | null;
+      iterations: number | null;
+      input_tokens: number | null;
+      output_tokens: number | null;
+      cache_creation_input_tokens: number | null;
+      cache_read_input_tokens: number | null;
+      total_tokens: number | null;
+      estimated_cost_usd: number | string | null;
     }>(
-      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at
+      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at,
+              model, iterations, input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens,
+              total_tokens, estimated_cost_usd
        FROM agent_audit_log
        WHERE request_id = $1
        ORDER BY occurred_at ASC, id ASC`,
@@ -178,8 +218,95 @@ export class AuditLogService {
       requestedBy: row.requested_by,
       ...(row.actor ? { actor: row.actor } : {}),
       ...(row.calling_service ? { callingService: row.calling_service } : {}),
+      ...(row.model != null ? { model: row.model } : {}),
+      ...(row.iterations != null ? { iterations: Number(row.iterations) } : {}),
+      ...(row.input_tokens != null
+        ? { inputTokens: Number(row.input_tokens) }
+        : {}),
+      ...(row.output_tokens != null
+        ? { outputTokens: Number(row.output_tokens) }
+        : {}),
+      ...(row.cache_creation_input_tokens != null
+        ? { cacheCreationInputTokens: Number(row.cache_creation_input_tokens) }
+        : {}),
+      ...(row.cache_read_input_tokens != null
+        ? { cacheReadInputTokens: Number(row.cache_read_input_tokens) }
+        : {}),
+      ...(row.total_tokens != null
+        ? { totalTokens: Number(row.total_tokens) }
+        : {}),
+      ...(row.estimated_cost_usd != null
+        ? {
+            estimatedCostUsd: Number(Number(row.estimated_cost_usd).toFixed(6)),
+          }
+        : {}),
       toolCalls: row.tool_calls,
       status: row.status,
+    }));
+  }
+
+  /**
+   * Simple query against the agent_daily_token_usage view for daily tokens
+   * and cost breakdown per agent (#829).
+   */
+  async getDailyTokenUsage(options?: {
+    agent?: string;
+    model?: string;
+  }): Promise<DailyTokenUsageRecord[]> {
+    let query = `
+      SELECT
+        day, agent, model, run_count,
+        total_input_tokens, total_output_tokens,
+        total_cache_creation_input_tokens, total_cache_read_input_tokens,
+        total_tokens, total_estimated_cost_usd
+      FROM agent_daily_token_usage
+    `;
+    const params: unknown[] = [];
+    const conditions: string[] = [];
+    if (options?.agent) {
+      params.push(options.agent);
+      conditions.push(`agent = $${params.length}`);
+    }
+    if (options?.model) {
+      params.push(options.model);
+      conditions.push(`model = $${params.length}`);
+    }
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(" AND ")}`;
+    }
+    query += ` ORDER BY day DESC, agent ASC`;
+
+    const result = await this.pool.query<{
+      day: Date | string;
+      agent: string;
+      model: string | null;
+      run_count: string | number;
+      total_input_tokens: string | number;
+      total_output_tokens: string | number;
+      total_cache_creation_input_tokens: string | number;
+      total_cache_read_input_tokens: string | number;
+      total_tokens: string | number;
+      total_estimated_cost_usd: string | number;
+    }>(query, params);
+
+    return result.rows.map((r) => ({
+      day:
+        r.day instanceof Date
+          ? r.day.toISOString().slice(0, 10)
+          : String(r.day).slice(0, 10),
+      agent: r.agent,
+      model: r.model,
+      runCount: Number(r.run_count),
+      totalInputTokens: Number(r.total_input_tokens),
+      totalOutputTokens: Number(r.total_output_tokens),
+      totalCacheCreationInputTokens: Number(
+        r.total_cache_creation_input_tokens,
+      ),
+      totalCacheReadInputTokens: Number(r.total_cache_read_input_tokens),
+      totalTokens: Number(r.total_tokens),
+      totalEstimatedCostUsd: Number(
+        Number(r.total_estimated_cost_usd).toFixed(6),
+      ),
     }));
   }
 

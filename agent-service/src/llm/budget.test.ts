@@ -136,8 +136,11 @@ describe("runWithTokenBudget", () => {
     });
 
     expect(result.cumulativeTokens).toBe(2150);
+    expect(result.inputTokens).toBe(1900);
+    expect(result.outputTokens).toBe(250);
     expect(result.cacheCreationInputTokens).toBe(1200);
     expect(result.cacheReadInputTokens).toBe(1200);
+    expect(result.iterations).toBe(2);
     expect(result.budgetExceeded).toBe(false);
   });
 });

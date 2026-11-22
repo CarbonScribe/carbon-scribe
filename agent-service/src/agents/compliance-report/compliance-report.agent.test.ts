@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { logger } from "../../shared/logging/logger.js";
 
 const auditRecord = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../shared/audit/audit-log.service.js", () => ({
@@ -35,7 +36,12 @@ const { runComplianceReportAgent } =
 interface FakeTurn {
   stop_reason: string;
   content: unknown[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 interface FakeRunnerOptions {
@@ -452,5 +458,68 @@ describe("runComplianceReportAgent", () => {
         cache_control: { type: "ephemeral" },
       },
     ]);
+  });
+
+  it("records per-agent token usage, cost estimate, and emits agent_run_usage log (#829)", async () => {
+    const infoSpy = vi.spyOn(logger, "info");
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                framework: "VCMI",
+                sections: [],
+                gaps: [],
+                citations: [],
+              }),
+            },
+          ],
+          usage: {
+            input_tokens: 800,
+            output_tokens: 150,
+            cache_creation_input_tokens: 200,
+            cache_read_input_tokens: 50,
+          },
+        },
+      }),
+    );
+
+    await runComplianceReportAgent({
+      requestId: "req-cost-compliance",
+      requestedBy: "user-cost",
+      input: {},
+    });
+
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "compliance-report",
+        requestId: "req-cost-compliance",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 800,
+        outputTokens: 150,
+        cacheCreationInputTokens: 200,
+        cacheReadInputTokens: 50,
+        totalTokens: 950,
+        estimatedCostUsd: expect.any(Number),
+      }),
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "compliance-report",
+        requestId: "req-cost-compliance",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 800,
+        outputTokens: 150,
+        totalTokens: 950,
+        estimatedCostUsd: expect.any(Number),
+      }),
+      "agent_run_usage",
+    );
   });
 });

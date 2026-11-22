@@ -34,7 +34,12 @@ const { logger } = await import("../../shared/logging/logger.js");
 interface FakeTurn {
   stop_reason: string;
   content: unknown[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens?: number;
+    cache_read_input_tokens?: number;
+  };
 }
 
 interface FakeRunnerOptions {
@@ -455,6 +460,64 @@ describe("runDiscoveryAgent", () => {
         cacheReadInputTokens: 100,
       }),
       "agent run token usage",
+    );
+  });
+
+  it("records per-agent token usage, cost estimate, and emits agent_run_usage log (#829)", async () => {
+    const infoSpy = vi.spyOn(logger, "info");
+    toolRunnerMock.mockReturnValue(
+      fakeRunner({
+        finalMessage: {
+          stop_reason: "end_turn",
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({ recommendations: [], citations: [] }),
+            },
+          ],
+          usage: {
+            input_tokens: 1000,
+            output_tokens: 200,
+            cache_creation_input_tokens: 500,
+            cache_read_input_tokens: 100,
+          },
+        },
+      }),
+    );
+
+    await runDiscoveryAgent({
+      requestId: "req-cost-logging",
+      requestedBy: "user-cost",
+      input: {},
+    });
+
+    expect(auditRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "discovery",
+        requestId: "req-cost-logging",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 1000,
+        outputTokens: 200,
+        cacheCreationInputTokens: 500,
+        cacheReadInputTokens: 100,
+        totalTokens: 1200,
+        estimatedCostUsd: expect.any(Number),
+      }),
+    );
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent: "discovery",
+        requestId: "req-cost-logging",
+        model: "claude-opus-5",
+        iterations: 1,
+        inputTokens: 1000,
+        outputTokens: 200,
+        totalTokens: 1200,
+        estimatedCostUsd: expect.any(Number),
+      }),
+      "agent_run_usage",
     );
   });
 
