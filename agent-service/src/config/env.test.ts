@@ -82,4 +82,63 @@ describe("env configuration", () => {
       expect(env.maxRequestBodyBytes).toBe(2_097_152);
     });
   });
+
+  describe("Anthropic client retry and timeout settings (#828)", () => {
+    const originalRetries = process.env.ANTHROPIC_MAX_RETRIES;
+    const originalTimeout = process.env.ANTHROPIC_TIMEOUT_MS;
+
+    afterEach(() => {
+      if (originalRetries === undefined) {
+        delete process.env.ANTHROPIC_MAX_RETRIES;
+      } else {
+        process.env.ANTHROPIC_MAX_RETRIES = originalRetries;
+      }
+      if (originalTimeout === undefined) {
+        delete process.env.ANTHROPIC_TIMEOUT_MS;
+      } else {
+        process.env.ANTHROPIC_TIMEOUT_MS = originalTimeout;
+      }
+      vi.resetModules();
+    });
+
+    it("defaults to 2 retries and 60000ms timeout when unset", async () => {
+      delete process.env.ANTHROPIC_MAX_RETRIES;
+      delete process.env.ANTHROPIC_TIMEOUT_MS;
+      vi.resetModules();
+
+      const { env } = await import("./env.js");
+
+      expect(env.anthropicMaxRetries).toBe(2);
+      expect(env.anthropicTimeoutMs).toBe(60000);
+    });
+
+    it("allows overriding ANTHROPIC_MAX_RETRIES and ANTHROPIC_TIMEOUT_MS via environment", async () => {
+      process.env.ANTHROPIC_MAX_RETRIES = "4";
+      process.env.ANTHROPIC_TIMEOUT_MS = "45000";
+      vi.resetModules();
+
+      const { env } = await import("./env.js");
+
+      expect(env.anthropicMaxRetries).toBe(4);
+      expect(env.anthropicTimeoutMs).toBe(45000);
+    });
+
+    it("fails fast at startup if ANTHROPIC_MAX_RETRIES is not a positive integer", async () => {
+      process.env.ANTHROPIC_MAX_RETRIES = "0";
+      vi.resetModules();
+
+      await expect(import("./env.js")).rejects.toThrow(
+        "ANTHROPIC_MAX_RETRIES must be a positive integer",
+      );
+    });
+
+    it("fails fast at startup if ANTHROPIC_TIMEOUT_MS is not a positive integer", async () => {
+      process.env.ANTHROPIC_TIMEOUT_MS = "-100";
+      vi.resetModules();
+
+      await expect(import("./env.js")).rejects.toThrow(
+        "ANTHROPIC_TIMEOUT_MS must be a positive integer",
+      );
+    });
+  });
 });
