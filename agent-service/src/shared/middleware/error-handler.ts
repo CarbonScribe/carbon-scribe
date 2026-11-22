@@ -20,21 +20,22 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  const requestId = req.requestId ?? (req.headers["x-request-id"] as string | undefined);
   logger.error(
     {
       error: err,
       method: req.method,
       path: req.path,
-      requestId: req.headers["x-request-id"],
+      requestId,
     },
     "Request error",
   );
 
   if (isPayloadTooLarge(err)) {
-    res.status(413).json({ error: "request entity too large" });
+    res.status(413).json({ error: "request entity too large", requestId });
     return;
   }
 
   const message = err instanceof Error ? err.message : "internal error";
-  res.status(500).json({ error: message });
+  res.status(500).json({ error: message, requestId });
 }

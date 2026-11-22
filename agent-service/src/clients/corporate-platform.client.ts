@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { signServiceToken } from "../shared/auth/service-token.js";
+import { getRequestContext } from "../shared/middleware/request-id.js";
 import {
   type ClientCallOptions,
   type CallContext,
@@ -34,6 +35,12 @@ http.interceptors.request.use((config) => {
     "agent-service",
     env.agentServiceJwtSecret,
   )}`;
+
+  const store = getRequestContext();
+  if (store?.requestId && !config.headers["x-request-id"]) {
+    config.headers["x-request-id"] = store.requestId;
+  }
+
   return config;
 });
 

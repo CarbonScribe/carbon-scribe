@@ -3,10 +3,15 @@ import helmet from "helmet";
 import { env } from "./config/env.js";
 import { router } from "./routes/index.js";
 import { errorHandler } from "./shared/middleware/error-handler.js";
+import { requestIdMiddleware } from "./shared/middleware/request-id.js";
 import { helmetOptions } from "./shared/middleware/security-headers.js";
 
 export function createApp(): express.Express {
   const app = express();
+
+  // Request ID propagation (#826) registered first so every response,
+  // error handler log, and downstream outbound call can correlate with it.
+  app.use(requestIdMiddleware);
 
   // Baseline HTTP hardening (issue #631), registered before any route so
   // every response — the JSON routes, 401s from the auth middleware, and the

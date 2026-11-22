@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import type { ErrorCategory } from "../llm/errors.js";
+import { getRequestContext } from "../shared/middleware/request-id.js";
 import {
   type ClientCallOptions,
   type CallContext,
@@ -30,6 +31,14 @@ import {
 // client sends, so there is nothing to authenticate against yet.
 const http = axios.create({
   baseURL: env.projectPortalBaseUrl,
+});
+
+http.interceptors.request.use((config) => {
+  const store = getRequestContext();
+  if (store?.requestId && !config.headers["x-request-id"]) {
+    config.headers["x-request-id"] = store.requestId;
+  }
+  return config;
 });
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import axios, { type AxiosResponse } from "axios";
 import { logger } from "../shared/logging/logger.js";
+import { getRequestContext } from "../shared/middleware/request-id.js";
 
 export const MAX_RETRIES = 2;
 export const RETRY_BASE_DELAY_MS = 250;
@@ -101,17 +102,24 @@ export async function requestWithLogging(
   context: CallContext,
   fn: () => Promise<AxiosResponse>,
 ): Promise<AxiosResponse> {
+  const store = getRequestContext();
+  const effectiveRequestId = context.requestId ?? store?.requestId;
+  const enrichedContext: CallContext = {
+    ...context,
+    ...(effectiveRequestId ? { requestId: effectiveRequestId } : {}),
+  };
+  const activeLogger = store?.logger ?? logger;
   const start = Date.now();
-  logger.info(
-    { ...context, event: "request_start" },
-    `${context.clientName} client request start`,
+  activeLogger.info(
+    { ...enrichedContext, event: "request_start" },
+    `${enrichedContext.clientName} client request start`,
   );
 
   try {
-    const { value: response, attempts } = await withRetry(fn, context);
-    logger.info(
+    const { value: response, attempts } = await withRetry(fn, enrichedContext);
+    activeLogger.info(
       {
-        ...context,
+        ...enrichedContext,
         event: "request_complete",
         outcome: "success",
         status: response.status,
@@ -119,20 +127,20 @@ export async function requestWithLogging(
         retried: attempts > 1,
         durationMs: Date.now() - start,
       },
-      `${context.clientName} client request complete`,
+      `${enrichedContext.clientName} client request complete`,
     );
     return response;
   } catch (err) {
-    logger.error(
+    activeLogger.error(
       {
-        ...context,
+        ...enrichedContext,
         event: "request_complete",
         outcome: "error",
         status: axios.isAxiosError(err) ? err.response?.status : undefined,
         durationMs: Date.now() - start,
         error: errorMessage(err),
       },
-      `${context.clientName} client request failed`,
+      `${enrichedContext.clientName} client request failed`,
     );
     throw err;
   }
