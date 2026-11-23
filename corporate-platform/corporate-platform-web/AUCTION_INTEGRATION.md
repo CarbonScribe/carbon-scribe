@@ -104,7 +104,7 @@ No new environment variables are required. The existing variable is used:
 
 | Variable                | Default                      | Description              |
 |-------------------------|------------------------------|--------------------------|
-| `NEXT_PUBLIC_API_URL`   | `http://localhost:3001/api/v1` | Backend API base URL    |
+| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:4000` | Backend origin; the client adds `/api/v1` |
 
 ---
 

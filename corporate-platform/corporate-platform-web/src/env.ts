@@ -43,7 +43,18 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-const result = envSchema.safeParse(process.env);
+const deprecatedApiUrl = process.env.NEXT_PUBLIC_API_URL;
+if (deprecatedApiUrl !== undefined) {
+  console.warn(
+    'NEXT_PUBLIC_API_URL is deprecated; use NEXT_PUBLIC_API_BASE_URL instead.',
+  );
+}
+
+const result = envSchema.safeParse({
+  ...process.env,
+  NEXT_PUBLIC_API_BASE_URL:
+    process.env.NEXT_PUBLIC_API_BASE_URL || deprecatedApiUrl || undefined,
+});
 
 if (!result.success) {
   console.error('\n❌ Invalid environment variables:\n');

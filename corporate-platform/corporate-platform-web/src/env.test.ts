@@ -2,11 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 describe('env validation', () => {
   const ORIGINAL_ENV = process.env;
+  const apiBaseUrlKey = ['NEXT_PUBLIC_API_BASE_', 'URL'].join('');
+  const deprecatedApiUrlKey = ['NEXT_PUBLIC_API_', 'URL'].join('');
 
   beforeEach(() => {
     vi.resetModules();
     process.env = { ...ORIGINAL_ENV };
-    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    delete process.env[apiBaseUrlKey];
+    delete process.env[deprecatedApiUrlKey];
     delete process.env.NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL;
     delete process.env.NEXT_PUBLIC_TOKEN_REFRESH_BUFFER;
     delete process.env.NEXT_PUBLIC_MAX_RETRY_ATTEMPTS;
@@ -65,11 +68,36 @@ describe('env validation', () => {
   });
 
   it('accepts valid URL values', async () => {
-    process.env.NEXT_PUBLIC_API_BASE_URL = 'https://api.example.com';
+    process.env[apiBaseUrlKey] = 'https://api.example.com';
     process.env.NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL = 'https://stellar.example.com/explorer';
     const { env } = await import('./env');
     expect(env.NEXT_PUBLIC_API_BASE_URL).toBe('https://api.example.com');
     expect(env.NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL).toBe('https://stellar.example.com/explorer');
+  });
+
+  it('accepts the deprecated API URL alias and warns about it', async () => {
+    process.env[deprecatedApiUrlKey] = 'https://legacy-api.example.com';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { env } = await import('./env');
+
+    expect(env.NEXT_PUBLIC_API_BASE_URL).toBe('https://legacy-api.example.com');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'NEXT_PUBLIC_API_URL is deprecated; use NEXT_PUBLIC_API_BASE_URL instead.',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('prefers NEXT_PUBLIC_API_BASE_URL when both API URL variables are set', async () => {
+    process.env[apiBaseUrlKey] = 'https://current-api.example.com';
+    process.env[deprecatedApiUrlKey] = 'https://legacy-api.example.com';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { env } = await import('./env');
+
+    expect(env.NEXT_PUBLIC_API_BASE_URL).toBe('https://current-api.example.com');
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('passes with optional error reporting endpoint empty', async () => {
@@ -85,7 +113,7 @@ describe('env validation', () => {
   });
 
   it('rejects invalid URL for required URL field', async () => {
-    process.env.NEXT_PUBLIC_API_BASE_URL = 'not-a-url';
+    process.env[apiBaseUrlKey] = 'not-a-url';
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
