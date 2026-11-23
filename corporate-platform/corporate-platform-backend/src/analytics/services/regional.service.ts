@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 
 @Injectable()
@@ -17,7 +18,7 @@ export class RegionalService {
    * Get performance by region/country
    */
   async getRegionalBreakdown(companyId: string) {
-    const cacheKey = `regional:breakdown:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `regional:breakdown`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -64,7 +65,7 @@ export class RegionalService {
    * Get geographic concentration data (heatmap)
    */
   async getRegionalHeatmap(companyId: string) {
-    const cacheKey = `regional:heatmap:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `regional:heatmap`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -124,7 +125,7 @@ export class RegionalService {
    * Get regional performance trends
    */
   async getRegionalTrends(companyId: string, months: number = 12) {
-    const cacheKey = `regional:trends:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `regional:trends`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

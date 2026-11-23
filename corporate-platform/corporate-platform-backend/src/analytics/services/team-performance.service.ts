@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 
 @Injectable()
 export class TeamPerformanceService {
@@ -15,7 +16,7 @@ export class TeamPerformanceService {
    * Get team/project developer performance metrics
    */
   async getTeamPerformance(companyId: string) {
-    const cacheKey = `team:performance:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `team:performance`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -61,7 +62,7 @@ export class TeamPerformanceService {
    * Get developer performance rankings
    */
   async getTeamRankings(companyId: string, metric: string = 'quality') {
-    const cacheKey = `team:rankings:${companyId}:${metric}`;
+    const cacheKey = CacheKeys.tenant(companyId, `team:rankings:${metric}`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -95,7 +96,10 @@ export class TeamPerformanceService {
    * Get team portfolio analytics
    */
   async getTeamPortfolio(companyId: string, developerId?: string) {
-    const cacheKey = `team:portfolio:${companyId}:${developerId || 'all'}`;
+    const cacheKey = CacheKeys.tenant(
+      companyId,
+      `team:portfolio:${developerId || 'all'}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

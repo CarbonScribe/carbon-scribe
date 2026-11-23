@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 import {
   QualityRadarData,
@@ -22,7 +23,7 @@ export class CreditQualityService {
    * Get credit quality radar chart data
    */
   async getRadarData(projectId: string): Promise<QualityRadarData> {
-    const cacheKey = `quality:radar:${projectId}`;
+    const cacheKey = CacheKeys.global(`quality:radar:${projectId}`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -88,7 +89,7 @@ export class CreditQualityService {
   async getPortfolioQuality(
     companyId: string,
   ): Promise<PortfolioQualityScore[]> {
-    const cacheKey = `quality:portfolio:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `quality:portfolio`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -140,7 +141,9 @@ export class CreditQualityService {
     industry?: string,
     region?: string,
   ): Promise<IndustryBenchmark> {
-    const cacheKey = `quality:benchmark:${industry}:${region || 'global'}`;
+    const cacheKey = CacheKeys.global(
+      `quality:benchmark:${industry}:${region || 'global'}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
