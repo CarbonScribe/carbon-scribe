@@ -32,7 +32,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.3.1",
     "@types/pg": "^8.23.1",
-    "@types/supertest": "^6.0.0",
+    "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.73.0",
     "@typescript-eslint/parser": "^8.73.0",
     "autocannon": "^9.0.0",
