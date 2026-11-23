@@ -5,6 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import Redis, { Cluster, RedisOptions } from 'ioredis';
 import { ConfigService } from '../config/config.service';
 
@@ -111,6 +112,68 @@ export class RedisService
 
   isHealthy(): boolean {
     return this.healthy;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Distributed lock helpers (#814)
+  //
+  // Single-instance Redis lock: `SET key token NX PX ttl` to acquire, and
+  // compare-and-delete / compare-and-pexpire Lua scripts so an instance can
+  // only release or renew a lock it still owns. The TTL guarantees the lock
+  // is freed if the holder crashes.
+  // ---------------------------------------------------------------------------
+
+  private static readonly RELEASE_LOCK_SCRIPT =
+    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+  private static readonly EXTEND_LOCK_SCRIPT =
+    "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end";
+
+  /**
+   * Try to acquire `key` for `ttlMs`. Resolves to an opaque ownership token
+   * on success, or `null` when the lock is held by someone else.
+   * Throws if Redis is unavailable, so callers can decide how to degrade.
+   */
+  async acquireLock(key: string, ttlMs: number): Promise<string | null> {
+    this.assertLockClient();
+    const token = randomUUID();
+    const result = await this.client.set(key, token, 'PX', ttlMs, 'NX');
+    return result === 'OK' ? token : null;
+  }
+
+  /** Release `key` only if it is still held with `token`. */
+  async releaseLock(key: string, token: string): Promise<boolean> {
+    this.assertLockClient();
+    const result = await this.client.eval(
+      RedisService.RELEASE_LOCK_SCRIPT,
+      1,
+      key,
+      token,
+    );
+    return Number(result) === 1;
+  }
+
+  /** Renew `key` to `ttlMs` only if it is still held with `token`. */
+  async extendLock(
+    key: string,
+    token: string,
+    ttlMs: number,
+  ): Promise<boolean> {
+    this.assertLockClient();
+    const result = await this.client.eval(
+      RedisService.EXTEND_LOCK_SCRIPT,
+      1,
+      key,
+      token,
+      String(ttlMs),
+    );
+    return Number(result) === 1;
+  }
+
+  private assertLockClient(): void {
+    if (!this.client || !this.healthy) {
+      throw new Error('Redis unavailable for distributed lock');
+    }
   }
 
   async onApplicationBootstrap() {
