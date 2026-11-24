@@ -42,4 +42,10 @@ pub enum DataKey {
     /// Monotonically increasing nonce used to make each event ID unique
     /// (instance storage).
     EventNonce,
+    /// Replay-protection index from content fingerprint
+    /// `sha256(emitter ‖ event_type ‖ primary_entity_id ‖ secondary_entity_id
+    /// ‖ event_data ‖ tx_hash)` → the event ID first recorded for that content
+    /// (persistent storage, TTL matches the retention period; removed by the
+    /// pruner together with its event).
+    Fingerprint(BytesN<32>),
 }

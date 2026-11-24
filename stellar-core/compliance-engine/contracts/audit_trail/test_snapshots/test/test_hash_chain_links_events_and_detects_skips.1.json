@@ -46,7 +46,7 @@
                 },
                 "void",
                 {
-                  "string": "{}"
+                  "string": "{\"step\":1}"
                 },
                 {
                   "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
@@ -80,7 +80,7 @@
                 },
                 "void",
                 {
-                  "string": "{}"
+                  "string": "{\"step\":2}"
                 },
                 {
                   "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
@@ -115,7 +115,7 @@
                 },
                 "void",
                 {
-                  "string": "{}"
+                  "string": "{\"step\":3}"
                 },
                 {
                   "bytes": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
@@ -359,7 +359,7 @@
                         "symbol": "event_data"
                       },
                       "val": {
-                        "string": "{}"
+                        "string": "{\"step\":2}"
                       }
                     },
                     {
@@ -483,7 +483,7 @@
                         "symbol": "event_data"
                       },
                       "val": {
-                        "string": "{}"
+                        "string": "{\"step\":1}"
                       }
                     },
                     {
@@ -605,7 +605,7 @@
                         "symbol": "event_data"
                       },
                       "val": {
-                        "string": "{}"
+                        "string": "{\"step\":3}"
                       }
                     },
                     {
@@ -671,6 +671,141 @@
                       }
                     }
                   ]
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "6bed9e16aabedd02a75f7155862cf9d70adfd4d9f7e8edb2d867dedb46e20fd1"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "6bed9e16aabedd02a75f7155862cf9d70adfd4d9f7e8edb2d867dedb46e20fd1"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "9449ebec505402d5c18e0a877e0eee1cc614c254a2df5b0843b61ff11ac5c87a"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "bccaebc55d58854d07dfbc9271cc7f8c18a52cd9e75dc06a95f4696f0acfbb9a"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "bccaebc55d58854d07dfbc9271cc7f8c18a52cd9e75dc06a95f4696f0acfbb9a"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "4d8568361497d10759492de380c7c74d0c36197f6c86f245d136b2658159b7d2"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "f240c1435974333d2a734961c7dc75dc58549c7f6c96cb154ebdd98f625008e2"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "f240c1435974333d2a734961c7dc75dc58549c7f6c96cb154ebdd98f625008e2"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "95674d08632a7b23a3ca09d221201104e6b3d21ff0055e0dc11331c7931de383"
                 }
               }
             },
@@ -865,7 +1000,7 @@
                           ]
                         },
                         "val": {
-                          "u64": "475"
+                          "u64": "499"
                         }
                       },
                       {
