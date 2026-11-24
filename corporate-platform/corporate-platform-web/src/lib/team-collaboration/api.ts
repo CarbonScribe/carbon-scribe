@@ -9,11 +9,9 @@ import {
   TeamNotification,
   TeamPerformance,
 } from './types';
+import { apiUrl } from '@/lib/api/api-url';
 
-const DEFAULT_BASE_URL =
-  (typeof process !== 'undefined' &&
-    process.env?.NEXT_PUBLIC_API_BASE_URL) ||
-  '/api/v1';
+const DEFAULT_BASE_URL = apiUrl('');
 
 export interface TeamCollaborationClientOptions {
   baseUrl?: string;
@@ -54,7 +52,7 @@ export class TeamCollaborationClient {
     path: string,
     init: RequestInit = {},
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
+    const url = apiUrl(path, this.baseUrl);
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...(init.headers as Record<string, string> | undefined),

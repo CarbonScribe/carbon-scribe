@@ -4,6 +4,7 @@
  */
 
 import { getAccessToken } from '@/lib/auth/token-storage';
+import { apiUrl } from '@/lib/api/api-url';
 import type {
   TeamMember,
   TeamRole,
@@ -15,8 +16,7 @@ import type {
   InviteMemberPayload,
 } from '@/types/team'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000'
-const TEAM_BASE = `${BASE_URL}/api/v1/team`
+const TEAM_BASE = apiUrl('/team')
 
 function getAuthHeaders(): HeadersInit {
   const token =

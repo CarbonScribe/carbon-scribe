@@ -8,6 +8,7 @@ import {
 import { reportError } from '@/lib/telemetry/errorReporter'
 import { requestManager } from './requestManager'
 import { parseResponseBody } from './responseParser'
+import { apiUrl } from './api-url'
 
 export class ApiError extends Error {
   readonly status: number
@@ -41,24 +42,13 @@ interface RequestOptions {
   timeout?: number
 }
 
-const DEFAULT_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000'
-
-function normalizeBaseUrl(baseUrl: string): string {
-  return baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl
-}
-
-function buildUrl(baseUrl: string, path: string): string {
-  const sanitizedPath = path.startsWith('/') ? path : `/${path}`
-  return `${normalizeBaseUrl(baseUrl)}${sanitizedPath}`
-}
-
 export async function apiRequest<T>(
   path: string,
   init: RequestInit,
   options: RequestOptions = {},
 ): Promise<T> {
   const fetchImpl = options.fetchImpl ?? fetch
-  const baseUrl = options.baseUrl ?? DEFAULT_API_BASE_URL
+  const baseUrl = options.baseUrl
   const headers = new Headers(init.headers)
   const method = init.method ?? 'GET'
   const isQuery = method === 'GET'
@@ -104,7 +94,7 @@ export async function apiRequest<T>(
     let response: Response
 
     try {
-      response = await fetchImpl(buildUrl(baseUrl, path), {
+      response = await fetchImpl(apiUrl(path, baseUrl), {
         ...init,
         headers,
         signal: controller.signal,
@@ -116,7 +106,7 @@ export async function apiRequest<T>(
       }
       const apiError = new ApiError(
         0,
-        `Unable to reach the API at ${baseUrl}. Check that the backend is running and CORS allows this origin.`,
+        `Unable to reach the API at ${baseUrl ?? 'the configured API base URL'}. Check that the backend is running and CORS allows this origin.`,
         error,
       )
       reportError(apiError, 'http', 'error', { path, method })
