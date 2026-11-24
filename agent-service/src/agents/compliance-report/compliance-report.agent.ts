@@ -117,10 +117,15 @@ export async function runComplianceReportAgent(
     return calls;
   }
 
-  const budgetResult = await runWithTokenBudget(runner as unknown as AsyncIterable<any>, {
+  const budgetResult = await runWithTokenBudget(runner, {
     maxTokensPerRun: env.agentMaxTokensPerRun,
   });
-  const { message: finalMessage, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens } = budgetResult;
+  const {
+    message: finalMessage,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  } = budgetResult;
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -160,7 +165,7 @@ export async function runComplianceReportAgent(
 
   const textBlock = finalMessage.content.find(
     (
-      block: any,
+      block: (typeof finalMessage.content)[number],
     ): block is Extract<
       (typeof finalMessage.content)[number],
       { type: "text" }

@@ -116,20 +116,22 @@ export class MarketplaceRateLimitError extends Error {
   }
 }
 
-const MarketplaceCreditSchema = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  projectName: z.string(),
-  companyId: z.string().nullable().optional(),
-  pricePerTon: z.number(),
-  availableAmount: z.number(),
-  status: z.string().optional(),
-  methodology: z.string().nullable().optional(),
-  vintage: z.number().int().nullable().optional(),
-  verificationStandard: z.string().nullable().optional(),
-  country: z.string().nullable().optional(),
-  sdgs: z.array(z.number()).optional(),
-}).passthrough();
+const MarketplaceCreditSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    projectName: z.string(),
+    companyId: z.string().nullable().optional(),
+    pricePerTon: z.number(),
+    availableAmount: z.number(),
+    status: z.string().optional(),
+    methodology: z.string().nullable().optional(),
+    vintage: z.number().int().nullable().optional(),
+    verificationStandard: z.string().nullable().optional(),
+    country: z.string().nullable().optional(),
+    sdgs: z.array(z.number()).optional(),
+  })
+  .passthrough();
 
 const MarketplaceSearchResponseSchema = z.object({
   data: z.array(MarketplaceCreditSchema),
@@ -137,17 +139,60 @@ const MarketplaceSearchResponseSchema = z.object({
   page: z.number().int().positive(),
   limit: z.number().int().positive(),
   facets: z.object({
-    countries: z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number() })).optional(),
-    methodologies: z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number() })).optional(),
-    standards: z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number() })).optional(),
-    sdgs: z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number() })).optional(),
-    vintageYears: z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number() })).optional(),
-    priceRange: z.object({ min: z.number().optional(), max: z.number().optional(), median: z.number().optional() }).optional(),
+    countries: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    methodologies: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    standards: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    sdgs: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    vintageYears: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    priceRange: z
+      .object({
+        min: z.number().optional(),
+        max: z.number().optional(),
+        median: z.number().optional(),
+      })
+      .optional(),
   }),
 });
 
 export type MarketplaceCredit = z.infer<typeof MarketplaceCreditSchema>;
-export type MarketplaceSearchResult = z.infer<typeof MarketplaceSearchResponseSchema>;
+export type MarketplaceSearchResult = z.infer<
+  typeof MarketplaceSearchResponseSchema
+>;
 
 /**
  * Fetch a company's current carbon credit portfolio.
@@ -206,7 +251,8 @@ async function listMarketplaceCredits(
   options: ClientCallOptions = {},
 ): Promise<MarketplaceSearchResult> {
   if (env.mockCorporatePlatform) {
-    const { mockMarketplaceSearchResult } = await import("./corporate-platform.client.fixtures.js");
+    const { mockMarketplaceSearchResult } =
+      await import("./corporate-platform.client.fixtures.js");
     return mockMarketplaceSearchResult;
   }
 
@@ -230,7 +276,8 @@ async function listMarketplaceCredits(
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 429) {
       const header = error.response.headers?.["retry-after"];
-      const retryAfterSeconds = typeof header === "string" ? Number(header) : undefined;
+      const retryAfterSeconds =
+        typeof header === "string" ? Number(header) : undefined;
       throw new MarketplaceRateLimitError(
         Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : undefined,
       );
@@ -240,7 +287,12 @@ async function listMarketplaceCredits(
 
   const result = MarketplaceSearchResponseSchema.safeParse(response.data);
   if (!result.success) {
-    logSchemaValidationError(context, response.status, response.data, result.error);
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
     throw result.error;
   }
   return result.data;

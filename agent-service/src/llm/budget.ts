@@ -32,8 +32,10 @@ export interface BudgetedTurn {
   usage?: {
     input_tokens: number;
     output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
+    // The real BetaUsage shape reports these as `number | null` (absent
+    // when prompt caching wasn't used on that turn), not just optional.
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
   } | null;
 }
 
@@ -90,12 +92,31 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
         cacheReadInputTokens += turn.usage.cache_read_input_tokens ?? 0;
       }
       if (cumulativeTokens > budget.maxTokensPerRun) {
-        return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: true };
+        return {
+          message,
+          cumulativeTokens,
+          cacheCreationInputTokens,
+          cacheReadInputTokens,
+          budgetExceeded: true,
+        };
       }
     }
   } catch (error) {
-    return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: false, error };
+    return {
+      message,
+      cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+      budgetExceeded: false,
+      error,
+    };
   }
 
-  return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: false };
+  return {
+    message,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    budgetExceeded: false,
+  };
 }

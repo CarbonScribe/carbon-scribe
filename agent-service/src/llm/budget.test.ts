@@ -56,11 +56,27 @@ describe("runWithTokenBudget", () => {
 
   it("aggregates prompt cache creation and read tokens", async () => {
     const turns: BudgetedTurn[] = [
-      { usage: { input_tokens: 100, output_tokens: 20, cache_creation_input_tokens: 800, cache_read_input_tokens: 0 } },
-      { usage: { input_tokens: 120, output_tokens: 30, cache_creation_input_tokens: 0, cache_read_input_tokens: 700 } },
+      {
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          cache_creation_input_tokens: 800,
+          cache_read_input_tokens: 0,
+        },
+      },
+      {
+        usage: {
+          input_tokens: 120,
+          output_tokens: 30,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 700,
+        },
+      },
     ];
 
-    const result = await runWithTokenBudget(fakeRunner(turns), { maxTokensPerRun: 1000 });
+    const result = await runWithTokenBudget(fakeRunner(turns), {
+      maxTokensPerRun: 1000,
+    });
 
     expect(result.cacheCreationInputTokens).toBe(800);
     expect(result.cacheReadInputTokens).toBe(700);

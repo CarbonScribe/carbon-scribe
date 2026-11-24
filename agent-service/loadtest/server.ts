@@ -49,6 +49,18 @@ export async function startLoadTestServer(
     env.serviceTokenSecrets["project-portal"] = jwtSecret;
   }
 
+  // The agent-facing rate limiter (#831) is sized for real production
+  // traffic (60/min by default), not a concurrent throughput benchmark —
+  // raise it here so a load test measures server capacity instead of
+  // immediately tripping the limiter under concurrency.
+  env.agentRateLimitPerMinute = Number.MAX_SAFE_INTEGER;
+  env.agentRateLimits = {
+    discovery: Number.MAX_SAFE_INTEGER,
+    "pdd-draft": Number.MAX_SAFE_INTEGER,
+    "compliance-report": Number.MAX_SAFE_INTEGER,
+    "alert-triage": Number.MAX_SAFE_INTEGER,
+  };
+
   const app = createApp();
 
   const server = await new Promise<Server>((resolve) => {

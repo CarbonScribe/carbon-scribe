@@ -37,7 +37,14 @@ describe("alertTriageRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/alert-triage/run")
-      .send({ requestId: "req-1", requestedBy: "user-1", input: { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } } });
+      .send({
+        requestId: "req-1",
+        requestedBy: "user-1",
+        input: {
+          alert: { alertId: "alert-1", projectId: "project-1" },
+          project: { projectId: "project-1" },
+        },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(result);
@@ -55,7 +62,14 @@ describe("alertTriageRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/alert-triage/run")
-      .send({ requestId: "req-2", requestedBy: "user-1", input: { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } } });
+      .send({
+        requestId: "req-2",
+        requestedBy: "user-1",
+        input: {
+          alert: { alertId: "alert-1", projectId: "project-1" },
+          project: { projectId: "project-1" },
+        },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("needs-approval");
@@ -74,7 +88,14 @@ describe("alertTriageRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/alert-triage/run")
-      .send({ requestId: "req-3", requestedBy: "user-1", input: { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } } });
+      .send({
+        requestId: "req-3",
+        requestedBy: "user-1",
+        input: {
+          alert: { alertId: "alert-1", projectId: "project-1" },
+          project: { projectId: "project-1" },
+        },
+      });
 
     expect(res.status).toBe(502);
     expect(res.body).toEqual(result);
@@ -100,7 +121,14 @@ describe("alertTriageRouter POST /run", () => {
 
     const res = await request(app)
       .post("/agents/alert-triage/run")
-      .send({ requestId: "req-4", requestedBy: "user-1", input: { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } } });
+      .send({
+        requestId: "req-4",
+        requestedBy: "user-1",
+        input: {
+          alert: { alertId: "alert-1", projectId: "project-1" },
+          project: { projectId: "project-1" },
+        },
+      });
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("unexpected");

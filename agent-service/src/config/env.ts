@@ -109,15 +109,24 @@ export const env = {
     "AGENT_MAX_TOKENS_PER_RUN",
     DEFAULT_MAX_TOKENS_PER_RUN,
   ),
-  agentRateLimitPerMinute: positiveInteger(
-    "AGENT_RATE_LIMIT_PER_MINUTE",
-    60,
-  ),
+  agentRateLimitPerMinute: positiveInteger("AGENT_RATE_LIMIT_PER_MINUTE", 60),
   agentRateLimits: {
-    discovery: positiveInteger("AGENT_RATE_LIMIT_DISCOVERY_PER_MINUTE", Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60)),
-    "pdd-draft": positiveInteger("AGENT_RATE_LIMIT_PDD_DRAFT_PER_MINUTE", Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60)),
-    "compliance-report": positiveInteger("AGENT_RATE_LIMIT_COMPLIANCE_REPORT_PER_MINUTE", Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60)),
-    "alert-triage": positiveInteger("AGENT_RATE_LIMIT_ALERT_TRIAGE_PER_MINUTE", Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60)),
+    discovery: positiveInteger(
+      "AGENT_RATE_LIMIT_DISCOVERY_PER_MINUTE",
+      Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60),
+    ),
+    "pdd-draft": positiveInteger(
+      "AGENT_RATE_LIMIT_PDD_DRAFT_PER_MINUTE",
+      Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60),
+    ),
+    "compliance-report": positiveInteger(
+      "AGENT_RATE_LIMIT_COMPLIANCE_REPORT_PER_MINUTE",
+      Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60),
+    ),
+    "alert-triage": positiveInteger(
+      "AGENT_RATE_LIMIT_ALERT_TRIAGE_PER_MINUTE",
+      Number(process.env.AGENT_RATE_LIMIT_PER_MINUTE ?? 60),
+    ),
   } as Record<string, number>,
 
   // Bound on graceful shutdown (#700): if in-flight requests haven't

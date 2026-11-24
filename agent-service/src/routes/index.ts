@@ -19,7 +19,12 @@ router.use(openapiRouter);
 // orchestrator (kubelet, ECS agent), not by an authenticated caller.
 router.use("/health", healthRouter);
 
-router.use("/agents/discovery", requireInternalAuth, rateLimit, discoveryRouter);
+router.use(
+  "/agents/discovery",
+  requireInternalAuth,
+  rateLimit,
+  discoveryRouter,
+);
 router.use("/agents/pdd-draft", requireInternalAuth, rateLimit, pddDraftRouter);
 router.use(
   "/agents/compliance-report",
@@ -27,5 +32,10 @@ router.use(
   rateLimit,
   complianceReportRouter,
 );
-router.use("/agents/alert-triage", requireInternalAuth, rateLimit, alertTriageRouter);
+router.use(
+  "/agents/alert-triage",
+  requireInternalAuth,
+  rateLimit,
+  alertTriageRouter,
+);
 router.use("/approvals", requireInternalAuth, approvalsRouter);

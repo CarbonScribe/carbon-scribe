@@ -115,10 +115,15 @@ export async function runPddDraftAgent(
     return calls;
   }
 
-  const budgetResult = await runWithTokenBudget(runner as unknown as AsyncIterable<any>, {
+  const budgetResult = await runWithTokenBudget(runner, {
     maxTokensPerRun: env.agentMaxTokensPerRun,
   });
-  const { message: finalMessage, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens } = budgetResult;
+  const {
+    message: finalMessage,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  } = budgetResult;
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -158,7 +163,7 @@ export async function runPddDraftAgent(
 
   const textBlock = finalMessage.content.find(
     (
-      block: any,
+      block: (typeof finalMessage.content)[number],
     ): block is Extract<
       (typeof finalMessage.content)[number],
       { type: "text" }
@@ -241,7 +246,14 @@ export async function runPddDraftAgent(
     status,
   });
   logger.info(
-    { agent: "pdd-draft", requestId: req.requestId, status, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens },
+    {
+      agent: "pdd-draft",
+      requestId: req.requestId,
+      status,
+      cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+    },
     "agent run token usage",
   );
 

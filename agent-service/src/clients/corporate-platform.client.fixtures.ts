@@ -65,7 +65,10 @@ export const mockMarketplaceSearchResult = {
     countries: [{ value: "Brazil", count: 1 }],
     methodologies: [{ value: "REDD+", count: 1 }],
     standards: [{ value: "VCS", count: 1 }],
-    sdgs: [{ value: 13, count: 1 }, { value: 15, count: 1 }],
+    sdgs: [
+      { value: 13, count: 1 },
+      { value: 15, count: 1 },
+    ],
     vintageYears: [{ value: 2024, count: 1 }],
     priceRange: { min: 14.25, max: 14.25, median: 14.25 },
   },

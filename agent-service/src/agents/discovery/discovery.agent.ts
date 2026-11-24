@@ -114,10 +114,15 @@ export async function runDiscoveryAgent(
     return calls;
   }
 
-  const budgetResult = await runWithTokenBudget(runner as unknown as AsyncIterable<any>, {
+  const budgetResult = await runWithTokenBudget(runner, {
     maxTokensPerRun: env.agentMaxTokensPerRun,
   });
-  const { message: finalMessage, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens } = budgetResult;
+  const {
+    message: finalMessage,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  } = budgetResult;
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -157,7 +162,7 @@ export async function runDiscoveryAgent(
 
   const textBlock = finalMessage.content.find(
     (
-      block: any,
+      block: (typeof finalMessage.content)[number],
     ): block is Extract<
       (typeof finalMessage.content)[number],
       { type: "text" }
@@ -224,7 +229,14 @@ export async function runDiscoveryAgent(
     status,
   });
   logger.info(
-    { agent: "discovery", requestId: req.requestId, status, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens },
+    {
+      agent: "discovery",
+      requestId: req.requestId,
+      status,
+      cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+    },
     "agent run token usage",
   );
 
