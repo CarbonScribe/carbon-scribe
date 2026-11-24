@@ -289,6 +289,7 @@ fn test_pruning_and_compaction() {
         &tx_hash,
     );
 
+    // A distinct tx_hash: an identical payload would be deduplicated (#821).
     env.ledger().set_timestamp(172800);
     let event_id_2 = client.record_event(
         &emitter,
@@ -296,7 +297,7 @@ fn test_pruning_and_compaction() {
         &primary_id,
         &None,
         &event_data,
-        &tx_hash,
+        &BytesN::from_array(&env, &[1; 32]),
     );
 
     assert_eq!(client.get_event_count(), 2);
@@ -478,9 +479,9 @@ fn test_hash_chain_links_events_and_detects_skips() {
     let (env, client, _admin, emitter) = setup();
     let event_type = String::from_str(&env, "USER_ACTION");
     let primary_id = String::from_str(&env, "chain-entity");
-    let event_data = String::from_str(&env, "{}");
     // Reuse the same transaction hash and explicitly hold the ledger timestamp
     // constant to prove that each call still gets an independent event ID.
+    // The payloads differ so the calls are not replays of one another (#821).
     let tx_hash = BytesN::from_array(&env, &[10; 32]);
     let timestamp = env.ledger().timestamp();
     env.ledger().set_timestamp(timestamp);
@@ -490,7 +491,7 @@ fn test_hash_chain_links_events_and_detects_skips() {
         &event_type,
         &primary_id,
         &None,
-        &event_data,
+        &String::from_str(&env, "{\"step\":1}"),
         &tx_hash,
     );
     let first = client.get_event(&first_id).unwrap();
@@ -502,7 +503,7 @@ fn test_hash_chain_links_events_and_detects_skips() {
         &event_type,
         &primary_id,
         &None,
-        &event_data,
+        &String::from_str(&env, "{\"step\":2}"),
         &tx_hash,
     );
     assert_ne!(second_id, first_id);
@@ -522,7 +523,7 @@ fn test_hash_chain_links_events_and_detects_skips() {
         &event_type,
         &primary_id,
         &None,
-        &event_data,
+        &String::from_str(&env, "{\"step\":3}"),
         &tx_hash,
     );
     assert_ne!(third_id, second_id);
@@ -759,4 +760,172 @@ fn test_record_event_before_init_returns_not_initialized() {
         &tx_hash,
     );
     assert_eq!(result, Err(Ok(AuditTrailError::NotInitialized)));
+}
+
+// ---------------------------------------------------------------------------
+// Replay protection (issue #821)
+// ---------------------------------------------------------------------------
+
+fn record_sample(
+    env: &Env,
+    client: &AuditTrailContractClient,
+    emitter: &Address,
+    event_data: &str,
+    tx_byte: u8,
+) -> BytesN<32> {
+    client.record_event(
+        emitter,
+        &String::from_str(env, "RETIREMENT"),
+        &String::from_str(env, "credit-42"),
+        &Some(String::from_str(env, "company-7")),
+        &String::from_str(env, event_data),
+        &BytesN::from_array(env, &[tx_byte; 32]),
+    )
+}
+
+#[test]
+fn test_identical_resubmit_returns_original_id_without_growing_state() {
+    let (env, client, _admin, emitter) = setup();
+
+    let original = record_sample(&env, &client, &emitter, "{\"qty\":5}", 0xAB);
+    let count = client.get_event_count();
+    let bytes = client.get_total_storage_bytes();
+    let tip = client.get_chain_tip();
+    let original_nonce = client.get_event(&original).unwrap().event_nonce;
+
+    // Retry later (e.g. after an ambiguous failure): same content.
+    env.ledger().set_timestamp(env.ledger().timestamp() + 30);
+    let replay = record_sample(&env, &client, &emitter, "{\"qty\":5}", 0xAB);
+
+    assert_eq!(replay, original);
+    assert_eq!(client.get_event_count(), count);
+    assert_eq!(client.get_total_storage_bytes(), bytes);
+    assert_eq!(client.get_chain_tip(), tip);
+    assert_eq!(
+        client
+            .get_events_by_entity(&String::from_str(&env, "credit-42"))
+            .len(),
+        1
+    );
+    assert_eq!(client.get_events_by_contract(&emitter).len(), 1);
+
+    // The replay consumed no nonce: the next new event gets nonce + 1.
+    let next = record_sample(&env, &client, &emitter, "{\"qty\":6}", 0xAB);
+    assert_eq!(
+        client.get_event(&next).unwrap().event_nonce,
+        original_nonce.map(|n| n + 1)
+    );
+}
+
+#[test]
+fn test_replay_publishes_dup_evt() {
+    use soroban_sdk::testutils::Events as _;
+    use soroban_sdk::{Event as _, IntoVal, Symbol};
+
+    let (env, client, _admin, emitter) = setup();
+    let original = record_sample(&env, &client, &emitter, "{}", 0x01);
+    let replay = record_sample(&env, &client, &emitter, "{}", 0x01);
+    assert_eq!(replay, original);
+
+    let all = env.events().all();
+    let (_contract, topics, _data) = all.last().unwrap();
+    let topic: Symbol = topics.get(0).unwrap().into_val(&env);
+    assert_eq!(topic, Symbol::new(&env, "dup_evt"));
+
+    let fingerprint = env.as_contract(&client.address, || {
+        AuditTrailContract::derive_fingerprint(
+            &env,
+            &emitter,
+            &String::from_str(&env, "RETIREMENT"),
+            &String::from_str(&env, "credit-42"),
+            Some(&String::from_str(&env, "company-7")),
+            &String::from_str(&env, "{}"),
+            &BytesN::from_array(&env, &[0x01; 32]),
+        )
+    });
+    let expected = events::DuplicateEventSubmitted {
+        event_id: original,
+        fingerprint,
+        emitter,
+        timestamp: env.ledger().timestamp(),
+    };
+    // Compare as host vectors so the event data map is compared structurally.
+    assert_eq!(
+        soroban_sdk::vec![&env, all.last().unwrap()],
+        soroban_sdk::vec![
+            &env,
+            (client.address.clone(), expected.topics(&env), expected.data(&env))
+        ]
+    );
+}
+
+#[test]
+fn test_different_content_or_tx_hash_is_recorded_separately() {
+    let (env, client, _admin, emitter) = setup();
+
+    let base = record_sample(&env, &client, &emitter, "{}", 0x10);
+    let other_tx = record_sample(&env, &client, &emitter, "{}", 0x11);
+    let other_data = record_sample(&env, &client, &emitter, "{\"x\":1}", 0x10);
+
+    // Same content from a different authorised emitter is its own record.
+    let emitter_b = Address::generate(&env);
+    client.authorize_emitter(&emitter_b);
+    let other_emitter = record_sample(&env, &client, &emitter_b, "{}", 0x10);
+
+    // Secondary entity presence is part of the fingerprint too.
+    let no_secondary = client.record_event(
+        &emitter,
+        &String::from_str(&env, "RETIREMENT"),
+        &String::from_str(&env, "credit-42"),
+        &None,
+        &String::from_str(&env, "{}"),
+        &BytesN::from_array(&env, &[0x10; 32]),
+    );
+
+    let ids = [base, other_tx, other_data, other_emitter, no_secondary];
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            assert_ne!(ids[i], ids[j]);
+        }
+    }
+    assert_eq!(client.get_event_count(), 5);
+}
+
+#[test]
+fn test_pruning_removes_fingerprint() {
+    let (env, client, _admin, emitter) = setup();
+    client.set_retention_period(&86400);
+
+    env.ledger().set_timestamp(0);
+    let original = record_sample(&env, &client, &emitter, "{}", 0x20);
+
+    let fingerprint_key = env.as_contract(&client.address, || {
+        DataKey::Fingerprint(AuditTrailContract::derive_fingerprint(
+            &env,
+            &emitter,
+            &String::from_str(&env, "RETIREMENT"),
+            &String::from_str(&env, "credit-42"),
+            Some(&String::from_str(&env, "company-7")),
+            &String::from_str(&env, "{}"),
+            &BytesN::from_array(&env, &[0x20; 32]),
+        ))
+    });
+    let stored: Option<BytesN<32>> = env.as_contract(&client.address, || {
+        env.storage().persistent().get(&fingerprint_key)
+    });
+    assert_eq!(stored, Some(original.clone()));
+
+    env.ledger().set_timestamp(172_801);
+    assert_eq!(client.prune_old_events(), 1);
+
+    let has_fingerprint = env.as_contract(&client.address, || {
+        env.storage().persistent().has(&fingerprint_key)
+    });
+    assert!(!has_fingerprint);
+    assert_eq!(client.get_event_count(), 0);
+
+    // Once pruned, the same content is recorded as a brand-new event.
+    let fresh = record_sample(&env, &client, &emitter, "{}", 0x20);
+    assert_ne!(fresh, original);
+    assert_eq!(client.get_event_count(), 1);
 }

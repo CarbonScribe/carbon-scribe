@@ -9,9 +9,11 @@ import { Prisma } from '@prisma/client';
 import { ConfigService } from '../../config/config.service';
 import { PrismaService } from '../../shared/database/prisma.service';
 import {
+  CARBON_ASSET_CONTRACT_ID,
   ContractExecutionResult,
   ContractInvocation,
   ContractSimulation,
+  RETIREMENT_TRACKER_CONTRACT_ID,
 } from './contracts/contract.interface';
 import * as StellarSdk from '@stellar/stellar-sdk';
 import { TimeoutError } from '../../shared/exceptions/timeout-error';
@@ -36,6 +38,15 @@ export class SorobanService {
   private readonly logger = new Logger(SorobanService.name);
   private readonly rpc: StellarSdk.rpc.Server;
   private readonly networkPassphrase: string;
+  private readonly contractMethodsCache = new Map<
+    string,
+    { methods: ReadonlySet<string>; expiresAt: number }
+  >();
+  private readonly contractMethodsLookupInFlight = new Map<
+    string,
+    Promise<ReadonlySet<string>>
+  >();
+  private readonly contractMethodsCacheTtlMs = 5 * 60 * 1000;
 
   // Timeout configurations (in milliseconds)
   private readonly simulateTimeout: number;
@@ -88,7 +99,7 @@ export class SorobanService {
     payload: ContractSimulation,
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
-    this.ensureCallInput(payload.contractId, payload.methodName);
+    await this.ensureCallInput(payload.contractId, payload.methodName, signal);
 
     const args = (payload.args || []).map((arg) => this.toScVal(arg));
     const sourceAccount = new StellarSdk.Account(
@@ -130,7 +141,7 @@ export class SorobanService {
     payload: ContractInvocation,
     signal?: AbortSignal,
   ): Promise<ContractExecutionResult> {
-    this.ensureCallInput(payload.contractId, payload.methodName);
+    await this.ensureCallInput(payload.contractId, payload.methodName, signal);
 
     const args = payload.args || [];
 
@@ -406,6 +417,57 @@ export class SorobanService {
     }
   }
 
+  async validateConfiguredContractMethods(): Promise<void> {
+    const contracts = [
+      {
+        contractId:
+          process.env.CARBON_ASSET_CONTRACT_ID ||
+          process.env.STELLAR_CARBON_ASSET_CONTRACT_ID ||
+          CARBON_ASSET_CONTRACT_ID,
+        expectedMethods: ['balance', 'mint', 'retire', 'transfer'],
+      },
+      {
+        contractId:
+          process.env.RETIREMENT_TRACKER_CONTRACT_ID ||
+          process.env.STELLAR_RETIREMENT_TRACKER_CONTRACT_ID ||
+          RETIREMENT_TRACKER_CONTRACT_ID,
+        expectedMethods: [
+          'retire',
+          'retire_with_tx_hash',
+          'get_retirement_record',
+        ],
+      },
+      {
+        contractId:
+          process.env.METHODOLOGY_LIBRARY_CONTRACT_ID ||
+          'CDQXMVTNCAN4KKPFOAMAAKU4B7LNNQI7F6EX2XIGKVNPJPKGWGM35BTP',
+        expectedMethods: ['mint_methodology', 'get_methodology_meta'],
+      },
+    ];
+
+    const missingMethods = (
+      await Promise.all(
+        contracts.map(async ({ contractId, expectedMethods }) => {
+          const methods = await this.getContractMethods(contractId);
+          return {
+            contractId,
+            methods: expectedMethods.filter((method) => !methods.has(method)),
+          };
+        }),
+      )
+    ).filter(({ methods }) => methods.length > 0);
+
+    if (missingMethods.length > 0) {
+      const details = missingMethods
+        .map(
+          ({ contractId, methods }) =>
+            `"${contractId}" is missing ${methods.join(', ')}`,
+        )
+        .join('; ');
+      throw new Error(`Soroban contract method validation failed: ${details}`);
+    }
+  }
+
   /**
    * Execute an operation with timeout and cancellation support
    */
@@ -415,34 +477,109 @@ export class SorobanService {
     operationName: string,
     signal?: AbortSignal,
   ): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+    let abortHandler: (() => void) | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      const timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         reject(
           new TimeoutError(`${operationName} timed out after ${timeoutMs}ms`),
         );
       }, timeoutMs);
 
       if (signal) {
-        signal.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(timeoutId);
-            reject(new Error(`${operationName} cancelled`));
-          },
-          { once: true },
-        );
+        if (signal.aborted) {
+          clearTimeout(timeoutId);
+          reject(new Error(`${operationName} cancelled`));
+          return;
+        }
+        abortHandler = () => {
+          clearTimeout(timeoutId);
+          reject(new Error(`${operationName} cancelled`));
+        };
+        signal.addEventListener('abort', abortHandler, { once: true });
       }
     });
 
-    return Promise.race([promise, timeoutPromise]);
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutId);
+      if (signal && abortHandler) {
+        signal.removeEventListener('abort', abortHandler);
+      }
+    }
   }
 
-  private ensureCallInput(contractId: string, methodName: string) {
+  private async ensureCallInput(
+    contractId: string,
+    methodName: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (!contractId || !contractId.trim()) {
       throw new BadRequestException('contractId is required');
     }
     if (!methodName || !methodName.trim()) {
       throw new BadRequestException('methodName is required');
+    }
+
+    let methods: ReadonlySet<string>;
+    try {
+      methods = await this.executeWithTimeout(
+        this.getContractMethods(contractId),
+        this.simulateTimeout,
+        `getContractMethods for ${contractId}`,
+        signal,
+      );
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Unable to validate method "${methodName}" for contract "${contractId}": ${this.getErrorMessage(error)}`,
+      );
+    }
+
+    if (!methods.has(methodName)) {
+      throw new BadRequestException(
+        `Method "${methodName}" is not exposed by contract "${contractId}"`,
+      );
+    }
+  }
+
+  private async getContractMethods(
+    contractId: string,
+  ): Promise<ReadonlySet<string>> {
+    const cached = this.contractMethodsCache.get(contractId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.methods;
+    }
+    if (cached) {
+      this.contractMethodsCache.delete(contractId);
+    }
+
+    const inFlight = this.contractMethodsLookupInFlight.get(contractId);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const lookup = (async () => {
+      const wasm = await this.rpc.getContractWasmByContractId(contractId);
+      const methods = new Set(
+        StellarSdk.contract.Spec.fromWasm(wasm)
+          .funcs()
+          .map((func) => func.name().toString()),
+      );
+      this.contractMethodsCache.set(contractId, {
+        methods,
+        expiresAt: Date.now() + this.contractMethodsCacheTtlMs,
+      });
+      return methods;
+    })();
+
+    this.contractMethodsLookupInFlight.set(contractId, lookup);
+    try {
+      return await lookup;
+    } finally {
+      if (this.contractMethodsLookupInFlight.get(contractId) === lookup) {
+        this.contractMethodsLookupInFlight.delete(contractId);
+      }
     }
   }
 

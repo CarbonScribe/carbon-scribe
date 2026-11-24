@@ -10,28 +10,33 @@ use soroban_sdk::{
 /// `env.events()`, returning its fields for assertion.
 fn last_attribute_revoked_event(env: &Env) -> (u32, String, Address, String, u64) {
     let events = env.events().all();
-    let (_, topics, data) = events.get(events.len() - 1).unwrap();
-
     let expected_symbol = Symbol::new(env, "attribute_revoked_event");
-    assert_eq!(topics.len(), 1, "AttributeRevokedEvent should have 1 topic");
-    assert_eq!(
-        Symbol::try_from_val(env, &topics.get(0).unwrap()),
-        Ok(expected_symbol)
-    );
 
-    let map: Map<Symbol, Val> = Map::try_from_val(env, &data).unwrap();
-    let token_id: u32 =
-        u32::try_from_val(env, &map.get(Symbol::new(env, "token_id")).unwrap()).unwrap();
-    let tag_id: String =
-        String::try_from_val(env, &map.get(Symbol::new(env, "tag_id")).unwrap()).unwrap();
-    let revoked_by: Address =
-        Address::try_from_val(env, &map.get(Symbol::new(env, "revoked_by")).unwrap()).unwrap();
-    let reason: String =
-        String::try_from_val(env, &map.get(Symbol::new(env, "reason")).unwrap()).unwrap();
-    let timestamp: u64 =
-        u64::try_from_val(env, &map.get(Symbol::new(env, "timestamp")).unwrap()).unwrap();
+    for i in (0..events.len()).rev() {
+        let (_, topics, data) = events.get(i).unwrap();
+        if topics.len() != 1 {
+            continue;
+        }
+        if Symbol::try_from_val(env, &topics.get(0).unwrap()) != Ok(expected_symbol.clone()) {
+            continue;
+        }
 
-    (token_id, tag_id, revoked_by, reason, timestamp)
+        let map: Map<Symbol, Val> = Map::try_from_val(env, &data).unwrap();
+        let token_id: u32 =
+            u32::try_from_val(env, &map.get(Symbol::new(env, "token_id")).unwrap()).unwrap();
+        let tag_id: String =
+            String::try_from_val(env, &map.get(Symbol::new(env, "tag_id")).unwrap()).unwrap();
+        let revoked_by: Address =
+            Address::try_from_val(env, &map.get(Symbol::new(env, "revoked_by")).unwrap()).unwrap();
+        let reason: String =
+            String::try_from_val(env, &map.get(Symbol::new(env, "reason")).unwrap()).unwrap();
+        let timestamp: u64 =
+            u64::try_from_val(env, &map.get(Symbol::new(env, "timestamp")).unwrap()).unwrap();
+
+        return (token_id, tag_id, revoked_by, reason, timestamp);
+    }
+
+    panic!("No attribute_revoked_event found in events");
 }
 
 fn make_attribute_def(env: &Env, tag_id: &str, valid_from: u64, valid_until: u64) -> AttributeDefinition {

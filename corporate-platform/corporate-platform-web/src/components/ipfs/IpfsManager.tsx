@@ -28,6 +28,7 @@ import {
 import { useChunkedUpload } from '@/hooks/useChunkedUpload'
 import { Pagination } from '@/components/common/Pagination'
 import type { IpfsDocumentRecord, IpfsDocumentType } from '@/types/ipfs'
+import { apiUrl } from '@/lib/api/api-url'
 
 const documentTypes: IpfsDocumentType[] = [
   'CERTIFICATE',
@@ -545,7 +546,7 @@ export default function IpfsManager() {
       setSingleUpload({ busy: true, percent: 0 })
 
       const result = await chunked.start({
-        url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ipfs/upload/chunked`,
+        url: apiUrl('/ipfs/upload/chunked'),
         file,
         metadata,
         sessionKey: sessionKeyFor(file),
@@ -744,7 +745,6 @@ export default function IpfsManager() {
       referenceId: uploadRef.trim(),
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'
     const results: string[] = []
     const smallFiles: typeof batchFiles = []
 
@@ -760,7 +760,7 @@ export default function IpfsManager() {
         }
 
         const result = await chunked.start({
-          url: `${apiBase}/ipfs/upload/chunked`,
+          url: apiUrl('/ipfs/upload/chunked'),
           file,
           metadata: fileMeta,
           sessionKey: sessionKeyFor(file),
@@ -955,7 +955,7 @@ export default function IpfsManager() {
       setCertUpload({ busy: true, percent: 0 })
 
       const result = await chunked.start({
-        url: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1'}/ipfs/upload/chunked`,
+        url: apiUrl('/ipfs/upload/chunked'),
         file: certificateFile,
         metadata: {
           companyId: user.companyId,

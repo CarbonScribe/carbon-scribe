@@ -1,5 +1,6 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
 import { authApiClient } from '@/lib/api/auth-http';
+import { apiUrl } from '@/lib/api/api-url';
 import type {
   AuditEventResponse,
   AuditEventDetail,
@@ -120,10 +121,9 @@ export async function exportAuditEvents(
   const queryString = queryParams.toString();
   const path = queryString ? `${AUDIT_PREFIX}/export?${queryString}` : `${AUDIT_PREFIX}/export`;
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
   const token = getAccessToken();
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetch(apiUrl(path), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

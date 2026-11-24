@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 import {
   PerformanceTimeSeries,
@@ -28,7 +29,10 @@ export class PerformanceService {
     endDate: string,
     aggregation: 'daily' | 'weekly' | 'monthly' = 'monthly',
   ): Promise<PerformanceTimeSeries> {
-    const cacheKey = `perf:timeline:${companyId}:${metric}:${aggregation}`;
+    const cacheKey = CacheKeys.tenant(
+      companyId,
+      `perf:timeline:${metric}:${aggregation}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -62,7 +66,10 @@ export class PerformanceService {
     metric: string,
     dimension: string = 'projectType',
   ): Promise<MetricBreakdown> {
-    const cacheKey = `perf:breakdown:${companyId}:${metric}:${dimension}`;
+    const cacheKey = CacheKeys.tenant(
+      companyId,
+      `perf:breakdown:${metric}:${dimension}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -111,7 +118,10 @@ export class PerformanceService {
     metric: string,
     period: string = 'MONTHLY',
   ): Promise<PerformanceRanking> {
-    const cacheKey = `perf:ranking:${companyId}:${metric}:${period}`;
+    const cacheKey = CacheKeys.tenant(
+      companyId,
+      `perf:ranking:${metric}:${period}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

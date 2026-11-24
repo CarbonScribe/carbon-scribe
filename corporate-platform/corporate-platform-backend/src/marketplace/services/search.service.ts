@@ -5,6 +5,7 @@ import {
   MarketplaceSearchResult,
 } from '../interfaces/search-query.interface';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { Credit } from '@prisma/client';
 
 @Injectable()
@@ -136,7 +137,8 @@ export class SearchService {
     if (!normalized) {
       return;
     }
-    const key = `marketplace:search:term:${normalized}`;
+    // Search-term popularity is aggregated across all tenants on purpose.
+    const key = CacheKeys.global(`marketplace:search:term:${normalized}`);
     const current = await this.cacheService.get<number>(key);
     const next = (current || 0) + 1;
     await this.cacheService.set(key, next, 60 * 60 * 24 * 30);

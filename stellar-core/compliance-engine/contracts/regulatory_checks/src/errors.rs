@@ -16,4 +16,9 @@ pub enum ContractError {
     /// A state-mutating entrypoint was called before initialize() (issue #519).
     NotInitialized = 10,
     InvalidRuleSchema = 11,
+    /// A pending approval already exists under the derived key; approvals are
+    /// never overwritten or reset (issue #819).
+    ApprovalAlreadyExists = 12,
+    /// An approval validity window of zero seconds was supplied.
+    InvalidApprovalValidity = 13,
 }

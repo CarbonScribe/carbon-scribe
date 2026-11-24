@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 
 @Injectable()
@@ -17,7 +18,7 @@ export class ProjectComparisonService {
    * Compare multiple projects
    */
   async compareProjects(projectIds: string[]) {
-    const cacheKey = `comp:projects:${projectIds.join(',')}`;
+    const cacheKey = CacheKeys.global(`comp:projects:${projectIds.join(',')}`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -57,7 +58,7 @@ export class ProjectComparisonService {
    * Find similar projects for benchmarking
    */
   async findSimilarProjects(projectId: string, limit: number = 5) {
-    const cacheKey = `comp:similar:${projectId}`;
+    const cacheKey = CacheKeys.global(`comp:similar:${projectId}`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -101,7 +102,7 @@ export class ProjectComparisonService {
    * Identify top and bottom performing projects
    */
   async findOutliers(companyId: string, metric: string = 'quality') {
-    const cacheKey = `comp:outliers:${companyId}:${metric}`;
+    const cacheKey = CacheKeys.tenant(companyId, `comp:outliers:${metric}`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

@@ -1,4 +1,5 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
+import { apiUrl } from '@/lib/api/api-url';
 import { ApiResponse, apiClient } from './api-client';
 import { chunkedUpload } from '@/lib/utils/chunkedUpload';
 import type { UploadProgress } from '@/lib/utils/chunkedUpload';
@@ -12,9 +13,6 @@ import type {
   IpfsRetrieveResponse,
   IpfsUploadResponse,
 } from '@/types/ipfs';
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
 /** Files at or above this size use the chunked/resumable upload path (10 MB). */
 export const CHUNKED_UPLOAD_THRESHOLD = 10 * 1024 * 1024;
@@ -51,7 +49,7 @@ class IpfsService {
       });
 
       const token = this.getAuthToken();
-      const response = await fetch(`${API_BASE_URL}/ipfs/upload`, {
+      const response = await fetch(apiUrl('/ipfs/upload'), {
         method: 'POST',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -93,7 +91,7 @@ class IpfsService {
   ): Promise<ApiResponse<IpfsUploadResponse>> {
     try {
       const result = await chunkedUpload({
-        url: `${API_BASE_URL}/ipfs/upload/chunked`,
+        url: apiUrl('/ipfs/upload/chunked'),
         file,
         metadata,
         sessionKey: options.sessionKey,

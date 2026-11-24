@@ -9,13 +9,15 @@ import { requestQueue } from '@/lib/utils/requestQueue';
 import { reportError } from '@/lib/telemetry/errorReporter';
 import { requestManager } from '@/lib/api/requestManager';
 import { parseResponseBody } from '@/lib/api/responseParser';
+import { env } from '@/env';
+import { apiUrl } from '@/lib/api/api-url';
 
 /**
  * Base API Client for handling HTTP requests
  * Handles authentication, error handling, and response formatting
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
+const API_BASE_URL = env.NEXT_PUBLIC_API_BASE_URL;
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -98,7 +100,7 @@ class ApiClient {
     endpoint: string,
     options?: ApiFetchOptions,
   ): Promise<ApiResponse<T>> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = apiUrl(endpoint, this.baseUrl);
     const timeout = options?.timeout || 30000;
 
     // Check if offline and queueOffline is enabled for mutation requests

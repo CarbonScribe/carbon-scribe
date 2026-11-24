@@ -1,4 +1,5 @@
 import { getAccessToken } from '@/lib/auth/token-storage';
+import { apiUrl } from '@/lib/api/api-url';
 import { ApiResponse, apiClient, ApiFetchOptions } from './api-client';
 import type {
   RetireCreditsPayload,
@@ -107,9 +108,7 @@ class RetirementService {
    * via fetch + Blob or window.open after setting the token in a cookie.
    */
   getCertificateDownloadUrl(retirementId: string): string {
-    const base =
-      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-    return `${base}/retirements/${encodeURIComponent(retirementId)}/certificate`;
+    return apiUrl(`/retirements/${encodeURIComponent(retirementId)}/certificate`);
   }
 
   /**
@@ -147,9 +146,7 @@ class RetirementService {
   async exportCsv(): Promise<Blob | null> {
     const token =
       getAccessToken();
-    const base =
-      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-    const res = await fetch(`${base}/retirements/export/csv`, {
+    const res = await fetch(apiUrl('/retirements/export/csv'), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) return null;

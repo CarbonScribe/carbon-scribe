@@ -213,7 +213,13 @@ impl BufferPoolContract {
 
         current_governance.require_auth();
 
+        if new_governance == governance {
+            return Err(Error::NoOpGovernanceChange);
+        }
+
+        let old = governance;
         set_governance(&env, &new_governance);
+        emit_governance_changed(&env, &old, &new_governance);
 
         Ok(())
     }
@@ -239,7 +245,9 @@ impl BufferPoolContract {
             return Err(Error::InvalidPercentage);
         }
 
+        let old_bps = get_replenishment_percentage(&env);
         set_replenishment_percentage(&env, new_percentage);
+        emit_replenishment_rate_changed(&env, old_bps, new_percentage, &governance);
 
         Ok(())
     }

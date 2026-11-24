@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { 
   Settings, 
   User, 
@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
 import { useTheme } from '@/hooks/useTheme'
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry'
 
 export default function SettingsPage() {
   const { company } = useCorporate()
@@ -72,6 +73,8 @@ export default function SettingsPage() {
   const [notificationSettings, setNotificationSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
+    primaryEmail: 'admin@techglobal.com',
+    soundEnabled: true,
     creditPurchases: true,
     creditRetirements: true,
     complianceDeadlines: true,
@@ -101,12 +104,28 @@ export default function SettingsPage() {
     apiVersion: 'v1',
   })
 
+  const settingsValues = {
+    generalSettings,
+    securitySettings,
+    notificationSettings,
+    billingSettings,
+    integrationSettings,
+  }
+  const defaultSettings = useRef(settingsValues)
+  const savedSettings = useRef(settingsValues)
+  useUnsavedChangesGuard(
+    'platform-settings',
+    JSON.stringify(settingsValues) !== JSON.stringify(savedSettings.current),
+  )
+
   // Save settings
   const handleSaveSettings = () => {
+    const valuesToSave = settingsValues
     setIsSaving(true)
     // Simulate API call
     setTimeout(() => {
       setIsSaving(false)
+      savedSettings.current = valuesToSave
       // Show success message
       alert('Settings saved successfully!')
     }, 1000)
@@ -115,7 +134,13 @@ export default function SettingsPage() {
   // Reset to defaults
   const handleResetDefaults = () => {
     if (confirm('Are you sure you want to reset all settings to default?')) {
-      // Reset logic here
+      const defaults = defaultSettings.current
+      setGeneralSettings(defaults.generalSettings)
+      setSecuritySettings(defaults.securitySettings)
+      setNotificationSettings(defaults.notificationSettings)
+      setBillingSettings(defaults.billingSettings)
+      setIntegrationSettings(defaults.integrationSettings)
+      savedSettings.current = defaults
       alert('Settings reset to defaults!')
     }
   }
@@ -669,7 +694,13 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="email"
-                        defaultValue="admin@techglobal.com"
+                        value={notificationSettings.primaryEmail}
+                        onChange={(e) =>
+                          setNotificationSettings({
+                            ...notificationSettings,
+                            primaryEmail: e.target.value,
+                          })
+                        }
                         className="w-full p-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-corporate-blue"
                       />
                     </div>
@@ -698,7 +729,17 @@ export default function SettingsPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-gray-700 dark:text-gray-300">Sound Enabled</span>
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" defaultChecked />
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={notificationSettings.soundEnabled}
+                          onChange={(e) =>
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              soundEnabled: e.target.checked,
+                            })
+                          }
+                        />
                         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-corporate-blue"></div>
                       </label>
                     </div>

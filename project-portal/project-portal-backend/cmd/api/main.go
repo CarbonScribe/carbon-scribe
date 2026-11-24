@@ -102,7 +102,8 @@ func main() {
 
 	// --- Quality Scoring ---
 	qualityRepo := quality.NewRepository(db)
-	qualityService := quality.NewService(qualityRepo)
+	qualityMethodologyRepo := methodology.NewRepository(db)
+	qualityService := quality.NewService(qualityRepo, qualityMethodologyRepo)
 	qualityHandler := quality.NewHandler(qualityService)
 
 	// Run all migrations

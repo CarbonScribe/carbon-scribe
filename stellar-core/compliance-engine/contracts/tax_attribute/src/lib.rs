@@ -221,6 +221,15 @@ impl TaxAttributeContract {
             .persistent()
             .set(&DataKey::TokenAttributes(token_id), &attached_tags);
 
+        events::emit_attribute_attached_event(
+            &env,
+            token_id,
+            attribute.tag_id.clone(),
+            attribute.issuing_authority.clone(),
+            attribute.valid_from,
+            attribute.valid_until,
+        );
+
         Ok(())
     }
 

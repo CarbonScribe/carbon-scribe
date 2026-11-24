@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { marketplaceService } from '@/services/marketplace.service';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useGuardedRouter } from '@/hooks/useGuardedRouter';
 import { isAbortError } from '@/lib/utils/request-dedup';
 import {
   MarketplaceCredit,
@@ -147,7 +148,7 @@ export interface UseMarketplaceActions {
 }
 
 export function useMarketplace(): UseMarketplaceState & UseMarketplaceActions {
-  const router = useRouter();
+  const router = useGuardedRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();

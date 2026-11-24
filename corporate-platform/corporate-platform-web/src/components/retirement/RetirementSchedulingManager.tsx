@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Bell, CalendarClock, Pencil, Plus, RefreshCcw, Trash2 } from 'lucide-react'
 import { retirementSchedulingService } from '@/services/retirement-scheduling.service'
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry'
 import type {
   CreateScheduledRetirementPayload,
   RetirementPurpose,
@@ -59,6 +60,11 @@ export default function RetirementSchedulingManager() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [formState, setFormState] = useState<ScheduleFormState>(defaultForm)
+  const [initialFormState, setInitialFormState] = useState<ScheduleFormState>(defaultForm)
+  useUnsavedChangesGuard(
+    'retirement-schedule',
+    JSON.stringify(formState) !== JSON.stringify(initialFormState),
+  )
 
   const upcomingAlerts = useMemo(() => {
     return schedules
@@ -76,6 +82,7 @@ export default function RetirementSchedulingManager() {
 
   const resetForm = () => {
     setFormState(defaultForm)
+    setInitialFormState(defaultForm)
     setEditingId(null)
   }
 
@@ -140,14 +147,16 @@ export default function RetirementSchedulingManager() {
 
   const onEdit = (schedule: ScheduledRetirement) => {
     setEditingId(schedule.id)
-    setFormState({
+    const editedForm = {
       name: schedule.name,
       purpose: schedule.purpose,
       amount: schedule.amount,
       frequency: schedule.frequency,
       startDate: new Date(schedule.startDate).toISOString().slice(0, 10),
       notifyBefore: schedule.notifyBefore ?? 0,
-    })
+    }
+    setFormState(editedForm)
+    setInitialFormState(editedForm)
     setSuccessMessage(null)
     setError(null)
   }

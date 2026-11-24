@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SessionTimeoutModal from './SessionTimeoutModal';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   registerUnsavedChanges,
+  unregisterUnsavedChanges,
   clearAllUnsavedChanges,
 } from '@/lib/forms/unsavedChangesRegistry';
 
@@ -70,6 +71,9 @@ describe('SessionTimeoutModal', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /renew session/i })).toHaveFocus(),
     );
+
+    act(() => unregisterUnsavedChanges('test-form'));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
   it('renders the blocking modal during the grace state and traps focus on the renew button', async () => {
