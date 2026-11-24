@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use crate::{BufferPoolContract, BufferPoolContractClient};
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{testutils::Address as _, testutils::Events as _, Address, Env, String};
 
 // A mock contract to handle the cross-contract "transfer" call
 #[soroban_sdk::contract]
