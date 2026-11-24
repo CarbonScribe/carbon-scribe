@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry';
 import { Plus, Trash2, Loader2, CheckCircle, AlertCircle, X } from 'lucide-react';
 import type {
   MaterialityTopicPayload,
@@ -206,6 +207,11 @@ export function MaterialityAssessmentForm({
   const [risks, setRisks] = useState<MaterialityTopicPayload[]>([emptyTopic()]);
   const [successResult, setSuccessResult] =
     useState<MaterialityAssessmentResult | null>(null);
+  const initialValues = useRef({ assessmentYear, impacts, risks });
+  const isDirty =
+    JSON.stringify({ assessmentYear, impacts, risks }) !==
+    JSON.stringify(initialValues.current);
+  useUnsavedChangesGuard('csrd-materiality-assessment', isDirty && !successResult);
 
   const updateTopic = (
     list: MaterialityTopicPayload[],
@@ -230,6 +236,7 @@ export function MaterialityAssessmentForm({
     };
     const result = await onAssess(payload);
     if (result) {
+      initialValues.current = { assessmentYear, impacts, risks };
       setSuccessResult(result);
       onSuccess?.(result);
     }

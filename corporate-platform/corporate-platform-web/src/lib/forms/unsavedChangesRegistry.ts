@@ -82,3 +82,21 @@ export function useUnsavedChangesRegistration(formId: string, isDirty: boolean):
     return () => unregisterUnsavedChanges(formId);
   }, [formId, isDirty]);
 }
+
+/** Registers dirty forms and warns before the browser unloads the page. */
+export function useUnsavedChangesGuard(formId: string, isDirty: boolean): void {
+  useUnsavedChangesRegistration(formId, isDirty);
+  const hasAnyUnsavedChanges = useHasUnsavedChanges();
+
+  useEffect(() => {
+    if (!isDirty || !hasAnyUnsavedChanges) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasAnyUnsavedChanges, isDirty]);
+}

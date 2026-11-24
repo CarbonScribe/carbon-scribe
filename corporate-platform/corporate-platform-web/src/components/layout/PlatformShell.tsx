@@ -11,6 +11,7 @@ import AuthNavbar from '@/components/layout/AuthNavbar'
 import ConnectionStatus from '@/components/layout/ConnectionStatus'
 import SessionExpiryBanner from '@/components/layout/SessionExpiryBanner'
 import SessionTimeoutModal from '@/components/layout/SessionTimeoutModal'
+import UnsavedChangesNavigationGuard from '@/components/layout/UnsavedChangesNavigationGuard'
 import { ClientOnly } from '@/components/common/ClientOnly'
 import { SkipLink } from '@/components/common/SkipLink'
 
@@ -88,6 +89,7 @@ export default function PlatformShell({ children }: PlatformShellProps) {
   return (
     <ConnectivityProvider>
       <div className="flex min-h-screen">
+        <UnsavedChangesNavigationGuard />
         <CorporateSidebar />
         <div className="flex flex-1 flex-col">
           <ClientOnly fallback={<div className="h-12" />}>

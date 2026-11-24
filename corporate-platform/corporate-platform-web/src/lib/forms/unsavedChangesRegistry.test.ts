@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import {
   registerUnsavedChanges,
@@ -7,11 +7,13 @@ import {
   clearAllUnsavedChanges,
   useHasUnsavedChanges,
   useUnsavedChangesRegistration,
+  useUnsavedChangesGuard,
 } from './unsavedChangesRegistry';
 
 describe('unsavedChangesRegistry', () => {
   afterEach(() => {
     clearAllUnsavedChanges();
+    vi.restoreAllMocks();
   });
 
   it('reports no unsaved changes by default', () => {
@@ -79,5 +81,47 @@ describe('unsavedChangesRegistry', () => {
 
     unmount();
     expect(hasUnsavedChanges()).toBe(false);
+  });
+
+  it('useUnsavedChangesGuard registers dirty forms and manages the beforeunload listener', () => {
+    const addListener = vi.spyOn(window, 'addEventListener');
+    const removeListener = vi.spyOn(window, 'removeEventListener');
+    const { rerender, unmount } = renderHook(
+      ({ isDirty }: { isDirty: boolean }) => useUnsavedChangesGuard('guarded-form', isDirty),
+      { initialProps: { isDirty: false } },
+    );
+
+    expect(addListener).not.toHaveBeenCalledWith('beforeunload', expect.any(Function));
+    rerender({ isDirty: true });
+
+    expect(hasUnsavedChanges()).toBe(true);
+    const beforeUnloadListener = addListener.mock.calls.find(
+      ([eventName]) => eventName === 'beforeunload',
+    )?.[1];
+    expect(beforeUnloadListener).toBeDefined();
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+
+    rerender({ isDirty: false });
+    expect(hasUnsavedChanges()).toBe(false);
+    expect(removeListener).toHaveBeenCalledWith('beforeunload', beforeUnloadListener);
+    expect(addListener).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it('removes the beforeunload listener when the registry is cleared globally', () => {
+    const removeListener = vi.spyOn(window, 'removeEventListener');
+    renderHook(() => useUnsavedChangesGuard('logout-form', true));
+
+    expect(hasUnsavedChanges()).toBe(true);
+    act(() => clearAllUnsavedChanges());
+
+    expect(hasUnsavedChanges()).toBe(false);
+    expect(removeListener).toHaveBeenCalledWith(
+      'beforeunload',
+      expect.any(Function),
+    );
   });
 });

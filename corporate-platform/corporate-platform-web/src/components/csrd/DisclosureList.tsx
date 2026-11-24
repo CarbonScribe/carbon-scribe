@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry';
 import {
   Plus,
   Loader2,
@@ -53,6 +54,11 @@ function RecordDisclosureModal({
     assuranceLevel: undefined,
   });
   const [success, setSuccess] = useState(false);
+  const initialForm = useRef(form);
+  useUnsavedChangesGuard(
+    'csrd-disclosure-record',
+    JSON.stringify(form) !== JSON.stringify(initialForm.current) && !success,
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

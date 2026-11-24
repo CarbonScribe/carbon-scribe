@@ -5,14 +5,14 @@ import { ArrowLeft, MapPin, Calendar, DollarSign, CheckCircle, ExternalLink, Awa
 import { useCreditDetail, useCreditQuality } from '@/hooks/useCredits';
 import CreditQualityMetrics from './CreditQualityMetrics';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useGuardedRouter } from '@/hooks/useGuardedRouter';
 
 interface CreditDetailProps {
   creditId: string;
 }
 
 export default function CreditDetailView({ creditId }: CreditDetailProps) {
-  const router = useRouter();
+  const router = useGuardedRouter();
   const { data: credit, loading, error } = useCreditDetail(creditId);
   const { data: quality } = useCreditQuality(creditId);
   const [showQuality, setShowQuality] = useState(false);
