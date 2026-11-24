@@ -50,10 +50,51 @@ pub fn emit_attribute_revoked_event(
 ) {
     AttributeRevokedEvent {
         token_id,
-        tag_id,
-        revoked_by,
+        tag_id: tag_id.clone(),
+        revoked_by: revoked_by.clone(),
         reason,
         timestamp: env.ledger().timestamp(),
     }
     .publish(env);
+
+    #[allow(deprecated)]
+    env.events().publish(
+        (soroban_sdk::Symbol::short("tax_rev"), token_id),
+        (tag_id, revoked_by),
+    );
+}
+
+#[contractevent]
+pub struct AttributeAttachedEvent {
+    pub token_id: u32,
+    pub tag_id: String,
+    pub issuer: Address,
+    pub valid_from: u64,
+    pub valid_until: u64,
+    pub timestamp: u64,
+}
+
+pub fn emit_attribute_attached_event(
+    env: &Env,
+    token_id: u32,
+    tag_id: String,
+    issuer: Address,
+    valid_from: u64,
+    valid_until: u64,
+) {
+    AttributeAttachedEvent {
+        token_id,
+        tag_id: tag_id.clone(),
+        issuer: issuer.clone(),
+        valid_from,
+        valid_until,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+
+    #[allow(deprecated)]
+    env.events().publish(
+        (soroban_sdk::Symbol::short("tax_att"), token_id),
+        (tag_id, issuer, valid_from, valid_until),
+    );
 }

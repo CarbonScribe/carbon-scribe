@@ -235,3 +235,15 @@ After deploy, invoke `initialize` with real testnet addresses for admin and reti
 - Compliance hook enforces jurisdiction-aware transfer policy.
 - Burn semantics protect against retirement replay and double-use.
 - Rich event emission supports forensic audit and ESG reporting trails.
+
+
+## Contract error codes (partial)
+
+| Code | Variant | Meaning |
+|------|---------|---------|
+| 8 | `InvalidStatusTransition` | Lifecycle/status machine violation only |
+| 21 | `InvalidMetadata` | Metadata validation failure |
+| 22 | `InvalidAmount` | Non-positive transfer or burn amount |
+| 23 | `InvalidExpirationLedger` | Allowance `live_until_ledger` is before the current ledger |
+
+Do not renumber existing codes; append only.

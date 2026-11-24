@@ -34,4 +34,9 @@ pub enum ContractError {
     // u32::MAX and cannot be safely incremented without wraparound (issue #611).
     TokenIdOverflow = 20,
     InvalidMetadata = 21,
+    /// Non-positive transfer/burn amount (SEP-41 input validation).
+    InvalidAmount = 22,
+    /// Allowance expiration ledger is in the past.
+    InvalidExpirationLedger = 23,
 }
+
