@@ -157,7 +157,7 @@ describe("all four agent routes enforce requireInternalAuth", () => {
 
   it.each(routesUnderAuth)(
     "accepts $path with a valid token and passes the verified caller through as requestedBy",
-    async ({ path, mock }) => {
+    async ({ path, mock, agent }) => {
       const token = signServiceToken(
         "project-portal",
         SECRETS["project-portal"],
@@ -169,7 +169,14 @@ describe("all four agent routes enforce requireInternalAuth", () => {
         .send({
           requestId: "req-1",
           requestedBy: "client-supplied",
-          input: {},
+          input:
+            agent === "discovery"
+              ? {}
+              : agent === "pdd-draft"
+                ? { activityType: "reforestation", country: "Kenya" }
+                : agent === "compliance-report"
+                  ? { companyId: "company-1", framework: "csrd", periodStart: "2026-01-01", periodEnd: "2026-12-31" }
+                  : { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } },
         });
 
       expect(res.status).toBe(200);

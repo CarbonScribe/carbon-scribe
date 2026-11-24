@@ -19,9 +19,12 @@ export const searchMarketplaceCredits = betaZodTool({
       .optional(),
   }),
   run: async (input) => {
-    void corporatePlatformClient; // TODO: wire real call, remove this line
-    void input;
-    throw new Error("not implemented");
+    const result = await corporatePlatformClient.listMarketplaceCredits({
+      methodology: input.methodology,
+      priceMax: input.maxPricePerTonne,
+      standard: input.complianceFramework,
+    });
+    return JSON.stringify(result);
   },
 });
 

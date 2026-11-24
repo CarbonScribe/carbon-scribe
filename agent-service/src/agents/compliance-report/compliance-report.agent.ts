@@ -21,6 +21,7 @@ import type {
 } from "../../shared/types/agent.types.js";
 import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { complianceReportTools } from "./compliance-report.tools.js";
+import { cachedSystem } from "../../shared/llm/prompt-cache.js";
 
 const SYSTEM_PROMPT = `You are the compliance-report drafting agent for CarbonScribe's corporate platform.
 Given a company and a regulatory framework (CSRD, CBAM, CORSIA, SBTi, or GHG Protocol),
@@ -70,7 +71,7 @@ export async function runComplianceReportAgent(
     model: DEFAULT_MODEL,
     max_tokens: 16000,
     max_iterations: env.agentMaxIterations,
-    system: SYSTEM_PROMPT,
+    system: cachedSystem(SYSTEM_PROMPT, complianceReportTools),
     tools: complianceReportTools,
     output_config: { format: outputFormat },
     messages: [
@@ -116,10 +117,10 @@ export async function runComplianceReportAgent(
     return calls;
   }
 
-  const budgetResult = await runWithTokenBudget(runner, {
+  const budgetResult = await runWithTokenBudget(runner as unknown as AsyncIterable<any>, {
     maxTokensPerRun: env.agentMaxTokensPerRun,
   });
-  const { message: finalMessage, cumulativeTokens } = budgetResult;
+  const { message: finalMessage, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens } = budgetResult;
 
   if (budgetResult.error) {
     const classified = classifyAnthropicError(
@@ -159,7 +160,7 @@ export async function runComplianceReportAgent(
 
   const textBlock = finalMessage.content.find(
     (
-      block,
+      block: any,
     ): block is Extract<
       (typeof finalMessage.content)[number],
       { type: "text" }
@@ -238,6 +239,8 @@ export async function runComplianceReportAgent(
       requestId: req.requestId,
       status,
       cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
     },
     "agent run token usage",
   );
@@ -261,6 +264,8 @@ async function failRun(
   message: string,
   cumulativeTokens: number,
   errorInfo?: { category: ErrorCategory; retryable: boolean },
+  cacheCreationInputTokens = 0,
+  cacheReadInputTokens = 0,
 ): Promise<AgentRunResult> {
   await auditLog.record({
     timestamp: new Date().toISOString(),
@@ -276,6 +281,8 @@ async function failRun(
       requestId: req.requestId,
       status: "failed",
       cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
     },
     "agent run token usage",
   );

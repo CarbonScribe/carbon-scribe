@@ -40,6 +40,17 @@ describe("discoveryRouter POST /run", () => {
     expect(res.body).toEqual(result);
   });
 
+  it("returns 400 and does not call the agent for an invalid body", async () => {
+    const res = await request(buildApp())
+      .post("/agents/discovery/run")
+      .send({ requestedBy: "user-1", input: {} });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_request");
+    expect(res.body.issues).toBeDefined();
+    expect(runDiscoveryAgentMock).not.toHaveBeenCalled();
+  });
+
   it("returns 502 with a well-formed body for a failed outcome instead of throwing", async () => {
     const result: AgentRunResult = {
       agent: "discovery",
