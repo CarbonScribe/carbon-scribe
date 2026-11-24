@@ -1,7 +1,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
+use soroban_sdk::{
+    testutils::{Address as _, Events as _},
+    Address, BytesN, Env, Event as _, IntoVal, String, Vec,
+};
 
 fn make_rule(
     env: &Env,
@@ -866,4 +869,331 @@ fn test_update_rule_does_not_conflict_with_its_own_prior_version() {
 
     let stored = client.get_rule(&rule_id).unwrap();
     assert_eq!(stored.version, 2);
+}
+
+// ============================================================================
+// Pending approvals (#819)
+// ============================================================================
+
+/// Like `setup`, but also returns the contract id and carbon asset contract.
+fn setup_approvals(env: &Env) -> (RegulatoryCheckClient<'_>, Address, Address, Address) {
+    let contract_id = env.register(RegulatoryCheck, ());
+    let client = RegulatoryCheckClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let governance = Address::generate(env);
+    let asset = Address::generate(env);
+    env.mock_all_auths();
+    client.initialize(&admin, &governance, &asset);
+    (client, contract_id, admin, asset)
+}
+
+#[test]
+fn test_create_pending_approval_without_auth_fails() {
+    let env = Env::default();
+    let (client, _contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    // Drop the blanket auth mock: nobody has signed for `source` now.
+    env.set_auths(&[]);
+
+    let result = client.try_create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    assert!(result.is_err());
+    assert_eq!(client.get_approval_nonce(&source), 0);
+}
+
+#[test]
+fn test_create_pending_approval_rejects_unrelated_requester() {
+    let env = Env::default();
+    let (client, _contract_id, _admin, _asset) = setup_approvals(&env);
+    let attacker = Address::generate(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    // Even with a valid signature, a third party may not open approvals on
+    // someone else's behalf.
+    let result = client.try_create_pending_approval(
+        &attacker,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    assert_eq!(result, Err(Ok(ContractError::NotAuthorized)));
+    assert_eq!(client.get_approval_nonce(&source), 0);
+}
+
+#[test]
+fn test_create_pending_approval_before_init_returns_not_initialized() {
+    let env = Env::default();
+    let contract_id = env.register(RegulatoryCheck, ());
+    let client = RegulatoryCheckClient::new(&env, &contract_id);
+    env.mock_all_auths();
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    let result = client.try_create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    assert_eq!(result, Err(Ok(ContractError::NotInitialized)));
+}
+
+#[test]
+fn test_source_and_asset_contract_can_create_approvals() {
+    let env = Env::default();
+    let (client, _contract_id, _admin, asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    let by_source = client.create_pending_approval(
+        &source,
+        &7,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    let by_asset =
+        client.create_pending_approval(&asset, &7, &source, &destination, &OperationType::TRANSFER);
+
+    assert_ne!(by_source, by_asset);
+    let stored = client.get_pending_approval(&by_asset).unwrap();
+    assert_eq!(stored.token_id, 7);
+    assert_eq!(stored.source, source);
+    assert_eq!(stored.destination, destination);
+    assert!(!stored.approved);
+}
+
+#[test]
+fn test_approval_keys_are_unique_per_nonce() {
+    let env = Env::default();
+    let (client, _contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    let mut seen: Vec<BytesN<32>> = Vec::new(&env);
+    for expected_nonce in 0u64..3 {
+        assert_eq!(client.get_approval_nonce(&source), expected_nonce);
+        // Identical inputs every time — only the nonce differs.
+        let key = client.create_pending_approval(
+            &source,
+            &1,
+            &source,
+            &destination,
+            &OperationType::TRANSFER,
+        );
+        assert!(!seen.contains(&key));
+        seen.push_back(key);
+    }
+    assert_eq!(client.get_approval_nonce(&source), 3);
+
+    // Nonces are tracked per source.
+    let other_source = Address::generate(&env);
+    assert_eq!(client.get_approval_nonce(&other_source), 0);
+}
+
+#[test]
+fn test_approval_key_is_derived_on_chain() {
+    let env = Env::default();
+    let (client, contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    let key = client.create_pending_approval(
+        &source,
+        &42,
+        &source,
+        &destination,
+        &OperationType::RETIREMENT,
+    );
+
+    let expected = env.as_contract(&contract_id, || {
+        RegulatoryCheck::derive_approval_key(
+            &env,
+            42,
+            &source,
+            &destination,
+            &OperationType::RETIREMENT,
+            0,
+        )
+    });
+    assert_eq!(key, expected);
+}
+
+#[test]
+fn test_existing_approval_cannot_be_overwritten() {
+    let env = Env::default();
+    let (client, contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    // Pre-occupy the key the next call will derive (simulates a squatted or
+    // colliding entry). The contract must refuse to overwrite it.
+    let squatted = env.as_contract(&contract_id, || {
+        let key = RegulatoryCheck::derive_approval_key(
+            &env,
+            1,
+            &source,
+            &destination,
+            &OperationType::TRANSFER,
+            0,
+        );
+        env.storage().persistent().set(
+            &DataKey::PendingApproval(key.clone()),
+            &PendingApproval {
+                token_id: 1,
+                source: source.clone(),
+                destination: destination.clone(),
+                operation: OperationType::TRANSFER,
+                timestamp: 0,
+                approved: true,
+            },
+        );
+        key
+    });
+
+    let result = client.try_create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    assert_eq!(result, Err(Ok(ContractError::ApprovalAlreadyExists)));
+    assert!(client.get_pending_approval(&squatted).unwrap().approved);
+    assert_eq!(client.get_approval_nonce(&source), 0);
+}
+
+#[test]
+fn test_approved_key_cannot_be_reset() {
+    let env = Env::default();
+    let (client, _contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+    let authority = Address::generate(&env);
+
+    let key = client.create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    client.record_authorization(&authority, &key);
+    assert!(client.check_approval(&key));
+
+    // Re-requesting the same transfer yields a fresh key and leaves the
+    // approved one untouched.
+    let second = client.create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    assert_ne!(second, key);
+    assert!(client.check_approval(&key));
+    assert!(!client.check_approval(&second));
+}
+
+#[test]
+fn test_approval_validity_window_is_named_and_configurable() {
+    use soroban_sdk::testutils::Ledger;
+
+    let env = Env::default();
+    let (client, _contract_id, admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+    let authority = Address::generate(&env);
+
+    assert_eq!(client.get_approval_validity(), APPROVAL_VALIDITY_SECS);
+    assert_eq!(APPROVAL_VALIDITY_SECS, 604_800);
+
+    env.ledger().set_timestamp(1_000);
+    let key = client.create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    client.record_authorization(&authority, &key);
+
+    env.ledger().set_timestamp(1_000 + APPROVAL_VALIDITY_SECS);
+    assert!(client.check_approval(&key));
+    env.ledger()
+        .set_timestamp(1_000 + APPROVAL_VALIDITY_SECS + 1);
+    assert!(!client.check_approval(&key));
+
+    // Admin can shorten the window; zero and non-admin callers are rejected.
+    assert_eq!(
+        client.try_set_approval_validity(&admin, &0),
+        Err(Ok(ContractError::InvalidApprovalValidity))
+    );
+    let not_admin = Address::generate(&env);
+    assert_eq!(
+        client.try_set_approval_validity(&not_admin, &60),
+        Err(Ok(ContractError::NotAuthorized))
+    );
+    client.set_approval_validity(&admin, &60);
+    assert_eq!(client.get_approval_validity(), 60);
+
+    let short = client.create_pending_approval(
+        &source,
+        &1,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+    env.ledger().set_timestamp(env.ledger().timestamp() + 61);
+    assert_eq!(
+        client.try_record_authorization(&authority, &short),
+        Err(Ok(ContractError::ApprovalExpired))
+    );
+}
+
+#[test]
+fn test_create_pending_approval_emits_appr_new_event() {
+    let env = Env::default();
+    let (client, contract_id, _admin, _asset) = setup_approvals(&env);
+    let source = Address::generate(&env);
+    let destination = Address::generate(&env);
+
+    let key = client.create_pending_approval(
+        &source,
+        &9,
+        &source,
+        &destination,
+        &OperationType::TRANSFER,
+    );
+
+    let expected = events::ApprovalCreated {
+        approval_key: key,
+        requester: source.clone(),
+        token_id: 9,
+        source,
+        destination,
+        operation: OperationType::TRANSFER,
+        nonce: 0,
+        timestamp: env.ledger().timestamp(),
+    };
+    assert_eq!(
+        env.events().all(),
+        soroban_sdk::vec![
+            &env,
+            (contract_id, expected.topics(&env), expected.data(&env))
+        ]
+    );
+    // The first topic is the `appr_new` symbol monitors subscribe to.
+    let topic: soroban_sdk::Symbol = expected.topics(&env).get(0).unwrap().into_val(&env);
+    assert_eq!(topic, soroban_sdk::Symbol::new(&env, "appr_new"));
 }

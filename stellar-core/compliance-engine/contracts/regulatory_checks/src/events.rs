@@ -1,5 +1,5 @@
 use crate::storage::{JurisdictionRule, OperationType};
-use soroban_sdk::{contractevent, Address, Bytes, Env, String};
+use soroban_sdk::{contractevent, Address, Bytes, BytesN, Env, String};
 
 /// A deterministic hash of a JurisdictionRule used for change detection.
 /// Computed by concatenating all rule fields into a canonical byte representation.
@@ -174,6 +174,48 @@ pub fn emit_rule_deactivated_event(env: &Env, rule_id: String, deactivated_by: A
     RuleDeactivated {
         rule_id,
         deactivated_by,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
+}
+
+/// Event emitted when a new pending approval is created (#819).
+///
+/// Published under the `appr_new` topic with the derived key and every input
+/// that went into it, so off-chain monitors can independently recompute the
+/// key and detect tampering or unexpected approval requests.
+#[contractevent(topics = ["appr_new"])]
+pub struct ApprovalCreated {
+    pub approval_key: BytesN<32>,
+    pub requester: Address,
+    pub token_id: u32,
+    pub source: Address,
+    pub destination: Address,
+    pub operation: OperationType,
+    pub nonce: u64,
+    pub timestamp: u64,
+}
+
+/// Emit an ApprovalCreated (`appr_new`) event
+#[allow(clippy::too_many_arguments)]
+pub fn emit_approval_created_event(
+    env: &Env,
+    approval_key: BytesN<32>,
+    requester: Address,
+    token_id: u32,
+    source: Address,
+    destination: Address,
+    operation: OperationType,
+    nonce: u64,
+) {
+    ApprovalCreated {
+        approval_key,
+        requester,
+        token_id,
+        source,
+        destination,
+        operation,
+        nonce,
         timestamp: env.ledger().timestamp(),
     }
     .publish(env);
