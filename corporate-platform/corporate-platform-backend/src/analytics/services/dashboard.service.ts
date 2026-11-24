@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 import {
   DashboardOverview,
@@ -26,8 +27,13 @@ export class DashboardService {
    * a fallback in case an invalidation event is ever missed.
    */
   async invalidateCache(companyId: string): Promise<void> {
-    await this.cache.delByPattern(`dashboard:overview:${companyId}:*`);
-    await this.cache.del(`dashboard:insights:${companyId}`);
+    // Matches every role scope of this tenant only (#813).
+    await this.cache.delByPattern(
+      CacheKeys.tenantAllRolesPattern(companyId, 'dashboard:overview:*'),
+    );
+    await this.cache.delByPattern(
+      CacheKeys.tenantAllRolesPattern(companyId, 'dashboard:insights'),
+    );
   }
 
   /**
@@ -37,7 +43,10 @@ export class DashboardService {
     companyId: string,
     period: string = 'MONTHLY',
   ): Promise<DashboardOverview> {
-    const cacheKey = `dashboard:overview:${companyId}:${period}`;
+    const cacheKey = CacheKeys.tenant(
+      companyId,
+      `dashboard:overview:${period}`,
+    );
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -77,7 +86,7 @@ export class DashboardService {
    * Get dashboard insights and anomalies
    */
   async getInsights(companyId: string): Promise<DashboardInsights> {
-    const cacheKey = `dashboard:insights:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `dashboard:insights`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

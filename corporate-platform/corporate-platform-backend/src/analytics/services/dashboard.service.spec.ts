@@ -30,10 +30,13 @@ describe('DashboardService', () => {
     it('deletes the overview cache across every cached period and the insights cache', async () => {
       await service.invalidateCache('company-1');
 
+      // Tenant-namespaced, across every role scope of that tenant (#813).
       expect(cache.delByPattern).toHaveBeenCalledWith(
-        'dashboard:overview:company-1:*',
+        't:company-1:r:*:dashboard:overview:*',
       );
-      expect(cache.del).toHaveBeenCalledWith('dashboard:insights:company-1');
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        't:company-1:r:*:dashboard:insights',
+      );
     });
 
     it('scopes invalidation to the given company only', async () => {

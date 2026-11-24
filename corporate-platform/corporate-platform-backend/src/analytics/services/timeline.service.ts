@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 
 @Injectable()
@@ -17,7 +18,7 @@ export class TimelineService {
    * Get cumulative carbon reduction timeline
    */
   async getCarbonReductionTimeline(companyId: string, months: number = 60) {
-    const cacheKey = `timeline:carbon:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `timeline:carbon`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -72,7 +73,7 @@ export class TimelineService {
    * Get future reduction scenarios
    */
   async getReductionProjections(companyId: string, months: number = 36) {
-    const cacheKey = `timeline:projections:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `timeline:projections`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -106,7 +107,7 @@ export class TimelineService {
    * Get key achievement dates and milestones
    */
   async getMilestones(companyId: string) {
-    const cacheKey = `timeline:milestones:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `timeline:milestones`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

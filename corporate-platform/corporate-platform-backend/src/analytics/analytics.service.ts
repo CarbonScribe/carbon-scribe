@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../shared/database/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { CacheKeys } from '../cache/cache-keys';
 import { Logger } from '@nestjs/common';
 
 @Injectable()
@@ -71,7 +72,10 @@ export class AnalyticsService {
     date: Date,
     companyId?: string,
   ): string {
-    return `analytics:${metricType}:${period}:${date.toISOString()}:${companyId || 'global'}`;
+    // Tenant metrics live in the tenant namespace; only metrics computed with
+    // no company are shared, and they are explicitly global (#813).
+    const key = `analytics:${metricType}:${period}:${date.toISOString()}`;
+    return companyId ? CacheKeys.tenant(companyId, key) : CacheKeys.global(key);
   }
 
   /**
