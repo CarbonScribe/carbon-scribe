@@ -41,7 +41,11 @@ const initialState = {
   lastFetchedAt: null as number | null,
 };
 
-export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
+export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => {
+  let activeListRequest: AbortController | null = null;
+  let listRequestId = 0;
+
+  return ({
   ...initialState,
 
   // Fetch all projects (paginated, stale-while-revalidate)
@@ -49,8 +53,12 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
     const pag = get().pagination;
     const fetchLimit = limit ?? pag.limit;
     const fetchOffset = offset ?? pag.offset;
+    const filters = { ...get().filters };
+    const requestId = ++listRequestId;
     const force = options?.force ?? false;
-    const key = makeProjectsCacheKey(fetchLimit, fetchOffset);
+    activeListRequest?.abort();
+    activeListRequest = null;
+    const key = makeProjectsCacheKey(fetchLimit, fetchOffset, filters);
     const cached = get().projectsCache[key];
 
     if (cached && !force) {
@@ -58,22 +66,26 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
         projects: cached.projects,
         pagination: { limit: fetchLimit, offset: fetchOffset, total: cached.projects.length },
         lastFetchedAt: cached.fetchedAt,
+        loading: { ...state.loading, isFetching: false, isRefreshing: false },
         errors: { ...state.errors, fetch: null },
       }));
 
       if (isCacheEntryStale(cached)) {
-        void get()._refreshProjectsInBackground(fetchLimit, fetchOffset, key);
+        void get()._refreshProjectsInBackground(fetchLimit, fetchOffset, key, filters, requestId);
       }
       return;
     }
 
     set((state) => ({
-      loading: { ...state.loading, isFetching: true },
+      loading: { ...state.loading, isFetching: true, isRefreshing: false },
       errors: { ...state.errors, fetch: null },
     }));
 
+    const controller = new AbortController();
+    activeListRequest = controller;
     try {
-      const { projects } = await fetchProjectsApi(fetchLimit, fetchOffset);
+      const { projects } = await fetchProjectsApi(fetchLimit, fetchOffset, filters, controller.signal);
+      if (requestId !== listRequestId) return;
       const fetchedAt = Date.now();
       set((state) => ({
         projects,
@@ -83,22 +95,39 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
         loading: { ...state.loading, isFetching: false },
       }));
     } catch (error: unknown) {
+      if (requestId !== listRequestId || controller.signal.aborted) return;
       set((state) => ({
         loading: { ...state.loading, isFetching: false },
         errors: { ...state.errors, fetch: getErrorMessage(error) },
       }));
+    } finally {
+      if (activeListRequest === controller) activeListRequest = null;
     }
   },
 
   // Background refresh for stale cache entries (no skeleton)
-  _refreshProjectsInBackground: async (limit: number, offset: number, key: string) => {
+  _refreshProjectsInBackground: async (
+    limit: number,
+    offset: number,
+    key: string,
+    filters = get().filters,
+    requestId = listRequestId
+  ) => {
+    if (requestId !== listRequestId) return;
+    activeListRequest?.abort();
+    const controller = new AbortController();
+    activeListRequest = controller;
     set((state) => ({ loading: { ...state.loading, isRefreshing: true } }));
 
     try {
-      const { projects } = await fetchProjectsApi(limit, offset);
+      const { projects } = await fetchProjectsApi(limit, offset, filters, controller.signal);
+      if (requestId !== listRequestId) return;
       const fetchedAt = Date.now();
       const pag = get().pagination;
-      const isCurrentPage = pag.limit === limit && pag.offset === offset;
+      const isCurrentPage =
+        pag.limit === limit &&
+        pag.offset === offset &&
+        makeProjectsCacheKey(limit, offset, get().filters) === key;
 
       set((state) => ({
         projectsCache: { ...state.projectsCache, [key]: { projects, fetchedAt } },
@@ -106,7 +135,11 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
         loading: { ...state.loading, isRefreshing: false },
       }));
     } catch {
-      set((state) => ({ loading: { ...state.loading, isRefreshing: false } }));
+      if (requestId === listRequestId && !controller.signal.aborted) {
+        set((state) => ({ loading: { ...state.loading, isRefreshing: false } }));
+      }
+    } finally {
+      if (activeListRequest === controller) activeListRequest = null;
     }
   },
 
@@ -256,7 +289,19 @@ export const createProjectsSlice: StateCreator<ProjectsSlice> = (set, get) => ({
   resetProjectsState: () => set({ ...initialState }),
 
   setFilters: (newFilters) =>
-    set((state) => ({
-      filters: { ...state.filters, ...newFilters },
-    })),
-});
+    set((state) => {
+      const filters = { ...state.filters, ...newFilters };
+      if (
+        filters.search === state.filters.search &&
+        filters.type === state.filters.type &&
+        filters.status === state.filters.status
+      ) {
+        return state;
+      }
+      return {
+        filters,
+        pagination: { ...state.pagination, offset: 0 },
+      };
+    }),
+  });
+};

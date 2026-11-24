@@ -15,15 +15,37 @@ describe('CertificateDeadLetterService', () => {
     },
   } as any;
 
+  const mockMetrics = {
+    recordDeadLetter: jest.fn(),
+  } as any;
+
   let service: CertificateDeadLetterService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.CERT_ANCHOR_RETRY_MAX_ATTEMPTS = '3';
-    service = new CertificateDeadLetterService(mockPrisma);
+    service = new CertificateDeadLetterService(mockPrisma, mockMetrics);
   });
 
   describe('recordFailure', () => {
+    it('increments the dead-letter fallback counter (#735)', async () => {
+      mockPrisma.certificateAnchorFailure.findFirst.mockResolvedValue(null);
+      mockPrisma.certificateAnchorFailure.create.mockImplementation(
+        ({ data }: any) => ({ id: 'f1', ...data }),
+      );
+
+      await service.recordFailure({
+        retirementId: 'ret-1',
+        companyId: 'co-1',
+        certificateData: { content: 'abc' },
+        error: 'pin failed',
+      });
+
+      expect(mockMetrics.recordDeadLetter).toHaveBeenCalledWith(
+        'certificate-anchor-failed',
+      );
+    });
+
     it('creates a new pending record on first failure', async () => {
       mockPrisma.certificateAnchorFailure.findFirst.mockResolvedValue(null);
       mockPrisma.certificateAnchorFailure.create.mockImplementation(

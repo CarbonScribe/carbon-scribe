@@ -7,6 +7,7 @@ import {
   REGISTER_PASSWORD_ERROR,
   validateRegisterPassword,
 } from '@/lib/auth/password';
+import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
 
 export default function RegisterPage() {
   const { register, isLoading } = useAuth();
@@ -18,7 +19,18 @@ export default function RegisterPage() {
     confirmPassword: '',
     companyName: '',
   });
-  const [error, setError] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const rateLimit = useRateLimitCountdown(error);
+
+  const errorMessage = error
+    ? rateLimit.isRateLimited && rateLimit.message
+      ? rateLimit.message
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Registration failed. Please try again.'
+    : '';
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -29,7 +41,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError(null);
 
     // Validation
     if (!formData.firstName || !formData.lastName || !formData.email || !formData.password || !formData.companyName) {
@@ -48,6 +60,8 @@ export default function RegisterPage() {
       return;
     }
 
+    if (rateLimit.isBlocked) return;
+
     try {
       await register({
         email: formData.email,
@@ -57,7 +71,7 @@ export default function RegisterPage() {
         companyName: formData.companyName,
       });
     } catch (err: any) {
-      setError(err?.message || 'Registration failed. Please try again.');
+      setError(err ?? 'Registration failed. Please try again.');
     }
   };
 
@@ -91,9 +105,24 @@ export default function RegisterPage() {
 
         {/* Registration Form */}
         <div className="bg-white dark:bg-gray-800 py-8 px-6 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-700">
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          {errorMessage && (
+            <div
+              role={rateLimit.isRateLimited ? 'status' : undefined}
+              className={`mb-4 p-3 border rounded-lg ${
+                rateLimit.isRateLimited
+                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              }`}
+            >
+              <p
+                className={`text-sm ${
+                  rateLimit.isRateLimited
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-red-600 dark:text-red-400'
+                }`}
+              >
+                {errorMessage}
+              </p>
             </div>
           )}
 
@@ -219,7 +248,7 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || rateLimit.isBlocked}
               className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-linear-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               {isLoading ? (

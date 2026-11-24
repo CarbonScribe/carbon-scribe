@@ -1,16 +1,11 @@
-import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
+import { IsNotEmpty, IsString } from 'class-validator';
+import { IsStrongPassword } from '../password-policy';
 
 export class ResetPasswordDto {
   @IsString()
   @IsNotEmpty()
   token: string;
 
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(8)
-  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, {
-    message:
-      'Password must contain uppercase, lowercase, and special characters',
-  })
+  @IsStrongPassword()
   newPassword: string;
 }

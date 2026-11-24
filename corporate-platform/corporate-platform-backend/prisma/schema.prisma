@@ -56,6 +56,7 @@ model Company {
   auditEvents              AuditEvent[]
   emissionSources          EmissionSource[]
   emissionRecords          EmissionRecord[]
+  idempotencyRecords       IdempotencyRecord[]
 
   materialityAssessments MaterialityAssessment[]
   esrsDisclosures        EsrsDisclosure[]
@@ -1644,4 +1645,24 @@ model CbamQuarterlyReport {
   @@index([companyId])
   @@index([status])
   @@map("cbam_quarterly_reports")
+}
+
+model IdempotencyRecord {
+  id             String    @id @default(cuid())
+  key            String
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  route          String
+  requestHash    String
+  status         String    @default("pending") // "pending", "completed", "failed"
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  expiresAt      DateTime
+
+  @@unique([companyId, key])
+  @@index([expiresAt])
+  @@index([companyId, status])
+  @@map("idempotency_records")
 }

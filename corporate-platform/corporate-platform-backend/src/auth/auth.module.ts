@@ -10,6 +10,8 @@ import { SecurityModule } from '../security/security.module';
 import { ConfigModule } from '../config/config.module';
 import { ConfigService } from '../config/config.service';
 import { JwtSecretConsistencyValidator } from './jwt-secret-consistency.validator';
+import { RateLimitModule } from '../rate-limit/rate-limit.module';
+import { MailModule } from '../mail/mail.module';
 
 /**
  * Resolves JwtModule's secret exclusively from ConfigService.getAuthConfig(),
@@ -28,6 +30,13 @@ export function createJwtModuleOptions(
   imports: [
     DatabaseModule,
     SecurityModule,
+    // AuthController applies RateLimitGuard directly (@UseGuards), which
+    // needs RateLimitService. RateLimitModule is @Global(), so in the full
+    // app it's registered regardless of this import (something else pulls
+    // it in) — but any test/module subset that imports only AuthModule has
+    // no other way to satisfy that dependency.
+    RateLimitModule,
+    MailModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

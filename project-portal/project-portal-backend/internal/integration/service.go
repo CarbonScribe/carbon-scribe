@@ -16,12 +16,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"carbon-scribe/project-portal/project-portal-backend/pkg/encryption"
 )
 
 const (
-	// PlaceholderHealthCheckLatencyMs is a temporary placeholder latency value
-	// pending real latency measurement in TestConnection.
-	PlaceholderHealthCheckLatencyMs = 45
 	// MaxRetryAttempts is the maximum number of total delivery attempts,
 	// including the initial attempt.
 	MaxRetryAttempts            = 5
@@ -38,44 +37,64 @@ type Service struct {
 	HTTPClient *http.Client
 }
 
-func NewService(repo Repository) *Service {
+// NewService constructs the integration Service and installs
+// credentialsKeyring as the active keyring IntegrationConnection's
+// BeforeSave/AfterFind hooks use to encrypt/decrypt Credentials (#795).
+func NewService(repo Repository, credentialsKeyring *encryption.Keyring) *Service {
+	SetCredentialsKeyring(credentialsKeyring)
 	return &Service{
 		repo:       repo,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-// RegisterConnection creates a new integration connection
+// RegisterConnection creates a new integration connection. Credentials are
+// encrypted at rest by IntegrationConnection's own BeforeSave hook (#795) —
+// CreateConnection's Create call triggers it the same as any other GORM
+// write.
 func (s *Service) RegisterConnection(ctx context.Context, conn *IntegrationConnection) error {
 	conn.CreatedAt = time.Now()
 	conn.UpdatedAt = time.Now()
-	// In a real implementation, we would encrypt Credentials here before saving
 	return s.repo.CreateConnection(ctx, conn)
 }
 
-// TestConnection verifies connectivity (placeholder)
+// TestConnection runs a real outbound connectivity probe against the
+// connection's provider (#796) — Stripe's balance endpoint, Sentinel Hub's
+// OAuth2 token endpoint, or the configured Stellar RPC's getHealth method —
+// using s.HTTPClient so the request context's cancellation/timeout carry
+// through, and records the measured outcome.
 func (s *Service) TestConnection(ctx context.Context, id string) error {
 	conn, err := s.repo.GetConnection(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	// Simulate connection test based on Provider
-	// e.g., if conn.Provider == "stripe" { ... }
+	prober, err := proberForProvider(conn.Provider)
+	if err != nil {
+		return err
+	}
 
-	// Update LastTested
+	result := prober.Probe(ctx, s.HTTPClient, conn)
+
 	now := time.Now()
 	conn.LastTested = &now
-	_ = s.repo.UpdateConnection(ctx, conn)
+	if err := s.repo.UpdateConnection(ctx, conn); err != nil {
+		log.Printf("integration: failed to update connection %s after test: %v", conn.ID, err)
+	}
 
-	// Record Health
-	_ = s.repo.RecordHealth(ctx, &IntegrationHealth{
+	if err := s.repo.RecordHealth(ctx, &IntegrationHealth{
 		ConnectionID: conn.ID,
-		Status:       "healthy",
-		LatencyMs:    PlaceholderHealthCheckLatencyMs,
-		CheckedAt:    time.Now(),
-		Message:      "Connection successful",
-	})
+		Status:       string(result.Status),
+		LatencyMs:    result.LatencyMs,
+		CheckedAt:    now,
+		Message:      result.Message,
+	}); err != nil {
+		log.Printf("integration: failed to record health for connection %s: %v", conn.ID, err)
+	}
+
+	if result.Status == ProbeUnhealthy {
+		return fmt.Errorf("connection test failed: %s", result.Message)
+	}
 
 	return nil
 }

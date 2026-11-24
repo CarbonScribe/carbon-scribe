@@ -342,8 +342,12 @@ Cap management and monitoring endpoints:
 
 Required/important environment variables for real on-chain behavior:
 ```bash
-# Shared Stellar network config
+# Shared Stellar network passphrase. The RPC URL is no longer shared as of
+# #794: methodology cap loading still reads STELLAR_RPC_URL, while minting
+# reads SOROBAN_RPC_URL (internal/config — the single source for minting's
+# RPC URL/passphrase; production startup fails if either is unset there).
 STELLAR_RPC_URL=https://soroban-testnet.stellar.org:443
+SOROBAN_RPC_URL=https://soroban-testnet.stellar.org:443
 STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 
 # Methodology Library contract cap loading
@@ -359,7 +363,7 @@ CARBON_ASSET_DEFAULT_PROJECT_OWNER=G...
 CARBON_ASSET_USE_MOCK=false
 ```
 
-For mainnet deployment, set `STELLAR_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` to public-network values and provide funded, whitelisted operational keys.
+For mainnet deployment, set `STELLAR_RPC_URL`, `SOROBAN_RPC_URL` and `STELLAR_NETWORK_PASSPHRASE` to public-network values and provide funded, whitelisted operational keys.
 
 ## Stellar Trustline Setup for Buyers
 

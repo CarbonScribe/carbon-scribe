@@ -5,6 +5,23 @@ import { ConfigService } from '../config/config.service';
 import { EventValidatorService } from './event-validator.service';
 import { DeadLetterService } from './dead-letter/dead-letter.service';
 import { OutboxService } from './outbox.service';
+import { RequestContext } from '../logger/context/request-context';
+
+/**
+ * Captures the originating request's correlation IDs at publish time (#736)
+ * — not at actual Kafka-send time, since the outbox pattern below may relay
+ * the event much later via a cron sweep, long after this request's
+ * AsyncLocalStorage-scoped RequestContext has ended.
+ */
+function captureRequestCorrelation(): {
+  requestId?: string;
+  traceId?: string;
+} {
+  return {
+    requestId: RequestContext.getRequestId(),
+    traceId: RequestContext.getTraceId(),
+  };
+}
 
 export interface PublishOptions {
   tx?: any;
@@ -78,7 +95,7 @@ export class ProducerService {
     const key = this.getIdempotencyKey(topic, event);
 
     const row = await this.outboxService.create(
-      { topic, payload: event, key },
+      { topic, payload: event, key, correlation: captureRequestCorrelation() },
       options.tx,
     );
 
@@ -145,11 +162,13 @@ export class ProducerService {
       );
     }
 
+    const correlation = captureRequestCorrelation();
     const rows = await this.outboxService.createMany(
       events.map((event) => ({
         topic,
         payload: event,
         key: this.getIdempotencyKey(topic, event),
+        correlation,
       })),
       options.tx,
     );
@@ -179,7 +198,7 @@ export class ProducerService {
     const key = this.getIdempotencyKey(topic, event);
 
     const row = await this.outboxService.create(
-      { topic, payload: event, key },
+      { topic, payload: event, key, correlation: captureRequestCorrelation() },
       options.tx,
     );
 

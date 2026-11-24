@@ -1,5 +1,10 @@
 import { parseApiError, ParsedError } from '@/lib/utils/errorParser'
 import { withRetry, isRetryableError, RetryOptions } from '@/lib/utils/retry'
+import {
+  buildRateLimitRetryOptions,
+  getRetryAfterMs,
+  isRateLimitError,
+} from '@/lib/utils/rateLimit'
 import { reportError } from '@/lib/telemetry/errorReporter'
 import { requestManager } from './requestManager'
 import { parseResponseBody } from './responseParser'
@@ -8,13 +13,19 @@ export class ApiError extends Error {
   readonly status: number
   readonly body: unknown
   readonly parsed: ParsedError
+  /** Milliseconds until a 429'd client may try again (from Retry-After). */
+  readonly retryAfterMs?: number
 
-  constructor(status: number, message: string, body: unknown) {
+  constructor(status: number, message: string, body: unknown, retryAfterMs?: number) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.body = body
+    this.retryAfterMs = retryAfterMs
     this.parsed = parseApiError(body, status)
+    if (retryAfterMs !== undefined) {
+      this.parsed.retryAfterMs = retryAfterMs
+    }
   }
 }
 
@@ -138,40 +149,55 @@ export async function apiRequest<T>(
     if (!response.ok) {
       const errorBody = parsedResponse.data ?? parsedResponse.raw
       const parsed = parseApiError(errorBody, response.status)
-      const apiError = new ApiError(response.status, parsed.message, errorBody)
-      
-      reportError(apiError, 'http', response.status >= 500 ? 'error' : 'warning', {
-        path,
-        method: init.method ?? 'GET',
-        status: response.status,
-        contentType: parsedResponse.contentType,
-        bodyPreview: parsedResponse.preview,
-      })
+      const isRateLimited = response.status === 429
+      const retryAfterMs = isRateLimited
+        ? getRetryAfterMs(response.headers, errorBody)
+        : undefined
+      const apiError = new ApiError(
+        response.status,
+        parsed.message,
+        errorBody,
+        retryAfterMs,
+      )
 
-      // Check if retryable: retry on 5xx, 408, 429. Do NOT retry client errors (4xx non-retryable) on invalid content-type.
-      const isRetryable = response.status >= 500 || response.status === 408 || response.status === 429
-      if (isRetryable) {
-        throw apiError // Let retry logic handle it
-      }
-      
+      // Throttling is an expected, user-actionable condition — report it as a
+      // warning rather than a server error, with the wait window attached.
+      reportError(
+        apiError,
+        'http',
+        isRateLimited ? 'warning' : response.status >= 500 ? 'error' : 'warning',
+        {
+          path,
+          method: init.method ?? 'GET',
+          status: response.status,
+          contentType: parsedResponse.contentType,
+          bodyPreview: parsedResponse.preview,
+          ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+        },
+      )
+
+      // Always throw; the rate-limit-aware retry policy decides whether this
+      // particular request is safe to replay.
       throw apiError
     }
 
     return parsedResponse.data as T
   }
 
-  try {
-    if (options.retry) {
-      return await withRetry(executeRequest, {
-        ...options.retry,
-        onRetry: (attempt, error) => {
-          console.log(`Retrying request (attempt ${attempt})...`)
-          options.retry?.onRetry?.(attempt, error)
-        },
-      })
-    }
+  const retryOptions = buildRateLimitRetryOptions(method, path, options.retry)
 
-    return await executeRequest()
+  try {
+    return await withRetry(executeRequest, {
+      ...retryOptions,
+      onRetry: (attempt, error) => {
+        if (isRateLimitError(error)) {
+          console.log(`Rate limited on ${method} ${path}; retrying after Retry-After.`)
+        } else {
+          console.log(`Retrying request (attempt ${attempt})...`)
+        }
+        options.retry?.onRetry?.(attempt, error)
+      },
+    })
   } finally {
     clearTimeout(timeoutId)
     if (cancelOnRouteChange) {

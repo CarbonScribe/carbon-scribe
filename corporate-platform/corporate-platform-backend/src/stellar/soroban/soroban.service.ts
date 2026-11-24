@@ -19,6 +19,7 @@ import {
   SIGNING_PROVIDER_CONTRACT,
   SigningProvider,
 } from '../signing/signing-provider.interface';
+import { RequestContext } from '../../logger/context/request-context';
 
 /**
  * Soroban Service with timeout and retry configuration
@@ -154,6 +155,7 @@ export class SorobanService {
           keyId: this.signingProvider.keyId,
           contractId: payload.contractId,
           methodName: payload.methodName,
+          requestId: RequestContext.getRequestId(),
         }),
       );
 
@@ -222,6 +224,7 @@ export class SorobanService {
         keyId: signed.keyId ?? this.signingProvider.keyId,
         contractId: payload.contractId,
         methodName: payload.methodName,
+        requestId: RequestContext.getRequestId(),
       }),
     );
     const signedTx = StellarSdk.TransactionBuilder.fromXDR(

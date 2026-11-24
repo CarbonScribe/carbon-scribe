@@ -26,6 +26,14 @@ export interface ProjectMember {
   permissions: string[];
   joined_at: string;
   updated_at: string;
+  // The GET /projects/:id/members list endpoint actually returns the
+  // backend's EnrichedProjectMemberResponse, which includes these fields
+  // (#801) — optional here since other ProjectMember call sites (e.g. the
+  // plain member-lookup endpoints) and existing test fixtures don't
+  // populate them.
+  display_name?: string;
+  email?: string;
+  avatar_url?: string;
 }
 
 export interface ProjectInvitation {

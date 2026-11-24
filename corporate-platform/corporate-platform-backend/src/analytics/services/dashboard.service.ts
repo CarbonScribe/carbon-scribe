@@ -19,6 +19,18 @@ export class DashboardService {
   ) {}
 
   /**
+   * Invalidate a company's cached dashboard overview (every cached period)
+   * and insights (#742), called by DashboardCacheInvalidationListener when a
+   * retirement, purchase or transfer confirmation changes that company's
+   * underlying data. The TTLs on getOverview/getInsights remain in place as
+   * a fallback in case an invalidation event is ever missed.
+   */
+  async invalidateCache(companyId: string): Promise<void> {
+    await this.cache.delByPattern(`dashboard:overview:${companyId}:*`);
+    await this.cache.del(`dashboard:insights:${companyId}`);
+  }
+
+  /**
    * Get advanced dashboard overview
    */
   async getOverview(

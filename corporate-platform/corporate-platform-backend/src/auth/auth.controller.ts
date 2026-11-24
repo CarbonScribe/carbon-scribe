@@ -101,8 +101,8 @@ export class AuthController {
   @Post('forgot-password')
   @UseGuards(RateLimitGuard)
   @ForgotPasswordRateLimit()
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(dto);
+  async forgotPassword(@Body() dto: ForgotPasswordDto, @Req() req: Request) {
+    return this.authService.forgotPassword(dto, this.getMetadata(req));
   }
 
   /**
@@ -112,8 +112,8 @@ export class AuthController {
   @Post('reset-password')
   @UseGuards(RateLimitGuard)
   @ResetPasswordRateLimit()
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    return this.authService.resetPassword(dto, this.getMetadata(req));
   }
 
   /**

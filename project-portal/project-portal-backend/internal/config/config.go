@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -20,6 +22,18 @@ const (
 	// development. HMAC-backed tokens should use at least a 256-bit key; using
 	// characters here is a proxy for entropy in the common case.
 	MinJWTSecretLength = 32
+
+	// DefaultSorobanTestnetRPCURL and DefaultTestnetPassphrase (#794) are the
+	// single source of the Soroban testnet defaults, applied only in
+	// development/test mode (see Load) — minting/tokenization no longer
+	// declare their own copies of these.
+	DefaultSorobanTestnetRPCURL = "https://soroban-testnet.stellar.org:443"
+	DefaultTestnetPassphrase    = "Test SDF Network ; September 2015"
+
+	// DefaultDevCORSOrigins (#798) is the single source of the local-frontend
+	// CORS allowlist, applied only in development mode (see Load) — there is
+	// no wildcard fallback outside development.
+	DefaultDevCORSOrigins = "http://localhost:3000,http://localhost:3001"
 )
 
 // insecureDatabaseMarkers are substrings that only appear in the documented
@@ -34,24 +48,33 @@ var insecureDatabaseMarkers = []string{
 
 // Config holds application configuration
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	Debug         bool
-	SeedDevUsers  bool
-	Elasticsearch ElasticsearchConfig
-	AWS           AWSConfig
-	Storage       StorageConfig
-	Geospatial    GeospatialConfig
-	Settings      SettingsConfig
-	Auth          AuthConfig
-	Redis         RedisConfig
-	RateLimit     RateLimitConfig
-	Soroban       SorobanConfig
-	Notifications NotificationsConfig
-	MQTT          MQTTConfig
-	SES           SESConfig
-	Monitoring    MonitoringConfig
-	Minting       MintingConfig
+	Port         string
+	DatabaseURL  string
+	Debug        bool
+	SeedDevUsers bool
+	// MaxRequestBodyBytes is the default request body size limit applied to
+	// every route (#797), configurable via MAX_REQUEST_BODY_BYTES.
+	MaxRequestBodyBytes int64
+	// MaxWebhookBodyBytes is the tighter limit applied specifically to the
+	// incoming-webhook endpoint (#797), configurable via
+	// MAX_WEBHOOK_BODY_BYTES — unauthenticated callers can reach it, so it
+	// is deliberately much smaller than the general default.
+	MaxWebhookBodyBytes int64
+	Elasticsearch       ElasticsearchConfig
+	AWS                 AWSConfig
+	Storage             StorageConfig
+	Geospatial          GeospatialConfig
+	Settings            SettingsConfig
+	Auth                AuthConfig
+	Redis               RedisConfig
+	RateLimit           RateLimitConfig
+	Soroban             SorobanConfig
+	CORS                CORSConfig
+	Notifications       NotificationsConfig
+	MQTT                MQTTConfig
+	SES                 SESConfig
+	Monitoring          MonitoringConfig
+	Minting             MintingConfig
 }
 
 // MonitoringConfig holds monitoring-module settings.
@@ -117,8 +140,16 @@ type StorageConfig struct {
 
 type SettingsConfig struct {
 	EncryptionKeyHex string
-	APIKeyPrefix     string
-	ProfileCDNBase   string
+	// EncryptionKeyVersion is the version recorded against ciphertext
+	// produced with EncryptionKeyHex. Bump it (and move the old value into
+	// PreviousEncryptionKeysHex) when rotating the key (#795).
+	EncryptionKeyVersion int
+	// PreviousEncryptionKeysHex maps version -> hex key for versions no
+	// longer current but still needed to decrypt/rotate rows written before
+	// the last rotation.
+	PreviousEncryptionKeysHex map[int]string
+	APIKeyPrefix              string
+	ProfileCDNBase            string
 }
 
 // SESConfig holds configuration for the SES transactional email client.
@@ -157,20 +188,20 @@ type RedisConfig struct {
 // RateLimitConfig holds per-route rate limiting configuration.
 type RateLimitConfig struct {
 	// Auth endpoints
-	LoginMaxRequests          int    // attempts per window (default: 5)
-	LoginWindowSeconds        int    // window in seconds (default: 900 — 15 min)
-	RegisterMaxRequests       int    // default: 3
-	RegisterWindowSeconds     int    // default: 3600 — 1 hour
-	RefreshMaxRequests        int    // default: 10
-	RefreshWindowSeconds      int    // default: 3600 — 1 hour
-	ForgotPasswordMaxRequests int    // default: 3
-	ForgotPasswordWindowSecs  int    // default: 3600 — 1 hour
-	WalletChallengeMax        int    // default: 5
-	WalletChallengeWindowSecs int    // default: 60 — 1 min
+	LoginMaxRequests          int // attempts per window (default: 5)
+	LoginWindowSeconds        int // window in seconds (default: 900 — 15 min)
+	RegisterMaxRequests       int // default: 3
+	RegisterWindowSeconds     int // default: 3600 — 1 hour
+	RefreshMaxRequests        int // default: 10
+	RefreshWindowSeconds      int // default: 3600 — 1 hour
+	ForgotPasswordMaxRequests int // default: 3
+	ForgotPasswordWindowSecs  int // default: 3600 — 1 hour
+	WalletChallengeMax        int // default: 5
+	WalletChallengeWindowSecs int // default: 60 — 1 min
 	// Minting / payment endpoints
-	MintMaxRequests     int // default: 10
-	MintWindowSeconds   int // default: 60
-	PaymentMaxRequests  int // default: 5
+	MintMaxRequests      int // default: 10
+	MintWindowSeconds    int // default: 60
+	PaymentMaxRequests   int // default: 5
 	PaymentWindowSeconds int // default: 60
 	// Whitelist (comma-separated CIDRs or IPs that bypass rate limiting)
 	IPWhitelist string
@@ -185,6 +216,16 @@ type SorobanConfig struct {
 	NetworkPassphrase   string
 	CarbonAssetContract string
 	InventoryCacheTTL   string
+}
+
+// CORSConfig holds the explicit cross-origin allowlist (#798). AllowedOrigins
+// is matched by exact string equality against the request's Origin header —
+// including a literal "*" entry, which a real browser's Origin header can
+// never equal, so it is a permanent non-match rather than a wildcard. See
+// security.CORS, which consumes this list, and Validate, which refuses to
+// start in production when the list is empty or contains "*".
+type CORSConfig struct {
+	AllowedOrigins []string
 }
 
 // MQTTConfig holds configuration for the IoT telemetry MQTT client.
@@ -230,6 +271,40 @@ func Load() (*Config, error) {
 	debug := os.Getenv("DEBUG") == "true" || os.Getenv("SERVER_MODE") == "development"
 	seedDevUsers := getEnvOrDefault("SEED_DEV_USERS", "true") == "true"
 
+	// Soroban RPC URL / network passphrase (#794): no testnet fallback is
+	// applied here when unset — only in development/test mode, with a
+	// warning, since a silent fallback in production is exactly how a real
+	// deployment ends up minting against testnet without anyone noticing.
+	// Validate() refuses to start in production when either is empty.
+	sorobanRPCURL := os.Getenv("SOROBAN_RPC_URL")
+	sorobanNetworkPassphrase := os.Getenv("STELLAR_NETWORK_PASSPHRASE")
+	if debug {
+		if sorobanRPCURL == "" {
+			log.Println("⚠️  SOROBAN_RPC_URL not set — defaulting to Soroban testnet (development mode only)")
+			sorobanRPCURL = DefaultSorobanTestnetRPCURL
+		}
+		if sorobanNetworkPassphrase == "" {
+			log.Println("⚠️  STELLAR_NETWORK_PASSPHRASE not set — defaulting to the testnet passphrase (development mode only)")
+			sorobanNetworkPassphrase = DefaultTestnetPassphrase
+		}
+	}
+
+	// CORS allowed origins (#798): no wildcard fallback is applied here when
+	// unset — only in development mode, with a warning. Validate refuses to
+	// start in production when the list is empty or contains "*". The list is
+	// parsed and format-validated unconditionally so a malformed entry (e.g.
+	// a trailing path or missing scheme, which could never match any real
+	// Origin header) fails fast in every mode, not just production.
+	corsAllowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+	if debug && corsAllowedOrigins == "" {
+		log.Println("⚠️  CORS_ALLOWED_ORIGINS not set — defaulting to localhost dev origins (development mode only)")
+		corsAllowedOrigins = DefaultDevCORSOrigins
+	}
+	parsedCORSOrigins, err := parseAllowedOrigins(corsAllowedOrigins)
+	if err != nil {
+		return nil, fmt.Errorf("CORS_ALLOWED_ORIGINS: %w", err)
+	}
+
 	esAddresses := os.Getenv("ELASTICSEARCH_ADDRESSES")
 	if esAddresses == "" {
 		esAddresses = "http://localhost:9200"
@@ -255,10 +330,12 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		Port:         port,
-		DatabaseURL:  databaseURL,
-		Debug:        debug,
-		SeedDevUsers: seedDevUsers,
+		Port:                port,
+		DatabaseURL:         databaseURL,
+		Debug:               debug,
+		SeedDevUsers:        seedDevUsers,
+		MaxRequestBodyBytes: getInt64OrDefault("MAX_REQUEST_BODY_BYTES", 1<<20),  // 1 MiB
+		MaxWebhookBodyBytes: getInt64OrDefault("MAX_WEBHOOK_BODY_BYTES", 64<<10), // 64 KiB
 		Elasticsearch: ElasticsearchConfig{
 			Addresses: strings.Split(esAddresses, ","),
 			Username:  os.Getenv("ELASTICSEARCH_USERNAME"),
@@ -285,9 +362,11 @@ func Load() (*Config, error) {
 			TileCacheTTL:      getEnvOrDefault("MAPS_TILE_CACHE_TTL", "24h"),
 		},
 		Settings: SettingsConfig{
-			EncryptionKeyHex: os.Getenv("SETTINGS_ENCRYPTION_KEY_HEX"),
-			APIKeyPrefix:     getEnvOrDefault("SETTINGS_API_KEY_PREFIX", "ppk_live"),
-			ProfileCDNBase:   getEnvOrDefault("SETTINGS_PROFILE_CDN_BASE", "https://cdn.carbonscribe.local"),
+			EncryptionKeyHex:          os.Getenv("SETTINGS_ENCRYPTION_KEY_HEX"),
+			EncryptionKeyVersion:      getIntOrDefault("SETTINGS_ENCRYPTION_KEY_VERSION", 1),
+			PreviousEncryptionKeysHex: parseVersionedKeys(os.Getenv("SETTINGS_ENCRYPTION_PREVIOUS_KEYS")),
+			APIKeyPrefix:              getEnvOrDefault("SETTINGS_API_KEY_PREFIX", "ppk_live"),
+			ProfileCDNBase:            getEnvOrDefault("SETTINGS_PROFILE_CDN_BASE", "https://cdn.carbonscribe.local"),
 		},
 		Auth: AuthConfig{
 			JWTSecret:                getEnvOrDefault("JWT_SECRET", DefaultJWTSecret),
@@ -330,10 +409,13 @@ func Load() (*Config, error) {
 			GraduatedCooldownBaseSeconds: getIntOrDefault("RATE_LIMIT_COOLDOWN_BASE_SECS", 60),
 		},
 		Soroban: SorobanConfig{
-			RPCURL:              getEnvOrDefault("SOROBAN_RPC_URL", "https://soroban-testnet.stellar.org"),
-			NetworkPassphrase:   getEnvOrDefault("STELLAR_NETWORK_PASSPHRASE", "Test SDF Network ; September 2015"),
+			RPCURL:              sorobanRPCURL,
+			NetworkPassphrase:   sorobanNetworkPassphrase,
 			CarbonAssetContract: getEnvOrDefault("CARBON_ASSET_CONTRACT_ID", "CAW7LUESK5RWH75W7IL64HYREFM5CPSFASBVVPVO2XOBC6AKHW4WJ6TM"),
 			InventoryCacheTTL:   getEnvOrDefault("INVENTORY_CACHE_TTL", "5m"),
+		},
+		CORS: CORSConfig{
+			AllowedOrigins: parsedCORSOrigins,
 		},
 		SES: SESConfig{
 			FromAddress: os.Getenv("SES_FROM_ADDRESS"),
@@ -414,6 +496,31 @@ func (c *Config) Validate() error {
 		problems = append(problems, fmt.Sprintf("SETTINGS_ENCRYPTION_KEY_HEX %v", err))
 	}
 
+	// Soroban RPC URL / network passphrase (#794) — minting silently
+	// defaulting to testnet in production is exactly the failure mode this
+	// guards against; Load only applies that default in development mode.
+	if strings.TrimSpace(c.Soroban.RPCURL) == "" {
+		problems = append(problems, "SOROBAN_RPC_URL must be set in production — there is no testnet fallback outside development mode")
+	}
+	if strings.TrimSpace(c.Soroban.NetworkPassphrase) == "" {
+		problems = append(problems, "STELLAR_NETWORK_PASSPHRASE must be set in production — there is no testnet fallback outside development mode")
+	}
+
+	// CORS allowed origins (#798) — an empty allowlist is how the previous
+	// implementation fell back to "*", and a "*" entry defeats an allowlist
+	// entirely; Load only applies the documented localhost default in
+	// development mode.
+	if len(c.CORS.AllowedOrigins) == 0 {
+		problems = append(problems, "CORS_ALLOWED_ORIGINS must be set in production — there is no wildcard fallback outside development mode")
+	} else {
+		for _, origin := range c.CORS.AllowedOrigins {
+			if origin == "*" {
+				problems = append(problems, `CORS_ALLOWED_ORIGINS must not contain "*" in production`)
+				break
+			}
+		}
+	}
+
 	// Database connection string.
 	if strings.TrimSpace(c.DatabaseURL) == "" {
 		problems = append(problems, "DATABASE_URL must be set")
@@ -478,11 +585,94 @@ func findInsecureDatabaseMarker(databaseURL string) string {
 	return ""
 }
 
+// parseVersionedKeys parses "version:hexkey,version:hexkey" into a map, for
+// previous encryption key versions still needed to decrypt or rotate rows
+// written before the last key rotation (#795). Malformed entries are
+// skipped rather than failing startup — a typo in an optional, rarely-used
+// rotation variable shouldn't block the whole service from booting.
+func parseVersionedKeys(raw string) map[int]string {
+	result := map[int]string{}
+	if strings.TrimSpace(raw) == "" {
+		return result
+	}
+	for part := range strings.SplitSeq(raw, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), ":", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		version, err := strconv.Atoi(strings.TrimSpace(kv[0]))
+		if err != nil {
+			continue
+		}
+		result[version] = strings.TrimSpace(kv[1])
+	}
+	return result
+}
+
+// parseAllowedOrigins splits a comma-separated CORS_ALLOWED_ORIGINS value,
+// trims each entry, drops empties, and validates every entry other than a
+// literal "*" as a bare origin URL (#798). A malformed entry — one with a
+// path, missing scheme, or missing host — could never match any real
+// browser Origin header, so it's rejected here rather than silently never
+// matching anything.
+func parseAllowedOrigins(raw string) ([]string, error) {
+	var origins []string
+	for entry := range strings.SplitSeq(raw, ",") {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed != "*" {
+			if err := validateOriginURL(trimmed); err != nil {
+				return nil, fmt.Errorf("invalid origin %q: %w", trimmed, err)
+			}
+		}
+		origins = append(origins, trimmed)
+	}
+	return origins, nil
+}
+
+// validateOriginURL checks that origin is a bare "scheme://host[:port]" with
+// no path, query or fragment.
+func validateOriginURL(origin string) error {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return err
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("scheme must be http or https")
+	}
+	if u.Host == "" {
+		return fmt.Errorf("missing host")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("must be a bare origin (scheme://host[:port]), not a URL with a path, query or fragment")
+	}
+	return nil
+}
+
 func getEnvOrDefault(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return defaultVal
+}
+
+// getInt64OrDefault reads an int64 from the environment (used for byte-size
+// limits, #797), falling back to defaultVal when unset, unparsable, or not
+// strictly positive — a zero or negative body limit would either reject
+// every request or disable enforcement entirely, neither of which is a sane
+// override.
+func getInt64OrDefault(key string, defaultVal int64) int64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || parsed <= 0 {
+		return defaultVal
+	}
+	return parsed
 }
 
 func getIntOrDefault(key string, defaultVal int) int {

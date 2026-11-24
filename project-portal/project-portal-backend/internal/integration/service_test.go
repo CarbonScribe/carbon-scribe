@@ -145,27 +145,6 @@ func (m *mockRepository) GetLatestHealth(ctx context.Context, connectionID strin
 	return nil, nil
 }
 
-func TestPlaceholderHealthCheckLatencyMsConstant(t *testing.T) {
-	if PlaceholderHealthCheckLatencyMs != 45 {
-		t.Fatalf("expected placeholder latency 45, got %d", PlaceholderHealthCheckLatencyMs)
-	}
-}
-
-func TestTestConnectionUsesPlaceholderLatency(t *testing.T) {
-	repo := &mockRepository{}
-	service := NewService(repo)
-
-	if err := service.TestConnection(context.Background(), "conn-123"); err != nil {
-		t.Fatalf("TestConnection failed: %v", err)
-	}
-	if repo.recordedHealth == nil {
-		t.Fatal("expected health to be recorded")
-	}
-	if got := repo.recordedHealth.LatencyMs; got != PlaceholderHealthCheckLatencyMs {
-		t.Errorf("expected latency %d, got %d", PlaceholderHealthCheckLatencyMs, got)
-	}
-}
-
 func TestTriggerWebhook_SuccessfulDelivery(t *testing.T) {
 	const secret = "webhook-test-secret"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +181,7 @@ func TestTriggerWebhook_SuccessfulDelivery(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	payload := map[string]any{"test": "data"}
@@ -255,7 +234,7 @@ func TestTriggerWebhook_FailedDeliveryWithRetry(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	payload := map[string]any{"test": "data"}
@@ -322,7 +301,7 @@ func TestDeliverWebhookByID_RecoversPendingDelivery(t *testing.T) {
 			Payload:   map[string]any{"test": "data"},
 		}},
 	}
-	service := NewService(repo)
+	service := NewService(repo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	if err := service.DeliverWebhookByID(context.Background(), deliveryID); err != nil {
@@ -372,7 +351,7 @@ func TestDeliverWebhookByID_DeadLettersAfterMaxAttempts(t *testing.T) {
 		},
 	}
 
-	service := NewService(mockRepo)
+	service := NewService(mockRepo, testKeyring())
 	service.HTTPClient = server.Client()
 
 	if err := service.DeliverWebhookByID(context.Background(), deliveryID); err == nil {
@@ -409,7 +388,7 @@ func TestTriggerWebhook_PropagatesCreateError(t *testing.T) {
 			IsActive:  true,
 		}},
 	}
-	service := NewService(repo)
+	service := NewService(repo, testKeyring())
 
 	err := service.TriggerWebhook(context.Background(), "test.event", map[string]any{"test": "data"})
 	if !errors.Is(err, wantErr) {

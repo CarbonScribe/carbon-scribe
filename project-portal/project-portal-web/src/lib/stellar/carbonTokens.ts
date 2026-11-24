@@ -24,6 +24,10 @@ import {
   NotFoundError,
 } from '@stellar/stellar-sdk';
 import { createActionableError } from '../utils/errorHandler';
+// Re-exported for backward compatibility (#803) — this file's own
+// Keypair.fromPublicKey-based copy is now the single shared implementation.
+import { isValidStellarAddress } from './address';
+export { isValidStellarAddress };
 
 // ============================================================================
 // Types (Align with backend financing models)
@@ -885,21 +889,6 @@ function validateTransferRequest(request: TransferTokensRequest): void {
         customMessage: 'Transfer request validation failed',
       }
     );
-  }
-}
-
-/**
- * Check if address is valid Stellar address
- * 
- * @param address - Address to check
- * @returns Whether the address is valid
- */
-export function isValidStellarAddress(address: string): boolean {
-  try {
-    Keypair.fromPublicKey(address);
-    return true;
-  } catch {
-    return false;
   }
 }
 
