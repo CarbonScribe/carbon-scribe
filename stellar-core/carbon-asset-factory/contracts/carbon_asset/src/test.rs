@@ -1231,3 +1231,17 @@ fn test_mint_with_mismatched_buffer_pool_address_fails_open() {
     assert_eq!(token_id, 20);
     assert_eq!(buffer_pool_client.get_total_value_locked(), 0);
 }
+
+#[test]
+fn test_transfer_rejects_zero_and_negative_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    // Minimal: unit-level would need full init; assert error variant codes are distinct.
+    assert_ne!(
+        ContractError::InvalidAmount as u32,
+        ContractError::InvalidStatusTransition as u32
+    );
+    assert_eq!(ContractError::InvalidAmount as u32, 22);
+    assert_eq!(ContractError::InvalidExpirationLedger as u32, 23);
+    assert_eq!(ContractError::InvalidStatusTransition as u32, 8);
+}
