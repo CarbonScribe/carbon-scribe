@@ -51,6 +51,8 @@ export const env = {
 
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   agentModel: process.env.AGENT_MODEL ?? "claude-opus-5",
+  anthropicMaxRetries: positiveInteger("ANTHROPIC_MAX_RETRIES", 2),
+  anthropicTimeoutMs: positiveInteger("ANTHROPIC_TIMEOUT_MS", 60000),
 
   agentServiceJwtSecret: process.env.AGENT_SERVICE_JWT_SECRET ?? "",
 

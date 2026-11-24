@@ -31,7 +31,11 @@ pub enum TimeLockError {
     TokenTransferFailed = 12,
     NoPendingAdmin = 13,
     NotPendingAdmin = 14,
+    BatchTooLarge = 15,
 }
+
+/// Maximum token IDs accepted by either batch operation.
+pub const MAX_BATCH_SIZE: u32 = 20;
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -423,16 +427,23 @@ impl TimeLock {
         Ok(())
     }
 
-    /// Trigger eligibility checks for multiple token IDs in one transaction.
+    /// Return the maximum number of token IDs accepted by batch operations.
+    pub fn get_max_batch_size(_env: Env) -> u32 {
+        MAX_BATCH_SIZE
+    }
+
+    /// Trigger eligibility checks for at most `get_max_batch_size()` token IDs.
     ///
     /// Skips tokens that are not yet eligible or not locked – does not revert.
     /// Returns the list of token IDs that were successfully released.
     pub fn batch_release(env: Env, token_ids: Vec<u32>) -> Result<Vec<u32>, TimeLockError> {
-        Self::require_initialized(&env)?;
-
         if token_ids.is_empty() {
             return Err(TimeLockError::EmptyBatch);
         }
+        if token_ids.len() > MAX_BATCH_SIZE {
+            return Err(TimeLockError::BatchTooLarge);
+        }
+        Self::require_initialized(&env)?;
 
         let mut records = Self::load_records(&env);
         let now = env.ledger().timestamp();
@@ -444,8 +455,13 @@ impl TimeLock {
             .ok_or(TimeLockError::NotInitialized)?;
 
         let mut released: Vec<u32> = vec![&env];
+        let mut processed: Vec<u32> = vec![&env];
 
         for token_id in token_ids.iter() {
+            if processed.contains(token_id) {
+                continue;
+            }
+            processed.push_back(token_id);
             if let Some(record) = records.get(token_id) {
                 if now >= record.unlock_timestamp {
                     let transfer_ok = env
@@ -627,11 +643,13 @@ impl TimeLock {
         token_ids: Vec<u32>,
         max_prune: u32,
     ) -> Result<Vec<u32>, TimeLockError> {
-        Self::require_initialized(&env)?;
-
         if token_ids.is_empty() {
             return Err(TimeLockError::EmptyBatch);
         }
+        if token_ids.len() > MAX_BATCH_SIZE {
+            return Err(TimeLockError::BatchTooLarge);
+        }
+        Self::require_initialized(&env)?;
 
         let ttl_config: TtlConfig = env
             .storage()
@@ -646,9 +664,14 @@ impl TimeLock {
         let mut records = Self::load_records(&env);
         let now = env.ledger().timestamp();
         let mut pruned: Vec<u32> = vec![&env];
+        let mut processed: Vec<u32> = vec![&env];
         let mut pruned_count = 0u32;
 
         for token_id in token_ids.iter() {
+            if processed.contains(token_id) {
+                continue;
+            }
+            processed.push_back(token_id);
             if pruned_count >= max_prune {
                 break;
             }
@@ -718,7 +741,9 @@ impl TimeLock {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(TimeLockError::NotInitialized)?;
-        env.storage().instance().set(&DataKey::Admin, &pending_admin);
+        env.storage()
+            .instance()
+            .set(&DataKey::Admin, &pending_admin);
         env.storage().instance().remove(&DataKey::PendingAdmin);
         emit_admin_updated(&env, old_admin, pending_admin);
         Ok(())
@@ -773,12 +798,7 @@ impl TimeLock {
         env.storage()
             .instance()
             .set(&DataKey::VintageCheckContract, &vintage_check_contract);
-        emit_vintage_validation_configured(
-            &env,
-            validate,
-            vintage_check_contract,
-            admin,
-        );
+        emit_vintage_validation_configured(&env, validate, vintage_check_contract, admin);
         Ok(())
     }
 
@@ -932,10 +952,8 @@ pub fn compute_vintage_window(vintage_year: u32) -> Result<(u64, u64), TimeLockE
         .checked_add(6)
         .ok_or(TimeLockError::VintageValidationFailed)?;
 
-    let earliest = jan_1_utc_timestamp(start_year)
-        .ok_or(TimeLockError::VintageValidationFailed)?;
-    let latest = dec_31_utc_timestamp(end_year)
-        .ok_or(TimeLockError::VintageValidationFailed)?;
+    let earliest = jan_1_utc_timestamp(start_year).ok_or(TimeLockError::VintageValidationFailed)?;
+    let latest = dec_31_utc_timestamp(end_year).ok_or(TimeLockError::VintageValidationFailed)?;
 
     Ok((earliest, latest))
 }
@@ -944,13 +962,13 @@ pub fn compute_vintage_window(vintage_year: u32) -> Result<(u64, u64), TimeLockE
 mod test {
     use super::{
         compute_vintage_window, dec_31_utc_timestamp, jan_1_utc_timestamp, TimeLock,
-        TimeLockClient, TimeLockError,
-    };
-    use soroban_sdk::{
-        contract, contractimpl, contracttype, testutils::Address as _, testutils::Events as _,
-        vec, Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec,
+        TimeLockClient, TimeLockError, MAX_BATCH_SIZE,
     };
     use soroban_sdk::testutils::Ledger;
+    use soroban_sdk::{
+        contract, contractimpl, contracttype, testutils::Address as _, testutils::Events as _, vec,
+        Address, Env, IntoVal, Map, Symbol, TryFromVal, Val, Vec,
+    };
 
     fn setup() -> (Env, Address, Address, TimeLockClient<'static>) {
         let env = Env::default();
@@ -1032,13 +1050,19 @@ mod test {
         let (event_name, fields) = last_event(&env);
         assert_eq!(event_name, Symbol::new(&env, "pending_admin_proposed"));
         assert_eq!(
-            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "current_admin")).unwrap())
-                .unwrap(),
+            Address::try_from_val(
+                &env,
+                &fields.get(Symbol::new(&env, "current_admin")).unwrap()
+            )
+            .unwrap(),
             admin
         );
         assert_eq!(
-            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "pending_admin")).unwrap())
-                .unwrap(),
+            Address::try_from_val(
+                &env,
+                &fields.get(Symbol::new(&env, "pending_admin")).unwrap()
+            )
+            .unwrap(),
             new_admin
         );
         assert_eq!(client.get_admin(), Some(admin));
@@ -1122,8 +1146,11 @@ mod test {
             Some(vintage_contract)
         );
         assert_eq!(
-            Address::try_from_val(&env, &fields.get(Symbol::new(&env, "configured_by")).unwrap())
-                .unwrap(),
+            Address::try_from_val(
+                &env,
+                &fields.get(Symbol::new(&env, "configured_by")).unwrap()
+            )
+            .unwrap(),
             admin
         );
     }
@@ -1179,6 +1206,24 @@ mod test {
         token_ids.push_back(1);
         let result = client.try_batch_prune_expired(&token_ids, &10);
         assert_eq!(result, Err(Ok(TimeLockError::TtlNotConfigured)));
+    }
+
+    #[test]
+    fn test_oversized_batches_fail_before_initialization() {
+        let (env, _, _, client) = setup();
+        let mut token_ids: Vec<u32> = vec![&env];
+        for token_id in 0..=MAX_BATCH_SIZE {
+            token_ids.push_back(token_id);
+        }
+
+        assert_eq!(
+            client.try_batch_release(&token_ids),
+            Err(Ok(TimeLockError::BatchTooLarge))
+        );
+        assert_eq!(
+            client.try_batch_prune_expired(&token_ids, &MAX_BATCH_SIZE),
+            Err(Ok(TimeLockError::BatchTooLarge))
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1376,6 +1421,66 @@ mod test {
     }
 
     #[test]
+    fn test_batch_release_at_max_size_and_suppresses_duplicates() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+        client.initialize(&admin, &mock_ca_id, &false, &None, &86400);
+        assert_eq!(client.get_max_batch_size(), MAX_BATCH_SIZE);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+        let mut batch: Vec<u32> = vec![&env];
+        for token_id in 0..MAX_BATCH_SIZE {
+            client.lock_credit(&caller, &token_id, &unlock);
+            batch.push_back(token_id);
+        }
+
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = unlock + 1);
+        let released = client.batch_release(&batch);
+        assert_eq!(released.len(), MAX_BATCH_SIZE);
+        assert_eq!(client.get_record_count(), 0);
+
+        let duplicate_id = 100;
+        let duplicate_unlock = env.ledger().timestamp() + 1000;
+        client.lock_credit(&caller, &duplicate_id, &duplicate_unlock);
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = duplicate_unlock + 1);
+        let duplicates = vec![&env, duplicate_id, duplicate_id];
+        let released_duplicates = client.batch_release(&duplicates);
+        assert_eq!(released_duplicates, vec![&env, duplicate_id]);
+    }
+
+    #[test]
+    fn test_batch_prune_at_max_size_and_suppresses_duplicates() {
+        let (env, admin, mock_ca_id, client) = setup_with_mock();
+        client.initialize(&admin, &mock_ca_id, &false, &None, &1);
+        assert_eq!(client.get_max_batch_size(), MAX_BATCH_SIZE);
+
+        let caller = Address::generate(&env);
+        let unlock = env.ledger().timestamp() + 1000;
+        let mut batch: Vec<u32> = vec![&env];
+        for token_id in 0..MAX_BATCH_SIZE {
+            client.lock_credit(&caller, &token_id, &unlock);
+            batch.push_back(token_id);
+        }
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = unlock + 1);
+
+        let pruned = client.batch_prune_expired(&batch, &MAX_BATCH_SIZE);
+        assert_eq!(pruned.len(), MAX_BATCH_SIZE);
+        assert_eq!(client.get_record_count(), 0);
+
+        let duplicate_id = 200;
+        let duplicate_unlock = env.ledger().timestamp() + 1000;
+        client.lock_credit(&caller, &duplicate_id, &duplicate_unlock);
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = duplicate_unlock + 1);
+        let duplicates = vec![&env, duplicate_id, duplicate_id];
+        let pruned_duplicates = client.batch_prune_expired(&duplicates, &MAX_BATCH_SIZE);
+        assert_eq!(pruned_duplicates, vec![&env, duplicate_id]);
+    }
+
+    #[test]
     fn test_force_release_moves_exact_token_id() {
         let (env, admin, mock_ca_id, client) = setup_with_mock();
 
@@ -1469,22 +1574,22 @@ mod test {
         // Window is Jan 1 2001 00:00:00 UTC through Dec 31 2006 23:59:59 UTC
         // Straddles leap years 2000 (prior) and 2004 (inside window)
         let (earliest_2000, latest_2000) = super::compute_vintage_window(2000).unwrap();
-        assert_eq!(earliest_2000, 978_307_200);      // Jan 1 2001 00:00:00 UTC
-        assert_eq!(latest_2000, 1_167_609_599);     // Dec 31 2006 23:59:59 UTC
+        assert_eq!(earliest_2000, 978_307_200); // Jan 1 2001 00:00:00 UTC
+        assert_eq!(latest_2000, 1_167_609_599); // Dec 31 2006 23:59:59 UTC
 
         // Vintage 2023 (non-leap year preceding leap year 2024):
         // Window is Jan 1 2024 00:00:00 UTC through Dec 31 2029 23:59:59 UTC
         // Straddles leap years 2024 and 2028 inside the window
         let (earliest_2023, latest_2023) = super::compute_vintage_window(2023).unwrap();
-        assert_eq!(earliest_2023, 1_704_067_200);   // Jan 1 2024 00:00:00 UTC
-        assert_eq!(latest_2023, 1_893_455_999);     // Dec 31 2029 23:59:59 UTC
+        assert_eq!(earliest_2023, 1_704_067_200); // Jan 1 2024 00:00:00 UTC
+        assert_eq!(latest_2023, 1_893_455_999); // Dec 31 2029 23:59:59 UTC
 
         // Vintage 2024 (leap year):
         // Window is Jan 1 2025 00:00:00 UTC through Dec 31 2030 23:59:59 UTC
         // Straddles leap year 2028 inside window
         let (earliest_2024, latest_2024) = super::compute_vintage_window(2024).unwrap();
-        assert_eq!(earliest_2024, 1_735_689_600);   // Jan 1 2025 00:00:00 UTC
-        assert_eq!(latest_2024, 1_924_991_999);     // Dec 31 2030 23:59:59 UTC
+        assert_eq!(earliest_2024, 1_735_689_600); // Jan 1 2025 00:00:00 UTC
+        assert_eq!(latest_2024, 1_924_991_999); // Dec 31 2030 23:59:59 UTC
     }
 
     #[test]
@@ -1501,11 +1606,16 @@ mod test {
         // - is correctly accepted under the precise civil calendar calculation
         let (earliest_2023, latest_2023) = super::compute_vintage_window(2023).unwrap();
         let valid_unlock_jan1_morning = 1_704_088_800; // 2024-01-01 06:00:00 UTC
-        assert!(valid_unlock_jan1_morning >= earliest_2023 && valid_unlock_jan1_morning <= latest_2023);
+        assert!(
+            valid_unlock_jan1_morning >= earliest_2023 && valid_unlock_jan1_morning <= latest_2023
+        );
 
         const OLD_SECONDS_PER_YEAR: u64 = 31_557_600;
         let old_earliest_2023 = (2023 + 1 - 1970) * OLD_SECONDS_PER_YEAR;
-        assert!(valid_unlock_jan1_morning < old_earliest_2023, "Would have failed under old approximation");
+        assert!(
+            valid_unlock_jan1_morning < old_earliest_2023,
+            "Would have failed under old approximation"
+        );
 
         // For vintage 2024:
         // old earliest = (2025 - 1970) * 31_557_600 = 55 * 31_557_600 = 1_735_668_000
@@ -1519,7 +1629,10 @@ mod test {
         assert!(premature_unlock_dec31_evening < earliest_2024);
 
         let old_earliest_2024 = (2024 + 1 - 1970) * OLD_SECONDS_PER_YEAR;
-        assert!(premature_unlock_dec31_evening >= old_earliest_2024, "Would have falsely passed old approximation");
+        assert!(
+            premature_unlock_dec31_evening >= old_earliest_2024,
+            "Would have falsely passed old approximation"
+        );
     }
 
     #[test]
