@@ -1,4 +1,8 @@
 import axios from "axios";
+import {
+  getRequestContext,
+  getRequestId,
+} from "../shared/context/request-context.js";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import type { ErrorCategory } from "../llm/errors.js";
@@ -30,6 +34,14 @@ import {
 // client sends, so there is nothing to authenticate against yet.
 const http = axios.create({
   baseURL: env.projectPortalBaseUrl,
+  timeout: env.upstreamHttpTimeoutMs,
+});
+
+http.interceptors.request.use((config) => {
+  const requestId = getRequestId();
+  config.signal ??= getRequestContext()?.abortController.signal;
+  if (requestId) config.headers["x-request-id"] = requestId;
+  return config;
 });
 
 // ---------------------------------------------------------------------------

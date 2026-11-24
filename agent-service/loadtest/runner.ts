@@ -26,7 +26,7 @@ export const AGENT_CONFIGS: Record<SupportedAgent, AgentEndpointConfig> = {
       input: {
         budget: 50000,
         sector: "forestry",
-        framework: "csrd",
+        complianceFramework: "csrd",
       },
     },
   },

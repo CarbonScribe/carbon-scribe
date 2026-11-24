@@ -1,4 +1,5 @@
 import pino from "pino";
+import { getRequestId } from "../context/request-context.js";
 
 const logLevel = process.env.LOG_LEVEL || "info";
 
@@ -12,3 +13,8 @@ export const logger = pino({
   },
   timestamp: pino.stdTimeFunctions.isoTime,
 });
+
+export function loggerWithRequestContext() {
+  const requestId = getRequestId();
+  return requestId ? logger.child({ requestId }) : logger;
+}

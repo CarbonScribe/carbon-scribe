@@ -1,4 +1,8 @@
 import axios, { type AxiosResponse } from "axios";
+import {
+  getRequestContext,
+  getRequestId,
+} from "../shared/context/request-context.js";
 import { logger } from "../shared/logging/logger.js";
 
 export const MAX_RETRIES = 2;
@@ -102,12 +106,15 @@ export async function requestWithLogging(
   fn: () => Promise<AxiosResponse>,
 ): Promise<AxiosResponse> {
   const start = Date.now();
+  context.requestId ??= getRequestId();
   logger.info(
     { ...context, event: "request_start" },
     `${context.clientName} client request start`,
   );
 
   try {
+    const signal = getRequestContext()?.abortController.signal;
+    void signal;
     const { value: response, attempts } = await withRetry(fn, context);
     logger.info(
       {

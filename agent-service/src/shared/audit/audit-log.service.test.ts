@@ -39,6 +39,13 @@ describe("AuditLogService", () => {
         agent: "discovery",
         requestId: `req-${status}`,
         requestedBy: "user-1",
+        transportRequestId: `req-${status}`,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        cumulativeTokens: 0,
+        iterations: 0,
         toolCalls: [
           {
             name: "search_marketplace_credits",

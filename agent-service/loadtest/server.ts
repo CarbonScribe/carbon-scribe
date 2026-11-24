@@ -41,13 +41,9 @@ export async function startLoadTestServer(
   const mockAnthropic = createMockAnthropicClient({ latencyMs });
   setAnthropicClient(mockAnthropic);
 
-  // Ensure serviceTokenSecrets has working secret
-  if (!env.serviceTokenSecrets["corporate-platform"]) {
-    env.serviceTokenSecrets["corporate-platform"] = jwtSecret;
-  }
-  if (!env.serviceTokenSecrets["project-portal"]) {
-    env.serviceTokenSecrets["project-portal"] = jwtSecret;
-  }
+  const previousServiceTokenSecrets = { ...env.serviceTokenSecrets };
+  env.serviceTokenSecrets["corporate-platform"] = jwtSecret;
+  env.serviceTokenSecrets["project-portal"] = jwtSecret;
 
   const app = createApp();
 
@@ -68,12 +64,16 @@ export async function startLoadTestServer(
     baseUrl,
     pool,
     close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((err) => {
-          if (err) reject(err);
-          else resolve();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.close((err) => {
+            if (err) reject(err);
+            else resolve();
+          });
         });
-      });
+      } finally {
+        Object.assign(env.serviceTokenSecrets, previousServiceTokenSecrets);
+      }
     },
   };
 }

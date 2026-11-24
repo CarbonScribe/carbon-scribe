@@ -6,6 +6,7 @@ import { env } from "../config/env.js";
 // usage patterns across agents are known.
 export let anthropic = new Anthropic({
   apiKey: env.anthropicApiKey || undefined,
+  timeout: env.agentRequestTimeoutMs,
 });
 
 export const DEFAULT_MODEL = env.agentModel;

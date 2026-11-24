@@ -25,7 +25,7 @@ export function errorHandler(
       error: err,
       method: req.method,
       path: req.path,
-      requestId: req.headers["x-request-id"],
+      requestId: req.requestId ?? req.headers["x-request-id"],
     },
     "Request error",
   );
@@ -36,5 +36,5 @@ export function errorHandler(
   }
 
   const message = err instanceof Error ? err.message : "internal error";
-  res.status(500).json({ error: message });
+  res.status(500).json({ error: message, requestId: req.requestId });
 }

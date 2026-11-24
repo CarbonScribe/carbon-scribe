@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { env } from "../src/config/env.js";
 import {
   ALERT_TRIAGE_FIXTURE_OUTPUT,
   COMPLIANCE_REPORT_FIXTURE_OUTPUT,
@@ -60,11 +61,11 @@ describe("Load Testing Module", () => {
 
   describe("server and runner", () => {
     it("starts test server, runs single benchmark, and stops cleanly", async () => {
-      const serverInstance = await startLoadTestServer({
-        latencyMs: 0,
-      });
-
+      const originalRateLimit = env.agentRateLimits.discovery;
+      env.agentRateLimits.discovery = 10_000;
       try {
+        const serverInstance = await startLoadTestServer({ latencyMs: 0 });
+        try {
         expect(serverInstance.port).toBeGreaterThan(0);
         expect(serverInstance.baseUrl).toContain("http://localhost:");
 
@@ -82,8 +83,11 @@ describe("Load Testing Module", () => {
         expect(benchmark.timeouts).toBe(0);
         expect(benchmark.non2xx).toBe(0);
         expect(benchmark.latencyMs.p50).toBeGreaterThanOrEqual(0);
+        } finally {
+          await serverInstance.close();
+        }
       } finally {
-        await serverInstance.close();
+        env.agentRateLimits.discovery = originalRateLimit;
       }
     });
 

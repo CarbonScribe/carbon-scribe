@@ -36,6 +36,16 @@ export interface AgentAuditEntry {
   requestedBy: string;
   actor?: string;
   callingService?: string;
+  transportRequestId?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cumulativeTokens?: number;
+  iterations?: number;
+  estimatedCostUsd?: number;
+  errorCategory?: string;
   /** Every tool call the agent made this run, in order. */
   toolCalls: Array<{ name: string; input: unknown; output: unknown }>;
   status:
@@ -128,8 +138,10 @@ export class AuditLogService {
 
     await this.pool.query(
       `INSERT INTO agent_audit_log
-         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at,
+          transport_request_id, model, input_tokens, output_tokens, cache_creation_input_tokens,
+          cache_read_input_tokens, cumulative_tokens, iterations, estimated_cost_usd, error_category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         entry.requestId,
         entry.agent,
@@ -139,6 +151,16 @@ export class AuditLogService {
         entry.status,
         JSON.stringify(redactedToolCalls),
         entry.timestamp,
+        entry.transportRequestId ?? entry.requestId,
+        entry.model ?? null,
+        entry.inputTokens ?? 0,
+        entry.outputTokens ?? 0,
+        entry.cacheCreationInputTokens ?? 0,
+        entry.cacheReadInputTokens ?? 0,
+        entry.cumulativeTokens ?? 0,
+        entry.iterations ?? 0,
+        entry.estimatedCostUsd ?? null,
+        entry.errorCategory ?? null,
       ],
     );
   }
@@ -163,8 +185,20 @@ export class AuditLogService {
       status: AgentAuditEntry["status"];
       tool_calls: AgentAuditEntry["toolCalls"];
       occurred_at: Date;
+      transport_request_id: string | null;
+      model: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      cache_creation_input_tokens: number;
+      cache_read_input_tokens: number;
+      cumulative_tokens: number;
+      iterations: number;
+      estimated_cost_usd: string | number | null;
+      error_category: string | null;
     }>(
-      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at
+      `SELECT request_id, agent, requested_by, actor, calling_service, status, tool_calls, occurred_at,
+              transport_request_id, model, input_tokens, output_tokens, cache_creation_input_tokens,
+              cache_read_input_tokens, cumulative_tokens, iterations, estimated_cost_usd, error_category
        FROM agent_audit_log
        WHERE request_id = $1
        ORDER BY occurred_at ASC, id ASC`,
@@ -180,6 +214,26 @@ export class AuditLogService {
       ...(row.calling_service ? { callingService: row.calling_service } : {}),
       toolCalls: row.tool_calls,
       status: row.status,
+      ...(row.transport_request_id
+        ? { transportRequestId: row.transport_request_id }
+        : {}),
+      ...(row.model ? { model: row.model } : {}),
+      ...(row.input_tokens != null ? { inputTokens: row.input_tokens } : {}),
+      ...(row.output_tokens != null ? { outputTokens: row.output_tokens } : {}),
+      ...(row.cache_creation_input_tokens != null
+        ? { cacheCreationInputTokens: row.cache_creation_input_tokens }
+        : {}),
+      ...(row.cache_read_input_tokens != null
+        ? { cacheReadInputTokens: row.cache_read_input_tokens }
+        : {}),
+      ...(row.cumulative_tokens != null
+        ? { cumulativeTokens: row.cumulative_tokens }
+        : {}),
+      ...(row.iterations != null ? { iterations: row.iterations } : {}),
+      ...(row.estimated_cost_usd != null
+        ? { estimatedCostUsd: Number(row.estimated_cost_usd) }
+        : {}),
+      ...(row.error_category ? { errorCategory: row.error_category } : {}),
     }));
   }
 

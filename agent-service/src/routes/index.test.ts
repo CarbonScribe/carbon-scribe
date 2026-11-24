@@ -175,8 +175,16 @@ describe("all four agent routes enforce requireInternalAuth", () => {
               : agent === "pdd-draft"
                 ? { activityType: "reforestation", country: "Kenya" }
                 : agent === "compliance-report"
-                  ? { companyId: "company-1", framework: "csrd", periodStart: "2026-01-01", periodEnd: "2026-12-31" }
-                  : { alert: { alertId: "alert-1", projectId: "project-1" }, project: { projectId: "project-1" } },
+                  ? {
+                      companyId: "company-1",
+                      framework: "csrd",
+                      periodStart: "2026-01-01",
+                      periodEnd: "2026-12-31",
+                    }
+                  : {
+                      alert: { alertId: "alert-1", projectId: "project-1" },
+                      project: { projectId: "project-1" },
+                    },
         });
 
       expect(res.status).toBe(200);

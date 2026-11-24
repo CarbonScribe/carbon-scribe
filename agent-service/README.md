@@ -21,6 +21,39 @@ Standalone agentic AI microservice for the CarbonScribe platform. Powers automat
 
 ---
 
+## Docker
+
+Build the production image from this directory:
+
+```bash
+cd agent-service
+docker build -t carbon-scribe-agent-service:local .
+```
+
+Run it with the required runtime variables:
+
+```bash
+docker run --rm -p 4500:4500 \
+  -e ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  -e AGENT_AUDIT_DATABASE_URL="postgres://postgres:postgres@host.docker.internal:5432/agent_service" \
+  -e CORPORATE_PLATFORM_BASE_URL="http://host.docker.internal:3000" \
+  -e PROJECT_PORTAL_BASE_URL="http://host.docker.internal:8080" \
+  -e AGENT_SERVICE_JWT_SECRET="$AGENT_SERVICE_JWT_SECRET" \
+  -e CORPORATE_PLATFORM_JWT_SECRET="$CORPORATE_PLATFORM_JWT_SECRET" \
+  -e PROJECT_PORTAL_JWT_SECRET="$PROJECT_PORTAL_JWT_SECRET" \
+  carbon-scribe-agent-service:local
+```
+
+The image runs as a non-root user, forwards SIGTERM to Node, and includes migrations. Run migrations separately or let startup apply them:
+
+```bash
+node dist/shared/audit/audit-log.migrate.js
+```
+
+A transport `x-request-id` is separate from the body `requestId`: the header correlates HTTP, logs and upstream calls, while `requestId` remains the agent-run/idempotency identifier in the JSON body.
+
+---
+
 ## 🌟 Overview
 
 The **Agent Service** provides dedicated agentic AI workflows for the CarbonScribe ecosystem. Rather than executing direct financial or on-chain transactions, agents produce draft recommendations and reports backed by grounded citations and data evidence:
@@ -150,6 +183,9 @@ npx openapi-typescript ../../agent-service/openapi.yaml -o src/agents/agent-serv
 | `PROJECT_PORTAL_BASE_URL` | Base URL for project-portal backend | `http://localhost:8080` |
 | `AGENT_SERVICE_MOCK_PROJECT_PORTAL` | When `true`, returns fixture data for project-portal without HTTP calls | `false` |
 | `AGENT_AUDIT_DATABASE_URL` | PostgreSQL connection string for audit log & approvals | `postgres://postgres:postgres@localhost:5432/agent_service` |
+| `AGENT_REQUEST_TIMEOUT_MS` | Per-agent HTTP request deadline | `120000` |
+| `UPSTREAM_HTTP_TIMEOUT_MS` | Corporate/platform HTTP client timeout | `10000` |
+| `SHUTDOWN_TIMEOUT_MS` | Graceful shutdown drain timeout | `15000` |
 
 ---
 

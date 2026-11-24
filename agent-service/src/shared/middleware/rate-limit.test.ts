@@ -1,7 +1,10 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createRateLimitMiddleware, type RateLimitStore } from "./rate-limit.js";
+import {
+  createRateLimitMiddleware,
+  type RateLimitStore,
+} from "./rate-limit.js";
 
 class TestStore implements RateLimitStore {
   private counts = new Map<string, number>();
@@ -21,20 +24,26 @@ function appFor(store: RateLimitStore) {
     req.callingService = req.header("x-caller") ?? undefined;
     next();
   });
-  app.use("/agents/discovery", createRateLimitMiddleware(store), (_req, res) => res.sendStatus(200));
+  app.use("/agents/discovery", createRateLimitMiddleware(store), (_req, res) =>
+    res.sendStatus(200),
+  );
   return app;
 }
 
 describe("per-caller rate limiting", () => {
   it("passes under the limit and rejects over it with standard headers", async () => {
     const app = appFor(new TestStore());
-    const first = await request(app).post("/agents/discovery/run").set("x-caller", "a");
+    const first = await request(app)
+      .post("/agents/discovery/run")
+      .set("x-caller", "a");
     expect(first.status).toBe(200);
 
     for (let i = 0; i < 59; i++) {
       await request(app).post("/agents/discovery/run").set("x-caller", "a");
     }
-    const blocked = await request(app).post("/agents/discovery/run").set("x-caller", "a");
+    const blocked = await request(app)
+      .post("/agents/discovery/run")
+      .set("x-caller", "a");
     expect(blocked.status).toBe(429);
     expect(blocked.headers["retry-after"]).toBeDefined();
     expect(blocked.headers["x-ratelimit-limit"]).toBeDefined();
@@ -43,7 +52,9 @@ describe("per-caller rate limiting", () => {
   it("keeps caller buckets independent", async () => {
     const app = appFor(new TestStore());
     await request(app).post("/agents/discovery/run").set("x-caller", "a");
-    const other = await request(app).post("/agents/discovery/run").set("x-caller", "b");
+    const other = await request(app)
+      .post("/agents/discovery/run")
+      .set("x-caller", "b");
     expect(other.status).toBe(200);
   });
 });

@@ -10,7 +10,11 @@ vi.mock("axios", async () => {
     ...actual,
     default: {
       ...actual.default,
-      create: () => ({ get: getMock, post: postMock }),
+      create: () => ({
+        get: getMock,
+        post: postMock,
+        interceptors: { request: { use: vi.fn() } },
+      }),
     },
   };
 });

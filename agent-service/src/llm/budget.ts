@@ -32,8 +32,8 @@ export interface BudgetedTurn {
   usage?: {
     input_tokens: number;
     output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
   } | null;
 }
 
@@ -44,8 +44,11 @@ export interface BudgetedRunResult<TTurn> {
   message: TTurn | undefined;
   /** Cumulative input+output tokens across every turn actually consumed. */
   cumulativeTokens: number;
+  inputTokens: number;
+  outputTokens: number;
   cacheCreationInputTokens: number;
   cacheReadInputTokens: number;
+  iterations: number;
   /** True if the run was stopped early for exceeding maxTokensPerRun,
    *  before max_iterations was reached. */
   budgetExceeded: boolean;
@@ -78,24 +81,58 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
 ): Promise<BudgetedRunResult<TTurn>> {
   let message: TTurn | undefined;
   let cumulativeTokens = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
   let cacheCreationInputTokens = 0;
   let cacheReadInputTokens = 0;
+  let iterations = 0;
 
   try {
     for await (const turn of runner) {
       message = turn;
+      iterations += 1;
       if (turn.usage) {
-        cumulativeTokens += turn.usage.input_tokens + turn.usage.output_tokens;
+        inputTokens += turn.usage.input_tokens;
+        outputTokens += turn.usage.output_tokens;
         cacheCreationInputTokens += turn.usage.cache_creation_input_tokens ?? 0;
         cacheReadInputTokens += turn.usage.cache_read_input_tokens ?? 0;
+        cumulativeTokens += turn.usage.input_tokens + turn.usage.output_tokens;
       }
       if (cumulativeTokens > budget.maxTokensPerRun) {
-        return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: true };
+        return {
+          message,
+          cumulativeTokens,
+          inputTokens,
+          outputTokens,
+          cacheCreationInputTokens,
+          cacheReadInputTokens,
+          iterations,
+          budgetExceeded: true,
+        };
       }
     }
   } catch (error) {
-    return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: false, error };
+    return {
+      message,
+      cumulativeTokens,
+      inputTokens,
+      outputTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+      iterations,
+      budgetExceeded: false,
+      error,
+    };
   }
 
-  return { message, cumulativeTokens, cacheCreationInputTokens, cacheReadInputTokens, budgetExceeded: false };
+  return {
+    message,
+    cumulativeTokens,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    iterations,
+    budgetExceeded: false,
+  };
 }
