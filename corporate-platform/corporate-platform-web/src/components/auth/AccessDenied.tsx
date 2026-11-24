@@ -1,10 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { ShieldAlert, ArrowLeft, Home } from 'lucide-react';
 import { AccessibleIcon } from '@/components/common/AccessibleIcon';
-import { IconButton } from '@/components/common/IconButton';
+import { useGuardedRouter } from '@/hooks/useGuardedRouter';
 
 interface AccessDeniedProps {
   title?: string;
@@ -21,7 +20,7 @@ export default function AccessDenied({
   showHomeButton = true,
   showBackButton = true,
 }: AccessDeniedProps) {
-  const router = useRouter();
+  const router = useGuardedRouter();
 
   const handleBack = () => {
     if (backHref) {

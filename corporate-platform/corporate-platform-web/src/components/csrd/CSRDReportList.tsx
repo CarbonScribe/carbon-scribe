@@ -10,6 +10,7 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import type { CsrdReport } from '@/types/csrd';
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry';
 
 const STATUS_COLORS: Record<string, string> = {
   REVIEW: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -43,11 +44,14 @@ export function CSRDReportList({
 }: Props) {
   const currentYear = new Date().getFullYear();
   const [yearInput, setYearInput] = useState(currentYear);
+  const [savedYear, setSavedYear] = useState(currentYear);
+  useUnsavedChangesGuard('csrd-report-generation', yearInput !== savedYear);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     onClearGenerateError();
-    await onGenerate(yearInput);
+    const report = await onGenerate(yearInput);
+    if (report) setSavedYear(yearInput);
   }
 
   const statusColor = (status: string) =>

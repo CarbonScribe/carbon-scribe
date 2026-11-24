@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { resetPasswordApi } from '@/lib/api/auth.api';
 import { ApiError } from '@/lib/api/http';
+import { clearAllUnsavedChanges } from '@/lib/forms/unsavedChangesRegistry';
 import {
   REGISTER_PASSWORD_ERROR,
   validateRegisterPassword,
@@ -53,6 +54,7 @@ function ResetPasswordForm() {
     setIsLoading(true);
     try {
       await resetPasswordApi(token as string, password);
+      clearAllUnsavedChanges();
       router.push('/login?reset=success');
     } catch (err: any) {
       setError(

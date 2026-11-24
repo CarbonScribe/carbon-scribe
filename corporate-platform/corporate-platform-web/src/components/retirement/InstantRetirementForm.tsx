@@ -19,6 +19,7 @@ import { useRetirement } from '@/hooks/useRetirement';
 import { getStellarExplorerUrl } from '@/lib/stellar/explorer';
 import { useAccessibility } from '@/hooks/useAccessibility';
 import { useAnnouncement } from '@/hooks/useAnnouncement';
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry';
 import { IconButton } from '@/components/common/IconButton';
 import { AccessibleIcon } from '@/components/common/AccessibleIcon';
 import RetirementReviewStep from '@/components/retirement/RetirementReviewStep';
@@ -156,6 +157,34 @@ export default function InstantRetirementForm({
     useState<ReportingFramework>('ghg-protocol');
   const [reportingPeriod, setReportingPeriod] = useState('');
   const [submitCooldownUntil, setSubmitCooldownUntil] = useState(0);
+  const initialFormValues = {
+    purpose: 'scope1' as RetirementPurpose,
+    purposeDetails: '',
+    selectedCreditId: availableCredits[0]?.id ?? '',
+    manualCreditId: '',
+    amount: 1000,
+    beneficiaryName: companyName ?? '',
+    beneficiaryWallet: companyWallet ?? '',
+    reportingFramework: 'ghg-protocol' as ReportingFramework,
+    reportingPeriod: '',
+  };
+  const currentFormValues = {
+    purpose,
+    purposeDetails,
+    selectedCreditId,
+    manualCreditId,
+    amount,
+    beneficiaryName,
+    beneficiaryWallet,
+    reportingFramework,
+    reportingPeriod,
+  };
+  const isDirty =
+    JSON.stringify(currentFormValues) !== JSON.stringify(initialFormValues);
+  useUnsavedChangesGuard(
+    'instant-retirement-form',
+    isDirty && !submitted && (!isModal || isOpen),
+  );
 
   // Refs for focus management
   const containerRef = useRef<HTMLDivElement>(null);
@@ -376,10 +405,16 @@ export default function InstantRetirementForm({
     isSubmittingRef.current = false;
     setSubmitted(false);
     setStage('form');
+    setPurpose('scope1');
     clearLastRetirement();
     clearRetireError();
     setPurposeDetails('');
+    setSelectedCreditId(availableCredits[0]?.id ?? '');
+    setManualCreditId('');
     setAmount(1000);
+    setBeneficiaryName(companyName ?? '');
+    setBeneficiaryWallet(companyWallet ?? '');
+    setReportingFramework('ghg-protocol');
     setReportingPeriod('');
     announce('Form reset', 'polite');
   }
