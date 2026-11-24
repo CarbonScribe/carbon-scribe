@@ -34,7 +34,11 @@ describe("pddDraftRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/pdd-draft/run")
-      .send({ requestId: "req-1", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-1",
+        requestedBy: "user-1",
+        input: { activityType: "reforestation", country: "Kenya" },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(result);
@@ -51,7 +55,11 @@ describe("pddDraftRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/pdd-draft/run")
-      .send({ requestId: "req-2", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-2",
+        requestedBy: "user-1",
+        input: { activityType: "reforestation", country: "Kenya" },
+      });
 
     expect(res.status).toBe(502);
     expect(res.body).toEqual(result);
@@ -77,7 +85,11 @@ describe("pddDraftRouter POST /run", () => {
 
     const res = await request(app)
       .post("/agents/pdd-draft/run")
-      .send({ requestId: "req-3", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-3",
+        requestedBy: "user-1",
+        input: { activityType: "reforestation", country: "Kenya" },
+      });
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("unexpected");

@@ -39,7 +39,16 @@ describe("complianceReportRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/compliance-report/run")
-      .send({ requestId: "req-1", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-1",
+        requestedBy: "user-1",
+        input: {
+          companyId: "company-1",
+          framework: "csrd",
+          periodStart: "2026-01-01",
+          periodEnd: "2026-12-31",
+        },
+      });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(result);
@@ -59,7 +68,16 @@ describe("complianceReportRouter POST /run", () => {
 
     const res = await request(buildApp())
       .post("/agents/compliance-report/run")
-      .send({ requestId: "req-2", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-2",
+        requestedBy: "user-1",
+        input: {
+          companyId: "company-1",
+          framework: "csrd",
+          periodStart: "2026-01-01",
+          periodEnd: "2026-12-31",
+        },
+      });
 
     expect(res.status).toBe(502);
     expect(res.body).toEqual(result);
@@ -85,7 +103,16 @@ describe("complianceReportRouter POST /run", () => {
 
     const res = await request(app)
       .post("/agents/compliance-report/run")
-      .send({ requestId: "req-3", requestedBy: "user-1", input: {} });
+      .send({
+        requestId: "req-3",
+        requestedBy: "user-1",
+        input: {
+          companyId: "company-1",
+          framework: "csrd",
+          periodStart: "2026-01-01",
+          periodEnd: "2026-12-31",
+        },
+      });
 
     expect(res.status).toBe(500);
     expect(res.body.error).toBe("unexpected");

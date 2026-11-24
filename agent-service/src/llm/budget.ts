@@ -29,7 +29,14 @@ export interface TokenBudget {
  *  BetaMessage satisfies this structurally without any SDK type import
  *  here, and a test can hand it a plain object. */
 export interface BudgetedTurn {
-  usage?: { input_tokens: number; output_tokens: number } | null;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    // The real BetaUsage shape reports these as `number | null` (absent
+    // when prompt caching wasn't used on that turn), not just optional.
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
+  } | null;
 }
 
 export interface BudgetedRunResult<TTurn> {
@@ -39,6 +46,8 @@ export interface BudgetedRunResult<TTurn> {
   message: TTurn | undefined;
   /** Cumulative input+output tokens across every turn actually consumed. */
   cumulativeTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
   /** True if the run was stopped early for exceeding maxTokensPerRun,
    *  before max_iterations was reached. */
   budgetExceeded: boolean;
@@ -71,20 +80,43 @@ export async function runWithTokenBudget<TTurn extends BudgetedTurn>(
 ): Promise<BudgetedRunResult<TTurn>> {
   let message: TTurn | undefined;
   let cumulativeTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let cacheReadInputTokens = 0;
 
   try {
     for await (const turn of runner) {
       message = turn;
       if (turn.usage) {
         cumulativeTokens += turn.usage.input_tokens + turn.usage.output_tokens;
+        cacheCreationInputTokens += turn.usage.cache_creation_input_tokens ?? 0;
+        cacheReadInputTokens += turn.usage.cache_read_input_tokens ?? 0;
       }
       if (cumulativeTokens > budget.maxTokensPerRun) {
-        return { message, cumulativeTokens, budgetExceeded: true };
+        return {
+          message,
+          cumulativeTokens,
+          cacheCreationInputTokens,
+          cacheReadInputTokens,
+          budgetExceeded: true,
+        };
       }
     }
   } catch (error) {
-    return { message, cumulativeTokens, budgetExceeded: false, error };
+    return {
+      message,
+      cumulativeTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+      budgetExceeded: false,
+      error,
+    };
   }
 
-  return { message, cumulativeTokens, budgetExceeded: false };
+  return {
+    message,
+    cumulativeTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    budgetExceeded: false,
+  };
 }

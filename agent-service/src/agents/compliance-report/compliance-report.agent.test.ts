@@ -106,7 +106,14 @@ describe("runComplianceReportAgent", () => {
     expect(toolRunnerMock).toHaveBeenCalledTimes(1);
     const params = toolRunnerMock.mock.calls[0]![0];
     expect(params.model).toBe("claude-opus-5");
-    expect(params.system).toContain("compliance-report drafting agent");
+    expect(Array.isArray(params.system)).toBe(true);
+    expect(params.system[0]).toEqual(
+      expect.objectContaining({
+        type: "text",
+        text: expect.stringContaining("compliance-report drafting agent"),
+        cache_control: { type: "ephemeral" },
+      }),
+    );
     expect(params.tools.map((t: { name: string }) => t.name)).toContain(
       "get_company_retirement_evidence",
     );

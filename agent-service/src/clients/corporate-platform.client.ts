@@ -92,6 +92,108 @@ export type PortfolioHolding = z.infer<typeof PortfolioHoldingSchema>;
 export type Portfolio = z.infer<typeof PortfolioSchema>;
 export type { ClientCallOptions };
 
+export interface MarketplaceCreditFilters {
+  query?: string;
+  projectName?: string;
+  country?: string;
+  methodology?: string;
+  standard?: string;
+  sdgs?: number[];
+  vintageFrom?: number;
+  vintageTo?: number;
+  priceMin?: number;
+  priceMax?: number;
+  sortBy?: "price" | "vintage" | "popularity" | "createdAt";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+export class MarketplaceRateLimitError extends Error {
+  constructor(public retryAfterSeconds?: number) {
+    super("Corporate platform marketplace search was rate limited");
+    this.name = "MarketplaceRateLimitError";
+  }
+}
+
+const MarketplaceCreditSchema = z
+  .object({
+    id: z.string(),
+    projectId: z.string(),
+    projectName: z.string(),
+    companyId: z.string().nullable().optional(),
+    pricePerTon: z.number(),
+    availableAmount: z.number(),
+    status: z.string().optional(),
+    methodology: z.string().nullable().optional(),
+    vintage: z.number().int().nullable().optional(),
+    verificationStandard: z.string().nullable().optional(),
+    country: z.string().nullable().optional(),
+    sdgs: z.array(z.number()).optional(),
+  })
+  .passthrough();
+
+const MarketplaceSearchResponseSchema = z.object({
+  data: z.array(MarketplaceCreditSchema),
+  total: z.number().int().nonnegative(),
+  page: z.number().int().positive(),
+  limit: z.number().int().positive(),
+  facets: z.object({
+    countries: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    methodologies: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    standards: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    sdgs: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    vintageYears: z
+      .array(
+        z.object({
+          value: z.union([z.string(), z.number()]),
+          count: z.number(),
+        }),
+      )
+      .optional(),
+    priceRange: z
+      .object({
+        min: z.number().optional(),
+        max: z.number().optional(),
+        median: z.number().optional(),
+      })
+      .optional(),
+  }),
+});
+
+export type MarketplaceCredit = z.infer<typeof MarketplaceCreditSchema>;
+export type MarketplaceSearchResult = z.infer<
+  typeof MarketplaceSearchResponseSchema
+>;
+
 /**
  * Fetch a company's current carbon credit portfolio.
  *
@@ -144,7 +246,60 @@ async function getPortfolio(
   return result.data.data;
 }
 
+async function listMarketplaceCredits(
+  filters: MarketplaceCreditFilters = {},
+  options: ClientCallOptions = {},
+): Promise<MarketplaceSearchResult> {
+  if (env.mockCorporatePlatform) {
+    const { mockMarketplaceSearchResult } =
+      await import("./corporate-platform.client.fixtures.js");
+    return mockMarketplaceSearchResult;
+  }
+
+  const params: Record<string, string | number | number[]> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) params[key] = value as string | number | number[];
+  }
+  const context: CallContext = {
+    clientName: "corporate-platform",
+    operation: "listMarketplaceCredits",
+    method: "GET",
+    path: "/api/v1/marketplace/search",
+    requestId: options.requestId,
+  };
+
+  let response;
+  try {
+    response = await requestWithLogging(context, () =>
+      http.get(context.path, { params, paramsSerializer: { indexes: null } }),
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 429) {
+      const header = error.response.headers?.["retry-after"];
+      const retryAfterSeconds =
+        typeof header === "string" ? Number(header) : undefined;
+      throw new MarketplaceRateLimitError(
+        Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : undefined,
+      );
+    }
+    throw error;
+  }
+
+  const result = MarketplaceSearchResponseSchema.safeParse(response.data);
+  if (!result.success) {
+    logSchemaValidationError(
+      context,
+      response.status,
+      response.data,
+      result.error,
+    );
+    throw result.error;
+  }
+  return result.data;
+}
+
 export const corporatePlatformClient = {
   http,
   getPortfolio,
+  listMarketplaceCredits,
 };

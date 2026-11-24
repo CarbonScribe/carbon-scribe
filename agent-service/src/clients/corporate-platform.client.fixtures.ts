@@ -41,3 +41,35 @@ export const mockPortfolioResponseBody = {
 
 /** The parsed, typed value corporatePlatformClient.getPortfolio() should resolve to. */
 export const mockPortfolio: Portfolio = mockPortfolioResponseBody.data;
+
+export const mockMarketplaceSearchResult = {
+  data: [
+    {
+      id: "credit-fixture-1",
+      projectId: "project-fixture-1",
+      projectName: "Amazon Basin Reforestation",
+      pricePerTon: 14.25,
+      availableAmount: 500,
+      status: "available",
+      methodology: "REDD+",
+      vintage: 2024,
+      verificationStandard: "VCS",
+      country: "Brazil",
+      sdgs: [13, 15],
+    },
+  ],
+  total: 1,
+  page: 1,
+  limit: 10,
+  facets: {
+    countries: [{ value: "Brazil", count: 1 }],
+    methodologies: [{ value: "REDD+", count: 1 }],
+    standards: [{ value: "VCS", count: 1 }],
+    sdgs: [
+      { value: 13, count: 1 },
+      { value: 15, count: 1 },
+    ],
+    vintageYears: [{ value: 2024, count: 1 }],
+    priceRange: { min: 14.25, max: 14.25, median: 14.25 },
+  },
+};

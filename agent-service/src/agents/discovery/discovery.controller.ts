@@ -5,6 +5,11 @@ import type {
 } from "../../shared/types/agent.types.js";
 import { runDiscoveryAgent } from "./discovery.agent.js";
 import { approvalService } from "../../shared/approvals/approval.service.js";
+import { validateBody } from "../../shared/middleware/validate-body.js";
+import {
+  agentRunSchema,
+  DiscoveryInputSchema,
+} from "../../shared/types/agent.types.js";
 
 export const discoveryRouter = Router();
 
@@ -23,17 +28,21 @@ function statusCodeFor(result: AgentRunResult): number {
   }
 }
 
-discoveryRouter.post("/run", async (req, res, next) => {
-  try {
-    const body = req.body as AgentRunRequest;
-    // requireInternalAuth verifies who actually called this route — prefer
-    // that over whatever the client claims in the body, so the audit trail
-    // can't be poisoned by a spoofed requestedBy.
-    const requestedBy = req.callingService ?? body.requestedBy;
-    const result = await runDiscoveryAgent({ ...body, requestedBy });
-    await approvalService.queue(result, requestedBy, body.input);
-    res.status(statusCodeFor(result)).json(result);
-  } catch (err) {
-    next(err);
-  }
-});
+discoveryRouter.post(
+  "/run",
+  validateBody(agentRunSchema(DiscoveryInputSchema)),
+  async (req, res, next) => {
+    try {
+      const body: AgentRunRequest = req.body;
+      // requireInternalAuth verifies who actually called this route — prefer
+      // that over whatever the client claims in the body, so the audit trail
+      // can't be poisoned by a spoofed requestedBy.
+      const requestedBy = req.callingService ?? body.requestedBy ?? "unknown";
+      const result = await runDiscoveryAgent({ ...body, requestedBy });
+      await approvalService.queue(result, requestedBy, body.input);
+      res.status(statusCodeFor(result)).json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);

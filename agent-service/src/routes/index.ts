@@ -7,6 +7,7 @@ import { complianceReportRouter } from "../agents/compliance-report/compliance-r
 import { alertTriageRouter } from "../agents/alert-triage/alert-triage.controller.js";
 import { approvalsRouter } from "../shared/approvals/approvals.controller.js";
 import { openapiRouter } from "../openapi/openapi.controller.js";
+import { rateLimit } from "../shared/middleware/rate-limit.js";
 
 export const router = Router();
 
@@ -18,12 +19,23 @@ router.use(openapiRouter);
 // orchestrator (kubelet, ECS agent), not by an authenticated caller.
 router.use("/health", healthRouter);
 
-router.use("/agents/discovery", requireInternalAuth, discoveryRouter);
-router.use("/agents/pdd-draft", requireInternalAuth, pddDraftRouter);
+router.use(
+  "/agents/discovery",
+  requireInternalAuth,
+  rateLimit,
+  discoveryRouter,
+);
+router.use("/agents/pdd-draft", requireInternalAuth, rateLimit, pddDraftRouter);
 router.use(
   "/agents/compliance-report",
   requireInternalAuth,
+  rateLimit,
   complianceReportRouter,
 );
-router.use("/agents/alert-triage", requireInternalAuth, alertTriageRouter);
+router.use(
+  "/agents/alert-triage",
+  requireInternalAuth,
+  rateLimit,
+  alertTriageRouter,
+);
 router.use("/approvals", requireInternalAuth, approvalsRouter);
