@@ -398,9 +398,10 @@ fn test_set_governance_emits_event_and_rejects_noop() {
     let admin = Address::generate(&env);
     let gov = Address::generate(&env);
     let new_gov = Address::generate(&env);
+    let carbon_contract = Address::generate(&env);
     let contract_id = env.register_contract(None, BufferPoolContract);
     let client = BufferPoolContractClient::new(&env, &contract_id);
-    client.initialize(&admin, &gov, &1000i64);
+    client.initialize(&admin, &gov, &carbon_contract, &1000i64);
 
     // no-op rejected
     let err = client.try_set_governance_address(&gov, &gov);
@@ -417,9 +418,10 @@ fn test_set_replenishment_rate_emits_event() {
     env.mock_all_auths();
     let admin = Address::generate(&env);
     let gov = Address::generate(&env);
+    let carbon_contract = Address::generate(&env);
     let contract_id = env.register_contract(None, BufferPoolContract);
     let client = BufferPoolContractClient::new(&env, &contract_id);
-    client.initialize(&admin, &gov, &1000i64);
+    client.initialize(&admin, &gov, &carbon_contract, &1000i64);
     client.set_replenishment_rate(&gov, &2000i64);
     let events = env.events().all();
     assert!(!events.is_empty());
