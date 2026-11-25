@@ -7,6 +7,7 @@ import {
   CheckComplianceRequest,
 } from '@/types';
 import { reportError } from '@/lib/telemetry/errorReporter';
+import { apiUrl } from '@/lib/api/api-url';
 
 /**
  * Compliance API Service
@@ -61,9 +62,9 @@ class ComplianceService {
         Authorization: token ? `Bearer ${token}` : '',
       };
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
-      const url = `${baseUrl}/compliance/report/${encodeURIComponent(entityId)}?format=pdf`;
+      const url = apiUrl(
+        `/compliance/report/${encodeURIComponent(entityId)}?format=pdf`,
+      );
 
       const response = await fetch(url, {
         method: 'GET',

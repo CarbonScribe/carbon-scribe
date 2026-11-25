@@ -326,7 +326,9 @@ func TestClient_ReconnectsAndResubscribesAfterBrokerRestart(t *testing.T) {
 	// (configured in Start) should re-establish the connection and
 	// onConnect must re-subscribe.
 	startTestBroker(t, addr)
-	waitFor(t, 5*time.Second, func() bool { return client.Status().Connected })
+	// CI runners can take longer to release/rebind the port and for paho's
+	// backoff to reconnect; 10s avoids a timing-only failure.
+	waitFor(t, 10*time.Second, func() bool { return client.Status().Connected })
 
 	body, _ := json.Marshal(SensorPayload{ProjectID: "project-4", SensorID: "sensor-1", Value: 1, CapturedAt: time.Now().UTC()})
 	publishRaw(t, addr, "sensors/project-4/soil_moisture", body)

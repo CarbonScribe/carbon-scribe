@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useCorporate } from '@/contexts/CorporateContext'
 import { useCSRD } from '@/hooks/useCSRD'
+import { useUnsavedChangesGuard } from '@/lib/forms/unsavedChangesRegistry'
 import { MaterialityAssessmentForm } from '@/components/csrd/MaterialityAssessmentForm'
 import { DisclosureList } from '@/components/csrd/DisclosureList'
 import { CSRDReportList } from '@/components/csrd/CSRDReportList'
@@ -45,11 +46,33 @@ import {
   ComposedChart
 } from 'recharts'
 
+const INITIAL_REPORT_FORM = {
+  type: 'Comprehensive ESG Report',
+  period: 'Q1 2024',
+  frameworks: [] as string[],
+}
+
 export default function ReportingPage() {
   const { portfolioSummary, retirements } = useCorporate()
   const [activeTab, setActiveTab] = useState<'esg' | 'carbon' | 'custom' | 'templates' | 'csrd'>('esg')
   const [selectedReport, setSelectedReport] = useState<string | null>(null)
   const [reportPeriod, setReportPeriod] = useState<'quarterly' | 'annual' | 'monthly'>('quarterly')
+  const [reportForm, setReportForm] = useState(INITIAL_REPORT_FORM)
+  const [savedReportForm, setSavedReportForm] = useState(INITIAL_REPORT_FORM)
+  useUnsavedChangesGuard(
+    'esg-report-generation',
+    JSON.stringify(reportForm) !== JSON.stringify(savedReportForm),
+  )
+
+  const handleGenerateReport = () => {
+    // TODO: Replace this stub with the report-generation request.
+    setSavedReportForm(reportForm)
+  }
+
+  const resetReportForm = () => {
+    setReportForm(INITIAL_REPORT_FORM)
+    setSavedReportForm(INITIAL_REPORT_FORM)
+  }
 
   // ESG metrics data
   const esgMetrics = [
@@ -378,7 +401,13 @@ export default function ReportingPage() {
                   <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2">
                     Report Type
                   </label>
-                  <select className="w-full p-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-corporate-blue">
+                  <select
+                    value={reportForm.type}
+                    onChange={(event) =>
+                      setReportForm((current) => ({ ...current, type: event.target.value }))
+                    }
+                    className="w-full p-3 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-corporate-blue"
+                  >
                     <option>Comprehensive ESG Report</option>
                     <option>Executive Summary</option>
                     <option>Investor Briefing</option>
@@ -394,7 +423,16 @@ export default function ReportingPage() {
                     {['Q1 2024', 'Q2 2024', '2023 Annual', 'Custom Range'].map((period) => (
                       <button
                         key={period}
-                        className="p-3 bg-gray-100 dark:bg-gray-800 rounded-lg text-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        type="button"
+                        aria-pressed={reportForm.period === period}
+                        onClick={() =>
+                          setReportForm((current) => ({ ...current, period }))
+                        }
+                        className={`p-3 rounded-lg text-center transition-colors ${
+                          reportForm.period === period
+                            ? 'bg-corporate-blue text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
                       >
                         {period}
                       </button>
@@ -409,17 +447,42 @@ export default function ReportingPage() {
                   <div className="flex flex-wrap gap-2">
                     {['GRI', 'SASB', 'TCFD', 'UN SDGs', 'CDP'].map((framework) => (
                       <label key={framework} className="flex items-center">
-                        <input type="checkbox" className="h-4 w-4 text-corporate-blue rounded border-gray-300 dark:border-gray-600 focus:ring-corporate-blue" />
+                        <input
+                          type="checkbox"
+                          checked={reportForm.frameworks.includes(framework)}
+                          onChange={(event) =>
+                            setReportForm((current) => ({
+                              ...current,
+                              frameworks: event.target.checked
+                                ? [...current.frameworks, framework]
+                                : current.frameworks.filter((item) => item !== framework),
+                            }))
+                          }
+                          className="h-4 w-4 text-corporate-blue rounded border-gray-300 dark:border-gray-600 focus:ring-corporate-blue"
+                        />
                         <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{framework}</span>
                       </label>
                     ))}
                   </div>
                 </div>
                 
-                <button className="w-full corporate-btn-primary py-3 mt-4">
-                  <FileText size={18} className="mr-2" />
-                  Generate Report
-                </button>
+                <div className="flex gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={handleGenerateReport}
+                    className="flex-1 corporate-btn-primary py-3"
+                  >
+                    <FileText size={18} className="mr-2" />
+                    Generate Report
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetReportForm}
+                    className="corporate-btn-secondary px-4 py-3"
+                  >
+                    Reset
+                  </button>
+                </div>
               </div>
             </div>
 

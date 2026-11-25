@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import RetirementSchedulingManager from '@/components/retirement/RetirementSchedulingManager'
+import { clearAllUnsavedChanges, hasUnsavedChanges } from '@/lib/forms/unsavedChangesRegistry'
 
 const listSchedulesMock = vi.fn()
 const createScheduleMock = vi.fn()
@@ -43,6 +44,10 @@ const baseSchedule = {
 }
 
 describe('RetirementSchedulingManager', () => {
+  afterEach(() => {
+    clearAllUnsavedChanges()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     listSchedulesMock.mockResolvedValue({ success: true, data: [baseSchedule] })
@@ -71,6 +76,7 @@ describe('RetirementSchedulingManager', () => {
       target: { value: '1200' },
     })
 
+    expect(hasUnsavedChanges()).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Create Schedule' }))
 
     await waitFor(() => {
@@ -78,6 +84,23 @@ describe('RetirementSchedulingManager', () => {
     })
 
     expect(await screen.findByText('Scheduled retirement created.')).toBeInTheDocument()
+    expect(hasUnsavedChanges()).toBe(false)
+  })
+
+  it('clears dirty state when an edited schedule is reset', async () => {
+    render(<RetirementSchedulingManager />)
+
+    await screen.findAllByText('Monthly Scope 1 Retirement')
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+
+    expect(hasUnsavedChanges()).toBe(false)
+    fireEvent.change(screen.getByPlaceholderText('Schedule name'), {
+      target: { value: 'Changed schedule' },
+    })
+    expect(hasUnsavedChanges()).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(hasUnsavedChanges()).toBe(false)
   })
 
   it('cancels a schedule from the schedule list', async () => {

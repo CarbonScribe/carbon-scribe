@@ -7,8 +7,13 @@ class RedisServiceMock {
   getClient() {
     return {
       get: async (key: string) => this.store.get(key) ?? null,
-      set: async (key: string, value: string) => {
+      set: async (key: string, value: string, ...args: (string | number)[]) => {
+        const nx = args.includes('NX');
+        if (nx && this.store.has(key)) {
+          return null;
+        }
         this.store.set(key, value);
+        return 'OK';
       },
       setex: async (key: string, _ttl: number, value: string) => {
         this.store.set(key, value);
@@ -50,5 +55,10 @@ describe('CacheService', () => {
     await service.set('test:key', { value: 1 }, 60);
     const result = await service.get<{ value: number }>('test:key');
     expect(result?.value).toBe(1);
+  });
+
+  it('should claim a key atomically only once', async () => {
+    await expect(service.setNX('test:claim', true, 60)).resolves.toBe(true);
+    await expect(service.setNX('test:claim', true, 60)).resolves.toBe(false);
   });
 });

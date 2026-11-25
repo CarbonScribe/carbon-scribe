@@ -111,7 +111,7 @@ What is included:
 
 Create `.env.local` from `.env.example` and configure:
 
-- `NEXT_PUBLIC_API_URL`: Base URL for backend API (example: `http://localhost:4000/api/v1`)
+- `NEXT_PUBLIC_API_BASE_URL`: Backend origin (default: `http://localhost:4000`). The client consistently adds `/api/v1` to API requests; do not include that path in this value. `NEXT_PUBLIC_API_URL` is accepted temporarily as a deprecated alias and emits a warning.
 - `NEXT_PUBLIC_STELLAR_EXPLORER_BASE_URL`: Explorer prefix used for transfer links
 
 ## Contributor Login (Local Development)

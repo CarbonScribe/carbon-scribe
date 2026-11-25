@@ -365,6 +365,51 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "d8e06060ace97b1aaa3b2b1e64185189c6665dd0aefadeaa7057526ac09f9977"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "d8e06060ace97b1aaa3b2b1e64185189c6665dd0aefadeaa7057526ac09f9977"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "95f4f59435eebafd09251c799e0513c983bd36c964a57d4e8b640d2c4ff98f21"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "TypeTimeIndex"
                 },
                 {

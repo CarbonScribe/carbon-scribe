@@ -8,11 +8,11 @@ This module integrates the backend Team Collaboration endpoints
 Set the following environment variable so the client can reach the backend:
 
 ```
-NEXT_PUBLIC_API_BASE_URL=https://your-backend.example.com/api/v1
+NEXT_PUBLIC_API_BASE_URL=https://your-backend.example.com
 ```
 
-If unset, the client defaults to the relative path `/api/v1`, which works when
-the backend is proxied by Next.js.
+The client adds `/api/v1` to requests. If unset, the validated default is
+`http://localhost:4000`.
 
 ## Usage
 
@@ -31,7 +31,6 @@ To use an authenticated token, create a client explicitly:
 import { TeamCollaborationClient } from '@/lib/team-collaboration';
 
 const client = new TeamCollaborationClient({
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
   getAuthToken: () => localStorage.getItem('access_token'),
 });
 ```

@@ -117,6 +117,37 @@ export class CacheService {
     }
   }
 
+  /**
+   * Atomically set a key only if it does not already exist, with a TTL.
+   * Uses Redis `SET key value NX EX ttl` under the hood.
+   *
+   * @returns `true` if the key was set (caller wins the claim),
+   *          `false` if the key already existed (another caller owns it),
+   *          `undefined` if Redis is unavailable.
+   */
+  async setNX<T>(
+    key: string,
+    value: T,
+    ttlSeconds: number,
+  ): Promise<boolean | undefined> {
+    const payloadString = JSON.stringify(value);
+    let compressed = false;
+    let data: string;
+    const buffer = Buffer.from(payloadString, 'utf8');
+    if (buffer.length > 1024) {
+      compressed = true;
+      data = gzipSync(buffer).toString('base64');
+    } else {
+      data = buffer.toString('utf8');
+    }
+    const envelope = JSON.stringify({ compressed, data });
+    return this.withClient<boolean>(async (c) => {
+      const result = await c.set(key, envelope, 'EX', ttlSeconds, 'NX');
+      // Redis returns 'OK' on success, null if key already exists
+      return result === 'OK';
+    });
+  }
+
   async del(key: string): Promise<void> {
     await this.withClient((c) => c.del(key));
   }

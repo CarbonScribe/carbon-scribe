@@ -46,3 +46,24 @@ pub fn emit_config_update_event(env: &Env, param_name: &Symbol, new_value: i64) 
     env.events()
         .publish((symbol_short!("config"),), (param_name, new_value));
 }
+
+pub fn emit_governance_changed(env: &Env, old: &Address, new: &Address) {
+    #[allow(deprecated)]
+    env.events().publish(
+        (symbol_short!("gov_set"),),
+        (old, new, env.ledger().sequence()),
+    );
+}
+
+pub fn emit_replenishment_rate_changed(
+    env: &Env,
+    old_bps: i64,
+    new_bps: i64,
+    changed_by: &Address,
+) {
+    #[allow(deprecated)]
+    env.events().publish(
+        (symbol_short!("rate_set"),),
+        (old_bps, new_bps, changed_by, env.ledger().sequence()),
+    );
+}
