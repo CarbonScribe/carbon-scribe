@@ -389,7 +389,7 @@ impl CarbonAsset {
 
         let current_ledger = env.ledger().sequence();
         if amount != 0 && live_until_ledger < current_ledger {
-            return Err(ContractError::InvalidStatusTransition);
+            return Err(ContractError::InvalidExpirationLedger);
         }
 
         let key = DataKey::Allowance(from.clone(), spender.clone());
@@ -1248,7 +1248,7 @@ impl CarbonAsset {
         amount: i128,
     ) -> Result<(), ContractError> {
         if amount <= 0 {
-            return Err(ContractError::InvalidStatusTransition);
+            return Err(ContractError::InvalidAmount);
         }
 
         let token_ids = Self::collect_transferable_tokens(env.clone(), from.clone(), amount)?;
@@ -1279,7 +1279,7 @@ impl CarbonAsset {
 
     fn burn_amount_internal(env: Env, from: Address, amount: i128) -> Result<(), ContractError> {
         if amount <= 0 {
-            return Err(ContractError::InvalidStatusTransition);
+            return Err(ContractError::InvalidAmount);
         }
 
         let token_ids = Self::collect_retired_tokens(env.clone(), from.clone(), amount)?;

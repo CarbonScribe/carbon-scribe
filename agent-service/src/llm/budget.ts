@@ -32,6 +32,8 @@ export interface BudgetedTurn {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    // The real BetaUsage shape reports these as `number | null` (absent
+    // when prompt caching wasn't used on that turn), not just optional.
     cache_creation_input_tokens?: number | null;
     cache_read_input_tokens?: number | null;
   } | null;

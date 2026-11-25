@@ -23,6 +23,9 @@ export const AGENT_CONFIGS: Record<SupportedAgent, AgentEndpointConfig> = {
     payload: {
       requestId: "req-loadtest-discovery",
       requestedBy: "corporate-platform",
+      // Matches DiscoveryInputSchema (#832) — the previous `framework` key
+      // predated that strict schema and isn't a recognized field, so every
+      // loadtest request was rejected with 400 before reaching the agent.
       input: {
         budget: 50000,
         sector: "forestry",
@@ -37,9 +40,13 @@ export const AGENT_CONFIGS: Record<SupportedAgent, AgentEndpointConfig> = {
     payload: {
       requestId: "req-loadtest-pdd",
       requestedBy: "project-portal",
+      // Matches PddDraftInputSchema (#832): activityType/country are
+      // required field names, not the previous activity/landArea/missing
+      // country.
       input: {
-        activity: "afforestation",
-        landArea: 5000,
+        activityType: "afforestation",
+        country: "Kenya",
+        hectares: 5000,
         targetMethodology: "VM0007",
       },
     },
@@ -51,10 +58,14 @@ export const AGENT_CONFIGS: Record<SupportedAgent, AgentEndpointConfig> = {
     payload: {
       requestId: "req-loadtest-compliance",
       requestedBy: "corporate-platform",
+      // Matches ComplianceReportInputSchema (#832): periodStart/periodEnd
+      // are required ISO dates; `year` isn't a recognized field under
+      // .strict().
       input: {
         companyId: "corp-99",
         framework: "csrd",
-        year: 2025,
+        periodStart: "2025-01-01",
+        periodEnd: "2025-12-31",
       },
     },
   },
@@ -65,10 +76,15 @@ export const AGENT_CONFIGS: Record<SupportedAgent, AgentEndpointConfig> = {
     payload: {
       requestId: "req-loadtest-alert",
       requestedBy: "project-portal",
+      // Matches AlertTriageInputSchema (#832): nested alert/project
+      // objects are required, not a flat shape.
       input: {
-        alertId: "alert-101",
-        projectId: "proj-42",
-        ndviAnomaly: -0.15,
+        alert: {
+          alertId: "alert-101",
+          projectId: "proj-42",
+          details: { ndviAnomaly: -0.15 },
+        },
+        project: { projectId: "proj-42" },
       },
     },
   },

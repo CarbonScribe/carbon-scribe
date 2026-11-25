@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../shared/database/database.module';
 import { RetirementModule } from '../retirement/retirement.module';
+import { CacheModule } from '../cache/cache.module';
 import { SchedulingController } from './scheduling.controller';
 import { SchedulingService } from './scheduling.service';
 import { BatchService } from './services/batch.service';
@@ -10,7 +11,7 @@ import { ScheduleService } from './services/schedule.service';
 import { SchedulingRunnerService } from './services/scheduling-runner.service';
 
 @Module({
-  imports: [DatabaseModule, RetirementModule],
+  imports: [DatabaseModule, RetirementModule, CacheModule],
   controllers: [SchedulingController],
   providers: [
     SchedulingService,

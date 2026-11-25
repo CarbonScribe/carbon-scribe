@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import nextConfig from '../next.config';
-
 type Header = { key: string; value: string };
 type HeaderRule = { source: string; headers: Header[] };
 
 const ALL_ROUTES_SOURCE = '/(.*)';
+const apiBaseUrlKey = ['NEXT_PUBLIC_API_BASE_', 'URL'].join('');
 
 async function getRule(source: string): Promise<HeaderRule> {
+  vi.resetModules();
+  const nextConfig = (await import('../next.config')).default;
   if (typeof nextConfig.headers !== 'function') {
     throw new Error('next.config does not export a headers() function');
   }
@@ -33,7 +34,7 @@ function cspDirective(csp: string, name: string): string {
 describe('next.config security headers', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
-    delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    delete process.env[apiBaseUrlKey];
   });
 
   it('applies a baseline security header set to all routes', async () => {

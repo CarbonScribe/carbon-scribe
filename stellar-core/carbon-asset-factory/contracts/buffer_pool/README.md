@@ -247,3 +247,13 @@ Withdrawals are limited exclusively to governance.
 ### Auditable Event Trail
 
 Event emission supports audited off-chain monitoring, tracking both internal state transitions and cross-contract lifecycle sequences.
+
+
+## Governance events
+
+| Topic | Data payload |
+|-------|----------------|
+| `gov_set` | `(old_governance, new_governance, ledger_sequence)` |
+| `rate_set` | `(old_bps, new_bps, changed_by, ledger_sequence)` |
+
+Setting governance to the current address returns `NoOpGovernanceChange` and emits no event.

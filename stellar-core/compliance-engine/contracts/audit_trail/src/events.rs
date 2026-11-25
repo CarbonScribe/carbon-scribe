@@ -1,4 +1,4 @@
-use soroban_sdk::{contractevent, Address, Env, String};
+use soroban_sdk::{contractevent, Address, BytesN, Env, String};
 
 /// Event emitted when old events are pruned from the audit trail.
 ///
@@ -29,6 +29,38 @@ pub struct ProvenanceValidationFailed {
     pub attempted_event_type: String,
     /// Ledger timestamp at which the violation was detected.
     pub timestamp: u64,
+}
+
+/// Event emitted when an emitter resubmits content that is already recorded
+/// (issue #821).
+///
+/// `record_event` is idempotent: the replay returns the original event ID and
+/// writes nothing to storage. This event lets monitoring spot retry storms or
+/// a compromised emitter replaying payloads. It fires at most once per replay
+/// call, so its volume is bounded by the number of (authorised, signed)
+/// calls an emitter makes.
+#[contractevent(topics = ["dup_evt"])]
+pub struct DuplicateEventSubmitted {
+    pub event_id: BytesN<32>,
+    pub fingerprint: BytesN<32>,
+    pub emitter: Address,
+    pub timestamp: u64,
+}
+
+/// Emit a [`DuplicateEventSubmitted`] (`dup_evt`) event.
+pub fn emit_duplicate_event_submitted(
+    env: &Env,
+    event_id: BytesN<32>,
+    fingerprint: BytesN<32>,
+    emitter: Address,
+) {
+    DuplicateEventSubmitted {
+        event_id,
+        fingerprint,
+        emitter,
+        timestamp: env.ledger().timestamp(),
+    }
+    .publish(env);
 }
 
 /// Emit a [`PruningEvent`].

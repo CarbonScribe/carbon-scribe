@@ -14,6 +14,7 @@ import {
   isTokenExpired,
 } from '@/lib/auth/token-storage';
 import { refreshApi } from './auth.api';
+import { env } from '@/env';
 
 interface RequestQueueItem {
   resolve: (value: any) => void;
@@ -26,7 +27,7 @@ class AuthApiClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    this.baseUrl = baseUrl || env.NEXT_PUBLIC_API_BASE_URL;
   }
 
   /**

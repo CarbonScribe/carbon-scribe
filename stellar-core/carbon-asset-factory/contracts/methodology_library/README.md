@@ -144,3 +144,15 @@ soroban contract deploy \
 - Metadata issuing authority must match authenticated caller.
 - Admin-only authority list mutation prevents unauthorized trust escalation.
 - Transfer and approval rules follow explicit owner and delegate checks.
+
+
+## Metadata validation
+
+Both `mint_methodology` and `update_methodology_metadata` run `validate_metadata`:
+
+- Required non-empty: `name`, `version`, `registry` (with max lengths)
+- `registry_link` must start with `https://`
+- Optional `ipfs_cid`: CIDv0 (`Qm` + 46 chars) or CIDv1 (`b` + base32)
+- Whitespace-only values rejected
+
+Errors: InvalidName=11, InvalidVersion=12, InvalidRegistryLink=13, InvalidRegistry=14, MetadataTooLong=15, InvalidIpfsCid=17.

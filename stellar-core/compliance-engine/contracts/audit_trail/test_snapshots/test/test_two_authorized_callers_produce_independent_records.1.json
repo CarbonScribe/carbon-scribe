@@ -580,6 +580,96 @@
             "key": {
               "vec": [
                 {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "516692de899de84811674ba802712c90afddcc79558cd3b75edb2d52ae712879"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "516692de899de84811674ba802712c90afddcc79558cd3b75edb2d52ae712879"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "3e79a44a473f16f1973b9fbc27d14b80d9baa542afc95059ceded615767d14ce"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "Fingerprint"
+                },
+                {
+                  "bytes": "8ad593e3762e88bd1f186679cfbe1c90a9827794cc8777796be3cd3928f4297d"
+                }
+              ]
+            },
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "Fingerprint"
+                    },
+                    {
+                      "bytes": "8ad593e3762e88bd1f186679cfbe1c90a9827794cc8777796be3cd3928f4297d"
+                    }
+                  ]
+                },
+                "durability": "persistent",
+                "val": {
+                  "bytes": "1c85e2d0e54435d2ce9a1889761c8c2fcf0ca7afeba88ace25f990791dd63eb1"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          1555200
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": {
+              "vec": [
+                {
                   "symbol": "TypeTimeIndex"
                 },
                 {

@@ -6,12 +6,14 @@ mod storage;
 mod test;
 
 pub use errors::AuditTrailError;
-use events::{emit_provenance_validation_failed, emit_pruning_event};
+use events::{
+    emit_duplicate_event_submitted, emit_provenance_validation_failed, emit_pruning_event,
+};
 use storage::DataKey;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, Map, String, TryFromVal,
-    Val, Vec,
+    contract, contractimpl, contracttype, xdr::ToXdr, Address, Bytes, BytesN, Env, Map, String,
+    TryFromVal, Val, Vec,
 };
 
 /// Maximum allowed event payload size in bytes.
@@ -241,10 +243,24 @@ impl AuditTrailContract {
     ///                           (≤ `MAX_EVENT_PAYLOAD_SIZE` bytes).
     /// * `tx_hash`             — The triggering transaction hash (cross-reference only).
     ///
+    /// # Replay protection / idempotency
+    ///
+    /// Before a nonce is consumed, the call's content fingerprint
+    /// `sha256(emitter ‖ event_type ‖ primary_entity_id ‖ secondary_entity_id
+    /// ‖ event_data ‖ tx_hash)` is looked up. If that exact content from that
+    /// emitter has already been recorded (and not yet pruned), the call is an
+    /// idempotent success: it returns the **original** event ID, writes
+    /// nothing, does not advance the nonce or chain tip, and leaves
+    /// `get_event_count` / `get_total_storage_bytes` unchanged. A `dup_evt`
+    /// event is published for monitoring. Emitters can therefore safely retry
+    /// after an ambiguous failure. Changing any fingerprinted field (e.g. a
+    /// different `tx_hash`) records a new, separate event.
+    ///
     /// # Returns
     ///
     /// The unique 32-byte event ID derived from `sha256(tx_hash ‖ timestamp ‖ nonce ‖ prev_event_hash)`,
-    /// omitting `prev_event_hash` for the first event.
+    /// omitting `prev_event_hash` for the first event — or, for a replay, the
+    /// ID of the event originally recorded for the same content.
     pub fn record_event(
         env: Env,
         caller: Address,
@@ -285,6 +301,36 @@ impl AuditTrailContract {
         let payload_bytes = event_data.len();
         if payload_bytes > MAX_EVENT_PAYLOAD_SIZE {
             return Err(AuditTrailError::PayloadTooLarge);
+        }
+
+        // Replay protection: identical content from the same emitter is an
+        // idempotent success returning the original ID. This check runs
+        // before the nonce is read, so replays never consume a nonce.
+        let fingerprint = Self::derive_fingerprint(
+            &env,
+            &caller,
+            &event_type,
+            &primary_entity_id,
+            secondary_entity_id.as_ref(),
+            &event_data,
+            &tx_hash,
+        );
+        let fingerprint_key = DataKey::Fingerprint(fingerprint.clone());
+        if let Some(existing_id) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, BytesN<32>>(&fingerprint_key)
+        {
+            // A fingerprint whose event has already disappeared (e.g. its
+            // entry was archived) is stale; fall through and record afresh.
+            if env
+                .storage()
+                .persistent()
+                .has(&DataKey::Events(existing_id.clone()))
+            {
+                emit_duplicate_event_submitted(&env, existing_id.clone(), fingerprint, caller);
+                return Ok(existing_id);
+            }
         }
 
         let timestamp = env.ledger().timestamp();
@@ -344,6 +390,10 @@ impl AuditTrailContract {
         // Persist event.
         env.storage().persistent().set(&event_key, &event);
         Self::extend_key_ttl(&env, &event_key, timestamp);
+
+        // Record the content fingerprint so replays resolve to this event.
+        env.storage().persistent().set(&fingerprint_key, &event_id);
+        Self::extend_key_ttl(&env, &fingerprint_key, timestamp);
 
         // Update entity index.
         let entity_key = DataKey::EntityIndex(primary_entity_id.clone());
@@ -745,6 +795,27 @@ impl AuditTrailContract {
                                 + 32
                                 + event.prev_event_hash.as_ref().map(|_| 32u64).unwrap_or(0);
 
+                            // Remove the replay-protection fingerprint, but
+                            // only if it still points at this event.
+                            let fingerprint_key = DataKey::Fingerprint(Self::derive_fingerprint(
+                                &env,
+                                &event.emitting_contract,
+                                &event.event_type,
+                                &event.primary_entity_id,
+                                event.secondary_entity_id.as_ref(),
+                                &event.event_data,
+                                &event.tx_hash,
+                            ));
+                            if env
+                                .storage()
+                                .persistent()
+                                .get::<DataKey, BytesN<32>>(&fingerprint_key)
+                                .as_ref()
+                                == Some(&event_id)
+                            {
+                                env.storage().persistent().remove(&fingerprint_key);
+                            }
+
                             pruned_bytes += event_size;
                             pruned_count += 1;
 
@@ -814,6 +885,44 @@ impl AuditTrailContract {
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /// Content fingerprint used for replay protection:
+    /// `sha256(emitter ‖ event_type ‖ primary_entity_id ‖ secondary_entity_id
+    /// ‖ event_data ‖ tx_hash)`.
+    ///
+    /// The emitter is XDR-encoded (self-delimiting), strings are
+    /// length-prefixed and the optional secondary ID carries a presence tag,
+    /// so distinct field splits can never produce the same preimage. The
+    /// ledger timestamp and nonce are deliberately excluded.
+    fn derive_fingerprint(
+        env: &Env,
+        emitter: &Address,
+        event_type: &String,
+        primary_entity_id: &String,
+        secondary_entity_id: Option<&String>,
+        event_data: &String,
+        tx_hash: &BytesN<32>,
+    ) -> BytesN<32> {
+        fn append_str(env: &Env, payload: &mut Bytes, value: &String) {
+            payload.append(&Bytes::from_array(env, &value.len().to_be_bytes()));
+            payload.append(&value.to_bytes());
+        }
+
+        let mut payload = Bytes::new(env);
+        payload.append(&emitter.clone().to_xdr(env));
+        append_str(env, &mut payload, event_type);
+        append_str(env, &mut payload, primary_entity_id);
+        match secondary_entity_id {
+            Some(secondary) => {
+                payload.push_back(1);
+                append_str(env, &mut payload, secondary);
+            }
+            None => payload.push_back(0),
+        }
+        append_str(env, &mut payload, event_data);
+        payload.append(&Bytes::from_array(env, &tx_hash.to_array()));
+        env.crypto().sha256(&payload).into()
+    }
 
     fn derive_event_id(
         env: &Env,

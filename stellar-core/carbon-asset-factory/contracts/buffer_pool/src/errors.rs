@@ -17,4 +17,6 @@ pub enum Error {
     /// The pool is paused for incident response; state-mutating calls are
     /// rejected until governance calls unpause().
     ContractPaused = 10,
+    NoOpGovernanceChange = 11,
 }
+

@@ -9,17 +9,12 @@ vi.mock("../../shared/audit/audit-log.service.js", () => ({
   truncateToolOutput: (output: unknown) => output,
 }));
 
-const toolRunnerMock = vi.fn();
-vi.mock("../../llm/client.js", () => ({
-  anthropic: {
-    beta: {
-      messages: {
-        toolRunner: (...args: unknown[]) => toolRunnerMock(...args),
-      },
-    },
-  },
-  DEFAULT_MODEL: "claude-opus-5",
-}));
+import {
+  toolRunnerMock,
+  buildAnthropicClientModule,
+} from "../../test-utils/anthropic-client.double.js";
+
+vi.mock("../../llm/client.js", () => buildAnthropicClientModule());
 
 // A small, deterministic token budget so a budget-exceeded test doesn't
 // need unrealistically large usage figures to trip it (#701). Iteration

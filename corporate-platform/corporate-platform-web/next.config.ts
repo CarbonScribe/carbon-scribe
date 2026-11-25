@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import './src/env';
+import { env } from './src/env';
 
 /**
  * Security Headers
@@ -19,7 +19,7 @@ import './src/env';
  */
 function buildSecurityHeaders(): { key: string; value: string }[] {
   const isProduction = process.env.NODE_ENV === 'production';
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+  const apiBaseUrl = env.NEXT_PUBLIC_API_BASE_URL;
 
   // Must stay in sync with images.remotePatterns so third-party images are
   // never blocked by the CSP once it is enforced.
@@ -272,7 +272,7 @@ const nextConfig: NextConfig = {
    * Optional API proxy for development and production
    */
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    const apiUrl = env.NEXT_PUBLIC_API_BASE_URL;
     return [
       {
         source: '/api/:path*',

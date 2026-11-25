@@ -12,11 +12,20 @@ import (
 
 // Example implementation of Service (stub)
 type service struct {
-	repo Repository
+	repo     Repository
+	methRepo methodology.Repository
 }
 
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+// NewService wires the quality repository and the methodology repository the
+// scoring service depends on. methodologyRepo is required: RecalculateScore
+// reads the project's methodology registration through it and cannot fall
+// back to a nil-backed repository (which would panic on first use). A nil
+// methodology repository is a programming error, so construction fails fast.
+func NewService(repo Repository, methodologyRepo methodology.Repository) Service {
+	if methodologyRepo == nil {
+		panic("quality.NewService: methodology repository is required")
+	}
+	return &service{repo: repo, methRepo: methodologyRepo}
 }
 
 func (s *service) GetProjectScore(ctx context.Context, projectID string) (*ProjectQualityScore, error) {
@@ -29,8 +38,7 @@ func (s *service) GetScoreHistory(ctx context.Context, projectID string) ([]Qual
 
 func (s *service) RecalculateScore(ctx context.Context, projectID string, adminID string) (*ProjectQualityScore, error) {
 	// 1. Fetch project methodology registration
-	methRepo := methodology.NewRepository(nil) // TODO: inject real DB
-	reg, err := methRepo.GetProjectMethodology(ctx, parseUUID(projectID))
+	reg, err := s.methRepo.GetProjectMethodology(ctx, parseUUID(projectID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project methodology: %w", err)
 	}
@@ -106,18 +114,18 @@ func (s *service) RecalculateScore(ctx context.Context, projectID string, adminI
 
 	now := time.Now().UTC()
 	score := &ProjectQualityScore{
-		ID: "", // to be set by DB
-		ProjectID: projectID,
+		ID:                 "", // to be set by DB
+		ProjectID:          projectID,
 		MethodologyTokenID: reg.MethodologyTokenID,
-		OverallScore: overall,
-		Components: components,
-		MethodologyScore: methodologyScore,
-		AuthorityScore: authorityScore,
-		RegistryScore: registryScore,
-		VersionScore: versionScore,
+		OverallScore:       overall,
+		Components:         components,
+		MethodologyScore:   methodologyScore,
+		AuthorityScore:     authorityScore,
+		RegistryScore:      registryScore,
+		VersionScore:       versionScore,
 		DocumentationScore: documentationScore,
-		CalculatedAt: now,
-		ValidUntil: nil,
+		CalculatedAt:       now,
+		ValidUntil:         nil,
 	}
 	// 5. Save score and history
 	_ = s.repo.SaveScore(ctx, score) // ignore error for now
@@ -127,7 +135,7 @@ func (s *service) RecalculateScore(ctx context.Context, projectID string, adminI
 	return score, nil
 }
 
-func parseUUID(id string) (uuid.UUID) {
+func parseUUID(id string) uuid.UUID {
 	// naive parse, replace with proper error handling
 	u, _ := uuid.Parse(id)
 	return u

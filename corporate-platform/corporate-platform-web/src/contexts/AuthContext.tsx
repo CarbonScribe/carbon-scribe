@@ -359,6 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const handleRemoteLogout = () => {
       clearAuthData();
+      clearAllUnsavedChanges();
       setUser(null);
       if (!isPublicRoute(pathname || '/')) {
         router.push(getLoginRedirectUrl(pathname));

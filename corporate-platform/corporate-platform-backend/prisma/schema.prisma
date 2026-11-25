@@ -737,6 +737,10 @@ model RetirementSchedule {
   runCount         Int                 @default(0)
   notifyBefore     Int?
   notifyAfter      Boolean             @default(true)
+  /// Execution lease (#814): set atomically by the runner instance that
+  /// claims this schedule; a run is only started when it is null or expired.
+  lockedUntil      DateTime?
+  lockedBy         String?
   executions       ScheduleExecution[]
   batchRetirements BatchRetirement[]
 
@@ -761,6 +765,10 @@ model ScheduleExecution {
   errorMessage  String?
   retryCount    Int                @default(0)
   nextRetryDate DateTime?
+  /// Retry lease (#814): claimed atomically so a failed execution is retried
+  /// by exactly one runner instance.
+  lockedUntil   DateTime?
+  lockedBy      String?
   batchItems    BatchRetirement[]
 
   @@index([scheduleId])

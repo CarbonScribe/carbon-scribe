@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../shared/database/prisma.service';
 import { CacheService } from '../../cache/cache.service';
+import { CacheKeys } from '../../cache/cache-keys';
 import { AnalyticsService } from '../analytics.service';
 import {
   RetirementForecast,
@@ -25,7 +26,7 @@ export class PredictiveService {
     companyId: string,
     months: number = 12,
   ): Promise<RetirementForecast> {
-    const cacheKey = `predictive:retirements:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `predictive:retirements`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -59,7 +60,7 @@ export class PredictiveService {
     companyId: string,
     months: number = 12,
   ): Promise<ImpactForecast> {
-    const cacheKey = `predictive:impact:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `predictive:impact`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {
@@ -91,7 +92,7 @@ export class PredictiveService {
    * Detect emerging trends
    */
   async detectTrends(companyId: string): Promise<TrendDetection[]> {
-    const cacheKey = `predictive:trends:${companyId}`;
+    const cacheKey = CacheKeys.tenant(companyId, `predictive:trends`);
     const cached = await this.cache.get(cacheKey);
 
     if (cached && typeof cached === 'string') {

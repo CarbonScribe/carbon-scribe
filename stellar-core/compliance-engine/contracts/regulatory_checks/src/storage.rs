@@ -79,4 +79,11 @@ pub enum DataKey {
     /// `get_rule_history`/`get_rule_at_version` keep working for a
     /// deactivated rule.
     RuleVersion(String),
+    /// Per-source monotonically increasing counter mixed into every derived
+    /// approval key, so identical (token_id, source, destination, operation)
+    /// requests made at different times always get distinct keys (#819).
+    ApprovalNonce(Address),
+    /// Admin-configured approval validity window in seconds. Falls back to
+    /// `APPROVAL_VALIDITY_SECS` when unset (#819).
+    ApprovalValidity,
 }

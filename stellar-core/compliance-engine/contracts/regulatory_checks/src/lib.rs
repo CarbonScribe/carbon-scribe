@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{contract, contractimpl, xdr::ToXdr, Address, Bytes, BytesN, Env, String, Vec};
 
 mod errors;
 mod events;
@@ -10,6 +10,11 @@ mod test;
 
 pub use errors::ContractError;
 pub use storage::{DataKey, JurisdictionRule, OperationType, PendingApproval, ValidationResult};
+
+/// Default window, in seconds, during which a pending approval can be
+/// approved and, once approved, remains valid (7 days). The admin can
+/// override it with `set_approval_validity`.
+pub const APPROVAL_VALIDITY_SECS: u64 = 7 * 24 * 60 * 60;
 
 #[contract]
 pub struct RegulatoryCheck;
@@ -473,9 +478,7 @@ impl RegulatoryCheck {
             .get(&key)
             .ok_or(ContractError::InvalidApprovalKey)?;
 
-        // Check if expired (7 days = 604800 seconds)
-        let current_time = env.ledger().timestamp();
-        if current_time > pending.timestamp + 604800 {
+        if Self::is_expired(&env, &pending) {
             return Err(ContractError::ApprovalExpired);
         }
 
@@ -486,26 +489,74 @@ impl RegulatoryCheck {
         Ok(())
     }
 
-    /// Create pending approval request
+    /// Create a pending approval request and return its on-chain derived key.
+    ///
+    /// Security model (#819):
+    /// * `requester` must authorize the call and must be either the `source`
+    ///   of the operation or the configured carbon asset contract (when the
+    ///   approval is opened cross-contract during a transfer/retirement).
+    /// * The key is never supplied by the caller. It is derived as
+    ///   `sha256(token_id || source || destination || operation || nonce)`,
+    ///   where `nonce` is a per-source counter incremented on every call, so
+    ///   keys are unique over time and cannot be squatted in advance.
+    /// * An existing approval is never overwritten; a collision returns
+    ///   `ContractError::ApprovalAlreadyExists`, so an approved transfer can
+    ///   never be reset to unapproved.
+    /// * An `appr_new` event is published with the key and all of its inputs.
     pub fn create_pending_approval(
         env: Env,
-        approval_key: BytesN<32>,
+        requester: Address,
         token_id: u32,
         source: Address,
         destination: Address,
         operation: OperationType,
-    ) {
+    ) -> Result<BytesN<32>, ContractError> {
+        let carbon_asset_contract: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::CarbonAssetContract)
+            .ok_or(ContractError::NotInitialized)?;
+
+        requester.require_auth();
+
+        if requester != source && requester != carbon_asset_contract {
+            return Err(ContractError::NotAuthorized);
+        }
+
+        let nonce_key = DataKey::ApprovalNonce(source.clone());
+        let nonce: u64 = env.storage().persistent().get(&nonce_key).unwrap_or(0);
+
+        let approval_key =
+            Self::derive_approval_key(&env, token_id, &source, &destination, &operation, nonce);
+        let key = DataKey::PendingApproval(approval_key.clone());
+
+        if env.storage().persistent().has(&key) {
+            return Err(ContractError::ApprovalAlreadyExists);
+        }
+
         let pending = PendingApproval {
+            token_id,
+            source: source.clone(),
+            destination: destination.clone(),
+            operation: operation.clone(),
+            timestamp: env.ledger().timestamp(),
+            approved: false,
+        };
+        env.storage().persistent().set(&key, &pending);
+        env.storage().persistent().set(&nonce_key, &(nonce + 1));
+
+        events::emit_approval_created_event(
+            &env,
+            approval_key.clone(),
+            requester,
             token_id,
             source,
             destination,
             operation,
-            timestamp: env.ledger().timestamp(),
-            approved: false,
-        };
+            nonce,
+        );
 
-        let key = DataKey::PendingApproval(approval_key);
-        env.storage().persistent().set(&key, &pending);
+        Ok(approval_key)
     }
 
     /// Check if approval exists and is valid
@@ -517,11 +568,94 @@ impl RegulatoryCheck {
             .persistent()
             .get::<DataKey, PendingApproval>(&key)
         {
-            let current_time = env.ledger().timestamp();
-            pending.approved && current_time <= pending.timestamp + 604800
+            pending.approved && !Self::is_expired(&env, &pending)
         } else {
             false
         }
+    }
+
+    /// Returns the stored pending approval for `approval_key`, if any.
+    pub fn get_pending_approval(env: Env, approval_key: BytesN<32>) -> Option<PendingApproval> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PendingApproval(approval_key))
+    }
+
+    /// Returns the nonce that the next approval created for `source` will use.
+    pub fn get_approval_nonce(env: Env, source: Address) -> u64 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ApprovalNonce(source))
+            .unwrap_or(0)
+    }
+
+    /// Returns the approval validity window in seconds.
+    pub fn get_approval_validity(env: Env) -> u64 {
+        Self::approval_validity(&env)
+    }
+
+    /// Admin-only: set the approval validity window in seconds (must be > 0).
+    pub fn set_approval_validity(
+        env: Env,
+        caller: Address,
+        validity_secs: u64,
+    ) -> Result<(), ContractError> {
+        caller.require_auth();
+
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ContractError::NotInitialized)?;
+
+        if caller != admin {
+            return Err(ContractError::NotAuthorized);
+        }
+        if validity_secs == 0 {
+            return Err(ContractError::InvalidApprovalValidity);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::ApprovalValidity, &validity_secs);
+        Ok(())
+    }
+
+    fn approval_validity(env: &Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::ApprovalValidity)
+            .unwrap_or(APPROVAL_VALIDITY_SECS)
+    }
+
+    fn is_expired(env: &Env, pending: &PendingApproval) -> bool {
+        let expires_at = pending
+            .timestamp
+            .saturating_add(Self::approval_validity(env));
+        env.ledger().timestamp() > expires_at
+    }
+
+    /// `sha256(token_id || source || destination || operation || nonce)`.
+    /// Addresses are XDR-encoded (self-delimiting), integers are big-endian.
+    fn derive_approval_key(
+        env: &Env,
+        token_id: u32,
+        source: &Address,
+        destination: &Address,
+        operation: &OperationType,
+        nonce: u64,
+    ) -> BytesN<32> {
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &token_id.to_be_bytes()));
+        payload.append(&source.clone().to_xdr(env));
+        payload.append(&destination.clone().to_xdr(env));
+        let op: u32 = match operation {
+            OperationType::TRANSFER => 0,
+            OperationType::RETIREMENT => 1,
+        };
+        payload.append(&Bytes::from_array(env, &op.to_be_bytes()));
+        payload.append(&Bytes::from_array(env, &nonce.to_be_bytes()));
+        env.crypto().sha256(&payload).into()
     }
 
     // ========================================================================

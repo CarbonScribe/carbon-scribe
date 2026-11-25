@@ -178,15 +178,42 @@ export class ServiceValidator {
         };
       }
 
-      await Promise.race([
-        rpcClient.getLatestLedger(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('Stellar RPC request timed out')),
-            5000,
-          ),
-        ),
-      ]);
+      let rpcTimeout: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          rpcClient.getLatestLedger(),
+          new Promise<never>((_, reject) => {
+            rpcTimeout = setTimeout(
+              () => reject(new Error('Stellar RPC request timed out')),
+              5000,
+            );
+          }),
+        ]);
+      } finally {
+        if (rpcTimeout) {
+          clearTimeout(rpcTimeout);
+        }
+      }
+
+      let contractValidationTimeout: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          this.sorobanService.validateConfiguredContractMethods(),
+          new Promise<never>((_, reject) => {
+            contractValidationTimeout = setTimeout(
+              () =>
+                reject(
+                  new Error('Soroban contract method validation timed out'),
+                ),
+              15000,
+            );
+          }),
+        ]);
+      } finally {
+        if (contractValidationTimeout) {
+          clearTimeout(contractValidationTimeout);
+        }
+      }
 
       return {
         service: 'Stellar',
