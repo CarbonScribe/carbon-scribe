@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import PlaceBidForm from './PlaceBidForm'
 import { ErrorCode } from '@/lib/utils/errorParser'
 
@@ -15,6 +15,57 @@ const baseProps = {
   onPlaceBid: vi.fn(),
   onClearFeedback: vi.fn(),
 }
+
+beforeAll(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
+})
+
+describe('bid review', () => {
+  it('shows the total and cancels without placing a bid', () => {
+    const onPlaceBid = vi.fn()
+    render(<PlaceBidForm {...baseProps} onPlaceBid={onPlaceBid} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Bid' }))
+    expect(screen.getByRole('dialog', { name: /review your bid/i })).toHaveTextContent('Total cost')
+    expect(screen.getByRole('dialog')).toHaveTextContent('$10.00')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(onPlaceBid).not.toHaveBeenCalled()
+  })
+
+  it('confirms once even when clicked repeatedly while pending', () => {
+    const onPlaceBid = vi.fn(() => new Promise<void>(() => {}))
+    render(<PlaceBidForm {...baseProps} onPlaceBid={onPlaceBid} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Bid' }))
+    const confirm = screen.getByRole('button', { name: /confirm bid/i })
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+    expect(onPlaceBid).toHaveBeenCalledTimes(1)
+    expect(onPlaceBid).toHaveBeenCalledWith({ bidPrice: 10, quantity: 1 })
+  })
+
+  it('requires acknowledgement for a high bid or total', () => {
+    const onPlaceBid = vi.fn(() => new Promise<void>(() => {}))
+    render(<PlaceBidForm {...baseProps} onPlaceBid={onPlaceBid} highTotalThreshold={20} />)
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '13' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Place Bid' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('25% above')
+    const confirm = screen.getByRole('button', { name: /confirm bid/i })
+    expect(confirm).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox'))
+    expect(confirm).toBeEnabled()
+    fireEvent.click(confirm)
+    expect(onPlaceBid).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels on Escape', () => {
+    const onPlaceBid = vi.fn()
+    render(<PlaceBidForm {...baseProps} onPlaceBid={onPlaceBid} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Place Bid' }))
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onPlaceBid).not.toHaveBeenCalled()
+  })
+})
 
 describe('PlaceBidForm rate limiting', () => {
   it('shows the countdown and blocks resubmission after a 429', () => {
