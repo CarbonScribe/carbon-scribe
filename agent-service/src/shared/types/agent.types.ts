@@ -104,7 +104,11 @@ export interface AgentRunResult {
   /** Error classification for failed runs — helps callers distinguish
    * transient failures (rate limits, connection errors) from permanent ones. */
   errorCategory?:
-    "rate_limited" | "connection_error" | "invalid_request" | "unknown";
+    | "rate_limited"
+    | "connection_error"
+    | "invalid_request"
+    | "timeout"
+    | "unknown";
   /** Whether the error is retryable — true for rate limits and connection errors. */
   retryable?: boolean;
 }

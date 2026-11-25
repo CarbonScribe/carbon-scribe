@@ -133,6 +133,8 @@ export const env = {
   // drained within this window after SIGTERM/SIGINT, the process
   // force-exits rather than hanging a deploy indefinitely.
   shutdownTimeoutMs: positiveInteger("SHUTDOWN_TIMEOUT_MS", 15000),
+  agentRequestTimeoutMs: positiveInteger("AGENT_REQUEST_TIMEOUT_MS", 120000),
+  upstreamHttpTimeoutMs: positiveInteger("UPSTREAM_HTTP_TIMEOUT_MS", 10000),
 
   // Explicit express.json() body size cap, shared by every agent route
   // (#704) — see shared/middleware/body-limit.ts for why 1 MiB and why one

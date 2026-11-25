@@ -1,4 +1,5 @@
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import type { BetaMessage } from "@anthropic-ai/sdk/resources/beta.js";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { anthropic, DEFAULT_MODEL } from "../../llm/client.js";
@@ -22,6 +23,8 @@ import type {
 import { AgentCitationSchema } from "../../shared/types/agent.types.js";
 import { alertTriageTools } from "./alert-triage.tools.js";
 import { cachedSystem } from "../../shared/llm/prompt-cache.js";
+import { getRequestId } from "../../shared/context/request-context.js";
+import { getRequestContext } from "../../shared/context/request-context.js";
 
 const SYSTEM_PROMPT = `You are the alert-triage agent for CarbonScribe's project monitoring pipeline.
 Given a candidate deforestation/anomaly alert, correlate satellite NDVI data, IoT sensor
@@ -56,20 +59,24 @@ interface ToolCallRecord {
 export async function runAlertTriageAgent(
   req: AgentRunRequest,
 ): Promise<AgentRunResult> {
-  const runner = anthropic.beta.messages.toolRunner({
-    model: DEFAULT_MODEL,
-    max_tokens: 16000,
-    max_iterations: env.agentMaxIterations,
-    system: cachedSystem(SYSTEM_PROMPT, alertTriageTools),
-    tools: alertTriageTools,
-    output_config: { format: outputFormat },
-    messages: [
-      {
-        role: "user",
-        content: `Candidate alert (JSON):\n${JSON.stringify(req.input, null, 2)}`,
-      },
-    ],
-  });
+  const requestSignal = getRequestContext()?.abortController.signal;
+  const runner = anthropic.beta.messages.toolRunner(
+    {
+      model: DEFAULT_MODEL,
+      max_tokens: 16000,
+      max_iterations: env.agentMaxIterations,
+      system: cachedSystem(SYSTEM_PROMPT, alertTriageTools),
+      tools: alertTriageTools,
+      output_config: { format: outputFormat },
+      messages: [
+        {
+          role: "user",
+          content: `Candidate alert (JSON):\n${JSON.stringify(req.input, null, 2)}`,
+        },
+      ],
+    },
+    requestSignal ? { signal: requestSignal } : undefined,
+  );
 
   function extractToolCalls(): ToolCallRecord[] {
     // First pass: collect every tool_result content block from user turns,
@@ -106,14 +113,20 @@ export async function runAlertTriageAgent(
     return calls;
   }
 
-  const budgetResult = await runWithTokenBudget(runner, {
-    maxTokensPerRun: env.agentMaxTokensPerRun,
-  });
+  const budgetResult = await runWithTokenBudget(
+    runner as unknown as AsyncIterable<BetaMessage>,
+    {
+      maxTokensPerRun: env.agentMaxTokensPerRun,
+    },
+  );
   const {
     message: finalMessage,
     cumulativeTokens,
+    inputTokens,
+    outputTokens,
     cacheCreationInputTokens,
     cacheReadInputTokens,
+    iterations,
   } = budgetResult;
 
   if (budgetResult.error) {
@@ -154,7 +167,7 @@ export async function runAlertTriageAgent(
 
   const textBlock = finalMessage.content.find(
     (
-      block: (typeof finalMessage.content)[number],
+      block,
     ): block is Extract<
       (typeof finalMessage.content)[number],
       { type: "text" }
@@ -231,6 +244,14 @@ export async function runAlertTriageAgent(
     requestedBy: req.requestedBy,
     toolCalls,
     status,
+    transportRequestId: getRequestId() ?? req.requestId,
+    model: DEFAULT_MODEL,
+    inputTokens,
+    outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+    cumulativeTokens,
+    iterations,
   });
   logger.info(
     {

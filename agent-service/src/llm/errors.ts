@@ -1,7 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 export type ErrorCategory =
-  "rate_limited" | "connection_error" | "invalid_request" | "unknown";
+  | "rate_limited"
+  | "connection_error"
+  | "invalid_request"
+  | "timeout"
+  | "unknown";
 
 export interface ClassifiedError {
   category: ErrorCategory;
@@ -18,6 +22,17 @@ export function classifyAnthropicError(
   err: unknown,
   agentName: string = "agent",
 ): ClassifiedError {
+  if (
+    (err instanceof Error && err.name === "AbortError") ||
+    (err instanceof Error && err.message.toLowerCase().includes("timed out"))
+  ) {
+    return {
+      category: "timeout",
+      message: "Agent request timed out",
+      retryable: false,
+    };
+  }
+
   if (err instanceof Anthropic.RateLimitError) {
     return {
       category: "rate_limited",

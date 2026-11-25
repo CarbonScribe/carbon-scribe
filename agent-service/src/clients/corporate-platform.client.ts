@@ -1,4 +1,8 @@
 import axios from "axios";
+import {
+  getRequestContext,
+  getRequestId,
+} from "../shared/context/request-context.js";
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { signServiceToken } from "../shared/auth/service-token.js";
@@ -23,6 +27,7 @@ import {
 // a matching service-token guard before these credentials are authenticated.
 const http = axios.create({
   baseURL: env.corporatePlatformBaseUrl,
+  timeout: env.upstreamHttpTimeoutMs,
 });
 
 http.interceptors.request.use((config) => {
@@ -30,6 +35,9 @@ http.interceptors.request.use((config) => {
     throw new Error("Missing required env var: AGENT_SERVICE_JWT_SECRET");
   }
 
+  const requestId = getRequestId();
+  config.signal ??= getRequestContext()?.abortController.signal;
+  if (requestId) config.headers["x-request-id"] = requestId;
   config.headers.Authorization = `Bearer ${signServiceToken(
     "agent-service",
     env.agentServiceJwtSecret,
