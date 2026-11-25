@@ -31,6 +31,12 @@ pub enum DataKey {
     MintedCredit(String),
     /// Whether a registry credit has been retired (registry_credit_id -> bool)
     RetiredCredit(String),
+    /// Mint metadata for a registry credit ID.
+    BridgedCredit(String),
+    /// The number of credits indexed for an epoch.
+    EpochCreditCount(u64),
+    /// A bounded page of registry credit IDs for an epoch.
+    EpochCreditIndex(u64, u32),
 }
 
 /// Credit status enum for leaf node construction
@@ -39,6 +45,18 @@ pub enum DataKey {
 pub enum CreditStatus {
     Available,
     Retired,
+}
+
+/// On-chain details for a credit minted from an epoch's Merkle root.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BridgedCredit {
+    pub registry_credit_id: String,
+    pub token_id: u32,
+    pub epoch_id: u64,
+    pub minted_at: u64,
+    pub leaf_index: u64,
+    pub retired: bool,
 }
 
 /// Event emitted when a credit is bridged
@@ -133,6 +151,10 @@ pub enum MerkleBridgeError {
 }
 
 const DEFAULT_CHALLENGE_PERIOD: u64 = 3600;
+const EPOCH_INDEX_PAGE_SIZE: u32 = 100;
+const MAX_EPOCH_CREDITS_PAGE_LIMIT: u32 = 50;
+const PERSISTENT_TTL_BUMP_AMOUNT: u32 = 30 * 17_280;
+const PERSISTENT_TTL_THRESHOLD: u32 = PERSISTENT_TTL_BUMP_AMOUNT - 17_280;
 
 // ============ registry_credit_id Validation ============
 
@@ -544,6 +566,20 @@ impl MerkleBridge {
             .persistent()
             .set(&DataKey::MintedCredit(registry_credit_id.clone()), &true);
 
+        let bridged_credit = BridgedCredit {
+            registry_credit_id: registry_credit_id.clone(),
+            token_id,
+            epoch_id,
+            minted_at: env.ledger().timestamp(),
+            leaf_index,
+            retired: false,
+        };
+        let record_key = DataKey::BridgedCredit(registry_credit_id.clone());
+        env.storage().persistent().set(&record_key, &bridged_credit);
+        Self::extend_persistent_ttl(&env, &record_key);
+        Self::append_epoch_credit(&env, epoch_id, registry_credit_id.clone());
+        Self::extend_persistent_ttl(&env, &DataKey::MintedCredit(registry_credit_id.clone()));
+
         // Emit bridged event
         CreditBridgedEvent {
             registry_credit_id: registry_credit_id.clone(),
@@ -588,6 +624,21 @@ impl MerkleBridge {
         env.storage()
             .persistent()
             .set(&DataKey::RetiredCredit(registry_credit_id.clone()), &true);
+        let retired_key = DataKey::RetiredCredit(registry_credit_id.clone());
+        Self::extend_persistent_ttl(&env, &retired_key);
+
+        let bridged_key = DataKey::BridgedCredit(registry_credit_id.clone());
+        if let Some(mut bridged_credit) = env
+            .storage()
+            .persistent()
+            .get::<_, BridgedCredit>(&bridged_key)
+        {
+            bridged_credit.retired = true;
+            env.storage()
+                .persistent()
+                .set(&bridged_key, &bridged_credit);
+            Self::extend_persistent_ttl(&env, &bridged_key);
+        }
 
         // Emit event
         CreditRetiredEvent {
@@ -648,6 +699,77 @@ impl MerkleBridge {
     /// Check if a credit has been retired
     pub fn is_retired(env: Env, registry_credit_id: String) -> bool {
         Self::is_credit_retired(&env, &registry_credit_id)
+    }
+
+    /// Return the number of credits minted from a specific epoch.
+    pub fn get_epoch_credit_count(env: Env, epoch_id: u64) -> u32 {
+        let key = DataKey::EpochCreditCount(epoch_id);
+        if let Some(count) = env.storage().persistent().get(&key) {
+            Self::extend_persistent_ttl(&env, &key);
+            count
+        } else {
+            0
+        }
+    }
+
+    /// Return a bounded page of credits minted from an epoch. `limit` is capped at 50.
+    pub fn get_epoch_credits_page(
+        env: Env,
+        epoch_id: u64,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<BridgedCredit> {
+        let mut credits = Vec::new(&env);
+        let count_key = DataKey::EpochCreditCount(epoch_id);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        if count == 0 || limit == 0 || offset >= count {
+            return credits;
+        }
+        Self::extend_persistent_ttl(&env, &count_key);
+
+        let end = offset
+            .saturating_add(limit.min(MAX_EPOCH_CREDITS_PAGE_LIMIT))
+            .min(count);
+        let mut index = offset;
+        while index < end {
+            let page_number = index / EPOCH_INDEX_PAGE_SIZE;
+            let page_start = page_number * EPOCH_INDEX_PAGE_SIZE;
+            let page_key = DataKey::EpochCreditIndex(epoch_id, page_number);
+            let page: Vec<String> = env
+                .storage()
+                .persistent()
+                .get(&page_key)
+                .unwrap_or_else(|| Vec::new(&env));
+            if page.is_empty() || index - page_start >= page.len() {
+                break;
+            }
+            Self::extend_persistent_ttl(&env, &page_key);
+            let page_end = page_start.saturating_add(page.len()).min(end);
+            while index < page_end {
+                let credit_id = page.get(index - page_start).unwrap();
+                let record_key = DataKey::BridgedCredit(credit_id.clone());
+                if let Some(mut credit) = env
+                    .storage()
+                    .persistent()
+                    .get::<_, BridgedCredit>(&record_key)
+                {
+                    credit.retired |= Self::is_credit_retired(&env, &credit_id);
+                    Self::extend_persistent_ttl(&env, &record_key);
+                    credits.push_back(credit);
+                }
+                index += 1;
+            }
+        }
+        credits
+    }
+
+    /// Look up the mint metadata for a registry credit ID.
+    pub fn get_bridged_credit(env: Env, registry_credit_id: String) -> Option<BridgedCredit> {
+        let key = DataKey::BridgedCredit(registry_credit_id.clone());
+        let mut credit: BridgedCredit = env.storage().persistent().get(&key)?;
+        credit.retired |= Self::is_credit_retired(&env, &registry_credit_id);
+        Self::extend_persistent_ttl(&env, &key);
+        Some(credit)
     }
 
     /// Get the admin address
@@ -762,6 +884,32 @@ impl MerkleBridge {
             .persistent()
             .get(&DataKey::RetiredCredit(registry_credit_id.clone()))
             .unwrap_or(false)
+    }
+
+    fn append_epoch_credit(env: &Env, epoch_id: u64, registry_credit_id: String) {
+        let count_key = DataKey::EpochCreditCount(epoch_id);
+        let count: u32 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        let page_key = DataKey::EpochCreditIndex(epoch_id, count / EPOCH_INDEX_PAGE_SIZE);
+        let mut page: Vec<String> = env
+            .storage()
+            .persistent()
+            .get(&page_key)
+            .unwrap_or_else(|| Vec::new(env));
+        page.push_back(registry_credit_id);
+        env.storage().persistent().set(&page_key, &page);
+        env.storage()
+            .persistent()
+            .set(&count_key, &count.saturating_add(1));
+        Self::extend_persistent_ttl(env, &page_key);
+        Self::extend_persistent_ttl(env, &count_key);
+    }
+
+    fn extend_persistent_ttl(env: &Env, key: &DataKey) {
+        env.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_BUMP_AMOUNT,
+        );
     }
 
     /// Validate that the proof length is consistent with the leaf index
@@ -1745,6 +1893,100 @@ mod tests {
         // Contains dot — not in allowed charset
         let bad_id = String::from_str(&env, "VER.123.ABC.456");
         client.mark_retired(&updater, &bad_id);
+    }
+
+    #[test]
+    fn test_epoch_credit_queries_include_mint_mapping_and_retirement() {
+        let (env, admin, updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &updater);
+        wire_carbon_asset(&env, &client, &admin, &contract_id);
+
+        let user = Address::generate(&env);
+        let first_id = String::from_str(&env, "VER-EPOCH-001");
+        let first_root = compute_test_leaf_hash(&env, "VER-EPOCH-001");
+        client.update_root(&updater, &1, &first_root);
+        finalize_root(&env, &client, &admin, 1);
+        let first_token = client.mint_wrapped(&user, &first_id, &Vec::new(&env), &0, &1);
+
+        assert_eq!(client.get_epoch_credit_count(&1), 1);
+        assert_eq!(client.get_epoch_credit_count(&2), 0);
+        let first_page = client.get_epoch_credits_page(&1, &0, &50);
+        assert_eq!(first_page.len(), 1);
+        assert_eq!(first_page.get(0).unwrap().token_id, first_token);
+        assert_eq!(first_page.get(0).unwrap().leaf_index, 0);
+
+        let first_record = client.get_bridged_credit(&first_id).unwrap();
+        assert_eq!(first_record.epoch_id, 1);
+        assert_eq!(first_record.token_id, first_token);
+        assert!(!first_record.retired);
+
+        client.mark_retired(&updater, &first_id);
+        assert!(client.get_bridged_credit(&first_id).unwrap().retired);
+        assert!(
+            client
+                .get_epoch_credits_page(&1, &0, &50)
+                .get(0)
+                .unwrap()
+                .retired
+        );
+
+        let second_id = String::from_str(&env, "VER-EPOCH-002");
+        let second_root = compute_test_leaf_hash(&env, "VER-EPOCH-002");
+        client.update_root(&updater, &2, &second_root);
+        finalize_root(&env, &client, &admin, 2);
+        let second_token = client.mint_wrapped(&user, &second_id, &Vec::new(&env), &0, &2);
+
+        assert_eq!(client.get_epoch_credit_count(&1), 1);
+        assert_eq!(client.get_epoch_credit_count(&2), 1);
+        assert_eq!(
+            client.get_bridged_credit(&second_id).unwrap().token_id,
+            second_token
+        );
+    }
+
+    #[test]
+    fn test_epoch_credit_pagination_caps_limit_and_crosses_index_pages() {
+        let (env, admin, _updater) = setup_env();
+        let contract_id = create_contract(&env);
+        let client = MerkleBridgeClient::new(&env, &contract_id);
+        client.initialize(&admin, &_updater);
+
+        let credit_id = String::from_str(&env, "VER-PAGE-001");
+        let record = BridgedCredit {
+            registry_credit_id: credit_id.clone(),
+            token_id: 1,
+            epoch_id: 9,
+            minted_at: 123,
+            leaf_index: 0,
+            retired: false,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage()
+                .persistent()
+                .set(&DataKey::BridgedCredit(credit_id.clone()), &record);
+            for page_number in 0..2u32 {
+                let page_start = page_number * EPOCH_INDEX_PAGE_SIZE;
+                let page_end = (page_start + EPOCH_INDEX_PAGE_SIZE).min(105);
+                let mut page = Vec::new(&env);
+                for _ in page_start..page_end {
+                    page.push_back(credit_id.clone());
+                }
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::EpochCreditIndex(9, page_number), &page);
+            }
+            env.storage()
+                .persistent()
+                .set(&DataKey::EpochCreditCount(9), &105u32);
+        });
+
+        assert_eq!(client.get_epoch_credit_count(&9), 105);
+        assert_eq!(client.get_epoch_credits_page(&9, &0, &u32::MAX).len(), 50);
+        assert_eq!(client.get_epoch_credits_page(&9, &95, &50).len(), 10);
+        assert_eq!(client.get_epoch_credits_page(&9, &99, &3).len(), 3);
+        assert!(client.get_epoch_credits_page(&9, &105, &50).is_empty());
     }
 }
 

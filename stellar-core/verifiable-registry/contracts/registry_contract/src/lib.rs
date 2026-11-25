@@ -13,7 +13,13 @@ use events::{
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use storage::extend_instance_ttl;
 use types::{CompactionConfig, DocumentRecord, Error, PaginatedProjects};
-use validation::{normalize_project_id, validate_address, validate_ipfs_cid, validate_project_id};
+use validation::{
+    normalize_project_id, validate_address, validate_document_type, validate_ipfs_cid,
+    validate_project_id,
+};
+
+/// Maximum documents accepted in one `anchor_document_batch` call.
+pub const MAX_ANCHOR_BATCH_SIZE: u32 = 25;
 
 #[contract]
 pub struct ProjectRegistry;
@@ -165,10 +171,7 @@ impl ProjectRegistry {
     }
 
     /// View the pending ownership transfer target for a project.
-    pub fn get_pending_ownership_transfer(
-        env: Env,
-        project_id: String,
-    ) -> Result<Address, Error> {
+    pub fn get_pending_ownership_transfer(env: Env, project_id: String) -> Result<Address, Error> {
         validate_project_id(&project_id)?;
         let normalized_project_id = normalize_project_id(&env, &project_id);
         storage::get_pending_transfer(&env, &normalized_project_id)
@@ -238,8 +241,8 @@ impl ProjectRegistry {
         };
 
         // Get or create document history
-        let mut history =
-            storage::get_document_history(&env, &normalized_project_id).unwrap_or_else(|_| Vec::new(&env));
+        let mut history = storage::get_document_history(&env, &normalized_project_id)
+            .unwrap_or_else(|_| Vec::new(&env));
 
         let version_index = history.len();
         history.push_back(record);
@@ -267,26 +270,49 @@ impl ProjectRegistry {
         storage::maybe_auto_compact(&env, &owner);
 
         // Emit event for off-chain indexing
-        emit_document_anchored_event(&env, normalized_project_id, ipfs_cid, document_type, version_index);
+        emit_document_anchored_event(
+            &env,
+            normalized_project_id,
+            ipfs_cid,
+            document_type,
+            version_index,
+        );
 
         extend_instance_ttl(&env);
 
         Ok(version_index)
     }
 
-    /// Anchor multiple documents to a project in a single transaction
+    /// Return the maximum number of documents accepted by `anchor_document_batch`.
+    /// Backend callers should split larger uploads into chunks no larger than this value.
+    pub fn get_max_batch_size(_env: Env) -> u32 {
+        MAX_ANCHOR_BATCH_SIZE
+    }
+
+    /// Anchor up to `get_max_batch_size()` documents to a project in one transaction.
     pub fn anchor_document_batch(
         env: Env,
         project_id: String,
         documents: Vec<(String, String)>, // Vec of (ipfs_cid, document_type)
     ) -> Result<Vec<u32>, Error> {
+        if documents.is_empty() {
+            return Err(Error::EmptyBatch);
+        }
+        if documents.len() > MAX_ANCHOR_BATCH_SIZE {
+            return Err(Error::BatchTooLarge);
+        }
+
         validate_project_id(&project_id)?;
         let normalized_project_id = normalize_project_id(&env, &project_id);
         let owner = storage::get_project_owner(&env, &normalized_project_id)?;
         owner.require_auth();
 
-        if documents.is_empty() {
-            return Err(Error::EmptyBatch);
+        // Validate every item before reading or mutating document history so the batch
+        // cannot partially progress when a later item is malformed.
+        for i in 0..documents.len() {
+            let (ipfs_cid, document_type) = documents.get(i).unwrap();
+            validate_ipfs_cid(&ipfs_cid)?;
+            validate_document_type(&document_type)?;
         }
 
         let timestamp = env.ledger().timestamp();
@@ -300,16 +326,13 @@ impl ProjectRegistry {
             }
         }
 
-        let mut history =
-            storage::get_document_history(&env, &normalized_project_id).unwrap_or_else(|_| Vec::new(&env));
+        let mut history = storage::get_document_history(&env, &normalized_project_id)
+            .unwrap_or_else(|_| Vec::new(&env));
 
         let mut version_indices = Vec::new(&env);
 
         for i in 0..documents.len() {
             let (ipfs_cid, document_type) = documents.get(i).unwrap();
-
-            // Validate IPFS CID format
-            validate_ipfs_cid(&ipfs_cid)?;
 
             let record = DocumentRecord {
                 ipfs_cid: ipfs_cid.clone(),

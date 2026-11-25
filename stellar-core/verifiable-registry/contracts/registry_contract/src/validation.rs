@@ -2,6 +2,14 @@ use crate::types::Error;
 use soroban_sdk::{Address, Bytes, Executable, String};
 
 const MAX_PROJECT_ID_LEN: u32 = 128;
+const MAX_DOCUMENT_TYPE_LEN: u32 = 100;
+
+pub fn validate_document_type(document_type: &String) -> Result<(), Error> {
+    if document_type.is_empty() || document_type.len() > MAX_DOCUMENT_TYPE_LEN {
+        return Err(Error::InvalidDocumentType);
+    }
+    Ok(())
+}
 
 // --- IPFS CID validation (#639) ---
 //
@@ -224,9 +232,7 @@ fn decode_base32<const N: usize>(
 /// valid accounts in the future).
 pub fn validate_address(address: &Address) -> Result<(), Error> {
     match address.executable() {
-        Some(Executable::Wasm(_)) | Some(Executable::StellarAsset) => {
-            Err(Error::InvalidAddress)
-        }
+        Some(Executable::Wasm(_)) | Some(Executable::StellarAsset) => Err(Error::InvalidAddress),
         _ => Ok(()),
     }
 }

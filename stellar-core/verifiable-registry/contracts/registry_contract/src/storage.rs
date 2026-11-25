@@ -249,10 +249,7 @@ pub struct CompactionStats {
 /// Perform compaction on an anchorer's project index:
 /// 1. Remove duplicate project entries
 /// 2. Remove projects that have been inactive beyond the configured pruning age
-pub fn compact_anchorer_index(
-    env: &Env,
-    anchorer: &Address,
-) -> CompactionStats {
+pub fn compact_anchorer_index(env: &Env, anchorer: &Address) -> CompactionStats {
     let config = get_compaction_config(env);
     let now = env.ledger().timestamp();
 

@@ -135,9 +135,9 @@ The `batch_prune_expired` function includes:
 - Efficient iteration with early exit
 
 ### Recommended Batch Size
-- Small batches (10-50 records) for regular maintenance
-- Larger batches (100-500) for periodic cleanup
-- Adjust based on gas prices and record size
+- `MAX_BATCH_SIZE` is 20 for both `batch_release` and `batch_prune_expired`.
+- Keepers should query `get_max_batch_size()` and split larger worklists into chunks no larger than that value.
+- Oversized batches fail before lock-record storage is read; duplicates within a batch are ignored.
 
 ## Audit Trail
 
@@ -199,13 +199,14 @@ match client.try_prune_expired(&token_id) {
 
 ### Batch Pruning
 ```rust
-// Prune up to 50 expired records
+// Prune no more than the on-chain batch limit at a time.
+let max_batch_size = client.get_max_batch_size();
 let mut token_ids = vec![&env];
-for id in 1..=100 {
+for id in 1..=max_batch_size {
     token_ids.push_back(&id);
 }
 
-let pruned = client.batch_prune_expired(&token_ids, &50);
+let pruned = client.batch_prune_expired(&token_ids, &max_batch_size);
 println!("Pruned {} records", pruned.len());
 ```
 
@@ -219,18 +220,23 @@ fn run_keeper(env: &Env, client: &TimeLockClient) {
     }
 
     let all_records = client.get_all_locked();
-    let mut expired_ids = vec![&env];
+    let max_batch_size = client.get_max_batch_size();
+    let mut batch = vec![&env];
     
     for record in all_records.iter() {
         let now = env.ledger().timestamp();
         let expiry = record.unlock_timestamp + ttl_config.ttl_seconds;
         if now >= expiry {
-            expired_ids.push_back(record.token_id);
+            batch.push_back(record.token_id);
+            if batch.len() == max_batch_size {
+                client.batch_prune_expired(&batch, &max_batch_size);
+                batch = vec![&env];
+            }
         }
     }
 
-    if !expired_ids.is_empty() {
-        client.batch_prune_expired(&expired_ids, &100);
+    if !batch.is_empty() {
+        client.batch_prune_expired(&batch, &max_batch_size);
     }
 }
 ```

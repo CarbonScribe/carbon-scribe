@@ -169,6 +169,8 @@ npx openapi-typescript ../../agent-service/openapi.yaml -o src/agents/agent-serv
 | `NODE_ENV` | Runtime environment (`development`, `production`, `test`) | `development` |
 | `ANTHROPIC_API_KEY` | Anthropic Claude API key | Required for LLM calls |
 | `AGENT_MODEL` | Claude model identifier | `claude-opus-5` |
+| `ANTHROPIC_MAX_RETRIES` | SDK retries for transient Anthropic API failures | `2` |
+| `ANTHROPIC_TIMEOUT_MS` | Timeout for each Anthropic HTTP attempt in milliseconds | `60000` |
 | `AGENT_SERVICE_JWT_SECRET` | Secret used to sign outbound service tokens | - |
 | `CORPORATE_PLATFORM_JWT_SECRET` | Inbound JWT secret for corporate-platform calls | - |
 | `PROJECT_PORTAL_JWT_SECRET` | Inbound JWT secret for project-portal calls | - |
@@ -186,6 +188,8 @@ npx openapi-typescript ../../agent-service/openapi.yaml -o src/agents/agent-serv
 | `AGENT_REQUEST_TIMEOUT_MS` | Per-agent HTTP request deadline | `120000` |
 | `UPSTREAM_HTTP_TIMEOUT_MS` | Corporate/platform HTTP client timeout | `10000` |
 | `SHUTDOWN_TIMEOUT_MS` | Graceful shutdown drain timeout | `15000` |
+
+`AGENT_REQUEST_TIMEOUT_MS` is the overall deadline for an agent request and aborts any in-flight Anthropic attempt or retry. `ANTHROPIC_TIMEOUT_MS` applies to each attempt; the SDK's worst-case attempt time can be about `(ANTHROPIC_MAX_RETRIES + 1) * ANTHROPIC_TIMEOUT_MS`, before backoff. Keep the overall deadline below that duration when the agent request should bound the retry sequence.
 
 ---
 
