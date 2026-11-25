@@ -11,8 +11,7 @@ export class DutchAuctionService {
    * @param auction The auction record
    * @returns The calculated price at the current time
    */
-  calculateCurrentPrice(auction: Auction): number {
-    const now = new Date();
+  calculateCurrentPrice(auction: Auction, now = new Date()): number {
 
     // If auction hasn't started, return start price
     if (now < auction.startTime) {
