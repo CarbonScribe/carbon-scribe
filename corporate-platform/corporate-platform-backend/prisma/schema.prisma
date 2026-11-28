@@ -704,11 +704,13 @@ model Bid {
   bidPrice  Float
   quantity  Int
   status    String
+  idempotencyKey String?
   createdAt DateTime @default(now())
 
   @@index([auctionId])
   @@index([companyId])
   @@index([userId])
+  @@unique([auctionId, userId, idempotencyKey])
 }
 
 model RetirementSchedule {

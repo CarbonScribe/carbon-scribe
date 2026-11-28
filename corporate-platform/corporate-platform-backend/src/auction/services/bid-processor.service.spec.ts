@@ -14,12 +14,14 @@ describe('BidProcessorService', () => {
       $transaction: jest.fn().mockImplementation(async (callback) => {
         return callback(prismaService);
       }),
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 'a1' }]),
       auction: {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
       bid: {
         create: jest.fn(),
+        findFirst: jest.fn(),
       },
     };
 
@@ -64,6 +66,7 @@ describe('BidProcessorService', () => {
         id: 'a1',
         status: 'active',
         remaining: 50,
+        endTime: new Date(Date.now() + 60000),
       });
       dutchAuctionService.calculateCurrentPrice.mockReturnValue(90);
       prismaService.bid.create.mockResolvedValueOnce({ id: 'b1' });
@@ -90,6 +93,7 @@ describe('BidProcessorService', () => {
         id: 'a1',
         status: 'active',
         remaining: 10,
+        endTime: new Date(Date.now() + 60000),
       });
       dutchAuctionService.calculateCurrentPrice.mockReturnValue(100);
       prismaService.bid.create.mockResolvedValueOnce({ id: 'b1' });
@@ -101,6 +105,30 @@ describe('BidProcessorService', () => {
         where: { id: 'a1' },
         data: { remaining: 0, status: 'ended' },
       });
+    });
+
+    it('rejects a bid at the end time and uses the same time for pricing', async () => {
+      const now = new Date('2026-01-01T00:00:00Z');
+      jest.useFakeTimers().setSystemTime(now);
+      try {
+        const auction = { id: 'a1', status: 'active', remaining: 10, endTime: now };
+        prismaService.auction.findUnique.mockResolvedValue(auction);
+        await expect(service.processBid('a1', 'u1', 'c1', { bidPrice: 100, quantity: 1 })).rejects.toThrow('Auction has ended');
+        auction.endTime = new Date(now.getTime() + 1);
+        dutchAuctionService.calculateCurrentPrice.mockReturnValue(100);
+        prismaService.bid.create.mockResolvedValue({ id: 'b1' });
+        await service.processBid('a1', 'u1', 'c1', { bidPrice: 100, quantity: 1 });
+        expect(dutchAuctionService.calculateCurrentPrice).toHaveBeenCalledWith(auction, now);
+      } finally { jest.useRealTimers(); }
+    });
+
+    it('returns an existing bid for a matching key even after sellout', async () => {
+      prismaService.auction.findUnique.mockResolvedValue({ id: 'a1', status: 'ended' });
+      const existing = { id: 'b1', bidPrice: 100, quantity: 1 };
+      prismaService.bid.findFirst.mockResolvedValue(existing);
+      await expect(service.processBid('a1', 'u1', 'c1', { bidPrice: 100, quantity: 1, idempotencyKey: 'key' })).resolves.toEqual(existing);
+      expect(prismaService.bid.create).not.toHaveBeenCalled();
+      await expect(service.processBid('a1', 'u1', 'c1', { bidPrice: 101, quantity: 1, idempotencyKey: 'key' })).rejects.toThrow('different bid');
     });
   });
 });
