@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { PlaceBidPayload } from '@/types/auction';
 import { useRateLimitCountdown } from '@/hooks/useRateLimitCountdown';
@@ -18,7 +18,13 @@ interface PlaceBidFormProps {
   bidSuccess: string | null;
   onPlaceBid: (payload: PlaceBidPayload) => Promise<void>;
   onClearFeedback: () => void;
+  highBidThreshold?: number;
+  highTotalThreshold?: number;
 }
+
+const currency = (value: number) => value.toLocaleString(undefined, {
+  style: 'currency', currency: 'USD',
+});
 
 export default function PlaceBidForm({
   currentPrice,
@@ -31,11 +37,27 @@ export default function PlaceBidForm({
   bidSuccess,
   onPlaceBid,
   onClearFeedback,
+  highBidThreshold = 0.25,
+  highTotalThreshold = 100000,
 }: PlaceBidFormProps) {
   const [bidPrice, setBidPrice] = useState<string>(currentPrice.toFixed(2));
   const [quantity, setQuantity] = useState<string>('1');
   const [validationError, setValidationError] = useState<string | null>(null);
   const rateLimit = useRateLimitCountdown(bidRateLimitError);
+  const [review, setReview] = useState<PlaceBidPayload | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (!review) return;
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, [review]);
+
+  useEffect(() => { setAcknowledged(false); }, [currentPrice]);
 
   // Keep bid price in sync with live current price
   useEffect(() => {
@@ -56,7 +78,7 @@ export default function PlaceBidForm({
     }
     if (numericBidPrice < floorPrice) {
       setValidationError(
-        `Bid price cannot be below the floor price ($${floorPrice.toFixed(2)}).`,
+        `Bid price cannot be below the floor price (${currency(floorPrice)}).`,
       );
       return false;
     }
@@ -74,12 +96,29 @@ export default function PlaceBidForm({
     return true;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (rateLimit.isBlocked) return;
+    if (rateLimit.isBlocked || placingBid || pendingRef.current) return;
     onClearFeedback();
     if (!validate()) return;
-    await onPlaceBid({ bidPrice: numericBidPrice, quantity: numericQuantity });
+    setAcknowledged(false);
+    setReview({ bidPrice: numericBidPrice, quantity: numericQuantity });
+  };
+
+  const highPrice = review !== null && review.bidPrice > currentPrice * (1 + highBidThreshold);
+  const highTotal = review !== null && review.bidPrice * review.quantity > highTotalThreshold;
+  const confirmBid = async () => {
+    if (!review || pendingRef.current || placingBid || rateLimit.isBlocked || !isActive ||
+        ((highPrice || highTotal) && !acknowledged)) return;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      await onPlaceBid(review);
+    } finally {
+      setReview(null);
+      setPending(false);
+      pendingRef.current = false;
+    }
   };
 
   if (!isActive) {
@@ -114,8 +153,7 @@ export default function PlaceBidForm({
           required
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Current price: ${currentPrice.toFixed(2)} · Floor: $
-          {floorPrice.toFixed(2)}
+          Current price: {currency(currentPrice)} · Floor: {currency(floorPrice)}
         </p>
       </div>
 
@@ -148,7 +186,7 @@ export default function PlaceBidForm({
             Estimated total:{' '}
           </span>
           <span className="font-bold text-corporate-blue">
-            ${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            {currency(totalCost)}
           </span>
         </div>
       )}
@@ -191,7 +229,7 @@ export default function PlaceBidForm({
 
       <button
         type="submit"
-        disabled={placingBid || rateLimit.isBlocked}
+        disabled={placingBid || pending || rateLimit.isBlocked}
         className="w-full corporate-btn-primary py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
       >
         {placingBid ? (
@@ -203,6 +241,34 @@ export default function PlaceBidForm({
           'Place Bid'
         )}
       </button>
+      {review && (
+        <dialog
+          ref={dialogRef}
+          aria-labelledby="bid-review-title"
+          aria-describedby="bid-review-description"
+          onCancel={(event) => { event.preventDefault(); if (!pendingRef.current) setReview(null); }}
+          className="m-auto w-full max-w-md rounded-xl bg-white p-6 text-gray-900 shadow-xl backdrop:bg-black/50 dark:bg-gray-800 dark:text-white"
+        >
+          <h2 id="bid-review-title" className="text-lg font-bold">Review your bid</h2>
+          <p id="bid-review-description" className="mt-2 text-sm">Bids are binding. Please review the details before confirming.</p>
+          <dl className="my-4 space-y-2 text-sm">
+            <div className="flex justify-between gap-4"><dt>Price per tonne</dt><dd>{currency(review.bidPrice)}</dd></div>
+            <div className="flex justify-between gap-4"><dt>Quantity</dt><dd>{review.quantity.toLocaleString()} tCO₂</dd></div>
+            <div className="flex justify-between gap-4"><dt>Current auction price</dt><dd>{currency(currentPrice)}</dd></div>
+            <div className="flex justify-between gap-4 font-bold"><dt>Total cost</dt><dd>{currency(review.bidPrice * review.quantity)}</dd></div>
+          </dl>
+          {(highPrice || highTotal) && (
+            <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+              <p role="alert">Warning: {highPrice && `This bid is more than ${highBidThreshold * 100}% above the current auction price.`} {highTotal && `The total exceeds ${currency(highTotalThreshold)}.`}</p>
+              <label className="mt-2 flex items-start gap-2"><input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} /> I understand and confirm these bid details.</label>
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button type="button" autoFocus disabled={pending || placingBid} onClick={() => setReview(null)} className="rounded-lg border px-4 py-2 disabled:opacity-60">Cancel</button>
+            <button type="button" disabled={pending || placingBid || rateLimit.isBlocked || ((highPrice || highTotal) && !acknowledged)} onClick={confirmBid} className="corporate-btn-primary px-4 py-2 disabled:opacity-60">{pending || placingBid ? 'Placing Bid…' : 'Confirm bid'}</button>
+          </div>
+        </dialog>
+      )}
     </form>
   );
 }
